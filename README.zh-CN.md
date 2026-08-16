@@ -23,6 +23,12 @@ DeepCreator 是构建在官方 [DeepSeek Harness](https://github.com/deepseek-ai
 
 交互设计借鉴了 Claude Desktop 与 Codex 以任务为中心的阅读节奏，同时继续复用官方 Harness 的 Host、Agent、Session、Runtime、RPC、Settings、Workspace 与 Slot 系统。
 
+<p align="center">
+  <a href="./assets/readme/classic-conversation-flow.png"><img src="./assets/readme/classic-conversation-flow.png" width="100%" alt="DeepCreator 经典模式，在连续的智能体对话中展示紧凑的工具调用摘要"></a>
+</p>
+
+<p align="center"><sub>经典模式把助手输出与紧凑工具摘要组织在一条连续、清晰的对话流中。</sub></p>
+
 ## 三种对话流模式
 
 | 模式 | 适合场景 | 展示方式 |

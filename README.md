@@ -23,6 +23,12 @@ DeepCreator is an independent Desktop and Web presentation distribution for the 
 
 The interaction takes cues from the task-centered reading rhythm of Claude Desktop and Codex while preserving the official Harness Host, Agent, Session, Runtime, RPC, Settings, Workspace, and Slot systems.
 
+<p align="center">
+  <a href="./assets/readme/classic-conversation-flow.png"><img src="./assets/readme/classic-conversation-flow.png" width="100%" alt="DeepCreator Classic mode showing a continuous agent conversation with compact tool-call summaries"></a>
+</p>
+
+<p align="center"><sub>Classic mode keeps assistant output and compact tool summaries in one continuous, readable flow.</sub></p>
+
 ## Three ways to read agent work
 
 | Mode | Best for | Flow behavior |
