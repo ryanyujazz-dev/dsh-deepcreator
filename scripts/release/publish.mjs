@@ -33,5 +33,5 @@ if (planned.length === 0) throw new Error(`no @ryanyujazz packages at v${version
 console.log(`publishing v${version} under the "${tag}" dist-tag:`)
 for (const manifest of planned) console.log(`  ${manifest.name}`)
 
-execSync(`pnpm -r publish --tag ${tag} --no-git-checks`, { cwd: root, stdio: 'inherit' })
+execSync(`pnpm -r publish --tag ${tag} --no-git-checks --registry https://registry.npmjs.org`, { cwd: root, stdio: 'inherit' })
 console.log('published.')
