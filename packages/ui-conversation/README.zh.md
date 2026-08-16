@@ -12,6 +12,8 @@
 
 视图环是一个 slot：严格会话主体注册在 `children` 表中声明会话作用域的 `'conversation.view'` 列表，并通过自身的 renderSlot share 渲染活跃配置项（`only: <active id>`）；视图标签页则从注册选项（`id`／`order`／`label`）投影而来。聊天视图是该包自身的配置项；ui-trajectory 等插件通过 `ctx.slots.register` 贡献标签页，每个视图负责自己的 chrome。
 
+聊天视图还声明会话作用域的 `'conversation.chat.render'` 列表，并提供「原生」、「经典」和「思考」三个配置项。由 Host settings 支撑的 `ui-conversation.defaultRenderMode` 偏好以「默认渲染模式」贡献到 `settings.general.preferences.item`；它的「原生／经典／思考」分段选项初始选中「经典」。该设置控件与当前会话的标题栏选择器双向同步：任一处切换都会立即更新当前会话、另一处的选中态以及后续会话继承的默认值。偏好选项之外的插件模式仍只作用于当前会话。首选注册被移除时会回退到「原生」，但不会改写任一偏好。
+
 Chat 业务行是彼此独立的注册表贡献，不是封闭的内建联合。Client 插件通过 declaration merging 增加类型化 `ChatNodeDataMap` key，在 `ctx.conversationEvents` 上注册 `ConversationNodeDefinition`，再向 `conversation.chat.node` 注册匹配的 keyed renderer；它无须修改会话 fold 或中央 renderer switch。稳定事件 id、append/prepend 回放、Location data 与 renderer 约束见 [Conversation Node 实操手册](../../../docs/cookbook/adding-a-conversation-node.md)。
 
 会话页头会在标题旁渲染会话作用域的 `'conversation.session.header.actions'` 列表，并在最右侧渲染独立的 `'conversation.session.header.utilities'` 列表。会话上下文和谱系控件保留在 `actions` 中；可选的会话工具不会改变它们的顺序或位置。编辑器链的 currency 包含当前对话 `session`；ui-subagent 会选取 one-shot 或 parent 不可用的已寻址会话，并按原因显示只读文案，而普通 InputBar 会让所有已寻址 child 仅保留 Send，因为继续执行服务不公开逐 Activation 取消操作，`session.cancel` 也会绕过其所有权。
@@ -19,6 +21,8 @@ Chat 业务行是彼此独立的注册表贡献，不是封闭的内建联合。
 已记录的非用户消息渲染为默认折叠的展开项，标题栏先给出运行时为该消息投影出的角色——注入为 `上下文注入`，召回为 `跨会话召回`——其后是该投影从持久来源读出的生产者名称，因此读者无需展开即可区分 skill（技能）目录、工作区指令文件与被召回的会话。来源未提供生产者名称时只显示角色。共享的 `DisclosureRow` 原子组件让该上下文界面与消息流中的其他紧凑行保持相同几何，同时保留上下文语义：展开内容区的高度会随内容自适应，最大为 141px，超出后滚动，且不会合成工具状态或摘要（[历史展开项决策](../../../.agents/notes/archived/feature/2026-07-30-web-context-injection-disclosure.md)、[生产者标签决策](../../../.agents/notes/implemented/feature/2026-08-04-web-context-source-and-steer-marks.md)）。该内容区按生产方在持久来源上声明的形态渲染：`instructions` 在正文之上列出它对账过的文件，`catalog` 列出来源记录的条目而非面向模型的正文，其余取值——未声明、本版本不认识、或字段不可用——一律渲染 opaque 内容区，即按真实换行展示面向模型的文本，并把剩余来源字段列出。opaque 不是兜底剩余物而是有文档的默认：恢复的、fork 的、外部写入的日志，无论其生产方是否挂载在此处，都必须渲染得出来。持久或待处理的 steering（中途引导）气泡沿用用户气泡的呈现，不加任何装饰；transcript 中唯一的 steering 信号是它出现在轮次中途的位置。
 
 Think 行默认保持折叠，并在不展开思维链的情况下暴露实时推理（reasoning）吞吐：当推理块是流式输出尾部时，摘要从结算后的首行切换到最新的非空行，其单行滚动区会随每个 delta 追到行内末端。展开该行会移除移动摘要，让完整推理进入普通页面流，因此页面阅读不会与内部跟随器争夺滚动；结算后恢复左对齐的稳定首行摘要（[决策](../../../.agents/notes/implemented/feature/2026-08-02-web-thinking-tail-scroll.md)）。
+
+会话流中所有可见正文共享框架级 `--dsh-conversation-flow-font`，并映射到 Host 主题的 `--dsw-font-markdown-base`：assistant 正文、用户气泡、Think、上下文注入、折叠工具行、执行聚合摘要、压缩、重试和终态错误因此会在所有渲染模式中跟随同一个 transcript 字号偏好。InputBar 会把同一个 Host 角色应用到 textarea、placeholder、装饰 backdrop 与高度 mirror，因此输入文字和提示文字会随正文偏好一起改变字号、行高与常规字重。展开后的工具载荷与结构化上下文是刻意保留的紧凑例外，使用 `--dsw-font-markdown-code-block-small`。按 key 注册的 renderer 继承公开的框架变量，不再各自声明 transcript 字号。
 
 聊天视图保留工具的消息流位置，但委托其展示。每个已排序的 `tool-call` Conversation Node 都通过 `conversation.chat.node` 的同名 key 分发；详情壳层则通过 `conversation.details.tool` 传递当前选中的调用。组装后的 Web bundle 为该 Chat Node key 注册 [`ui-tool`](../ui-tool/README.md)，由后者渲染运行时已投影的递归 root/child 树，并负责按名称分发、通用展示和 render-intent 卡片；只有详情席位会在该 renderer 缺席时保留 raw-result fallback。
 

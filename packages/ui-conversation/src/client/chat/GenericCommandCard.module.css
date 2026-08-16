@@ -6,6 +6,7 @@
 .row {
   position: relative;
   overflow: hidden;
+  height: var(--dsh-conversation-flow-line-height, 24px);
 }
 
 .root[data-state='running'] .row::after {
@@ -38,7 +39,8 @@
 }
 
 .title {
-  font-weight: 400;
+  font: var(--dsh-conversation-flow-font, var(--dsw-font-markdown-base));
+  font-weight: var(--dsw-font-weight-regular, 400);
 }
 
 .separator {
@@ -55,8 +57,7 @@
   overflow: hidden;
   flex: 1 1 auto;
   color: var(--dsw-alias-label-tertiary);
-  font-size: 14px;
-  line-height: 24px;
+  font: var(--dsh-conversation-flow-font, var(--dsw-font-markdown-base));
   text-overflow: ellipsis;
   white-space: nowrap;
 }

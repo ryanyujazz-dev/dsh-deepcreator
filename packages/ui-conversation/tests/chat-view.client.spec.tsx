@@ -47,6 +47,7 @@ beforeEach(() => {
 })
 
 const SID = 's1' as SessionId
+const defaultRenderMode = () => createSnapshotStore<'normal' | 'classic' | 'think'>('classic')
 type RoutedChatNodeOwner = ChatNodeOwnerProps & { readonly node: ChatNode }
 
 function snapshotBase(): ConversationSnapshot {
@@ -328,6 +329,9 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
       list: () => [{ id: 'normal', label: 'Standard' }],
       subscribe: () => () => {},
       version: () => 0,
+      defaultMode: defaultRenderMode(),
+      bindSession: () => () => {},
+      select: (_sessionId: SessionId, mode: string, write: (mode: string) => void) => { write(mode) },
     },
     // Mirrors the real lookup chain (conversation namespace, then common).
     t,
@@ -1419,6 +1423,9 @@ describe('ChatView render-mode ring', () => {
       ],
       subscribe: () => () => {},
       version: () => 0,
+      defaultMode: defaultRenderMode(),
+      bindSession: () => () => {},
+      select: (_sessionId: SessionId, mode: string, write: (mode: string) => void) => { write(mode) },
     }
     render(<h.ChatView {...h.props} modes={modes} />)
     expect(h.renderedOnly()).toBe('execflow')
@@ -1434,8 +1441,36 @@ describe('ChatView render-mode ring', () => {
       ],
       subscribe: () => () => {},
       version: () => 0,
+      defaultMode: defaultRenderMode(),
+      bindSession: () => () => {},
+      select: (_sessionId: SessionId, mode: string, write: (mode: string) => void) => { write(mode) },
     }
     render(<h.ChatView {...h.props} modes={modes} />)
     expect(h.renderedOnly()).toBe('normal')
+  })
+
+  it('keeps built-in session selections synchronized to the user preference', () => {
+    const h = makeHarness()
+    const preferred = createSnapshotStore<'normal' | 'classic' | 'think'>('think')
+    const modes = {
+      list: () => [
+        { id: 'normal', label: 'Native mode' },
+        { id: 'classic', label: 'Classic mode' },
+        { id: 'think', label: 'Think mode' },
+      ],
+      subscribe: () => () => {},
+      version: () => 0,
+      defaultMode: preferred,
+      bindSession: () => () => {},
+      select: (_sessionId: SessionId, mode: string, write: (mode: string) => void) => { write(mode) },
+    }
+    const view = render(<h.ChatView {...h.props} modes={modes} />)
+    expect(h.renderedOnly()).toBe('think')
+    h.props.actions.setRenderMode('classic')
+    view.rerender(<h.ChatView {...h.props} modes={modes} />)
+    expect(h.renderedOnly()).toBe('think')
+    preferred.set('classic')
+    view.rerender(<h.ChatView {...h.props} modes={modes} />)
+    expect(h.renderedOnly()).toBe('classic')
   })
 })

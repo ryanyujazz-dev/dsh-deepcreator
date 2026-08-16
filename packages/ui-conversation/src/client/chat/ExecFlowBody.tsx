@@ -207,7 +207,7 @@ export type ExecFlowBodyProps = ChatRenderSlotProps & ExecFlowBodyInjected
  */
 export function ExecFlowBody({
   useSession, useSessions, useStore, sessionId, openFile, loadOlder, loadImage, inspectCall, chatScroll, forkAt,
-  fileMentions, renderSlot, t, actions, thinkForm, siblingId,
+  fileMentions, selectRenderMode, renderSlot, t, actions, thinkForm, siblingId,
 }: ExecFlowBodyProps) {
   const order = useSession(s => s.chat.order)
   const nodeStore = useSession(s => s.chat.nodes)
@@ -637,7 +637,7 @@ export function ExecFlowBody({
               startTime={runningTurnStart}
               t={t}
               thinkForm={thinkForm}
-              onToggleThinkMode={() => { actions.setRenderMode(siblingId) }}
+              onToggleThinkMode={() => { selectRenderMode(sessionId, siblingId, actions.setRenderMode) }}
               showThinkSwitch={partial !== null && partial.blocks.some(block => block.kind === 'reasoning')}
             />
           )}

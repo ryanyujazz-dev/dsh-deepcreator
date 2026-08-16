@@ -1,18 +1,19 @@
 {
-  "name": "dsh-plugins",
+  "name": "dsh-deepcreator",
   "version": "0.1.0",
   "private": true,
   "description": "Long-term plugin library for DeepSeek Harness (dsh): installable plugin packages and patch-layer bundles.",
   "type": "module",
   "scripts": {
-    "build": "pnpm -r build",
+    "build": "pnpm -r --if-present bundle",
     "bump": "node scripts/release/bump.mjs",
     "publish": "node scripts/release/publish.mjs",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r --if-present typecheck"
   },
   "devDependencies": {
     "lightningcss": "^1.32.0",
-    "tsdown": "^0.22.2"
+    "tsdown": "^0.22.2",
+    "typescript": "^6.0.3"
   },
   "engines": {
     "node": "^22.19 || >=24"

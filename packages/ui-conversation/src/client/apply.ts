@@ -24,9 +24,12 @@ import { ComposerBlockRegistry } from './input/blocks.ts'
 import type { ComposerBlock } from './input/blocks.ts'
 import { InputHub } from './input/hub.ts'
 import { ComposerSubmissionPolicy } from './input/submission-policy.ts'
+import { RenderModePreference } from './chat/render-mode-preference.ts'
 import { InputBar } from './skeleton/InputBar.tsx'
 import { EnterBehaviorRow } from './settings/EnterBehaviorRow.tsx'
 import type { EnterBehaviorRowInjected } from './settings/EnterBehaviorRow.tsx'
+import { DefaultRenderModeRow } from './settings/DefaultRenderModeRow.tsx'
+import type { DefaultRenderModeRowInjected } from './settings/DefaultRenderModeRow.tsx'
 import { ChatView } from './chat/ChatView.tsx'
 import { ChatRenderStandard } from './chat/ChatRenderStandard.tsx'
 import { ExecFlowBody, type ExecFlowBodyInjected } from './chat/ExecFlowBody.tsx'
@@ -132,9 +135,11 @@ export function apply(ctx: Context): void {
 
   // Apply-time construction keeps store identity bound to this fiber.
   const chatStore = createChatStore()
-  const submissionPolicy = new ComposerSubmissionPolicy(
-    ctx.settingsScope.bind<ConversationSettings>({ namespace: CONVERSATION_SETTINGS_NAMESPACE }),
-  )
+  const conversationSettings = ctx.settingsScope.bind<ConversationSettings>({
+    namespace: CONVERSATION_SETTINGS_NAMESPACE,
+  })
+  const submissionPolicy = new ComposerSubmissionPolicy(conversationSettings)
+  const renderModePreference = new RenderModePreference(conversationSettings)
 
   ctx.slots.inject('settings.general.item', () => ctx.slots.register({
     name: 'settings.general.item',
@@ -146,6 +151,19 @@ export function apply(ctx: Context): void {
       setBusyEnter: (behavior) => { submissionPolicy.setBusyEnter(behavior) },
     }),
   }, EnterBehaviorRow))
+
+  ctx.slots.inject('settings.general.preferences.item', () => ctx.slots.register({
+    name: 'settings.general.preferences.item',
+    id: 'default-render-mode',
+    order: 0,
+    locale: NS,
+    inject: (): DefaultRenderModeRowInjected => ({
+      hooks: { defaultRenderMode: renderModePreference.value },
+      setDefaultRenderMode: (mode, currentSessionId) => {
+        renderModePreference.set(mode, currentSessionId)
+      },
+    }),
+  }, DefaultRenderModeRow))
 
   // Chat semantic reader positions by session, surviving view switches and
   // width reflow when the tab ring remounts the view. Deliberately not
@@ -183,6 +201,13 @@ export function apply(ctx: Context): void {
     },
     subscribe: (fn: () => void) => slots.subscribe('conversation.chat.render', fn),
     version: () => slots.getVersion('conversation.chat.render'),
+    defaultMode: renderModePreference.value,
+    bindSession: (sessionId: SessionId, write: (mode: string) => void) => (
+      renderModePreference.bindSession(sessionId, write)
+    ),
+    select: (sessionId: SessionId, mode: string, write: (mode: string) => void) => {
+      renderModePreference.select(sessionId, mode, write)
+    },
   }
 
   // The per-session input machine registry (SessionInputResolver face; published as

@@ -43,7 +43,7 @@
   border-radius: 8px;
   background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-secondary);
-  font-size: 12px;
+  font-size: 10px;
   line-height: 18px;
 }
 
@@ -70,8 +70,7 @@
   border-radius: 22px;
   background: var(--dsw-specific-input-major);
   box-shadow: var(--dsw-shadow-lv2);
-  font-size: 16px;
-  line-height: 24px;
+  font: var(--dsw-font-markdown-base);
   /* Elevated surface in dark, same as the menus: the draft scrollport inside
      scrolls once the composer hits its height cap, so the thumb takes the l2
      pair. Declared on the card because the elevation belongs to the surface,
@@ -233,6 +232,7 @@
      share the stack, so placeholder advances agree by construction. */
   font-family: 'DshChipCell', var(--dsw-font-family);
   font-size: inherit;
+  font-weight: inherit;
   /* Three consumers, not two: the mirror sizes the stack, the layers must break
      lines identically, and the caret reveal parses this value to step one line
      down for a caret that sits after a newline. That parse needs a length, so a
@@ -361,7 +361,7 @@
   background-position: right 4px center;
   background-size: 12px 12px;
   color: var(--dsw-alias-label-secondary);
-  font-size: 13px;
+  font-size: 11px;
   line-height: 20px;
   font-weight: 500;
   white-space: nowrap;
@@ -378,15 +378,15 @@
   cursor: default;
 }
 
-/* Primary send (figma IconButton 34:10465): 34px circle, #3964FE light /
+/* Primary send: the same 28px circle as the leading add control, #3964FE light /
    #679EFE dark — the info-fill pair (500→400), NOT button-primary (ink);
    white glyph; empty text = 0.4 opacity. */
 .primary {
   display: grid;
   place-items: center;
   flex: none;
-  width: 34px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
   border: none;
   border-radius: 999px;
   background: var(--dsw-alias-button-info-fill);
@@ -395,10 +395,6 @@
   color: #fff;
   cursor: pointer;
   transition: background-color 100ms ease;
-  /* Opts out of the row's 2px downward shift (.row top pad): the send circle
-     keeps its original seat while the smaller chips sit lower. Transform, not
-     margin, so flex centering math is untouched. */
-  transform: translateY(-2px);
 }
 
 .primary:hover:not(:disabled) {
@@ -417,7 +413,7 @@
   border-radius: 4px;
   background: transparent;
   color: inherit;
-  font-size: 12px;
+  font-size: 10px;
   cursor: pointer;
 }
 

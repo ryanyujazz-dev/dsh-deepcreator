@@ -14,7 +14,7 @@
   position: relative;
   display: flex;
   align-items: flex-start;
-  min-height: 24px;
+  min-height: var(--dsh-conversation-flow-line-height, 24px);
 }
 
 .header[role='button'] {
@@ -38,9 +38,8 @@
 .aggregate {
   display: flex;
   align-items: center;
-  height: 24px;
-  font-size: 14px;
-  line-height: 24px;
+  height: var(--dsh-conversation-flow-line-height, 24px);
+  font: var(--dsh-conversation-flow-font, var(--dsw-font-markdown-base));
   color: var(--dsw-alias-label-secondary);
   cursor: pointer;
   user-select: none;

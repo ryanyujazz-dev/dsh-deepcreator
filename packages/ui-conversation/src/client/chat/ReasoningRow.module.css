@@ -6,6 +6,7 @@
 .row {
   position: relative;
   overflow: hidden;
+  height: var(--dsh-conversation-flow-line-height, 24px);
 }
 
 .root[data-state='running'] .row::after {
@@ -38,7 +39,8 @@
 }
 
 .title {
-  font-weight: 400;
+  font: var(--dsh-conversation-flow-font, var(--dsw-font-markdown-base));
+  font-weight: var(--dsw-font-weight-regular, 400);
 }
 
 .separator {
@@ -55,8 +57,7 @@
   overflow: hidden;
   flex: 1 1 auto;
   color: var(--dsw-alias-label-tertiary);
-  font-size: 14px;
-  line-height: 24px;
+  font: var(--dsh-conversation-flow-font, var(--dsw-font-markdown-base));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -105,8 +106,7 @@
 .thinkScroll {
   padding: 4px 0 0 22px;
   color: var(--dsw-alias-label-tertiary);
-  font-size: 14px;
-  line-height: 24px;
+  font: var(--dsh-conversation-flow-font, var(--dsw-font-markdown-base));
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -116,7 +116,7 @@
 }
 
 .thinkBody[data-clamped] .thinkScroll {
-  max-height: calc(24px * 15 + 4px);
+  max-height: calc(var(--dsh-conversation-flow-line-height, 24px) * 15 + 4px);
   overflow-y: auto;
 }
 
@@ -128,8 +128,7 @@
   padding: 0;
   border: none;
   background: none;
-  font-size: 14px;
-  line-height: 24px;
+  font: var(--dsh-conversation-flow-font, var(--dsw-font-markdown-base));
   color: var(--dsw-alias-label-tertiary);
   cursor: pointer;
 }
@@ -149,7 +148,7 @@
   position: absolute;
   left: 22px;
   right: 0;
-  height: 24px;
+  height: var(--dsh-conversation-flow-line-height, 24px);
   pointer-events: none;
 }
 
@@ -159,6 +158,6 @@
 }
 
 .maskBottom {
-  bottom: calc(24px + 4px);
+  bottom: calc(var(--dsh-conversation-flow-line-height, 24px) + 4px);
   background: linear-gradient(to top, var(--dsw-alias-bg-base), transparent);
 }

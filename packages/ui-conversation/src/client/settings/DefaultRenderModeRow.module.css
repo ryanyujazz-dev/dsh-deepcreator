@@ -1,0 +1,85 @@
+/* Feature-owned row using the shared Preferences group geometry. */
+
+.row {
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 16px 0;
+  box-sizing: border-box;
+}
+
+.text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.title,
+.description,
+.segment {
+  font-size: 12px;
+  font-weight: var(--dsw-font-weight-regular, 400);
+  line-height: 18px;
+}
+
+.title {
+  color: var(--dsw-alias-label-primary);
+}
+
+.description {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.segmented {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 2px;
+  box-sizing: border-box;
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-module-platform);
+}
+
+.segment {
+  min-width: 64px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  font-family: inherit;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.segment:hover:not(.selected) {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.segment.selected {
+  border-color: var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-button-elevated-fill);
+  color: var(--dsw-alias-label-primary);
+}
+
+.segment:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline-offset: 1px;
+}
+
+@media (max-width: 680px) {
+  .row {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .segmented {
+    align-self: flex-start;
+  }
+}

@@ -41,8 +41,10 @@ export function ContextInjectionRow({ content, source, provenance, form, execflo
   return (
     <DisclosureRow
       className={clsx(css.root, execflow === true && css.execflow)}
+      rowClassName={css.row}
       icon={<IconBrowseOutline16 size={14} />}
       chevronClassName={css.chevron}
+      titleClassName={css.title}
       title={t(provenance.role === 'recall' ? 'message.contextRecall' : 'message.contextInjection')}
       collapsedContent={provenance.label === null ? undefined : (
         /* ToolRow's separator shape: an aria-hidden dot, so the accessible name

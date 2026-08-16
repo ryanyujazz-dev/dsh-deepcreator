@@ -4,6 +4,12 @@
    is ordinary flow (see ConversationRoot active-phase rules). */
 
 .frame {
+  /* Public typography seat for every conversation renderer mounted in this
+     frame, including keyed tool-view plugins. Folded execution rows and model
+     prose therefore follow the same appearance preference. */
+  --dsh-conversation-flow-font: var(--dsw-font-markdown-base);
+  --dsh-conversation-flow-font-strong: var(--dsw-font-markdown-base-strong);
+  --dsh-conversation-flow-line-height: var(--dsw-font-markdown-base-line-height, 24px);
   position: relative;
   display: flex;
   flex-direction: column;
@@ -108,7 +114,7 @@
 .turnStatusClock {
   margin-left: 8px;
   font: var(--dsw-font-xs-13);
-  font-weight: 400;
+  font-weight: var(--dsw-font-weight-regular, 400);
   font-variant-numeric: tabular-nums;
   color: var(--dsw-alias-label-caption);
   -webkit-text-fill-color: var(--dsw-alias-label-caption);
@@ -130,13 +136,13 @@
 
 .hint {
   color: var(--dsw-alias-label-tertiary);
-  font-size: 12px;
+  font-size: 10px;
   line-height: 18px;
 }
 
 .openError {
   color: var(--dsw-alias-state-error-primary);
-  font-size: 12px;
+  font-size: 10px;
   line-height: 18px;
 }
 
@@ -149,7 +155,7 @@
   border: none;
   border-radius: 14px;
   padding: 4px 12px;
-  font-size: 12px;
+  font-size: 10px;
   color: var(--dsw-alias-label-secondary);
   background: var(--dsw-alias-interactive-bg-hover-solid);
   cursor: pointer;

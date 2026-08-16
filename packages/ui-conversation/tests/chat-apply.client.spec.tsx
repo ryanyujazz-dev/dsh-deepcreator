@@ -39,6 +39,7 @@ async function bench() {
     'conversation': { kind: 'single', scope: 'session-maybe' },
     'details': { kind: 'single', scope: 'session' },
     'settings.general.item': { kind: 'list', scope: 'root' },
+    'settings.general.preferences.item': { kind: 'list', scope: 'root' },
   }, (_p: { renderSlot?: unknown }) => null)
 
   const feature = await runtime.mount({ inject: [...inject], apply })
@@ -94,6 +95,8 @@ describe('apply wiring', () => {
     expect(b.slots.spec('conversation.hero.workspace')).toEqual({ kind: 'single', scope: 'root' })
     expect(b.slots.spec('conversation.hero.agentPreset')).toEqual({ kind: 'single', scope: 'root' })
     expect(b.slots.entries('settings.general.item').map(entry => entry.options.id)).toEqual(['composer-enter'])
+    expect(b.slots.entries('settings.general.preferences.item').map(entry => entry.options.id))
+      .toEqual(['default-render-mode'])
     await b.runtime.dispose()
   })
 
@@ -120,6 +123,7 @@ describe('apply wiring', () => {
     expect(b.slots.spec('conversation.chat.node')).toBeUndefined()
     expect(b.slots.entries('details')).toHaveLength(0)
     expect(b.slots.entries('settings.general.item')).toHaveLength(0)
+    expect(b.slots.entries('settings.general.preferences.item')).toHaveLength(0)
     expect(b.runtime.ctx.get('conversation')).toBeUndefined()
     await b.runtime.dispose()
   })

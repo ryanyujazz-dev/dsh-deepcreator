@@ -1,6 +1,6 @@
 /**
- * Package-owned invariant companion for `@deepseek-ai/dsh-client-ui-conversation`.
- * @module @deepseek-ai/dsh-client-ui-conversation/invariant
+ * Package-owned invariant companion for `@ryanyujazz/dsh-client-ui-conversation`.
+ * @module @ryanyujazz/dsh-client-ui-conversation/invariant
  */
 
 /* jscpd:ignore-start */

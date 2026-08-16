@@ -99,7 +99,7 @@ function mount(
     composerBlock?: { reason: string }
     /** Mutable view ledger used by registration-order regressions. */
     viewTabs?: ViewTab[]
-    /** Mutable render-mode ledger for the header's tab-bar picker. */
+    /** Mutable render-mode ledger for the Header utility picker. */
     renderModes?: ViewTab[]
   } = {},
 ) {
@@ -138,10 +138,14 @@ function mount(
     version: () => 1,
   }
   const modeTabs = options.renderModes ?? [{ id: 'normal', label: 'Native mode' }]
+  const defaultMode = createSnapshotStore<'normal' | 'classic' | 'think'>('classic')
   const modes = {
     list: () => modeTabs,
     subscribe: () => () => {},
     version: () => 1,
+    defaultMode,
+    bindSession: () => () => {},
+    select: (_sessionId: SessionId, mode: string, write: (mode: string) => void) => { write(mode) },
   }
   /** Owner share handed to the two composer tool-row seats, per render. */
   const seatOwners: { key: string; owner: unknown }[] = []
@@ -348,6 +352,52 @@ describe('ConversationRoot resident composer', () => {
     expect(b.slotCalls).toContain('conversation.session.header.utilities')
   })
 
+  it('shows transcript edge masks only where overflowing content remains hidden', () => {
+    const b = mount(conversationSnapshot())
+    const host = b.view.container.querySelector<HTMLElement>('[data-conversation-scroll]')!
+    let scrollHeight = 500
+    const clientHeight = 200
+    let scrollTop = 0
+    Object.defineProperties(host, {
+      scrollHeight: { configurable: true, get: () => scrollHeight },
+      clientHeight: { configurable: true, get: () => clientHeight },
+      scrollTop: {
+        configurable: true,
+        get: () => scrollTop,
+        set: (value: number) => { scrollTop = value },
+      },
+    })
+
+    fireEvent.scroll(host)
+    expect(b.view.container.querySelector('[data-conversation-scroll-mask="top"]')).toBeNull()
+    expect(b.view.container.querySelector('[data-conversation-scroll-mask="bottom"]')).toBeTruthy()
+
+    host.scrollTop = 100
+    fireEvent.scroll(host)
+    expect(b.view.container.querySelector('[data-conversation-scroll-mask="top"]')).toBeTruthy()
+    expect(b.view.container.querySelector('[data-conversation-scroll-mask="bottom"]')).toBeTruthy()
+
+    host.scrollTop = 300
+    fireEvent.scroll(host)
+    expect(b.view.container.querySelector('[data-conversation-scroll-mask="top"]')).toBeTruthy()
+    expect(b.view.container.querySelector('[data-conversation-scroll-mask="bottom"]')).toBeNull()
+
+    scrollHeight = clientHeight
+    fireEvent.scroll(host)
+    expect(b.view.container.querySelector('[data-conversation-scroll-mask]')).toBeNull()
+  })
+
+  it('renders plugin-projected views as one segmented control before the title', () => {
+    const b = mount(conversationSnapshot())
+    const header = b.view.container.querySelector('header')
+    const tablist = b.view.getByRole('tablist')
+    const title = b.view.getByRole('navigation', { name: '会话层级' })
+    expect(b.view.getAllByRole('tab').map(tab => tab.textContent)).toEqual(['Chat', 'Trajectory'])
+    expect(header?.children).toHaveLength(1)
+    expect(title.parentElement?.parentElement).toBe(tablist.parentElement)
+    expect(title.compareDocumentPosition(tablist) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
   it('sticky composer seat wraps the whole overlay chain, not only the fallback stack', () => {
     const b = mount(conversationSnapshot(), undefined, undefined, { overlayTakeover: true })
     const seat = b.view.container.querySelector('[data-composer-seat]')
@@ -518,9 +568,10 @@ describe('ConversationSessionHeader render-mode picker', () => {
     expect(b.view.queryByRole('button', { name: '渲染方式' })).toBeNull()
   })
 
-  it('surfaces the picker on the chat tab and switches modes through the store', () => {
+  it('places the picker after the Header utility slot and switches modes', () => {
     const b = mount(conversationSnapshot(), undefined, undefined, { renderModes: THREE_MODES })
     const trigger = b.view.getByRole('button', { name: '渲染方式' })
+    expect(b.slotCalls).toContain('conversation.session.header.utilities')
     fireEvent.click(trigger)
     expect(b.view.getByRole('menuitem', { name: '原生模式' })).toBeTruthy()
     expect(b.view.getByRole('menuitem', { name: '经典模式' })).toBeTruthy()
@@ -535,7 +586,6 @@ describe('ConversationSessionHeader render-mode picker', () => {
     b.chat.actions.setRenderMode('think')
     b.rerender()
     fireEvent.click(b.view.getByRole('button', { name: '渲染方式' }))
-    // The selection marker is a trailing check glyph (Menu's selected row).
     expect(b.view.getByRole('menuitem', { name: '思考模式' }).querySelector('svg')).toBeTruthy()
     expect(b.view.getByRole('menuitem', { name: '原生模式' }).querySelector('svg')).toBeNull()
 
@@ -544,13 +594,11 @@ describe('ConversationSessionHeader render-mode picker', () => {
     expect(b.view.getByRole('button', { name: '渲染方式' })).toBeTruthy()
   })
 
-  it('keeps the picker on the tab bar across view switches', () => {
+  it('keeps the picker in the Header across view switches', () => {
     const b = mount(conversationSnapshot(), undefined, undefined, { renderModes: THREE_MODES })
     expect(b.view.getByRole('button', { name: '渲染方式' })).toBeTruthy()
     b.chat.actions.setView('trajectory')
     b.rerender()
-    // The picker stays discoverable on every tab; the mode switch takes
-    // effect when the chat view renders.
     expect(b.view.getByRole('button', { name: '渲染方式' })).toBeTruthy()
   })
 })

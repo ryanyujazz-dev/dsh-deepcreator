@@ -1,3 +1,3 @@
 import { clientBundle } from '../../scripts/tsdown.client.ts'
 
-export default clientBundle('@deepseek-ai/dsh-client-ui-conversation', ['lib/types/index.js', 'lib/types/invariant.js'])
+export default clientBundle('@ryanyujazz/dsh-client-ui-conversation', ['lib/types/index.js', 'lib/types/invariant.js'])

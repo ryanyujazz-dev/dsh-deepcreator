@@ -9,6 +9,7 @@
 .row {
   position: relative; /* sweep-glare overlay anchor */
   overflow: hidden;
+  height: var(--dsh-conversation-flow-line-height, 24px);
 }
 
 /* Running sweep (deepsuite ShimmerText pattern): a fixed-width glare band —
@@ -61,6 +62,7 @@
 }
 
 .title {
+  font: var(--dsh-conversation-flow-font, var(--dsw-font-markdown-base));
   font-weight: 400;
 }
 
@@ -79,8 +81,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 14px;
-  line-height: 24px;
+  font: var(--dsh-conversation-flow-font, var(--dsw-font-markdown-base));
   color: var(--dsw-alias-label-tertiary);
 }
 
@@ -93,8 +94,7 @@
   flex: none;
   margin-left: 4px;
   white-space: nowrap;
-  font-size: 14px;
-  line-height: 24px;
+  font: var(--dsh-conversation-flow-font, var(--dsw-font-markdown-base));
   color: var(--dsw-alias-label-tertiary);
 }
 
@@ -109,10 +109,8 @@
   padding: 0;
   border: none;
   background: none;
-  font: inherit;
+  font: var(--dsh-conversation-flow-font, var(--dsw-font-markdown-base));
   text-align: left;
-  font-size: 14px;
-  line-height: 24px;
   color: var(--dsw-alias-label-secondary);
   text-decoration: underline;
   text-decoration-color: var(--dsw-alias-label-quaternary);

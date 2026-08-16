@@ -58,7 +58,7 @@ function equalBreadcrumbs(left: readonly Breadcrumb[], right: readonly Breadcrum
 /**
  * Renders Session header chrome above the resident conversation scrollport.
  * @param props - Strict Session store, view ledger, navigation, render, and locale shares.
- * @returns the hidden blank-session header or visible title and tabs.
+ * @returns the hidden blank-session header or visible view switcher and title.
  */
 export function ConversationSessionHeader({
   sessionId, useSession, useSessions, useStore, actions,
@@ -66,20 +66,23 @@ export function ConversationSessionHeader({
 }: ConversationSessionHeaderProps) {
   useSyncExternalStore(views.subscribe, views.version)
   useSyncExternalStore(modes.subscribe, modes.version)
+  const defaultMode = useSyncExternalStore(modes.defaultMode.subscribe, modes.defaultMode.getSnapshot)
   const tabs = views.list()
   const modeTabs = modes.list()
   const selectedId = useStore(s => s.view)
   const active = resolveActiveView(tabs, selectedId)
   const selectedMode = useStore(s => s.renderMode)
-  const activeMode = resolveActiveMode(modeTabs, selectedMode)
+  const activeMode = resolveActiveMode(modeTabs, selectedMode, defaultMode)
   const ancestry = useSessions(s => deriveAncestry(s, sessionId), equalBreadcrumbs)
   const composerPhase = useSession(s => s.composerPhase)
   const blank = useSession(s => s.blank)
   const hideChrome = blank && composerPhase === 'blank'
-  // The render-mode ring belongs to the chat view, but the picker stays on
-  // the tab bar on every view so it is always discoverable; the switch takes
-  // effect when the chat tab renders.
   const pickerVisible = modeTabs.length > 1 && activeMode !== undefined
+
+  useEffect(
+    () => modes.bindSession(sessionId, actions.setRenderMode),
+    [actions.setRenderMode, modes, sessionId],
+  )
 
   return (
     <header
@@ -87,65 +90,59 @@ export function ConversationSessionHeader({
       aria-hidden={hideChrome || undefined}
     >
       {!hideChrome && (
-        <>
-          <div className={css.titleRow}>
-            <div className={css.titleCluster}>
-              <nav className={css.crumbs} aria-label={t('session.hierarchy')}>
-                {ancestry.map((summary, index) => {
-                  const last = index === ancestry.length - 1
-                  return (
-                    <span key={summary.id} className={css.crumbSeg}>
-                      {index > 0 && <span className={css.crumbSep}>/</span>}
-                      <button
-                        type="button"
-                        className={clsx(css.crumb, last && css.crumbCurrent)}
-                        disabled={last}
-                        onClick={() => { open(summary.id) }}
-                      >
-                        {summary.displayTitle}
-                      </button>
-                    </span>
-                  )
-                })}
-                {ancestry.length === 0 && <span className={css.crumbCurrent}>{sessionId}</span>}
-              </nav>
-              <div className={css.headerActions}>
-                {renderSlot('conversation.session.header.actions', {})}
-              </div>
-            </div>
-            <div className={css.headerUtilities}>
-              {renderSlot('conversation.session.header.utilities', {})}
+        <div className={css.titleRow}>
+          <div className={css.titleCluster}>
+            <nav className={css.crumbs} aria-label={t('session.hierarchy')}>
+              {ancestry.map((summary, index) => {
+                const last = index === ancestry.length - 1
+                return (
+                  <span key={summary.id} className={css.crumbSeg}>
+                    {index > 0 && <span className={css.crumbSep}>/</span>}
+                    <button
+                      type="button"
+                      className={clsx(css.crumb, last && css.crumbCurrent)}
+                      disabled={last}
+                      onClick={() => { open(summary.id) }}
+                    >
+                      {summary.displayTitle}
+                    </button>
+                  </span>
+                )
+              })}
+              {ancestry.length === 0 && <span className={css.crumbCurrent}>{sessionId}</span>}
+            </nav>
+            <div className={css.headerActions}>
+              {renderSlot('conversation.session.header.actions', {})}
             </div>
           </div>
-          {(tabs.length > 1 || pickerVisible) && (
-            <div className={css.tabsRow} data-chat-tabs-row="">
-              {tabs.length > 1 && (
-                <div className={css.tabs} role="tablist">
-                  {tabs.map(viewTab => (
-                    <button
-                      key={viewTab.id}
-                      type="button"
-                      role="tab"
-                      aria-selected={viewTab.id === active?.id}
-                      className={clsx(css.tab, viewTab.id === active?.id && css.tabActive)}
-                      onClick={() => { actions.setView(viewTab.id) }}
-                    >
-                      {viewTab.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-              {pickerVisible && (
-                <ChatRenderMenu
-                  modes={modeTabs}
-                  activeId={activeMode.id}
-                  onPick={(id) => { actions.setRenderMode(id) }}
-                  t={t}
-                />
-              )}
+          {tabs.length > 1 && (
+            <div className={css.viewSwitcher} role="tablist">
+              {tabs.map(viewTab => (
+                <button
+                  key={viewTab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={viewTab.id === active?.id}
+                  className={css.viewSegment}
+                  onClick={() => { actions.setView(viewTab.id) }}
+                >
+                  {viewTab.label}
+                </button>
+              ))}
             </div>
           )}
-        </>
+          <div className={css.headerUtilities}>
+            {renderSlot('conversation.session.header.utilities', {})}
+            {pickerVisible && (
+              <ChatRenderMenu
+                modes={modeTabs}
+                activeId={activeMode.id}
+                onPick={(id) => { modes.select(sessionId, id, actions.setRenderMode) }}
+                t={t}
+              />
+            )}
+          </div>
+        </div>
       )}
     </header>
   )

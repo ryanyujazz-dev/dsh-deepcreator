@@ -1,4 +1,4 @@
-# dsh-plugins
+# dsh-deepcreator
 
 Long-term plugin library for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh).
 Every plugin here is installable with `dsh plugin --profile <name> add <package>`, survives restarts, and

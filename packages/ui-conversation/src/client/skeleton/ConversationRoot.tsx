@@ -2,7 +2,7 @@
 // chain, AND the composer bar (session-maybe slot) stay mounted across
 // no-session/session transitions — the bar renders inert via owner props.
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import type { WorkspaceId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ConversationSlotProps, InputZone } from '../contract/slots.ts'
@@ -31,6 +31,46 @@ export function ConversationRoot({
   const [pickerOpen, setPickerOpen] = useState(false)
   const [pendingWorkspaceId, setPendingWorkspaceId] = useState<WorkspaceId | undefined>()
   const pickerAnchor = useRef<HTMLButtonElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [scrollEdges, setScrollEdges] = useState({ top: false, bottom: false })
+
+  // Main-flow masks use the same edge rule as the Think window: no overflow
+  // paints nothing; each gradient appears only while content remains hidden
+  // beyond that edge. Preserve the state object when neither edge changed so
+  // streaming ResizeObserver callbacks do not add render work.
+  const probeScrollEdges = useCallback((): void => {
+    const element = scrollRef.current
+    if (element === null) return
+    const overflowing = element.scrollHeight > element.clientHeight + 1
+    const top = overflowing && element.scrollTop > 1
+    const bottom = overflowing
+      && element.scrollTop + element.clientHeight < element.scrollHeight - 1
+    setScrollEdges(previous => previous.top === top && previous.bottom === bottom
+      ? previous
+      : { top, bottom })
+  }, [])
+
+  useLayoutEffect(() => {
+    const element = scrollRef.current
+    if (element === null) return
+    const resizeObserver = new ResizeObserver(probeScrollEdges)
+    const observeChildren = (): void => {
+      resizeObserver.observe(element)
+      for (const child of element.children) {
+        if (child instanceof HTMLElement) resizeObserver.observe(child)
+      }
+      probeScrollEdges()
+    }
+    const mutationObserver = new MutationObserver(observeChildren)
+    observeChildren()
+    mutationObserver.observe(element, { childList: true })
+    element.addEventListener('scroll', probeScrollEdges, { passive: true })
+    return () => {
+      element.removeEventListener('scroll', probeScrollEdges)
+      mutationObserver.disconnect()
+      resizeObserver.disconnect()
+    }
+  }, [probeScrollEdges])
 
   // Publishes the seat's live height as --dsh-composer-height on the scroll
   // body so floating controls (ChatView back-to-bottom) clear the composer as
@@ -186,8 +226,22 @@ export function ConversationRoot({
   return (
     <div className={css.root} data-phase={phase}>
       {renderSlot('conversation.session.header', {})}
-      <div className={css.scrollBody} data-conversation-scroll="">
+      <div ref={scrollRef} className={css.scrollBody} data-conversation-scroll="">
+        {phase === 'active' && scrollEdges.top && (
+          <div
+            className={clsx(css.scrollMask, css.scrollMaskTop)}
+            data-conversation-scroll-mask="top"
+            aria-hidden
+          />
+        )}
         {renderSlot('conversation.session', {})}
+        {phase === 'active' && scrollEdges.bottom && (
+          <div
+            className={clsx(css.scrollMask, css.scrollMaskBottom)}
+            data-conversation-scroll-mask="bottom"
+            aria-hidden
+          />
+        )}
         {composerSeat}
       </div>
     </div>

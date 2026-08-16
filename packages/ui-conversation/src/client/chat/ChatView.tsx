@@ -20,9 +20,10 @@ export function ChatView({
   openDetails, openFile, loadOlder, loadImage, inspectCall, chatScroll, forkAt, fileMentions,
 }: ChatViewSlotProps) {
   useSyncExternalStore(modes.subscribe, modes.version)
+  const defaultMode = useSyncExternalStore(modes.defaultMode.subscribe, modes.defaultMode.getSnapshot)
   const modeTabs = modes.list()
   const selectedMode = useStore(s => s.renderMode)
-  const active = resolveActiveMode(modeTabs, selectedMode)
+  const active = resolveActiveMode(modeTabs, selectedMode, defaultMode)
 
   return (
     <div className={css.frame}>
@@ -36,6 +37,7 @@ export function ChatView({
         chatScroll,
         forkAt,
         fileMentions,
+        selectRenderMode: modes.select,
       }, { only: active.id })}
     </div>
   )

@@ -11,6 +11,7 @@ import type {
   TurnLocation, WorkspaceId,
 } from '@deepseek-ai/dsh-client-runtime/client'
 import type { MarkdownFileMentions } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { SettingsGeneralItemOwnerProps } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { MessageId } from '@deepseek-ai/dsh-client-connection/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { ComposerBlock } from '../input/blocks.ts'
@@ -21,6 +22,7 @@ import type { createChatStore } from '../stores.ts'
 import type { ComposerSubmitGesture, InputSubmitMode } from './composer-submission.ts'
 import type { ChatNode, ChatNodeKind } from './chat-nodes.ts'
 import type { CallId, SelectionTarget, ViewTab } from './views.ts'
+import type { ConversationRenderMode } from '../../submission-settings.ts'
 
 /** Browser-owned image that has not crossed the durable host boundary. */
 export interface ComposerAttachment {
@@ -32,6 +34,15 @@ export interface ComposerAttachment {
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
+    /**
+     * Feature-owned rows inside the shared Preferences settings group. The
+     * group owns layout and separators; each entry owns its durable setting.
+     */
+    'settings.general.preferences.item': {
+      kind: 'list'
+      scope: 'root'
+      owner: SettingsGeneralItemOwnerProps
+    }
     /**
      * The entire body of one session: taking this seat means rendering that
      * session's conversation yourself. The occupant also owns the per-session
@@ -474,6 +485,16 @@ export interface ConversationSessionHeaderInjected {
     list: () => readonly ViewTab[]
     subscribe: (fn: () => void) => () => void
     version: () => number
+    /** User-level fallback used while the session store holds no override. */
+    defaultMode: ObservableSnapshot<ConversationRenderMode>
+    /** Bind the mounted session writer used by the global preference's immediate apply path. */
+    bindSession: (sessionId: SessionId, write: (mode: string) => void) => () => void
+    /** Select one mode for the session and mirror it to the user preference. */
+    select: (
+      sessionId: SessionId,
+      mode: string,
+      write: (mode: string) => void,
+    ) => void
   }
   /** Select a real Session through the runtime navigation owner. */
   open: (sessionId: SessionId) => void
@@ -741,6 +762,12 @@ export interface ChatRenderOwnerProps {
    * or the turn produced nothing worth linking.
    */
   fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined
+  /** Select one render mode for this session and mirror it to the user preference. */
+  selectRenderMode: (
+    sessionId: SessionId,
+    mode: string,
+    write: (mode: string) => void,
+  ) => void
 }
 
 /** Full props of one registered chat render-mode body: standard kit, owner verbs, shared store, and locale. */
@@ -784,6 +811,16 @@ export interface ChatViewInjected {
     list: () => readonly ViewTab[]
     subscribe: (fn: () => void) => () => void
     version: () => number
+    /** User-level fallback used while the session store holds no override. */
+    defaultMode: ObservableSnapshot<ConversationRenderMode>
+    /** Bind the mounted session writer used by the global preference's immediate apply path. */
+    bindSession: (sessionId: SessionId, write: (mode: string) => void) => () => void
+    /** Select one mode for the session and mirror it to the user preference. */
+    select: (
+      sessionId: SessionId,
+      mode: string,
+      write: (mode: string) => void,
+    ) => void
   }
   /** Fork through the completed turn ending at the eligible message `seq`, then open the child. */
   forkAt: (seq: number) => void
