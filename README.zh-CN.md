@@ -10,6 +10,8 @@
   把智能体的工作过程变成可读的执行流，而不是堆叠的工具调用卡片。
 </p>
 
+<p align="center"><code>#dsh-plugin</code></p>
+
 <p align="center">
   <a href="#三种对话流模式">对话流模式</a> ·
   <a href="#工业化界面而不只是换肤">工业化界面</a> ·
@@ -61,6 +63,26 @@ DeepCreator 是构建在官方 [DeepSeek Harness](https://github.com/deepseek-ai
 DeepCreator 会持续扩展，但不会演变成一个难以拆分的单体应用。后续版本将围绕对话视图、执行工具、工作区操作、智能体工作流与桌面效率陆续增加实用插件。
 
 每项新增能力仍遵循同一边界：一个功能对应一个可独立组合的 Cordis 插件。插件可以注册自己的 Slots、Services、Events、设置、Store 与视图，也可以被单独禁用或卸载，而不复制或替换 Harness 官方业务状态。
+
+### 现在即可安装
+
+DeepCreator 保持官方 Harness 的 Host 与 Agent 插件扩展面开放。以下公开包已按仓库锁定的 `@deepseek-ai/dsh` `0.1.0-rc.6` 运行时完成核对：
+
+| 能力 | 可安装包 | 提供的功能 |
+| --- | --- | --- |
+| MCP 服务器 | [`@deepseek-ai/dsh-mcp-client`](https://www.npmjs.com/package/@deepseek-ai/dsh-mcp-client) | 连接 `stdio` 或 Streamable HTTP MCP 服务器，并将工具注册为 `mcp__<server>__<tool>` |
+| 网页搜索与抓取 | [`@deepseek-ai/dsh-tool-web`](https://www.npmjs.com/package/@deepseek-ai/dsh-tool-web) + [`@deepseek-ai/dsh-web-search-deepseek`](https://www.npmjs.com/package/@deepseek-ai/dsh-web-search-deepseek) | 增加由 DeepSeek Web 能力驱动的 `web_search` 与 `web_fetch` 工具 |
+| 智能体工作流 | [`@deepseek-ai/dsh-tool-workflow`](https://www.npmjs.com/package/@deepseek-ai/dsh-tool-workflow) + [`@deepseek-ai/dsh-workflow-worker-thread`](https://www.npmjs.com/package/@deepseek-ai/dsh-workflow-worker-thread) | 在 Worker Thread 中编排多个子智能体；它用于保持主进程响应，不是安全沙箱 |
+| OpenTelemetry | [`@deepseek-ai/dsh-session-telemetry-otel`](https://www.npmjs.com/package/@deepseek-ai/dsh-session-telemetry-otel) | 明确选择启用后把会话遥测导出到 OTLP/HTTP Collector；会话内容可能被包含，启用前应检查脱敏策略 |
+
+请使用与当前 Harness 运行时一致的版本把包安装到受管理 profile，再将插件文档中的 Cordis row 加入 `$DSH_HOME/profiles/deepcreator/cordis.patch.yml`：
+
+```sh
+pnpm --filter @ryanyujazz/dsh-deepcreator-desktop exec dsh plugin --profile deepcreator add @deepseek-ai/dsh-mcp-client@0.1.0-rc.6
+pnpm --filter @ryanyujazz/dsh-deepcreator-desktop exec dsh --profile deepcreator --dump-config
+```
+
+完成 `pnpm install` 后即可使用上面的工作区本地命令；如果 `dsh` 已在 `PATH` 中，也可以使用更短的 `dsh plugin ...` 写法。安装包不会自动激活 Cordis row；添加插件文档要求的配置，用 `--dump-config` 核对完整组合后，再重启 DeepCreator。基于相同公开 Cordis Services 与工具注册表构建的第三方 Host 或 Agent 插件也可以沿用这一安装路径；自定义 Client UI 插件则需要接入保留的官方 Slots 或 DeepCreator 已记录的 `deepcreator.*` 扩展点。未知工具名仍会使用通用工具渲染器，不会从经典模式或思考模式中消失。
 
 ## 快速开始
 

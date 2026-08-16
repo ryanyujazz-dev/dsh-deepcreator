@@ -10,6 +10,8 @@
   See agent work as a readable flow—not a wall of tool calls.
 </p>
 
+<p align="center"><code>#dsh-plugin</code></p>
+
 <p align="center">
   <a href="#three-ways-to-read-agent-work">Conversation modes</a> ·
   <a href="#an-industrial-interface-not-a-skin">Industrial UI</a> ·
@@ -61,6 +63,26 @@ The conversation flow comes first; the rest of the product is shaped into a rest
 DeepCreator is designed to keep expanding without turning into a monolith. Future releases will gradually add useful plugins around conversation views, execution tools, workspace actions, agent workflows, and desktop productivity.
 
 Each addition follows the same boundary: one feature, one independently composed Cordis plugin. A plugin can register its own Slots, Services, Events, settings, stores, and views, then be disabled or disposed without copying or replacing the official Harness business state.
+
+### Installable today
+
+DeepCreator keeps the official Harness Host and Agent plugin seams open. These public packages are verified against the repository's pinned `@deepseek-ai/dsh` `0.1.0-rc.6` runtime:
+
+| Capability | Installable package | What it adds |
+| --- | --- | --- |
+| MCP servers | [`@deepseek-ai/dsh-mcp-client`](https://www.npmjs.com/package/@deepseek-ai/dsh-mcp-client) | Connects `stdio` or Streamable HTTP MCP servers and exposes their tools as `mcp__<server>__<tool>` |
+| Web search and fetch | [`@deepseek-ai/dsh-tool-web`](https://www.npmjs.com/package/@deepseek-ai/dsh-tool-web) + [`@deepseek-ai/dsh-web-search-deepseek`](https://www.npmjs.com/package/@deepseek-ai/dsh-web-search-deepseek) | Adds model-facing `web_search` and `web_fetch` tools backed by DeepSeek's web capability |
+| Agent workflows | [`@deepseek-ai/dsh-tool-workflow`](https://www.npmjs.com/package/@deepseek-ai/dsh-tool-workflow) + [`@deepseek-ai/dsh-workflow-worker-thread`](https://www.npmjs.com/package/@deepseek-ai/dsh-workflow-worker-thread) | Runs JavaScript orchestration across subagents in a worker thread; the worker is isolation for responsiveness, not a security sandbox |
+| OpenTelemetry | [`@deepseek-ai/dsh-session-telemetry-otel`](https://www.npmjs.com/package/@deepseek-ai/dsh-session-telemetry-otel) | Exports session telemetry to an OTLP/HTTP collector after explicit opt-in; review redaction because session content may be included |
+
+Install packages into the managed profile with the version used by your Harness runtime, then add their documented rows to `$DSH_HOME/profiles/deepcreator/cordis.patch.yml`:
+
+```sh
+pnpm --filter @ryanyujazz/dsh-deepcreator-desktop exec dsh plugin --profile deepcreator add @deepseek-ai/dsh-mcp-client@0.1.0-rc.6
+pnpm --filter @ryanyujazz/dsh-deepcreator-desktop exec dsh --profile deepcreator --dump-config
+```
+
+The workspace-local command above works after `pnpm install`; if `dsh` is already on your `PATH`, the shorter `dsh plugin ...` form is equivalent. Installing the package does not activate a Cordis row by itself. Add the plugin's documented configuration, verify the complete composition with `--dump-config`, then restart DeepCreator. Third-party Host or Agent plugins built on the same public Cordis Services and tool registry can use the same path; custom Client UI plugins must target the retained official Slots or DeepCreator's documented `deepcreator.*` extension points. Unknown tool names still receive the generic tool renderer instead of disappearing from Classic or Think mode.
 
 ## Quick start
 
