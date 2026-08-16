@@ -1,0 +1,30 @@
+/* Render-mode picker seat: a three-dot trigger at the tab bar's right end,
+   always visible (the sidebar rows hide their actions until hover, but this
+   control is the only way into the mode menu — discoverability wins). */
+
+.seat {
+  flex: none;
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+}
+
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-bottom: 6px;
+  border: none;
+  border-radius: 6px;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.trigger:hover {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-hover-solid);
+}

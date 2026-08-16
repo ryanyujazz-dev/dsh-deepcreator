@@ -1,0 +1,21 @@
+{
+  "name": "@ryanyujazz/dsh-execflow-chat",
+  "description": "ExecFlow chat bundle: replaces the stock conversation and tool UI packages with the ExecFlow execution view (single-slot tool runs, drafting rows, Think dual forms with clamp/masks, directional disclosure, Inspect jump)",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "@ryanyujazz/dsh-client-ui-conversation": "0.1.0",
+    "@ryanyujazz/dsh-client-ui-tool": "0.1.0"
+  },
+  "files": [
+    "cordis.patch.yml",
+    "README.md"
+  ]
+}

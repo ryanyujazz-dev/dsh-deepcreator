@@ -1,0 +1,164 @@
+﻿.root {
+  display: flex;
+  flex-direction: column;
+}
+
+.row {
+  position: relative;
+  overflow: hidden;
+}
+
+.root[data-state='running'] .row::after {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 300px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--dsw-alias-bg-base) 60%, transparent) 55%,
+    transparent 100%
+  );
+  animation: dsh-reasoning-row-sweep 2.6s ease-out infinite;
+  pointer-events: none;
+}
+
+@keyframes dsh-reasoning-row-sweep {
+  0% { left: -300px; }
+  90%, 100% { left: 100%; }
+}
+
+.leading {
+  flex-shrink: 0;
+}
+
+.chevron {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.title {
+  font-weight: 400;
+}
+
+.separator {
+  flex: none;
+  width: 2px;
+  height: 2px;
+  margin: 0 8px;
+  border-radius: 1px;
+  background: var(--dsw-alias-label-caption);
+}
+
+.summary {
+  min-width: 0;
+  overflow: hidden;
+  flex: 1 1 auto;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 14px;
+  line-height: 24px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.summary[data-follow-end] {
+  text-overflow: clip;
+}
+
+/* Think expanded body: the text keeps its original 22px inset; a vertical
+   rail appears on the text's left, its CENTERLINE exactly on the tool-row
+   icon's axis (8px from the row's left edge — the 16px leading box's
+   middle), so think nesting and tool nesting read on one axis. */
+/* Outer wrapper: the rail's anchor. It never scrolls (the inner .thinkScroll
+   owns the overflow), so the rail stays pinned to the VISIBLE 15-line window
+   and spans through the Show more line below it. */
+.thinkBody {
+  position: relative;
+}
+
+/* 1px rail centered on x=8 (hairline weight; placed at 7.5 = 8 - 0.5).
+   A REAL overlay node (not a pseudo): a sibling of the scroll surface inside
+   the non-scrolling wrapper, pinned to the wrapper's box — scrolling the
+   text, streaming growth inside the window, and the edge masks can never
+   move or resize it. Painted beneath the text, never hit-testable. */
+.rail {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 7.5px;
+  width: 1px;
+  background: var(--dsw-alias-border-l2);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .root[data-state='running'] .row::after {
+    animation: none;
+  }
+}
+
+/* Clamped streaming view: 15 line-heights (24px each) plus the body's own
+   vertical padding; overflow scrolls (auto-pinned to the tail while
+   running). `full` removes the clamp entirely. */
+/* Inner scroll surface: the 15-line window (24px line-height + vertical
+   padding) with internal scroll; `full` removes the clamp entirely. */
+.thinkScroll {
+  padding: 4px 0 0 22px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 14px;
+  line-height: 24px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.thinkScroll:last-child {
+  margin-bottom: 4px;
+}
+
+.thinkBody[data-clamped] .thinkScroll {
+  max-height: calc(24px * 15 + 4px);
+  overflow-y: auto;
+}
+
+/* Plain-text reveal toggle under the body, aligned with the body text's
+   left inset; tertiary at rest, brightens on hover (token-driven, adapts
+   to light and dark themes). */
+.thinkMore {
+  margin: 0 0 4px 22px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 14px;
+  line-height: 24px;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+
+.thinkMore:hover {
+  color: var(--dsw-alias-label-primary);
+}
+
+/* Truncation masks: the conversation background fading in over the window's
+   top and bottom edges — one line-height (24px) tall, starting at the text
+   inset so the icon-axis rail stays untouched, painted above the text and
+   pointer-transparent. Each band renders only while its edge actually hides
+   content (the component probes scroll position); the bottom band stops
+   above the Show more line (24px line + 4px margin). */
+.maskTop,
+.maskBottom {
+  position: absolute;
+  left: 22px;
+  right: 0;
+  height: 24px;
+  pointer-events: none;
+}
+
+.maskTop {
+  top: 0;
+  background: linear-gradient(to bottom, var(--dsw-alias-bg-base), transparent);
+}
+
+.maskBottom {
+  bottom: calc(24px + 4px);
+  background: linear-gradient(to top, var(--dsw-alias-bg-base), transparent);
+}

@@ -1,0 +1,16 @@
+{
+  "name": "dsh-plugins",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Long-term plugin library for DeepSeek Harness (dsh): installable plugin packages and patch-layer bundles.",
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r build",
+    "bump": "node scripts/release/bump.mjs",
+    "publish": "node scripts/release/publish.mjs",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "engines": {
+    "node": "^22.19 || >=24"
+  }
+}

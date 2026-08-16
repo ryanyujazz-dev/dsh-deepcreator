@@ -1,0 +1,183 @@
+﻿/* ExecutionSlot: one contiguous tool run rendered as a single morphing slot.
+   Header crossfades between forms (drafting / running / aggregate / single
+   body) at a fixed 24px row height so the flow never shifts. */
+
+.slot {
+  position: relative;
+  min-width: 0;
+}
+
+/* The header container: the aggregate disclosure's toggle in every
+   multi-member form (capture-phase interception — see ExecutionSlot.tsx),
+   a plain pass-through for the single form. */
+.header {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  min-height: 24px;
+}
+
+.header[role='button'] {
+  cursor: pointer;
+}
+
+/* Expanded body: earlier members under the header, stacked at the official
+   chat tab's flow rhythm (the 16px column gap) — including the header-to-
+   first-row distance, so the whole expanded block reads as one column. */
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 16px 0 0;
+}
+
+/* Aggregate header row: 24px. While any member still runs the aggregate is
+   not shown (a live member owns the slot), so the aggregate itself reads at
+   the settled muted color by default; the live variant (kept for a run whose
+   members are still settling) keeps content color. */
+.aggregate {
+  display: flex;
+  align-items: center;
+  height: 24px;
+  font-size: 14px;
+  line-height: 24px;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.aggregate:hover {
+  color: var(--dsw-alias-label-primary);
+}
+
+/* Live aggregate (a member settled but siblings still running): reads as
+   live text like a running row. */
+.aggregateLive {
+  color: var(--dsw-alias-label-primary);
+}
+
+.aggregateText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aggregateTextLive {
+  color: var(--dsw-alias-label-primary);
+}
+
+/* Leading seat: the LAST member's tool icon by default; hover swaps it for
+   the expand chevron (the disclosure affordance appears on intent). Mirrors
+   DisclosureRow's leading box exactly (16px + 6px gap) so header and expanded
+   rows align to the pixel. The icon color pins to label-tertiary — the same
+   resting color as a single tool row's icon — instead of following the
+   header's (brighter) text color. */
+.leading {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.leadingIcon,
+.leadingChevron {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 120ms ease;
+}
+
+.leadingChevron {
+  opacity: 0;
+}
+
+.aggregate:hover .leadingIcon {
+  opacity: 0;
+}
+
+.aggregate:hover .leadingChevron {
+  opacity: 1;
+}
+
+.aggregate[aria-expanded='true'] .leadingIcon {
+  opacity: 0;
+}
+
+.aggregate[aria-expanded='true'] .leadingChevron {
+  opacity: 1;
+}
+
+.chevron {
+  color: var(--dsw-alias-label-secondary);
+  flex: none;
+}
+/* ── Header swap animation (prototype: slide-up-fade-out / slide-down-fade-in)
+   The stage is the layered swap surface: the incoming layer stays in flow
+   (it sizes the stage — including tall single-form content); the outgoing
+   layer overlays it absolutely and is clipped by the stage box while it
+   slides. The keyframes mirror the prototype rhythm: the old layer is fully
+   gone by 70% of the timeline; the new layer holds below until 30% then
+   springs in. Duration matches HEADER_ANIM_MS in header-transition.ts. */
+/* The stage never clips, and a resting layer does not either: affordances
+   that protrude above the header row (the tool row's hover Inspect at
+   top:-22px) must stay visible in every form. While a swap plays, each
+   layer is a WINDOW (overflow:hidden outer) around MOVING content (the
+   animated inner) — a layer's own transform is not clipped by its own
+   overflow, so the window and the slide must be two nested elements. The
+   window classes apply only mid-animation; at rest the layers are plain. */
+.stage {
+  position: relative;
+}
+
+.layerOutWindow {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.layerOut {
+  animation: dsh-execflow-hdr-out 500ms cubic-bezier(0.68, -0.55, 0.27, 1.55) forwards;
+}
+
+.layerInWindow {
+  overflow: hidden;
+}
+
+.layerIn {
+  animation: dsh-execflow-hdr-in 500ms cubic-bezier(0.68, -0.55, 0.27, 1.55) forwards;
+}
+
+/* Member rows fill the header's width instead of shrink-wrapping to their
+   content (a short tool row would otherwise read as a narrow strip and the
+   sweep/Inspect geometry would shift). */
+.header > * {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+@keyframes dsh-execflow-hdr-out {
+  0%   { transform: translateY(0);     opacity: 1; }
+  70%  { transform: translateY(-24%);  opacity: 0; }
+  100% { transform: translateY(-40%);  opacity: 0; }
+}
+
+@keyframes dsh-execflow-hdr-in {
+  0%   { transform: translateY(40%);   opacity: 0; }
+  30%  { transform: translateY(40%);   opacity: 0; }
+  100% { transform: translateY(0);     opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .layerOut,
+  .layerIn {
+    animation-duration: 1ms;
+  }
+}

@@ -1,0 +1,77 @@
+﻿/* Drafting tool row: same 24px geometry as ToolRow so the drafting → running
+   transition swaps content without layout shift. Content color + the running
+   sweep while the model is still composing the tool's arguments. */
+
+.row {
+  position: relative; /* sweep-glare overlay anchor (mirrors ToolRow) */
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  height: 24px;
+  font-size: 14px;
+  line-height: 24px;
+  color: var(--dsw-alias-label-primary);
+}
+
+/* Running sweep (same pattern as ToolRow): a fixed-width glare band glides
+   over the row from off-left to off-right. Keyframes are file-local in CSS
+   modules, so this carries its own copy of the ToolRow sweep. */
+.row::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 300px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--dsw-alias-bg-base) 60%, transparent) 55%,
+    transparent 100%
+  );
+  animation: dsh-drafting-row-sweep 2.6s ease-out infinite;
+  pointer-events: none;
+}
+
+@keyframes dsh-drafting-row-sweep {
+  0% { left: -300px; }
+  90%, 100% { left: 100%; }
+}
+
+.label {
+  font-weight: 500;
+}
+
+/* Target-path fragment: ToolRow's summary geometry (separator dot + FILL
+   truncation), so the drafting row reads like the settled row it becomes. */
+.sep {
+  flex: none;
+  width: 2px;
+  height: 2px;
+  border-radius: 1px;
+  margin: 0 8px;
+  background: var(--dsw-alias-label-caption);
+}
+
+.target {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  line-height: 24px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* Leading glyph seat: same 14px box the settled row's icon occupies, with
+   the ToolRow title gap so the drafting → running swap keeps text position. */
+.leading {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  width: 14px;
+  height: 14px;
+  margin-right: 6px;
+  color: var(--dsw-alias-label-primary);
+}
