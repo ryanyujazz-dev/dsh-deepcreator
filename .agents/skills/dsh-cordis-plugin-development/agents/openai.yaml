@@ -1,0 +1,4 @@
+interface:
+  display_name: "DSH Cordis Plugin Development"
+  short_description: "Build and verify DSH Host and Client plugins"
+  default_prompt: "Use $dsh-cordis-plugin-development to implement this DSH plugin change safely."

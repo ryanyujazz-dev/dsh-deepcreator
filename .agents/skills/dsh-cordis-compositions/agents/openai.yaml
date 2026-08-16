@@ -1,0 +1,4 @@
+interface:
+  display_name: "DSH Cordis Compositions"
+  short_description: "Compose and validate DSH Cordis profiles and presets"
+  default_prompt: "Use $dsh-cordis-compositions to inspect and validate this DSH composition change."

@@ -22,6 +22,7 @@ pnpm run dev:desktop
 - `packages/bundle/deepcreator-web/` replaces only DeepCreator-owned official UI rows.
 - `scripts/profile-migrate/` creates and verifies the `deepcreator` profile.
 - `scripts/verify-harness/` checks the supported official version and composition invariants.
+- `.agents/skills/` carries the complete external DSH Cordis workflows plus the DeepCreator-specific development workflow for repository-aware agents.
 - `UI_STYLE_GUIDE.md` owns product typography and interaction styling.
 - `docs/architecture/` owns package boundaries and the upstream update procedure.
 
@@ -34,6 +35,8 @@ pnpm run dev:desktop
 - Registrations are reversible effects. A plugin unload must remove every Slot, event listener, service contribution, and store binding it owns.
 
 See [the architecture reference](docs/architecture/deepcreator.md) for ownership and upgrade requirements.
+
+Repository-aware agents should start with `.agents/skills/deepcreator-cordis-development/SKILL.md`. It conditionally loads the generic composition and plugin-development skills so pure UI work does not consume unrelated Cordis context.
 
 ## Release boundary
 

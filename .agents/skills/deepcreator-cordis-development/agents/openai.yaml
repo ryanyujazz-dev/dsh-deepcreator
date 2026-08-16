@@ -1,0 +1,4 @@
+interface:
+  display_name: "DeepCreator Cordis Development"
+  short_description: "Develop DeepCreator plugins, Bundle, profile, and Desktop"
+  default_prompt: "Use $deepcreator-cordis-development to implement and verify this DeepCreator change."
