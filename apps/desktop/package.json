@@ -1,0 +1,28 @@
+{
+  "name": "@ryanyujazz/dsh-deepcreator-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DeepCreator Electron desktop over the official DeepSeek Harness runtime",
+  "type": "module",
+  "main": "lib/index.js",
+  "bin": {
+    "deepcreator": "lib/bin.js"
+  },
+  "scripts": {
+    "bundle": "tsc -p tsconfig.json",
+    "dev": "pnpm run bundle && electron .",
+    "start": "electron .",
+    "test": "vitest run tests/host-process.spec.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh": "0.1.0-rc.6",
+    "electron": "^43.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.0",
+    "typescript": "^6.0.3",
+    "vitest": "^3.2.4"
+  },
+  "license": "MIT"
+}

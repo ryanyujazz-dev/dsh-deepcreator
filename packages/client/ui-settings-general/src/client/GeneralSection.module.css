@@ -1,0 +1,18 @@
+/* Feature-contributed rows own their chrome and separators; the section
+ * strips the trailing separator wherever the column ends. */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.section > :global([data-slot='settings.general.item']) > :last-child {
+  border-bottom: none;
+}
+
+.section > :global([data-slot='settings.general.item']) {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}

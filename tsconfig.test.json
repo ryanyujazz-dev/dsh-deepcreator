@@ -1,0 +1,40 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@deepseek-ai/dsh-client-runtime-test/*": ["../deepseek-harness-upstream/packages/client/runtime/tests/*"],
+      "@ryanyujazz/dsh-client-locale": ["./packages/client/locale/src/index.ts"],
+      "@ryanyujazz/dsh-client-locale/*": ["./packages/client/locale/src/*"],
+      "@ryanyujazz/dsh-client-ui-agent-preset": ["./packages/client/ui-agent-preset/src/index.ts"],
+      "@ryanyujazz/dsh-client-ui-agent-preset/*": ["./packages/client/ui-agent-preset/src/*"],
+      "@ryanyujazz/dsh-client-ui-conversation": ["./packages/client/ui-conversation/src/index.ts"],
+      "@ryanyujazz/dsh-client-ui-conversation/*": ["./packages/client/ui-conversation/src/*"],
+      "@ryanyujazz/dsh-client-ui-layout": ["./packages/client/ui-layout/src/index.ts"],
+      "@ryanyujazz/dsh-client-ui-layout/*": ["./packages/client/ui-layout/src/*"],
+      "@ryanyujazz/dsh-client-ui-model-selection": ["./packages/client/ui-model-selection/src/index.ts"],
+      "@ryanyujazz/dsh-client-ui-model-selection/*": ["./packages/client/ui-model-selection/src/*"],
+      "@ryanyujazz/dsh-client-ui-permission-presets": ["./packages/client/ui-permission-presets/src/index.ts"],
+      "@ryanyujazz/dsh-client-ui-permission-presets/*": ["./packages/client/ui-permission-presets/src/*"],
+      "@ryanyujazz/dsh-client-ui-primitives": ["./packages/client/ui-primitives/src/index.ts"],
+      "@ryanyujazz/dsh-client-ui-primitives/*": ["./packages/client/ui-primitives/src/*"],
+      "@ryanyujazz/dsh-client-ui-settings": ["./packages/client/ui-settings/src/index.ts"],
+      "@ryanyujazz/dsh-client-ui-settings/*": ["./packages/client/ui-settings/src/*"],
+      "@ryanyujazz/dsh-client-ui-settings-general": ["./packages/client/ui-settings-general/src/index.ts"],
+      "@ryanyujazz/dsh-client-ui-settings-general/*": ["./packages/client/ui-settings-general/src/*"],
+      "@ryanyujazz/dsh-client-ui-sidebar": ["./packages/client/ui-sidebar/src/index.ts"],
+      "@ryanyujazz/dsh-client-ui-sidebar/*": ["./packages/client/ui-sidebar/src/*"],
+      "@ryanyujazz/dsh-client-ui-subagent": ["./packages/client/ui-subagent/src/index.ts"],
+      "@ryanyujazz/dsh-client-ui-subagent/*": ["./packages/client/ui-subagent/src/*"],
+      "@ryanyujazz/dsh-client-ui-theme": ["./packages/client/ui-theme/src/index.ts"],
+      "@ryanyujazz/dsh-client-ui-theme/*": ["./packages/client/ui-theme/src/*"],
+      "@ryanyujazz/dsh-client-ui-tool": ["./packages/client/ui-tool/src/index.ts"],
+      "@ryanyujazz/dsh-client-ui-tool/*": ["./packages/client/ui-tool/src/*"],
+      "@ryanyujazz/dsh-client-ui-trajectory": ["./packages/client/ui-trajectory/src/index.ts"],
+      "@ryanyujazz/dsh-client-ui-trajectory/*": ["./packages/client/ui-trajectory/src/*"],
+      "@ryanyujazz/dsh-client-ui-user-questions": ["./packages/client/ui-user-questions/src/index.ts"],
+      "@ryanyujazz/dsh-client-ui-user-questions/*": ["./packages/client/ui-user-questions/src/*"],
+      "@ryanyujazz/dsh-client-ui-workspace": ["./packages/client/ui-workspace/src/index.ts"],
+      "@ryanyujazz/dsh-client-ui-workspace/*": ["./packages/client/ui-workspace/src/*"]
+    }
+  }
+}

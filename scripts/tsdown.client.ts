@@ -10,7 +10,8 @@
  */
 import { readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import { basename, dirname, relative, resolve as resolvePath, sep } from 'node:path'
+import { createRequire } from 'node:module'
+import { basename, dirname, extname, relative, resolve as resolvePath, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { UserConfig } from 'tsdown'
 import { transform } from 'lightningcss'
@@ -22,6 +23,7 @@ import { PLATFORM_MODULES } from './platform.ts'
  * ending in `.css`, so the virtual id must not.
  */
 const CSS_VIRTUAL_PREFIX = '\0dsh-css:'
+const GLOBAL_CSS_VIRTUAL_PREFIX = '\0dsh-global-css:'
 const CSS_VIRTUAL_SUFFIX = '.mjs'
 
 /**
@@ -227,7 +229,7 @@ function clientConfig(id: string, entry: string): UserConfig {
       name: 'dsh-css-modules-inline',
       resolveId(source: string, importer: string | undefined) {
         if (!source.endsWith('.module.css')) return null
-        const abs = importer !== undefined ? sourceAssetPath(source, importer) : source
+        const abs = importer !== undefined ? stylesheetPath(source, importer) : source
         return CSS_VIRTUAL_PREFIX + abs + CSS_VIRTUAL_SUFFIX
       },
       async load(virtualId: string) {
@@ -258,9 +260,38 @@ function clientConfig(id: string, entry: string): UserConfig {
           `export default ${JSON.stringify(classMap)};`,
         ].join('\n')
       },
+    }, {
+      name: 'dsh-global-css-inline',
+      resolveId(source: string, importer: string | undefined) {
+        if (!source.endsWith('.css') || source.endsWith('.module.css')) return null
+        const abs = importer !== undefined ? stylesheetPath(source, importer) : source
+        return GLOBAL_CSS_VIRTUAL_PREFIX + abs + CSS_VIRTUAL_SUFFIX
+      },
+      async load(virtualId: string) {
+        if (!virtualId.startsWith(GLOBAL_CSS_VIRTUAL_PREFIX)) return null
+        const fileId = virtualId.slice(GLOBAL_CSS_VIRTUAL_PREFIX.length, -CSS_VIRTUAL_SUFFIX.length)
+        this.addWatchFile(fileId)
+        const source = await inlineCssAssets(fileId, await readFile(fileId, 'utf8'))
+        const { code } = transform({ filename: fileId, code: Buffer.from(source), minify: true })
+        return [
+          `const css = ${JSON.stringify(code.toString())};`,
+          `const tagId = ${JSON.stringify(`${id}/${basename(fileId)}`)};`,
+          'if (typeof document !== \'undefined\' && document.querySelector(\'style[data-plugin-css=\' + JSON.stringify(tagId) + \']\') === null) {',
+          '  const tag = document.createElement(\'style\');',
+          `  tag.dataset.plugin = ${JSON.stringify(id)};`,
+          '  tag.dataset.pluginCss = tagId;',
+          '  tag.textContent = css;',
+          '  document.head.appendChild(tag);',
+          '}',
+          'export default undefined;',
+        ].join('\n')
+      },
     }],
     outputOptions: {
       entryFileNames: 'client.js',
+      // The Host exposes one client.js route per plugin; lazy dependencies
+      // remain inside that factory instead of becoming unreachable side chunks.
+      codeSplitting: false,
       // The map is served from /plugins/<scoped-package>/client.js.map. The
       // browser resolves its local sources back into URLs that mirror the
       // /packages/<group>/<package>/src directories; sourcesContent keeps them usable
@@ -271,6 +302,39 @@ function clientConfig(id: string, entry: string): UserConfig {
       intro: 'var module = { exports: {} }; var exports = module.exports;',
     },
   }
+}
+
+/** Embed package-local stylesheet assets so injected CSS does not depend on a page-relative URL. */
+async function inlineCssAssets(fileId: string, source: string): Promise<string> {
+  const matches = [...source.matchAll(/url\((['"]?)(?!data:|https?:|\/)([^'"\)]+)\1\)/g)]
+  let output = source
+  for (const match of matches) {
+    const assetPath = resolvePath(dirname(fileId), match[2])
+    const contents = await readFile(assetPath)
+    output = output.replace(
+      match[0],
+      `url("data:${cssAssetMime(assetPath)};base64,${contents.toString('base64')}")`,
+    )
+  }
+  return output
+}
+
+/** Return the MIME type needed by CSS data URLs. */
+function cssAssetMime(path: string): string {
+  switch (extname(path)) {
+    case '.woff2': return 'font/woff2'
+    case '.woff': return 'font/woff'
+    case '.ttf': return 'font/ttf'
+    case '.svg': return 'image/svg+xml'
+    case '.png': return 'image/png'
+    default: return 'application/octet-stream'
+  }
+}
+
+/** Resolve relative emitted assets and bare package stylesheet specifiers. */
+function stylesheetPath(source: string, importer: string): string {
+  if (source.startsWith('.') || source.startsWith('/')) return sourceAssetPath(source, importer)
+  return createRequire(importer).resolve(source)
 }
 
 /** Resolve an emitted JS asset import against its source-tree counterpart. */

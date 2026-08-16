@@ -2,18 +2,30 @@
   "name": "dsh-deepcreator",
   "version": "0.1.0",
   "private": true,
-  "description": "Long-term plugin library for DeepSeek Harness (dsh): installable plugin packages and patch-layer bundles.",
+  "description": "DeepCreator Desktop and plugin-composed Web UI for the official DeepSeek Harness runtime.",
   "type": "module",
   "scripts": {
     "build": "pnpm -r --if-present bundle",
     "bump": "node scripts/release/bump.mjs",
+    "dev:desktop": "pnpm --filter @ryanyujazz/dsh-deepcreator-desktop dev",
+    "profile:migrate": "node scripts/profile-migrate/index.mjs",
     "publish": "node scripts/release/publish.mjs",
+    "start:desktop": "pnpm --filter @ryanyujazz/dsh-deepcreator-desktop start",
+    "test": "node scripts/run-tests.mjs",
+    "verify:harness": "node scripts/verify-harness/index.mjs",
     "typecheck": "pnpm -r --if-present typecheck"
   },
   "devDependencies": {
+    "@deepseek-ai/schemastery": "3.18.1",
+    "@testing-library/react": "^16.3.2",
+    "@tsdown/css": "0.22.14",
+    "jsdom": "29.1.1",
     "lightningcss": "^1.32.0",
     "tsdown": "^0.22.2",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vite-tsconfig-paths": "^6.1.1",
+    "vitest": "^3.2.4",
+    "zod": "^4.4.3"
   },
   "engines": {
     "node": "^22.19 || >=24"

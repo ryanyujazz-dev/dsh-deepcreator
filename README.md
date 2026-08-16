@@ -1,65 +1,40 @@
 # dsh-deepcreator
 
-Long-term plugin library for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh).
-Every plugin here is installable with `dsh plugin --profile <name> add <package>`, survives restarts, and
-follows the family release rules of the official dsh project (one version line, one git tag per release,
-prereleases publish under the `next` npm dist-tag).
+DeepCreator is an independent desktop presentation layer for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). It reuses the official Host, Agent, Session, Runtime, RPC, Settings, and Slot renderer while owning its Electron shell and product UI as Cordis Client plugins.
 
-## Plugins
+## Development
 
-| Plugin | Bundle (install unit) | Forked packages | What it does | Tested dsh range |
-| --- | --- | --- | --- | --- |
-| ExecFlow chat | `@ryanyujazz/dsh-execflow-chat` | `@ryanyujazz/dsh-client-ui-conversation`, `@ryanyujazz/dsh-client-ui-tool` | Native chat tab with a render-mode ring: 原生 / 经典 (execution-flow aggregation) / 思考 (inline thinking), picked from the tab-bar menu | `^0.1.0-rc.5` |
-
-## Install
+Requirements: Node.js `^22.19 || >=24` and pnpm.
 
 ```sh
-dsh plugin --profile web add @ryanyujazz/dsh-execflow-chat
+pnpm install
+pnpm run build
+pnpm run profile:migrate
+pnpm run dev:desktop
 ```
 
-Restart `dsh web`. Uninstall:
-
-```sh
-dsh plugin --profile web remove @ryanyujazz/dsh-execflow-chat
-```
+`profile:migrate` creates the managed `deepcreator` profile from the existing `web` profile, backs up both profiles, retains third-party bundles and user patches, removes legacy ExecFlow rows, links every local Client plugin required by the development profile, and validates the assembled Cordis tree. Re-running it refreshes the managed profile without duplicating bundles or rows. The original `web` profile remains available as the rollback path.
 
 ## Repository layout
 
-- `packages/*` — forked dsh packages (each publishable under the `@ryanyujazz` scope).
-- `bundles/*` — patch-layer bundles: the user-facing install unit that disables the stock rows a fork
-  replaces and mounts the fork packages in their place.
-- `scripts/release/` — family release machinery (see below).
-- `VERSION` — the single family version; every package and bundle carries it.
+- `apps/desktop/` owns the Electron window, Host child process, navigation policy, and shutdown lifecycle.
+- `packages/client/` contains feature-domain Client plugins, the `compat` library, and the shared `ui-primitives` Client module.
+- `packages/bundle/deepcreator-web/` replaces only DeepCreator-owned official UI rows.
+- `scripts/profile-migrate/` creates and verifies the `deepcreator` profile.
+- `scripts/verify-harness/` checks the supported official version and composition invariants.
+- `UI_STYLE_GUIDE.md` owns product typography and interaction styling.
+- `docs/architecture/` owns package boundaries and the upstream update procedure.
 
-## Adding a plugin
+## Architecture rules
 
-1. Add its fork packages under `packages/<name>` (import with `scripts/import-plugin.mjs`, or copy and
-   rewrite the manifest: `@ryanyujazz` scope, `workspace:^` deps pinned to the tested dsh range).
-2. Add its install bundle under `bundles/<name>`.
-3. Add a row to the plugin table above with the tested dsh range.
-4. Release: `pnpm run bump` (or `pnpm run bump --prerelease rc`), push, tag, `pnpm run publish`.
+- One UI feature is one plugin package. Model adapters, view state, pure views, and `apply.ts` remain inside that feature.
+- Components receive data and callbacks through Slot-derived props; they do not access Cordis context or subscribe to Runtime objects directly.
+- Cross-plugin composition uses Slots, Services, Events, and ordinary data. Tool and conversation renderers use keyed registrations rather than central switches.
+- Official business state stays in the React-free Harness Runtime. DeepCreator stores contain presentation state only.
+- Registrations are reversible effects. A plugin unload must remove every Slot, event listener, service contribution, and store binding it owns.
 
-## Known limitations
+See [the architecture reference](docs/architecture/deepcreator.md) for ownership and upgrade requirements.
 
-- **pnpm install can fail on very large registry metadata** (react / react-dom packuments die with
-  `UND_ERR_DESTROYED` / "unknown" on some networks while npm, curl, and node fetch succeed). Workaround:
-  `npm install --no-save --no-package-lock tsdown lightningcss` in the repo root, then build. Retry a
-  plain `pnpm install` later — the metadata fetch may recover and the lockfile picks the tools up.
-- The fork packages build against the tested dsh contract (devDependencies pinned to the exact version);
-  peerDependencies keep the wider range so newer dsh installs warn instead of hard-failing.
+## Release boundary
 
-
-## Release
-
-The family owns one version line (see `VERSION`). Releasing:
-
-```sh
-pnpm run bump            # bump VERSION + every manifest, commit
-git push origin master
-git tag plugins-v<version> <merge commit>
-git push origin plugins-v<version>
-pnpm run publish         # npm publish every package; prereleases go to the `next` dist-tag
-```
-
-A stable version takes the `latest` dist-tag; a prerelease (`-rc.*`, `-beta.*`) always publishes under
-`next`, mirroring the official dsh publish rules.
+The initial desktop delivery is a development runtime. Signing, notarization, installers, auto-update, tray integration, and native credential storage remain outside this release.

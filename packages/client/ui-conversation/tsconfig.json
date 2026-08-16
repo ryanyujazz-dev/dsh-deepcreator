@@ -1,0 +1,44 @@
+{
+  "compilerOptions": {
+    "target": "es2024",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "lib": [
+      "ES2024",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "types": [],
+    "declaration": true,
+    "sourceMap": true,
+    "declarationMap": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "rootDir": "src",
+    "outDir": "lib/types",
+    "paths": {
+      "@ryanyujazz/dsh-client-ui-conversation/client": [
+        "./src/client/index.ts"
+      ],
+      "@ryanyujazz/dsh-client-ui-conversation": [
+        "./src/index.ts"
+      ],
+      "@ryanyujazz/dsh-client-ui-conversation/invariant": [
+        "./src/invariant.ts"
+      ]
+    }
+  },
+  "include": [
+    "src"
+  ]
+}

@@ -1,21 +1,13 @@
-# packages/
+# packages
 
-Forked dsh packages. Each package is publishable under the `@ryanyujazz` scope and carries the family
-version (`../VERSION`).
+`client/` follows the official Harness feature-domain package model. Browser plugins keep a Node registration half and a bundled `lib/client.js`; pure libraries such as `compat` and `ui-primitives` have no Cordis row. `bundle/deepcreator-web` is the installable composition layer and declares every bare Client plugin package it inserts.
 
-Rules:
+Official dependencies target the supported Harness version recorded in `client/compat/compatibility.json`. DeepCreator package dependencies use `workspace:^` and publish as one version family.
 
-- Only fork a package when the feature cannot be delivered through the public composition seams (slots,
-  services, patches). Forking means following upstream forever: merge `deepseek-ai/deepseek-harness`
-  regularly and re-release the whole family with the same version.
-- Keep the fork diff minimal and contract-additive: optional props and new slot keys only.
-- Manifest rules: `@ryanyujazz/dsh-<name>` name, `workspace:^` dependency specifiers pinned to the tested
-  dsh range (`^0.1.0-rc.5`), `repository` pointing at this library, `files` limited to built artifacts.
-- Build: `tsc -p <package>` emits `lib/types`, then `pnpm --filter <package> bundle` (tsdown, via
-  `scripts/tsdown.client.ts`) emits `lib/client.js` — the artifact the dsh web loader serves.
-
-To import a new fork from a dsh checkout:
+Import an updated feature implementation from a Harness checkout with:
 
 ```sh
-node scripts/import-plugin.mjs <dsh-checkout> <source-package-dir> <target-name>
+node scripts/import-plugin.mjs <dsh-checkout> packages/client/<name> <name>
 ```
+
+The import keeps package ownership under `@ryanyujazz`, rewrites dependencies on other DeepCreator-owned Client packages, and leaves official Runtime dependencies on the supported version.

@@ -1,0 +1,84 @@
+# DeepCreator presentation layer over @deepseek-ai/dsh-web-app. The official
+# Host, transport, Client Runtime, Slot renderer, and unchanged feature rows
+# remain mounted. Each replaced official UI owner is disabled before the
+# DeepCreator implementation is inserted under a distinct id.
+
+- id: locale
+  disabled: true
+- id: ui-theme
+  disabled: true
+- id: ui-layout
+  disabled: true
+- id: ui-sidebar
+  disabled: true
+- id: ui-settings
+  disabled: true
+- id: ui-settings-general
+  disabled: true
+- id: ui-conversation
+  disabled: true
+- id: ui-tool
+  disabled: true
+- id: ui-trajectory
+  disabled: true
+- id: ui-workspace
+  disabled: true
+- id: ui-agent-preset
+  disabled: true
+- id: ui-model-selection
+  disabled: true
+- id: ui-permission
+  disabled: true
+- id: ui-subagent
+  disabled: true
+- id: ui-user-questions
+  disabled: true
+
+- insert:
+    - id: deepcreator-ui-primitives
+      name: '@ryanyujazz/dsh-client-ui-primitives'
+
+    - id: deepcreator-locale
+      name: '@ryanyujazz/dsh-client-locale'
+
+    - id: deepcreator-theme
+      name: '@ryanyujazz/dsh-client-ui-theme'
+
+    - id: deepcreator-layout
+      name: '@ryanyujazz/dsh-client-ui-layout'
+
+    - id: deepcreator-sidebar
+      name: '@ryanyujazz/dsh-client-ui-sidebar'
+
+    - id: deepcreator-settings
+      name: '@ryanyujazz/dsh-client-ui-settings'
+
+    - id: deepcreator-settings-general
+      name: '@ryanyujazz/dsh-client-ui-settings-general'
+
+    - id: deepcreator-conversation
+      name: '@ryanyujazz/dsh-client-ui-conversation'
+
+    - id: deepcreator-tool
+      name: '@ryanyujazz/dsh-client-ui-tool'
+
+    - id: deepcreator-trajectory
+      name: '@ryanyujazz/dsh-client-ui-trajectory'
+
+    - id: deepcreator-workspace
+      name: '@ryanyujazz/dsh-client-ui-workspace'
+
+    - id: deepcreator-agent-preset
+      name: '@ryanyujazz/dsh-client-ui-agent-preset'
+
+    - id: deepcreator-model-selection
+      name: '@ryanyujazz/dsh-client-ui-model-selection'
+
+    - id: deepcreator-permission
+      name: '@ryanyujazz/dsh-client-ui-permission-presets'
+
+    - id: deepcreator-subagent
+      name: '@ryanyujazz/dsh-client-ui-subagent'
+
+    - id: deepcreator-user-questions
+      name: '@ryanyujazz/dsh-client-ui-user-questions'

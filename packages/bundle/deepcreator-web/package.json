@@ -1,0 +1,42 @@
+{
+  "name": "@ryanyujazz/dsh-deepcreator-web",
+  "description": "DeepCreator presentation bundle for the official DeepSeek Harness Web runtime",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "@ryanyujazz/dsh-client-locale": "workspace:^",
+    "@ryanyujazz/dsh-client-ui-agent-preset": "workspace:^",
+    "@ryanyujazz/dsh-client-ui-conversation": "workspace:^",
+    "@ryanyujazz/dsh-client-ui-layout": "workspace:^",
+    "@ryanyujazz/dsh-client-ui-model-selection": "workspace:^",
+    "@ryanyujazz/dsh-client-ui-permission-presets": "workspace:^",
+    "@ryanyujazz/dsh-client-ui-primitives": "workspace:^",
+    "@ryanyujazz/dsh-client-ui-settings": "workspace:^",
+    "@ryanyujazz/dsh-client-ui-settings-general": "workspace:^",
+    "@ryanyujazz/dsh-client-ui-sidebar": "workspace:^",
+    "@ryanyujazz/dsh-client-ui-subagent": "workspace:^",
+    "@ryanyujazz/dsh-client-ui-theme": "workspace:^",
+    "@ryanyujazz/dsh-client-ui-tool": "workspace:^",
+    "@ryanyujazz/dsh-client-ui-trajectory": "workspace:^",
+    "@ryanyujazz/dsh-client-ui-user-questions": "workspace:^",
+    "@ryanyujazz/dsh-client-ui-workspace": "workspace:^"
+  },
+  "files": [
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ryanyujazz-dev/dsh-deepcreator.git",
+    "directory": "packages/bundle/deepcreator-web"
+  }
+}
