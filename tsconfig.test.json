@@ -2,7 +2,6 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@deepseek-ai/dsh-client-runtime-test/*": ["../deepseek-harness-upstream/packages/client/runtime/tests/*"],
       "@ryanyujazz/dsh-client-locale": ["./packages/client/locale/src/index.ts"],
       "@ryanyujazz/dsh-client-locale/*": ["./packages/client/locale/src/*"],
       "@ryanyujazz/dsh-client-ui-agent-preset": ["./packages/client/ui-agent-preset/src/index.ts"],

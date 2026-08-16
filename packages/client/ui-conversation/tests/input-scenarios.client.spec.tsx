@@ -9,6 +9,8 @@
  * decision-table contract at the `InputTriggerSource` boundary.
  */
 import { Context } from '@deepseek-ai/cordis'
+import type { IApiClient } from '@deepseek-ai/dsh-api-remotes/client'
+import { RpcId } from '@deepseek-ai/dsh-client-connection/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import {
@@ -16,7 +18,6 @@ import {
 } from '@deepseek-ai/dsh-client-runtime/client'
 import { InputTriggerService } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import type { ClientSessionContext, CommandClaim, PickOutcome, SubmitOutcome } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
-import { FakeApiClient, fakeRemote, ok } from '@deepseek-ai/dsh-client-runtime-test/fake-api.client.ts'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@ryanyujazz/dsh-client-locale/src/locales/zh.ts'
 import { SessionInputShell } from '../src/client/input/facade.ts'
@@ -89,15 +90,42 @@ const COMMANDS: FakeCommand[] = [
   { name: 'compact', description: '压缩上下文' },
 ]
 
+let nextRpcId = 0
+
+/** Minimal successful carrier response for this scenario's list baseline. */
+function ok<T>(value: T) {
+  return {
+    rpcId: RpcId(`input-scenario-${String(nextRpcId++)}`),
+    result: { ok: true as const, value },
+  }
+}
+
+/** Only the API surface exercised before the scenario obtains its session scope. */
+function fakeApi(sessionId: Parameters<SessionRuntime['open']>[0]): IApiClient {
+  return {
+    sessions: {
+      list: () => Promise.resolve(ok({
+        items: [{ sessionId, updatedAt: 1, running: false, blank: false, cwd: '/w/a' }],
+      })),
+    },
+  } as unknown as IApiClient
+}
+
+/** Command Remote defaults used by the real input-trigger controller. */
+function fakeRemote(): ConstructorParameters<typeof SessionRuntime>[2] {
+  return {
+    commands: {
+      list: () => Promise.resolve({ ok: true, value: [] }),
+      execute: () => Promise.resolve({ ok: true, value: undefined }),
+    },
+  }
+}
+
 /** Real scope bench: SessionRuntime over one listed session + InputTriggerController + shell listeners (the hub wiring shape). */
 async function scopedBench(register?: (inputTriggers: InputTriggerService) => void) {
   const ctx = new Context()
-  const api = new FakeApiClient()
-  api.onWorkspaceList = () => Promise.resolve(ok({ items: [] }))
   const sessionId = 'scenario-s1' as Parameters<SessionRuntime['open']>[0]
-  api.onList = () => Promise.resolve(ok({
-    items: [{ sessionId, updatedAt: 1, running: false, blank: false, cwd: '/w/a' }],
-  }) as never)
+  const api = fakeApi(sessionId)
   const sessions = new SessionRuntime(ctx, api, fakeRemote()) // provides 'sessions' itself
   await sessions.refresh()
   await Promise.resolve() // manager notifier flush
