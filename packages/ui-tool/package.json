@@ -1,4 +1,4 @@
-﻿{
+{
     "name":  "@ryanyujazz/dsh-client-ui-tool",
     "description":  "Client Tool call-tree renderer and keyed per-tool presentation slot",
     "version":  "0.1.0",

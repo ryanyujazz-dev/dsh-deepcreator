@@ -39,6 +39,16 @@ dsh plugin --profile web remove @ryanyujazz/dsh-execflow-chat
 3. Add a row to the plugin table above with the tested dsh range.
 4. Release: `pnpm run bump` (or `pnpm run bump --prerelease rc`), push, tag, `pnpm run publish`.
 
+## Known limitations
+
+- **pnpm install can fail on very large registry metadata** (react / react-dom packuments die with
+  `UND_ERR_DESTROYED` / "unknown" on some networks while npm, curl, and node fetch succeed). Workaround:
+  `npm install --no-save --no-package-lock tsdown lightningcss` in the repo root, then build. Retry a
+  plain `pnpm install` later — the metadata fetch may recover and the lockfile picks the tools up.
+- The fork packages build against the tested dsh contract (devDependencies pinned to the exact version);
+  peerDependencies keep the wider range so newer dsh installs warn instead of hard-failing.
+
+
 ## Release
 
 The family owns one version line (see `VERSION`). Releasing:
