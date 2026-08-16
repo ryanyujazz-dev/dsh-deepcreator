@@ -10,7 +10,7 @@ import { chatNode } from './common.ts'
 
 type MessageNode = UserMessageNode | SteeringMessageNode | ContextMessageNode
 
-declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
+declare module '@ryanyujazz/dsh-client-ui-conversation/client' {
   interface ChatNodeDataMap {
     /** Ordinary turn-opening user message. */
     user: UserMessageNode

@@ -10,6 +10,10 @@
     "publish": "node scripts/release/publish.mjs",
     "typecheck": "pnpm -r typecheck"
   },
+  "devDependencies": {
+    "lightningcss": "^1.32.0",
+    "tsdown": "^0.22.2"
+  },
   "engines": {
     "node": "^22.19 || >=24"
   }

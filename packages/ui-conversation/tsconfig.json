@@ -25,7 +25,12 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "rootDir": "src",
-    "outDir": "lib/types"
+    "outDir": "lib/types",
+    "paths": {
+      "@ryanyujazz/dsh-client-ui-conversation/client": ["./src/client/index.ts"],
+      "@ryanyujazz/dsh-client-ui-conversation": ["./src/index.ts"],
+      "@deepseek-ai/dsh-client-ui-conversation/invariant": ["./src/invariant.ts"]
+    }
   },
   "include": [
     "src"
