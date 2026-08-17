@@ -9,7 +9,7 @@ import type {} from '@ryanyujazz/dsh-review/remote'
 import type { TerminalSessionView } from '@ryanyujazz/dsh-terminal-workbench/types'
 import type {} from '@ryanyujazz/dsh-terminal-workbench/remote'
 import type {
-  WorkbenchPanelHeaderContribution, WorkbenchPanelProps,
+  WorkbenchPanelHeaderContribution, WorkbenchPanelInfoContribution, WorkbenchPanelProps,
 } from '@ryanyujazz/dsh-client-ui-workbench/client'
 import {
   IconPlusOutline16, IconRefreshOutline14, WorkbenchPanelIconButton,
@@ -41,6 +41,30 @@ function Empty({ title, body }: { title: string; body: string }) {
 
 function transportError(result: { ok: false; error: { message: string } }): Error {
   return new Error(result.error.message)
+}
+
+/** Last path segment of a session cwd, e.g. the project folder name. */
+function cwdProjectName(cwd: string | undefined): string | undefined {
+  if (cwd === undefined || cwd === '') return undefined
+  const base = cwd.replace(/[\\/]+$/, '').split(/[\\/]/).at(-1)
+  return base === undefined || base === '' ? undefined : base
+}
+
+/**
+ * Terminal tabs are named after each PTY's working-directory project folder;
+ * duplicates get a counter and sessions without a cwd fall back to the shell
+ * label, then to the session id.
+ */
+export function terminalTabLabels(sessions: readonly TerminalSessionView[]): Record<string, string> {
+  const counts = new Map<string, number>()
+  const labels: Record<string, string> = {}
+  for (const session of sessions) {
+    const base = cwdProjectName(session.cwd) ?? session.shell ?? session.sessionId
+    const seen = (counts.get(base) ?? 0) + 1
+    counts.set(base, seen)
+    labels[session.sessionId] = seen === 1 ? base : `${base} ${seen}`
+  }
+  return labels
 }
 
 function usePanelHeaderActions(
@@ -144,7 +168,7 @@ export function ReviewPanel({ remote, sessionId, contributeHeaderActions, t }: R
   )
 }
 
-export function TerminalPanel({ terminal, useSessions, sessionId, tabs, activeInstanceId, openInstance, contributeHeaderActions, t }: TerminalProps) {
+export function TerminalPanel({ terminal, useSessions, sessionId, tabs, activeInstanceId, openInstance, contributeHeaderActions, contributePanelInfo, t }: TerminalProps) {
   const addressed = useSessions(snapshot => snapshot.currentAddress?.childSessionId === sessionId)
   const [sessions, setSessions] = useState<TerminalSessionView[]>([])
   const [backends, setBackends] = useState<string[]>([])
@@ -179,10 +203,20 @@ export function TerminalPanel({ terminal, useSessions, sessionId, tabs, activeIn
   const spawn = useCallback(async () => {
     const type = backends[0]
     if (type === undefined) throw new Error(t('terminal.noBackend'))
-    const wire = await terminal.spawn(sessionId, { type, name: 'Workbench' })
+    // No `name`: the official terminal service enforces per-owner name
+    // uniqueness (DUPLICATE_NAME), and the tab label comes from the session
+    // cwd anyway.
+    const wire = await terminal.spawn(sessionId, { type })
     if (!wire.ok) throw transportError(wire)
     if (!wire.value.ok) throw new Error(wire.value.message)
-    openInstance(wire.value.session.sessionId); await refresh()
+    // Merge the spawn view immediately so the new pill shows its project
+    // label without waiting for the list round-trip. Hoisted const: the
+    // wire.value discriminant narrowing does not survive the closure below.
+    const view = wire.value.session
+    setSessions(previous => previous.some(item => item.sessionId === view.sessionId)
+      ? previous
+      : [...previous, view])
+    openInstance(view.sessionId); await refresh()
   }, [backends, openInstance, refresh, sessionId, t, terminal])
   const initializedSessions = useRef(new Set<string>())
   useEffect(() => {
@@ -202,6 +236,14 @@ export function TerminalPanel({ terminal, useSessions, sessionId, tabs, activeIn
     void spawn().catch(reason => { setError(reason instanceof Error ? reason.message : String(reason)) })
   }, [addressed, backends.length, openInstance, sessionId, sessions, spawn, tabs.length])
   const handleTerminalExit = useCallback(() => { void refresh() }, [refresh])
+  // Tab pills show each PTY's project folder; the group title carries the
+  // active PTY's shell program ("终端 · PowerShell").
+  const titleSuffix = (sessions.find(item => item.sessionId === activeInstanceId) ?? sessions[0])?.shell
+  const panelInfo = useMemo<WorkbenchPanelInfoContribution>(() => ({
+    tabLabels: terminalTabLabels(sessions),
+    ...(titleSuffix === undefined ? {} : { titleSuffix }),
+  }), [sessions, titleSuffix])
+  useEffect(() => contributePanelInfo(panelInfo), [contributePanelInfo, panelInfo])
   const headerActions = useMemo<WorkbenchPanelHeaderContribution>(() => ({
     left: <WorkbenchPanelIconButton label={t('terminal.new')} disabled={addressed || backends.length === 0} onClick={() => { void spawn().catch(reason => { setError(String(reason)) }) }}><IconPlusOutline16 size={14} /></WorkbenchPanelIconButton>,
   }), [addressed, backends.length, spawn, t])

@@ -24,12 +24,19 @@
 .tab {
   display: flex;
   align-items: center;
-  flex: 0 1 160px;
+  /* Hug the label: content-sized up to the 160px truncation cap, floored by
+   * the 56px click target, so short tabs carry no dead space between the
+   * label and the close glyph. */
+  flex: 0 1 auto;
+  max-width: 160px;
   min-width: 56px;
-  height: 32px;
+  /* 26px tall with a 6px radius inside the 32px panel Header: the 3px
+   * centering plus the shell's 1px border seats this 6px corner exactly on
+   * the card's 10px-radius center (1px + 3px + 6px on both axes). */
+  height: 26px;
   box-sizing: border-box;
   overflow: hidden;
-  border-radius: 10px;
+  border-radius: 6px;
   color: var(--dsw-alias-label-secondary);
   background: var(--dsw-alias-interactive-bg-hover);
   -webkit-app-region: no-drag;
@@ -47,7 +54,7 @@
   flex: 1;
   min-width: 0;
   height: 100%;
-  padding: 0 4px 0 10px;
+  padding: 0 3px 0 9px;
   border: 0;
   color: inherit;
   background: transparent;
@@ -61,24 +68,33 @@
   font-size: var(--dsw-font-sidebar-font-size);
   font-weight: 400;
   line-height: var(--dsw-font-sidebar-line-height);
+  /* Optical lift: centering the line box leaves Latin ink ~1px below the
+   * pill's midline (em-box metrics hang below the baseline), dropping the
+   * label under the close glyph's centerline. Line-height cannot move it
+   * (centering is invariant), so lift explicitly. */
+  position: relative;
+  top: -1px;
 }
 
 .tabClose {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 28px;
-  width: 28px;
-  height: 28px;
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  /* 4px + the glyph's 3px centering = a 7px optical inset, balancing the
+   * label's 9px lead instead of gluing the icon to the pill edge. */
+  margin-right: 4px;
   padding: 0;
   border: 0;
-  border-radius: 50%;
   color: inherit;
   background: transparent;
   cursor: pointer;
 }
 
-.tabClose:hover { background: var(--dsw-alias-interactive-bg-hover); }
+/* Hover highlights the glyph only — no circular fill inside the flat tab. */
+.tabClose:hover { color: var(--dsw-alias-label-primary); }
 
 .tabLabel:focus-visible,
 .tabClose:focus-visible {

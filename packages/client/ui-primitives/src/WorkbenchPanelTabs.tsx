@@ -8,6 +8,8 @@ function CloseIcon() {
 
 export interface WorkbenchPanelTabsProps {
   tabs: readonly string[]
+  /** Provider display names per tab id; unmapped tabs show their id. */
+  labels?: Readonly<Record<string, string>> | undefined
   activeTab?: string
   closeTabLabel(tab: string): string
   onActivateTab(tab: string): void
@@ -17,7 +19,7 @@ export interface WorkbenchPanelTabsProps {
 
 /** Business-state-free pill tabs shared by every Workbench Panel type. */
 export function WorkbenchPanelTabs({
-  tabs, activeTab, closeTabLabel, onActivateTab, onCloseTab, trailingAction,
+  tabs, labels, activeTab, closeTabLabel, onActivateTab, onCloseTab, trailingAction,
 }: WorkbenchPanelTabsProps) {
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
@@ -44,7 +46,7 @@ export function WorkbenchPanelTabs({
                 tabIndex={active || (activeTab === undefined && tab === tabs[0]) ? 0 : -1}
                 onClick={() => { onActivateTab(tab) }}
               >
-                <span>{tab}</span>
+                <span>{labels?.[tab] ?? tab}</span>
               </button>
               <button type="button" className={css.tabClose} aria-label={closeTabLabel(tab)} onClick={() => { onCloseTab(tab) }}><CloseIcon /></button>
             </div>

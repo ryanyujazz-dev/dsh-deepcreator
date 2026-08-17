@@ -4,23 +4,28 @@
   flex: 1;
   min-width: 0;
   min-height: 0;
-  margin: 2px;
+  margin: 4px;
   box-sizing: border-box;
   overflow: hidden;
   flex-direction: column;
   border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 10px;
-  background: var(--dsw-alias-bg-base);
+  /* Sidebar surface token: one subtle step above the conversation base
+   * (rgb(27,27,28) in dark, near-white in light). */
+  background: var(--dsw-specific-sidebar-fill);
 }
 
 .header {
-  height: 42px;
-  flex: 0 0 42px;
+  height: 32px;
+  flex: 0 0 32px;
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
-  padding: 0 7px 0 10px;
+  /* 3px seats the first tab's 6px corner concentric with the card's 10px
+   * border-radius (1px border + 3px + 6px = 10px). Plain titles restore their
+   * optical inset through .leading's own 7px. */
+  padding: 0 7px 0 3px;
   box-sizing: border-box;
   -webkit-app-region: drag;
 }
@@ -42,7 +47,12 @@
   flex: none;
 }
 
-.leading { gap: var(--dsh-icon-toolbar-gap, 4px); }
+/* Only shown when the group has no tabs; 7px keeps the plain title at the
+ * optical 10px inset the pill's own internal padding provides for tabs. */
+.leading {
+  gap: var(--dsh-icon-toolbar-gap, 4px);
+  padding-left: 7px;
+}
 .headerActions { margin-left: auto; }
 .headerActions,
 .leftActions,

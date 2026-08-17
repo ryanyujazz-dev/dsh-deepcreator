@@ -17,8 +17,8 @@
 .fileList button:hover { background: var(--dsw-alias-fill-hover); }
 .fileList code { color: var(--dsw-alias-label-tertiary); }
 .fileList span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.diff { min-width: 0; overflow: auto; margin: 0; padding: 12px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-base); white-space: pre-wrap; font: 11px/1.55 var(--dsw-font-mono); }
-.terminal { position: relative; min-height: 100%; display: flex; flex-direction: column; box-sizing: border-box; overflow: hidden; background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-secondary); font-family: var(--dsw-font-mono); }
+.diff { min-width: 0; overflow: auto; margin: 0; padding: 12px; color: var(--dsw-alias-label-primary); white-space: pre-wrap; font: 11px/1.55 var(--dsw-font-mono); }
+.terminal { position: relative; min-height: 100%; display: flex; flex-direction: column; box-sizing: border-box; overflow: hidden; color: var(--dsw-alias-label-secondary); font-family: var(--dsw-font-mono); }
 .terminalCanvas { min-width: 0; min-height: 0; flex: 1; box-sizing: border-box; padding: 8px 6px 6px 10px; outline: none; }
 .terminalCanvas :global(.xterm) { width: 100%; height: 100%; }
 .terminalCanvas :global(.xterm-viewport) { background: transparent !important; }

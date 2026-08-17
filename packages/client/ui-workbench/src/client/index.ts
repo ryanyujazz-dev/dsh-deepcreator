@@ -13,7 +13,7 @@ import { en, NS, zh, type WorkbenchKey } from './locales.ts'
 export type {
   ArtifactRendererOwnerProps, ArtifactRendererProps, PanelClosePolicy, PanelRoute, PanelScope,
   PanelTypeDefinition, WorkbenchPanelIconOwnerProps, WorkbenchPanelIconProps, WorkbenchPanelOwnerProps,
-  WorkbenchPanelProps, WorkbenchPanelHeaderContribution, WorkbenchPresentRequest, WorkbenchService,
+  WorkbenchPanelInfoContribution, WorkbenchPanelProps, WorkbenchPanelHeaderContribution, WorkbenchPresentRequest, WorkbenchService,
 } from './contract.ts'
 export { WorkbenchController } from './service.ts'
 export { createWorkbenchStore, prepareWorkbenchPersistence, WORKBENCH_PERSIST_KEY } from './store.ts'

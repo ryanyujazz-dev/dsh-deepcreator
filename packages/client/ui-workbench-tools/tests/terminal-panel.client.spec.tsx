@@ -29,6 +29,7 @@ function props(terminal: Record<string, ReturnType<typeof vi.fn>>, openInstance 
     closeInstance: vi.fn(),
     showHome: vi.fn(),
     contributeHeaderActions: () => () => undefined,
+    contributePanelInfo: () => () => undefined,
     renderArtifact: () => null,
     t: (key: string) => key,
   } as ComponentProps<typeof TerminalPanel>
@@ -37,20 +38,36 @@ function props(terminal: Record<string, ReturnType<typeof vi.fn>>, openInstance 
 describe('Terminal Panel initialization', () => {
   it('spawns and opens the first terminal tab automatically', async () => {
     const terminal = {
-      list: vi.fn().mockResolvedValue({ ok: true, value: { ok: true, sessions: [] } }),
+      // A delayed list models the real remote round-trip so the optimistic
+      // spawn merge commits before the authoritative refresh replaces it.
+      list: vi.fn().mockImplementation(() => new Promise(resolve => {
+        setTimeout(() => resolve({ ok: true, value: { ok: true, sessions: [] } }), 10)
+      })),
       backends: vi.fn().mockResolvedValue({ ok: true, value: { ok: true, backends: ['system'] } }),
       spawn: vi.fn().mockResolvedValue({
         ok: true,
-        value: { ok: true, session: { ...runningSession, sessionId: 'terminal-new', motd: '' } },
+        value: { ok: true, session: {
+          ...runningSession,
+          sessionId: 'terminal-new',
+          shell: 'PowerShell',
+          cwd: 'D:\\work\\myapp',
+          motd: '',
+        } },
       }),
       kill: vi.fn(), input: vi.fn(), signal: vi.fn(),
     }
     const openInstance = vi.fn()
-    render(<TerminalPanel {...props(terminal, openInstance)} />)
+    const contributePanelInfo = vi.fn(() => () => undefined)
+    render(<TerminalPanel {...props(terminal, openInstance)} contributePanelInfo={contributePanelInfo} />)
 
-    await waitFor(() => { expect(terminal.spawn).toHaveBeenCalledWith('session-1', { type: 'system', name: 'Workbench' }) })
+    // Unnamed spawn: the official service enforces per-owner name
+    // uniqueness, so a fixed name would break every later terminal.
+    await waitFor(() => { expect(terminal.spawn).toHaveBeenCalledWith('session-1', { type: 'system' }) })
     await waitFor(() => { expect(openInstance).toHaveBeenCalledWith('terminal-new') })
     expect(terminal.spawn).toHaveBeenCalledOnce()
+    // The spawn view merges optimistically, so the pill is labeled by its
+    // project folder without waiting for the list round-trip.
+    await waitFor(() => { expect(contributePanelInfo).toHaveBeenCalledWith({ tabLabels: { 'terminal-new': 'myapp' }, titleSuffix: 'PowerShell' }) })
   })
 
   it('restores a running terminal instead of spawning a duplicate', async () => {
@@ -86,5 +103,33 @@ describe('Terminal Panel initialization', () => {
     expect(terminal.spawn).not.toHaveBeenCalled()
     expect(openInstance).not.toHaveBeenCalled()
     expect(view.getByText('terminal.empty.title')).toBeTruthy()
+  })
+
+  it('names tabs after each PTY working directory and suffixes the title with the shell', async () => {
+    const terminal = {
+      list: vi.fn().mockResolvedValue({ ok: true, value: { ok: true, sessions: [
+        { sessionId: 't-1', type: 'system', status: { kind: 'running' as const }, interactive: true, shell: 'PowerShell', cwd: 'D:\\work\\dsh-deepcreator' },
+        { sessionId: 't-2', type: 'system', status: { kind: 'running' as const }, interactive: true, shell: 'PowerShell', cwd: 'D:\\work\\myapp' },
+        { sessionId: 't-3', type: 'system', status: { kind: 'running' as const }, interactive: true, shell: 'PowerShell', cwd: 'D:\\work\\myapp\\' },
+        { sessionId: 't-4', type: 'system', status: { kind: 'running' as const }, interactive: false, shell: 'bash' },
+      ] } }),
+      backends: vi.fn().mockResolvedValue({ ok: true, value: { ok: true, backends: ['system'] } }),
+      spawn: vi.fn(), kill: vi.fn(), input: vi.fn(), signal: vi.fn(),
+    }
+    const contributePanelInfo = vi.fn(() => () => undefined)
+    render(<TerminalPanel
+      {...props(terminal)}
+      route="instance"
+      tabs={['t-1']}
+      activeInstanceId="t-1"
+      contributePanelInfo={contributePanelInfo}
+    />)
+
+    await waitFor(() => {
+      expect(contributePanelInfo).toHaveBeenCalledWith({
+        tabLabels: { 't-1': 'dsh-deepcreator', 't-2': 'myapp', 't-3': 'myapp 2', 't-4': 'bash' },
+        titleSuffix: 'PowerShell',
+      })
+    })
   })
 })

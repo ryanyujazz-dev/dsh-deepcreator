@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  MIN_CONVERSATION_WIDTH, MIN_PANEL_COLUMN_WIDTH, SPLITTER_SIZE,
+  MIN_CONVERSATION_WIDTH, MIN_PANEL_COLUMN_WIDTH,
   initialWorkbenchWidth, oddTrackWorkbenchWidth, visibleTrackCount,
 } from '../src/client/layout.ts'
 
@@ -23,8 +23,8 @@ describe('Workbench deterministic width rules', () => {
 
 describe('Workbench responsive columns', () => {
   it('removes whole columns from right to left at the 150px floor', () => {
-    const three = 3 * MIN_PANEL_COLUMN_WIDTH + 2 * SPLITTER_SIZE
-    const two = 2 * MIN_PANEL_COLUMN_WIDTH + SPLITTER_SIZE
+    const three = 3 * MIN_PANEL_COLUMN_WIDTH
+    const two = 2 * MIN_PANEL_COLUMN_WIDTH
     expect(visibleTrackCount(3, three)).toBe(3)
     expect(visibleTrackCount(3, three - 1)).toBe(2)
     expect(visibleTrackCount(3, two)).toBe(2)
