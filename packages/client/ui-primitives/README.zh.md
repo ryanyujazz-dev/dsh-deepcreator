@@ -32,7 +32,7 @@
 
 ## Diff 渲染
 
-`DiffBlock` 将一次文件改动渲染为内联 diff 表层：每个文件一个粗体路径头、删除行（`- `，error token）在新增行（`+ `，success token）之上、同文件第二个 hunk 前一个 `⋯` gap，以及暗色 `└ +A -R · N file(s)` 页脚。各行使用 `white-space: pre` 并横向滚动，因此源码行保留其缩进而不软换行；超过 `maxLines`（默认 16，与 `TerminalBlock` 相同的切分算法）时折叠为头部切片加尾部切片，由展开按钮控制。新建（`oldText: null`）没有删除侧。复制控件写入带前缀的 diff 文本（路径头、`- `/`+ ` 行、gap），使多文件复制保持可归属，并浮在右上角而非占据自己的 banner 行。几何结构与 `CodeBlock`/`TerminalBlock` 一致。原理：[Web diff 卡片笔记](../../../.agents/notes/implemented/feature/2026-07-30-web-diff-card.md)。
+`DiffBlock` 通过共享的 `jsdiff` 行模型渲染上下文 hunk。聊天里每个远距离 hunk 都是独立圆角卡片，显示完整路径与准确的 `+A -R`；Review 可关闭该头部，在多个 hunk 外只绘制一次文件头。单行号槽在删除行显示旧行号，在新增与上下文行显示新行号；独立符号列保持 `+`／`-` 对齐。内容使用 `pre-wrap` 和安全断词，窄面板软换行时不会重复 gutter。替换行通过 `diffWordsWithSpace()` 生成词级 mark，同时保留 Shiki token；超大替换块只跳过词级细化。绝对起始行可选，旧回放缺失时行号有意留空。长上下文按前后各三行折叠，并在原位置插入「⋯ 展开 N 行」FoldRow；通用 head/tail 高度上限也使用同一种内联 FoldRow，不再在底部放展开操作。每个 FoldRow 通过组件本地状态展开其代表的全部行。命名代码主题同时提供语法前景和半透明的行级／词级 Diff 表面；强制颜色与高对比覆盖始终最后生效。
 
 ## 搜索结果
 

@@ -1,195 +1,242 @@
-// DiffBlock: the inline-diff surface for a file mutation (write/edit) — a copy
-// control over one or more per-file hunks, each a bold path header followed by
-// the removed block (`-`, error color) and the added block (`+`, success
-// color), with a dim `└ +A -R · N file(s)` footer. Unlike the TUI's exact
-// changed-row comparison, this block renders the old and new sides in full.
-// Both front ends share the line-terminator rule and distinct-path file count.
-// Output never soft-wraps — an aligned source line keeps its indentation and
-// scrolls horizontally instead of folding. Colors resolve through --dsw-*
-// tokens; geometry mirrors CodeBlock.
-
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState, useSyncExternalStore } from 'react'
 import clsx from 'clsx'
 import { writeClipboard } from './clipboard.ts'
+import { buildDiffHunkModel, type AlignedRow, type DiffHunkInput, type TextRange } from './diff/model.ts'
+import {
+  grammarLoadCount, subscribeGrammarLoaded, type HighlightSpan,
+} from './markdown/highlight.ts'
 import css from './DiffBlock.module.css'
 
-/**
- * Output lines shown before the height cap collapses the middle. Matches
- * {@link DEFAULT_TERMINAL_MAX_LINES} so a diff card and a terminal card cut a
- * long body at the same place.
- */
 export const DEFAULT_DIFF_MAX_LINES = 16
 
-/**
- * One file's change, in the shape {@link DiffBlock} draws. Structurally the
- * render-intent contract's `FileDiff`, redeclared here so this primitive stays
- * free of the tool contract (the terminal card's decoupling, applied to diffs).
- */
-export interface DiffHunk {
-  /** The changed file's path, drawn verbatim as the hunk's header (the tool's model-facing path). */
-  path: string
-  /** Prior content, or `null` for a new file / an overwrite (nothing on the removed side). */
-  oldText: string | null
-  /** Content after the change (the added side). */
-  newText: string
+export interface DiffHunk extends DiffHunkInput {}
+
+export interface DiffBlockLabels {
+  copy: string
+  copied: string
+  expand: (count: number) => string
+  collapse: string
+  expandContext: (count: number) => string
+  addedLine: (line: number | null, text: string) => string
+  deletedLine: (line: number | null, text: string) => string
+  contextLine: (line: number | null, text: string) => string
 }
 
 export interface DiffBlockProps {
-  /** One entry per applied hunk, in file order; empty renders nothing. */
-  diffs: DiffHunk[]
-  /** Height cap in body lines before the middle collapses (default {@link DEFAULT_DIFF_MAX_LINES}). */
+  diffs: readonly DiffHunk[]
   maxLines?: number | undefined
-  /** Extra class merged onto the wrapper (callers position; this component draws). */
   className?: string | undefined
+  showPath?: boolean | undefined
+  showFooter?: boolean | undefined
+  showCopy?: boolean | undefined
+  variant?: 'conversation' | 'review' | 'preview' | undefined
+  labels?: Partial<DiffBlockLabels> | undefined
 }
 
-/** A single rendered body line and its role, so the height cap slices a flat list. */
-interface DiffRow {
-  kind: 'path' | 'del' | 'add' | 'gap'
-  text: string
+const DEFAULT_LABELS: DiffBlockLabels = {
+  copy: '复制', copied: '复制成功',
+  expand: count => `展开 ${count} 行`,
+  collapse: '收起差异',
+  expandContext: count => `展开 ${count} 行`,
+  addedLine: (line, text) => `新增${line === null ? '' : `第 ${line} 行`}：${text}`,
+  deletedLine: (line, text) => `删除${line === null ? '' : `第 ${line} 行`}：${text}`,
+  contextLine: (line, text) => `未修改${line === null ? '' : `第 ${line} 行`}：${text}`,
 }
 
-/** Local exhaustiveness helper — this package does not depend on `dsh-llm`. */
-/* v8 ignore next 3 -- closed-union backstop; only reached if a row kind is forged */
-function assertNever(value: never): never {
-  throw new Error(`unreachable diff row kind: ${String(value)}`)
+interface FoldRow { kind: 'fold'; hidden: AlignedRow[]; key: string }
+interface LimitFoldRow { kind: 'limit-fold'; hiddenCount: number }
+type VisibleRow = AlignedRow | FoldRow | LimitFoldRow
+
+function representedRowCount(row: VisibleRow): number {
+  if (row.kind === 'fold') return row.hidden.length
+  if (row.kind === 'limit-fold') return row.hiddenCount
+  return 1
 }
 
-/** The dim class per row kind (path/gap chrome vs the diff's own +/- colors). */
-const ROW_CLASS: Record<DiffRow['kind'], string | undefined> = {
-  path: css.path,
-  del: css.del,
-  add: css.add,
-  gap: css.gap,
-}
-
-/**
- * Flatten the hunks into the body's rows plus the footer counts. A path header
- * opens each new file; a same-file second hunk (a scattered edit) opens with a
- * `⋯` gap instead of repeating the path. Every old-side line counts toward
- * `removed` and every new-side line toward `added`. The file count is of
- * DISTINCT paths, matching the TUI diff card's footer, so two hunks in one file
- * read as `1 file` on both front ends.
- * @param diffs - the hunks to render.
- * @returns the body rows, the +/- totals, and the distinct-file count.
- */
-function buildRows(diffs: DiffHunk[]): { rows: DiffRow[]; added: number; removed: number; files: number } {
-  const rows: DiffRow[] = []
-  const paths = new Set<string>()
-  let added = 0
-  let removed = 0
-  let prevPath: string | undefined
-  for (const diff of diffs) {
-    paths.add(diff.path)
-    if (diff.path !== prevPath) rows.push({ kind: 'path', text: diff.path })
-    else rows.push({ kind: 'gap', text: '⋯' })
-    prevPath = diff.path
-    if (diff.oldText !== null) {
-      for (const line of contentLines(diff.oldText)) {
-        rows.push({ kind: 'del', text: line })
-        removed++
-      }
-    }
-    for (const line of contentLines(diff.newText)) {
-      rows.push({ kind: 'add', text: line })
-      added++
-    }
+function foldedRows(rows: AlignedRow[], expanded: ReadonlySet<string>): VisibleRow[] {
+  const output: VisibleRow[] = []
+  let index = 0
+  while (index < rows.length) {
+    if (rows[index]?.kind !== 'context') { output.push(rows[index] as AlignedRow); index += 1; continue }
+    const start = index
+    while (rows[index]?.kind === 'context') index += 1
+    const run = rows.slice(start, index)
+    if (run.length < 15) { output.push(...run); continue }
+    const key = `${start}:${run.length}`
+    if (expanded.has(key)) { output.push(...run); continue }
+    output.push(...run.slice(0, 3), { kind: 'fold', hidden: run.slice(3, -3), key }, ...run.slice(-3))
   }
-  return { rows, added, removed, files: paths.size }
+  return output
 }
 
-/**
- * Split a side's text into its content lines. Empty text is zero lines (a full
- * deletion's `newText` or a create's absent `oldText` side draws nothing), and a
- * single trailing newline is a line terminator rather than an extra empty line —
- * the same terminator rule TerminalBlock applies to command output. An interior
- * blank line (a genuine `\n\n`) survives.
- * @param text - the removed or added side's text.
- * @returns the content lines, without the terminating newline.
- */
-function contentLines(text: string): string[] {
-  if (text === '') return []
-  const body = text.endsWith('\n') ? text.slice(0, -1) : text
-  return body.split('\n')
+function rowLineNumber(row: AlignedRow): number | null {
+  return row.kind === 'del' ? row.oldLineNo : row.newLineNo
 }
 
-/**
- * The diff text a reader copies: each row's `-`/`+`/path/gap prefix and its
- * content, exactly what the card shows. The removed and added blocks are the
- * change; the path headers keep a multi-file copy attributable.
- * @param rows - the flattened body rows.
- * @returns the diff as plain text.
- */
-function copyText(rows: DiffRow[]): string {
-  return rows.map((row) => {
-    switch (row.kind) {
-      case 'del': return `- ${row.text}`
-      case 'add': return `+ ${row.text}`
-      case 'path': return row.text
-      case 'gap': return row.text
-      /* v8 ignore next -- closed-union backstop; only reached if a row kind is forged */
-      default: return assertNever(row.kind)
-    }
+interface RenderSegment { text: string; style: HighlightSpan['style']; marked: boolean }
+
+function renderSegments(text: string, syntax: readonly HighlightSpan[], marks: readonly TextRange[]): RenderSegment[] {
+  const boundaries = new Set<number>([0, text.length])
+  const syntaxRanges: Array<{ start: number; end: number; style: HighlightSpan['style'] }> = []
+  let offset = 0
+  for (const span of syntax) {
+    const end = offset + span.text.length
+    boundaries.add(offset); boundaries.add(end)
+    syntaxRanges.push({ start: offset, end, style: span.style })
+    offset = end
+  }
+  for (const mark of marks) { boundaries.add(mark.start); boundaries.add(mark.end) }
+  const sorted = [...boundaries].filter(value => value >= 0 && value <= text.length).sort((a, b) => a - b)
+  const result: RenderSegment[] = []
+  for (let index = 0; index < sorted.length - 1; index += 1) {
+    const start = sorted[index]
+    const end = sorted[index + 1]
+    if (start === undefined || end === undefined || end <= start) continue
+    result.push({
+      text: text.slice(start, end),
+      style: syntaxRanges.find(range => range.start <= start && range.end >= end)?.style ?? {},
+      marked: marks.some(mark => mark.start < end && mark.end > start),
+    })
+  }
+  return result
+}
+
+function copyText(diffs: readonly DiffHunk[]): string {
+  return diffs.flatMap(diff => {
+    const model = buildDiffHunkModel(diff)
+    return [diff.path, ...model.rows.map(row => `${row.kind === 'add' ? '+' : row.kind === 'del' ? '-' : ' '} ${row.text}`)]
   }).join('\n')
 }
 
-/**
- * Render a file mutation as an inline diff surface.
- * @param props - see {@link DiffBlockProps}.
- * @returns the diff block element.
- */
-export function DiffBlock({ diffs, maxLines = DEFAULT_DIFF_MAX_LINES, className }: DiffBlockProps) {
-  const { rows, added, removed, files } = useMemo(() => buildRows(diffs), [diffs])
-  const [expanded, setExpanded] = useState(false)
-  const [copied, setCopied] = useState(false)
+function HunkCard({
+  model, maxLines, showPath, labels,
+}: {
+  model: ReturnType<typeof buildDiffHunkModel>
+  maxLines: number
+  showPath: boolean
+  labels: DiffBlockLabels
+}) {
+  const [expandedLimit, setExpandedLimit] = useState(false)
+  const [expandedContext, setExpandedContext] = useState<ReadonlySet<string>>(new Set())
+  const folded = foldedRows(model.rows, expandedContext)
+  const capped = folded.length > maxLines && !expandedLimit
+  const availableRows = Math.max(0, maxLines - 1)
+  const head = Math.ceil(availableRows / 2)
+  const tail = availableRows - head
+  const hiddenRows = capped ? folded.slice(head, folded.length - tail) : []
+  const hiddenCount = hiddenRows.reduce((total, row) => total + representedRowCount(row), 0)
+  const visible: VisibleRow[] = capped
+    ? [
+        ...folded.slice(0, head),
+        { kind: 'limit-fold', hiddenCount },
+        ...(tail === 0 ? [] : folded.slice(-tail)),
+      ]
+    : folded
 
+  const renderRow = (row: VisibleRow, index: number) => {
+    if (row.kind === 'limit-fold') return (
+      <button
+        key="limit-fold"
+        type="button"
+        className={css.fold}
+        aria-label={labels.expand(row.hiddenCount)}
+        onClick={() => { setExpandedLimit(true) }}
+      >
+        {`⋯ ${labels.expand(row.hiddenCount)}`}
+      </button>
+    )
+    if (row.kind === 'fold') return (
+      <button
+        key={row.key}
+        type="button"
+        className={css.fold}
+        aria-label={labels.expandContext(row.hidden.length)}
+        onClick={() => {
+          setExpandedContext(current => new Set([...current, row.key]))
+          setExpandedLimit(true)
+        }}
+      >
+        {`⋯ ${labels.expandContext(row.hidden.length)}`}
+      </button>
+    )
+    const number = rowLineNumber(row)
+    const segments = renderSegments(row.text, row.syntax, row.marks)
+    const accessibleLabel = row.kind === 'add'
+      ? labels.addedLine(number, row.text)
+      : row.kind === 'del'
+        ? labels.deletedLine(number, row.text)
+        : labels.contextLine(number, row.text)
+    return (
+      <div
+        key={`${row.kind}:${number ?? 'x'}:${index}`}
+        role="listitem"
+        aria-label={accessibleLabel}
+        className={clsx(css.line, css[row.kind])}
+        data-diff-row={row.kind}
+      >
+        <span className={css.gutter} aria-hidden>{number ?? ''}</span>
+        <span className={css.sign} aria-hidden>{row.kind === 'add' ? '+' : row.kind === 'del' ? '-' : ''}</span>
+        <span className={css.content} aria-hidden>
+          {segments.length === 0 ? row.text : segments.map((segment, segmentIndex) => (
+            <span
+              key={segmentIndex}
+              data-code-token=""
+              className={segment.marked ? (row.kind === 'add' ? css.wordAdd : css.wordDel) : undefined}
+              style={segment.style}
+            >
+              {segment.text}
+            </span>
+          ))}
+        </span>
+      </div>
+    )
+  }
+
+  return (
+    <section className={css.hunk} data-diff-hunk="">
+      {showPath && (
+        <header className={css.path}>
+          <span>{model.path}</span>
+          <span className={css.counts}><b>{`+${model.added}`}</b><i>{`-${model.removed}`}</i></span>
+        </header>
+      )}
+      <div className={css.rows} role="list" aria-label={model.path}>{visible.map(renderRow)}</div>
+    </section>
+  )
+}
+
+export function DiffBlock({
+  diffs,
+  maxLines = DEFAULT_DIFF_MAX_LINES,
+  className,
+  showPath = true,
+  showFooter = true,
+  variant = 'conversation',
+  showCopy = variant !== 'preview',
+  labels: labelOverrides,
+}: DiffBlockProps) {
+  const loaded = useSyncExternalStore(subscribeGrammarLoaded, grammarLoadCount, grammarLoadCount)
+  const models = useMemo(() => diffs.map(buildDiffHunkModel), [diffs, loaded])
+  const labels = { ...DEFAULT_LABELS, ...labelOverrides }
+  const [copied, setCopied] = useState(false)
+  const total = models.reduce((sum, model) => ({ added: sum.added + model.added, removed: sum.removed + model.removed }), { added: 0, removed: 0 })
+  const files = new Set(models.map(model => model.path)).size
   const onCopy = useCallback(() => {
     if (copied) return
-    void writeClipboard(copyText(rows)).then((ok) => {
+    void writeClipboard(copyText(diffs)).then(ok => {
       if (!ok) return
       setCopied(true)
       window.setTimeout(() => { setCopied(false) }, 1000)
     })
-  }, [copied, rows])
-
-  const onToggle = useCallback(() => { setExpanded(value => !value) }, [])
-
-  if (rows.length === 0) return null
-
-  const hidden = rows.length - maxLines
-  const capped = hidden > 0 && !expanded
-  // Same split arithmetic as TerminalBlock and the TUI transcript's collapsed
-  // card, so a body's head and tail slices agree across the front ends.
-  const headLines = Math.ceil(maxLines / 2)
-  const tailLines = maxLines - headLines
-  const head = capped ? rows.slice(0, headLines) : rows
-  const tail = capped ? rows.slice(rows.length - tailLines) : []
-
+  }, [copied, diffs])
+  if (diffs.length === 0) return null
   return (
-    <div className={clsx(css.block, className)} data-diff="">
-      <button type="button" className={css.copyButton} onClick={onCopy}>
-        {copied ? '复制成功' : '复制'}
-      </button>
+    <div className={clsx(css.block, css[variant], className)} data-diff="" data-diff-block="">
+      {showCopy && <button type="button" className={css.copyButton} onClick={onCopy}>{copied ? labels.copied : labels.copy}</button>}
       <div className={css.body}>
-        {head.map((row, index) => (
-          <div key={index} className={clsx(css.line, ROW_CLASS[row.kind])}>{row.text}</div>
-        ))}
-        {hidden > 0 && (
-          <button
-            type="button"
-            className={css.expand}
-            aria-expanded={expanded}
-            aria-label={expanded ? '收起差异' : `展开其余 ${hidden} 行差异`}
-            onClick={onToggle}
-          >
-            {expanded ? '收起' : `… 其余 ${hidden} 行`}
-          </button>
-        )}
-        {tail.map((row, index) => (
-          <div key={index} className={clsx(css.line, ROW_CLASS[row.kind])}>{row.text}</div>
-        ))}
+        {models.map((model, index) => <HunkCard key={`${model.path}:${model.oldStart ?? 'x'}:${model.newStart ?? 'x'}:${index}`} model={model} maxLines={maxLines} showPath={showPath} labels={labels} />)}
       </div>
-      <div className={css.footer}>└ +{added} -{removed} · {files} file{files === 1 ? '' : 's'}</div>
+      {showFooter && <div className={css.footer}>{`└ +${total.added} -${total.removed} · ${files} ${files === 1 ? 'file' : 'files'}`}</div>}
     </div>
   )
 }

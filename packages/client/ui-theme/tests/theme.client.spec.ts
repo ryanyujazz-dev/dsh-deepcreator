@@ -9,6 +9,12 @@ import type {
 } from '@ryanyujazz/dsh-client-ui-theme/client'
 import { ThemeRuntime } from '@ryanyujazz/dsh-client-ui-theme/client'
 
+const settings = (overrides: Partial<ThemeSettings> = {}): ThemeSettings => ({
+  preference: 'system', transcriptTextSize: 'standard',
+  lightCodeTheme: 'deepcreator-light', darkCodeTheme: 'deepcreator-dark', codeFont: 'system',
+  ...overrides,
+})
+
 const make = (host = stubSettingsScope<ThemeSettings>()): {
   ctx: Context
   theme: ThemeRuntime
@@ -50,7 +56,7 @@ describe('ThemeRuntime', () => {
 
     host.publish({
       status: 'ready',
-      value: { preference: 'dark', transcriptTextSize: 'small' },
+      value: settings({ preference: 'dark', transcriptTextSize: 'small' }),
       revision: 1,
       writable: true,
     })
@@ -97,19 +103,35 @@ describe('ThemeRuntime', () => {
     expect(host.set).toHaveBeenCalledOnce()
   })
 
+  it('persists independent light/dark syntax themes and the shared code font', () => {
+    const { theme, host } = make()
+    theme.setLightCodeTheme('github-light')
+    theme.setDarkCodeTheme('one-dark')
+    theme.setCodeFont('jetbrains-mono')
+    expect(theme.getTheme().codeAppearance).toMatchObject({
+      activeThemeId: 'github-light', lightThemeId: 'github-light', darkThemeId: 'one-dark', fontId: 'jetbrains-mono',
+    })
+    expect(theme.getTheme().active.tokens['--ds-font-family-code']).toContain('JetBrains Mono')
+    theme.setTheme('dark')
+    expect(theme.getTheme().codeAppearance.activeThemeId).toBe('one-dark')
+    expect(host.set).toHaveBeenCalledWith('lightCodeTheme', 'github-light')
+    expect(host.set).toHaveBeenCalledWith('darkCodeTheme', 'one-dark')
+    expect(host.set).toHaveBeenCalledWith('codeFont', 'jetbrains-mono')
+  })
+
   it('adopts a published Host section without writing it back', () => {
     const { theme, events, host } = make()
-    host.publish({ status: 'ready', value: { preference: 'dark', transcriptTextSize: 'standard' }, revision: 1, writable: true })
+    host.publish({ status: 'ready', value: settings({ preference: 'dark' }), revision: 1, writable: true })
     expect(theme.getTheme().preference).toBe('dark')
     expect(events).toHaveLength(1)
     expect(host.set).not.toHaveBeenCalled()
-    host.publish({ value: { preference: 'dark', transcriptTextSize: 'standard' }, revision: 2 })
+    host.publish({ value: settings({ preference: 'dark' }), revision: 2 })
     expect(events).toHaveLength(1)
   })
 
   it('adopts a section already standing at construction', () => {
     const host = stubSettingsScope<ThemeSettings>()
-    host.publish({ status: 'ready', value: { preference: 'dark', transcriptTextSize: 'standard' }, revision: 1, writable: true })
+    host.publish({ status: 'ready', value: settings({ preference: 'dark' }), revision: 1, writable: true })
     const { theme } = make(host)
     expect(theme.getTheme().preference).toBe('dark')
   })

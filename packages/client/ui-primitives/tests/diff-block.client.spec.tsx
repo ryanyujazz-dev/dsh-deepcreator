@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // DiffBlock: the per-file hunk rows (path header, removed block, added block),
 // the same-file second-hunk gap separator, the `+A -R · N file(s)` footer and
-// its singular/plural, the head/tail height cap and its expand control, the
+// its singular/plural, context and head/tail inline FoldRows, the
 // empty-diffs null render, and the copy control writing the prefixed diff text
 // on both the accepted and the refused clipboard paths. writeClipboard's own
 // return contract is pinned in terminal-block.spec.tsx (the shared return contract), so
@@ -9,7 +9,9 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { DEFAULT_DIFF_MAX_LINES, DiffBlock, type DiffHunk } from '../src/index.ts'
+import {
+  buildDiffHunkModel, DEFAULT_DIFF_MAX_LINES, DiffBlock, parseUnifiedDiff, type DiffHunk,
+} from '../src/index.ts'
 
 afterEach(cleanup)
 
@@ -24,7 +26,8 @@ function bodyRows(container: HTMLElement): string[] {
 
 /** Only the changed rows (add/del), excluding the path header and gap chrome. */
 function changeRows(container: HTMLElement): string[] {
-  return [...container.querySelectorAll('[class*="_del_"], [class*="_add_"]')].map(row => row.textContent ?? '')
+  return [...container.querySelectorAll('[data-diff-row="del"], [data-diff-row="add"]')]
+    .map(row => row.lastElementChild?.textContent ?? '')
 }
 
 /** `count` numbered added lines as one hunk's newText. */
@@ -33,6 +36,53 @@ function added(count: number): string {
 }
 
 describe('DiffBlock structure', () => {
+  it('advances absolute old/new line numbers independently and marks changed words', () => {
+    const model = buildDiffHunkModel({
+      path: 'a.ts', oldStart: 40, newStart: 40,
+      oldText: 'const stable = true\nconst value = "old"',
+      newText: 'const stable = true\nconst value = "new"',
+    })
+    expect(model.rows.map(row => [row.kind, row.oldLineNo, row.newLineNo])).toEqual([
+      ['context', 40, 40], ['del', 41, null], ['add', null, 41],
+    ])
+    expect(model.rows[1]?.marks.length).toBeGreaterThan(0)
+    expect(model.rows[2]?.marks.length).toBeGreaterThan(0)
+  })
+
+  it('exposes change semantics and absolute line numbers to screen readers', () => {
+    render(<DiffBlock diffs={[{ path: 'a.ts', oldStart: 40, newStart: 40, oldText: 'old', newText: 'new' }]} />)
+    expect(screen.getByRole('listitem', { name: '删除第 40 行：old' })).toBeTruthy()
+    expect(screen.getByRole('listitem', { name: '新增第 40 行：new' })).toBeTruthy()
+  })
+
+  it('skips word refinement for one replacement block over the performance limit', () => {
+    const oldText = Array.from({ length: 50 }, (_value, index) => `old-${index}-${'x'.repeat(40)}`).join('\n')
+    const newText = Array.from({ length: 50 }, (_value, index) => `new-${index}-${'y'.repeat(40)}`).join('\n')
+    const model = buildDiffHunkModel({ path: 'large.ts', oldText, newText })
+    expect(model.rows.filter(row => row.kind !== 'context').every(row => row.marks.length === 0)).toBe(true)
+  })
+
+  it('parses unified hunk starts, rename paths, and binary state', () => {
+    const files = parseUnifiedDiff([
+      'diff --git a/old.ts b/new.ts',
+      'similarity index 80%',
+      'rename from old.ts',
+      'rename to new.ts',
+      '--- a/old.ts',
+      '+++ b/new.ts',
+      '@@ -10,2 +12,2 @@',
+      '-const oldValue = 1',
+      '+const newValue = 2',
+      ' context',
+      '',
+      'diff --git a/image.png b/image.png',
+      'Binary files a/image.png and b/image.png differ',
+    ].join('\n'))
+    expect(files[0]).toMatchObject({ oldPath: 'old.ts', path: 'new.ts', added: 1, removed: 1 })
+    expect(files[0]?.hunks[0]).toMatchObject({ oldStart: 10, newStart: 12 })
+    expect(files[1]).toMatchObject({ path: 'image.png', binary: true })
+  })
+
   it('renders a create as a path header and an added block (no removed side)', () => {
     const diffs: DiffHunk[] = [{ path: 'notes/new.txt', oldText: null, newText: 'hello\nworld' }]
     const { container } = render(<DiffBlock diffs={diffs} />)
@@ -51,15 +101,14 @@ describe('DiffBlock structure', () => {
     expect(changeRows(container)).toEqual(['old', 'new'])
   })
 
-  it('opens a same-file second hunk with a gap instead of repeating the path', () => {
+  it('renders every distant hunk as an independent card with its full path', () => {
     const diffs: DiffHunk[] = [
       { path: 'a.ts', oldText: 'x', newText: 'y' },
       { path: 'a.ts', oldText: 'p', newText: 'q' },
     ]
     const { container } = render(<DiffBlock diffs={diffs} />)
-    // One path header, one gap row.
-    expect(container.querySelectorAll('[class*="_path_"]').length).toBe(1)
-    expect(container.querySelectorAll('[class*="_gap_"]').length).toBe(1)
+    expect(container.querySelectorAll('[data-diff-hunk]').length).toBe(2)
+    expect(container.querySelectorAll('[class*="_path_"]').length).toBe(2)
   })
 
   it('opens a new file with its own path header', () => {
@@ -69,7 +118,7 @@ describe('DiffBlock structure', () => {
     ]
     const { container } = render(<DiffBlock diffs={diffs} />)
     expect(container.querySelectorAll('[class*="_path_"]').length).toBe(2)
-    expect(container.querySelectorAll('[class*="_gap_"]').length).toBe(0)
+    expect(container.querySelectorAll('[data-diff-hunk]').length).toBe(2)
   })
 
   it('renders nothing for empty diffs', () => {
@@ -116,26 +165,34 @@ describe('DiffBlock footer', () => {
 })
 
 describe('DiffBlock height cap', () => {
-  it('shows head and tail with an expand control past the cap, then all lines expanded', () => {
+  it('inserts an inline FoldRow between the capped head and tail', () => {
     // One added line over the default cap forces the collapse.
-    const diffs: DiffHunk[] = [{ path: 'a.ts', oldText: null, newText: added(DEFAULT_DIFF_MAX_LINES) }]
-    // The path header counts as a row, so a body of maxLines added lines plus
-    // the header is one over the cap.
+    const diffs: DiffHunk[] = [{ path: 'a.ts', oldText: null, newText: added(DEFAULT_DIFF_MAX_LINES + 1) }]
     const { container } = render(<DiffBlock diffs={diffs} />)
-    const toggle = screen.getByRole('button', { name: /展开其余/ })
-    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    const toggle = screen.getByRole('button', { name: '展开 2 行' })
     // Collapsed shows fewer rows than the full body.
     const collapsedCount = bodyRows(container).length
     expect(collapsedCount).toBeLessThan(DEFAULT_DIFF_MAX_LINES + 1)
     fireEvent.click(toggle)
-    expect(screen.getByRole('button', { name: '收起差异' }).getAttribute('aria-expanded')).toBe('true')
-    expect(bodyRows(container).length).toBeGreaterThan(collapsedCount)
+    expect(screen.queryByRole('button', { name: '展开 2 行' })).toBeNull()
+    expect(bodyRows(container)).toHaveLength(DEFAULT_DIFF_MAX_LINES + 1)
   })
 
   it('shows no expand control at or under the cap', () => {
     const diffs: DiffHunk[] = [{ path: 'a.ts', oldText: null, newText: added(4) }]
     render(<DiffBlock diffs={diffs} maxLines={16} />)
-    expect(screen.queryByRole('button', { name: /展开其余|收起差异/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /展开 \d+ 行/ })).toBeNull()
+  })
+
+  it('folds a long context run in place and expands only that FoldRow', () => {
+    const stable = Array.from({ length: 20 }, (_value, index) => `stable ${index + 1}`).join('\n')
+    const { container } = render(<DiffBlock diffs={[{ path: 'stable.ts', oldText: stable, newText: stable }]} maxLines={16} />)
+    const toggle = screen.getByRole('button', { name: '展开 14 行' })
+
+    expect(bodyRows(container)).toHaveLength(6)
+    fireEvent.click(toggle)
+    expect(screen.queryByRole('button', { name: '展开 14 行' })).toBeNull()
+    expect(bodyRows(container)).toHaveLength(20)
   })
 })
 
@@ -152,7 +209,7 @@ describe('DiffBlock copy', () => {
     const copy = screen.getByRole('button', { name: '复制' })
     await act(async () => { fireEvent.click(copy) })
     // Path header, del/add prefixes, and the same-file gap all reach the clipboard.
-    expect(writeText).toHaveBeenCalledWith('a.ts\n- old\n+ new\n⋯\n- p\n+ q')
+    expect(writeText).toHaveBeenCalledWith('a.ts\n- old\n+ new\na.ts\n- p\n+ q')
     expect(screen.getByRole('button', { name: '复制成功' })).toBeTruthy()
     await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
     expect(screen.getByRole('button', { name: '复制' })).toBeTruthy()

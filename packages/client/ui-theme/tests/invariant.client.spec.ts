@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { apply as nodeApply } from '@ryanyujazz/dsh-client-ui-theme'
 import { apply as clientApply, inject, ThemeRuntime } from '@ryanyujazz/dsh-client-ui-theme/client'
@@ -10,6 +12,24 @@ import InvariantRegistry from '@deepseek-ai/dsh-invariants'
 import { stubSettingsScope } from '@deepseek-ai/dsh-client-test-runtime'
 
 describe('invariant companion', () => {
+  it('loads the code-theme stylesheet from the client entry', () => {
+    const packageRoot = resolve(process.cwd(), 'packages/client/ui-theme')
+    const entry = readFileSync(resolve(packageRoot, 'src/client/index.ts'), 'utf8')
+    const stylesheet = readFileSync(resolve(packageRoot, 'src/styles/shiki.css'), 'utf8')
+
+    expect(entry).toContain("import '../styles/shiki.css'")
+    for (const themeId of [
+      'deepcreator-light',
+      'deepcreator-dark',
+      'github-light',
+      'github-dark',
+      'one-light',
+      'one-dark',
+    ]) {
+      expect(stylesheet).toContain(`[data-code-theme='${themeId}']`)
+    }
+  })
+
   it('registers under the package name with an empty installer', async () => {
     const ctx = new Context()
     await ctx.plugin(InvariantRegistry, { enabled: true })
