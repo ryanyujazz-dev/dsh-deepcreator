@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render } from '@testing-library/react'
+import { cleanup, fireEvent, render, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   WorkbenchPanelIconButton, WorkbenchPanelShell,
@@ -19,8 +19,8 @@ function renderShell() {
         typeId="terminal"
         label="终端"
         route="instance"
-        tabs={['shell-1']}
-        activeInstanceId="shell-1"
+        tabs={['shell-1', 'shell-2']}
+        activeInstanceId="shell-2"
         supportsHome
         focused={false}
         backLabel="返回终端"
@@ -53,13 +53,16 @@ describe('shared Workbench PanelShell', () => {
     const { view } = renderShell()
     const create = await view.findByRole('button', { name: '新建' })
     const refresh = await view.findByRole('button', { name: '刷新' })
-    const title = view.getByText('终端')
-    const tab = view.getByRole('tab', { name: 'shell-1' })
+    const firstTab = view.getByRole('tab', { name: 'shell-1' })
+    const latestTab = view.getByRole('tab', { name: 'shell-2' })
+    const tablist = view.getByRole('tablist')
     const back = view.getByRole('button', { name: '返回终端' })
 
-    expect(title.compareDocumentPosition(create) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(create.compareDocumentPosition(tab) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(tab.compareDocumentPosition(refresh) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(firstTab.compareDocumentPosition(latestTab) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(latestTab.compareDocumentPosition(create) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(within(tablist).queryByRole('button', { name: '新建' })).toBeNull()
+    expect(create.compareDocumentPosition(refresh) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(view.queryByText('终端')).toBeNull()
     expect(refresh.compareDocumentPosition(back) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(view.getByText('Panel content')).toBeTruthy()
   })

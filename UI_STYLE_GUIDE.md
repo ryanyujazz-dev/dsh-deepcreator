@@ -43,22 +43,22 @@
 
 ## Workbench 右侧面板
 
-- Workbench Mosaic／details 只负责几何和缩放，本身不绘制外框。每个 cell 必须使用公共 `WorkbenchPanelShell`：四边各留 3px，使用 10px 圆角与 1px semantic border，并由这个子容器统一裁切 Header 和 Body。
+- Workbench Mosaic／details 只负责几何和缩放，本身不绘制外框；Workbench 根容器四边统一保留 2px 内边距。每个 cell 必须使用公共 `WorkbenchPanelShell`：相对 cell 四边各留 2px，使用 10px 圆角与 1px semantic border，并由这个子容器统一裁切 Header 和 Body。
 - Workbench Panel Header 固定为 42px（比 Conversation Header 低 6px），保留 macOS 空白拖拽语义；Header 内的按钮、tabs 与输入框一律 `no-drag`。Header 下方必须直接进入内容区，Provider 不得再绘制副标题栏、元信息栏、地址栏或 Terminal 工具栏；需要保留的信息应进入正文，需要保留的操作应挂到公共 Header。
-- Header 标题与「新建 Tab」加号位于左侧，tabs 占据中间可滚动空间；Provider 的其他操作以及返回、展开／收起和关闭均在右侧。所有 Header 图标继续遵守 14px glyph、28×28 命中框和 4px 间距。
+- 无 tabs 时 Header 标题与「新建 Tab」加号位于左侧；存在 tabs 时不重复显示类型标题，所有类型必须复用公共 `WorkbenchPanelTabs`。Tab 使用 32px 高、10px 圆角的轻量交互底色，活动态以更强一阶的交互表面和 primary 文字表达，不再绘制底线；关闭按钮常显。Tabs 占据左侧可滚动空间，「新建 Tab」加号紧跟最新标签的右侧；Provider 的其他操作以及返回、展开／收起和关闭均在右侧。所有 Header 图标继续遵守 14px glyph、28×28 命中框和 4px 间距。
 - Panel Header 的展开与收起按钮分别直接使用产品提供的 `arrow_up_left_and_arrow_down_right.svg` 与 `arrow_down_right_and_arrow_up_left.svg` 原始方向，不做镜像，并统一使用 `currentColor`；展开后的按钮 Tooltip 为“收起面板”。
 - 类型入口位于 `conversation.session.header.utilities`，固定优先级为 Activity、Artifact、Review、Terminal、Preview，末尾固定保留 28×28 的「更多」按钮。入口使用 28×28 圆形命中框；关闭态透明且为 tertiary 图标，hover 使用通用交互背景，开启态保持透明背景、仅将图标切换为 `--dsw-alias-label-primary`：深色主题下更白，浅色主题下更黑。开启态不得使用业务蓝或白色填充背景。
 - 五类产品图标保持极简语义：Activity 为两行且每行都是「小圆圈＋横线」，Artifact 为长／短／中三条横线，Review 为圆角方框内的上下 2:1 分区——加号占上方约 2/3、减号占底部约 1/3，Terminal 为无外框的折角提示符与一条横线，Preview 使用产品提供的 `play_fill.svg` 原始轮廓，转换为空心 `currentColor` 描边后在 16px 画布内居中缩放至 82%。合并态「面板」按钮继续使用项目内统一的 Workbench 面板图标。
 - 五个类型入口是不可拆分的整组：空间足够时全部内联；整组无法容纳时全部收为一个独立的 28×28「面板」按钮。点击「面板」弹出完整类型菜单，当前可见类型显示勾选；空间恢复后自动还原五个入口。两种形态只投影同一可见性状态，不改变 Workbench 拓扑。
 - 「更多」使用省略号图标，Tooltip 与 `aria-label` 均为「更多」。菜单仅分为「渲染模式」「会话」两组：渲染模式始终在首组，Session log 下载只出现在「会话」组；Workbench 类型不得进入「更多」。
 - `aria-pressed` 只表示该类型 Group 此刻是否实际显示；Tooltip 必须使用“打开…面板／隐藏…面板”语义。多个类型同时显示时允许多个按钮同时点亮。因 Stage 变窄而落到右侧不可见列的类型与用户隐藏的类型都显示关闭态；点击前者会把它与真实拓扑左上角交换，点击后者会重新加入拓扑。
-- 同类型实例进入同一 Group Header 的 tabs，不新建分屏格。活动 tab 只使用 2px business/info 色底线；Tab 关闭按钮在 hover、focus-within 时出现，并保持键盘可达。
+- 同类型实例进入同一 Group Header 的公共 pill tabs，不新建分屏格。活动 tab 使用 `--dsw-alias-interactive-bg-active` 与 primary 文字，普通 tab 使用 `--dsw-alias-interactive-bg-hover`；关闭按钮常显并保持键盘可达。
 - 分割线使用透明的 4px 可命中区域，视觉分隔由相邻 `WorkbenchPanelShell` 的 margin 与圆角边框形成；支持 pointer resize 与方向对应的方向键 resize，focus-visible 使用 business primary outline。布局固定为每列最多上下两个 Group：1／2 个类型为一列，3／4 个类型为两列，5 个类型为三列，不为数量变化制造独立卡片阴影。
 - 第一列宽由首个类型决定：Activity／Artifact／Terminal 为 Stage 的 1/3，Review／Preview（内部 `browser` type）为 Stage 的 1/2；第二种类型沿用该列宽。新增第三种类型时两列等宽且 Workbench 为 Stage 的 1/2，新增第五种类型时三列等宽且 Workbench 为 Stage 的 2/3。每个 Panel 列的宽度下限为 150px，Conversation 的宽度下限为 360px。
 - 删除一个 Group 时同列 sibling 填满高度；整列为空时仅移除该列，其他列保持实际像素宽度并整体贴住 Stage 右侧。Stage 变窄时从右至左隐藏整列，重新变宽后按当前真实拓扑恢复。点击响应式隐藏类型会与左上角类型交换真实位置；新增奇数列不足 150px 时，新类型原子覆盖左上角类型。
 - 手动 Focus Layer 仍覆盖 Conversation Header、正文与 Workbench，但不覆盖 Sidebar；Escape 恢复 Mosaic。隐藏与响应式不可见 Group 均保持 Provider mounted，不得把可见性切换误当成资源关闭。
 - Panel Body 的空态、disconnected 与 unavailable 必须明确区分。没有 Host Remote 时不得伪造 Artifact、Git、PTY 或 Browser 状态，也不得展示实际不支持的 stage/discard/commit 动作。
-- Terminal Body 使用全尺寸内嵌终端画布，不再出现独立命令输入框、发送按钮或逐行输出 `<pre>`。画布消费紧凑代码字体，获得焦点后直接接收 raw-key，保留 ANSI、光标、选择、滚动与全屏 TUI；Panel resize 必须同步 PTY cols/rows。隐藏 Terminal Group 不终止进程，明确关闭 Tab 才执行 Provider 的终止确认。
+- Terminal Group 首次初始化且没有已打开 tabs 时必须自动进入一个终端 Tab：优先恢复当前 Session 下仍在运行的终端，没有可恢复实例才自动 spawn；用户不需要先点加号。该初始化每个 Session 只执行一次，之后关闭最后一个 Tab 不得立即强制重建，加号只用于创建额外终端。Terminal 不提供会话管理 Home／返回按钮，也不在 Header 提供 SIGINT 或终止按钮；所有 tabs 关闭后只显示简洁空态。关闭 Terminal Tab 直接终止并销毁对应 PTY，不显示确认弹窗；关闭 Terminal Group／面板只切换为隐藏，不终止任何 PTY 或清除 tabs。Terminal Body 使用全尺寸内嵌终端画布，不再出现独立命令输入框、发送按钮或逐行输出 `<pre>`。画布消费紧凑代码字体，获得焦点后直接接收 raw-key，保留 ANSI、光标、选择、滚动与全屏 TUI；Panel resize 必须同步 PTY cols/rows。
 
 ## 侧边栏
 

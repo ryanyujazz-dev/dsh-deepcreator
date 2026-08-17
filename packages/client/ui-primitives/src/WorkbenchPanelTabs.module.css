@@ -1,0 +1,94 @@
+.strip,
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: var(--dsh-icon-toolbar-gap, 4px);
+  min-width: 0;
+  height: 100%;
+  -webkit-app-region: no-drag;
+}
+
+.strip {
+  flex: 1;
+  overflow: hidden;
+}
+
+.tabs {
+  flex: 0 1 auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar { display: none; }
+
+.tab {
+  display: flex;
+  align-items: center;
+  flex: 0 1 160px;
+  min-width: 56px;
+  height: 32px;
+  box-sizing: border-box;
+  overflow: hidden;
+  border-radius: 10px;
+  color: var(--dsw-alias-label-secondary);
+  background: var(--dsw-alias-interactive-bg-hover);
+  -webkit-app-region: no-drag;
+}
+
+.tab:hover,
+.tabActive {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-active);
+}
+
+.tabLabel {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 4px 0 10px;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.tabLabel span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--dsw-font-sidebar-font-size);
+  font-weight: 400;
+  line-height: var(--dsw-font-sidebar-line-height);
+}
+
+.tabClose {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.tabClose:hover { background: var(--dsw-alias-interactive-bg-hover); }
+
+.tabLabel:focus-visible,
+.tabClose:focus-visible {
+  outline: 1px solid var(--dsw-alias-state-business-primary);
+  outline-offset: -2px;
+}
+
+.trailingAction {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  -webkit-app-region: no-drag;
+}

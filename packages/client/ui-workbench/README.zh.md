@@ -4,7 +4,7 @@
 
 Provider 通过 `ctx.workbench.registerType()` 注册 `PanelTypeDefinition`，并向 `deepcreator.workbench.panel`、`deepcreator.workbench.panel-icon` 注册 keyed renderer；Artifact 内容 renderer 使用 `deepcreator.workbench.artifact.renderer`。这些注册必须成组撤销。`initialWidthRatio` 声明首开所占 Stage 比例：Activity／Artifact／Terminal 为 1/3，Review／Preview 为 1/2（Preview 保留内部 `browser` id）。
 
-每个 Mosaic cell 都统一使用 ui-primitives 导出的 `WorkbenchPanelShell`。details 列与 Tracks 只负责几何，不绘制父级外框；公共 shell 提供四边各 3px 的留白、圆角 semantic border、42px Header、tabs 与 Body 边界。Provider 正文从 Header 下方直接开始，不再渲染第二层工具栏。Provider 通过普通的 `contributeHeaderActions()` owner callback 提交 Header 节点，并使用 `WorkbenchPanelIconButton`：新建 Tab 的加号进入左侧，其余操作与返回、Focus、隐藏统一进入右侧。
+每个 Mosaic cell 都统一使用 ui-primitives 导出的 `WorkbenchPanelShell`。details 列与 Tracks 只负责几何，不绘制父级外框；Workbench 根容器提供四边 2px 内边距，公共 shell 再提供相对 cell 四边各 2px 的留白、圆角 semantic border、42px Header 与 Body 边界。同类型实例统一使用公共 `WorkbenchPanelTabs` pill 标签；存在标签时不再重复显示类型标题，新建 Tab 的加号紧跟最新标签。Provider 正文从 Header 下方直接开始，不再渲染第二层工具栏。Provider 通过普通的 `contributeHeaderActions()` owner callback 提交 Header 节点，并使用 `WorkbenchPanelIconButton`：新建 Tab 的加号进入 tabs 尾部，其余操作与返回、Focus、隐藏统一进入右侧。
 
 拓扑是确定性的：第二种类型上下分割第一列且不改变列宽；第三种类型创建两列等宽布局，Workbench 为 Stage 的 1/2；第四种类型分割第二列；第五种类型创建三列等宽布局，Workbench 为 Stage 的 2/3。删除一个格时同列 sibling 填满高度；整列为空时仅移除该列，其他列保持像素宽度并整体贴右。每个面板列的宽度下限为 150px，Conversation 的宽度下限为 360px。
 
