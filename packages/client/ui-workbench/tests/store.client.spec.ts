@@ -43,7 +43,7 @@ describe('Workbench store topology', () => {
       if (index === 2) {
         const state = store.store.getSnapshot()
         expect(state.outerWidth).toBe(600)
-        expect(state.tracks.map(track => track.width)).toEqual([298, 298])
+        expect(state.tracks.map(track => track.width)).toEqual([300, 300])
       }
       if (index === 3) expect(store.store.getSnapshot().outerWidth).toBe(600)
     }
@@ -69,7 +69,7 @@ describe('Workbench store topology', () => {
     const after = store.store.getSnapshot()
     expect(after.tracks.map(track => track.typeIds)).toEqual([['terminal'], ['artifact', 'review']])
     expect(after.tracks.map(track => track.width)).toEqual(before.slice(0, 2))
-    expect(after.outerWidth).toBe(Math.round(before[0]! + before[1]! + 4))
+    expect(after.outerWidth).toBe(Math.round(before[0]! + before[1]!))
   })
 
   it('swaps a responsive-hidden type with the real top-left cell', () => {

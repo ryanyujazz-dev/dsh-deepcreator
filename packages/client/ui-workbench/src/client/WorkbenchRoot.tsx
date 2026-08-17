@@ -2,11 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import type { CSSProperties, ReactNode } from 'react'
 import { WorkbenchPanelShell } from '@ryanyujazz/dsh-client-ui-primitives'
 import type {
-  PanelTypeDefinition, WorkbenchPanelHeaderContribution, WorkbenchPanelOwnerProps, WorkbenchRootProps,
+  PanelTypeDefinition, WorkbenchPanelHeaderContribution, WorkbenchPanelInfoContribution, WorkbenchPanelOwnerProps, WorkbenchRootProps,
 } from './contract.ts'
 import type { WorkbenchGroupState } from './store.ts'
 import type { WorkbenchCommand } from './service.ts'
-import { SPLITTER_SIZE, visibleTrackCount } from './layout.ts'
+import { visibleTrackCount } from './layout.ts'
 import css from './WorkbenchRoot.module.css'
 
 function Splitter({ orientation, className, style, onResize }: { orientation: 'horizontal' | 'vertical'; className: string | undefined; style?: CSSProperties; onResize(delta: number): void }) {
@@ -23,7 +23,7 @@ function Splitter({ orientation, className, style, onResize }: { orientation: 'h
         const increment = orientation === 'vertical' ? event.key === 'ArrowRight' : event.key === 'ArrowDown'
         if (!decrement && !increment) return
         event.preventDefault()
-        onResize(increment ? (orientation === 'vertical' ? 16 : 0.1) : (orientation === 'vertical' ? -16 : -0.1))
+        onResize(increment ? 16 : -16)
       }}
       onPointerDown={(event) => {
         event.preventDefault()
@@ -33,7 +33,7 @@ function Splitter({ orientation, className, style, onResize }: { orientation: 'h
       onPointerMove={(event) => {
         if (!event.currentTarget.hasPointerCapture(event.pointerId) || last.current === null) return
         const current = orientation === 'vertical' ? event.clientX : event.clientY
-        onResize(orientation === 'vertical' ? current - last.current : (current - last.current) / 200)
+        onResize(current - last.current)
         last.current = current
       }}
       onPointerUp={(event) => {
@@ -97,6 +97,16 @@ function Group({
       setHeaderActions({})
     }
   }, [])
+  const [panelInfo, setPanelInfo] = useState<WorkbenchPanelInfoContribution>({})
+  const panelInfoSequence = useRef(0)
+  const contributePanelInfo = useCallback((contribution: WorkbenchPanelInfoContribution) => {
+    const sequence = ++panelInfoSequence.current
+    setPanelInfo(contribution)
+    return () => {
+      if (panelInfoSequence.current !== sequence) return
+      setPanelInfo({})
+    }
+  }, [])
   const openInstance = useCallback((instanceId: string) => { actions.present(group.typeId, instanceId, 'instance') }, [actions, group.typeId])
   const closeInstance = useCallback((instanceId: string) => { actions.closeTab(group.typeId, instanceId) }, [actions, group.typeId])
   const showHome = useCallback(() => { actions.showHome(group.typeId) }, [actions, group.typeId])
@@ -110,6 +120,7 @@ function Group({
     closeInstance,
     showHome,
     contributeHeaderActions,
+    contributePanelInfo,
     renderArtifact,
   }
   return (
@@ -118,6 +129,8 @@ function Group({
       label={label}
       route={group.activeRoute}
       tabs={group.tabs}
+      tabLabels={panelInfo.tabLabels}
+      titleSuffix={panelInfo.titleSuffix}
       {...(group.activeInstanceId === undefined ? {} : { activeInstanceId: group.activeInstanceId })}
       supportsHome={definition?.supportsHome === true}
       focused={focused}
@@ -125,7 +138,7 @@ function Group({
       focusLabel={t('focus')}
       restoreLabel={t('restore')}
       closeGroupLabel={t('closeGroup', { type: label })}
-      closeTabLabel={tab => t('closeTab', { tab })}
+      closeTabLabel={tab => t('closeTab', { tab: panelInfo.tabLabels?.[tab] ?? tab })}
       onShowHome={() => { actions.showHome(group.typeId) }}
       onActivateTab={tab => { actions.present(group.typeId, tab, 'instance') }}
       onCloseTab={tab => { actions.closeTab(group.typeId, tab) }}
@@ -154,6 +167,7 @@ export function WorkbenchRoot({
   const definitionById = useMemo(() => new Map(definitions.map(def => [def.id, def])), [definitions])
   const processed = useRef(0)
   const dragStart = useRef<number | null>(null)
+  const tracksRef = useRef<HTMLDivElement | null>(null)
   const responsiveTrackCount = visibleTrackCount(tracks.length, width)
   const responsiveTracks = tracks.slice(0, responsiveTrackCount)
   const responsiveTypeIds = responsiveTracks.flatMap(track => track.typeIds)
@@ -230,17 +244,20 @@ export function WorkbenchRoot({
     controller.setVisibleTypes(shownTypeIds)
   }, [controller, shownTypeIds])
 
+  // Splitter tracks are zero-width: the 8px transparent hit zones center over
+  // the 4px+4px margin gap between cards instead of reserving layout space, so
+  // the full card-to-card gap stays grabbable.
   const gridTemplateColumns = focusedTypeId === null
     ? responsiveTracks.flatMap((track, index) => index === responsiveTracks.length - 1
       ? [`minmax(0, ${track.width}fr)`]
-      : [`minmax(0, ${track.width}fr)`, `${SPLITTER_SIZE}px`]).join(' ')
+      : [`minmax(0, ${track.width}fr)`, '0px']).join(' ')
     : 'minmax(0, 1fr)'
 
   return (
     <div className={css.root} data-focused={focusedTypeId !== null || undefined} data-visible-tracks={responsiveTrackCount}>
       {shownTypeIds.length === 0 && <div className={css.empty}>{t('empty')}</div>}
       {groups.length > 0 && (
-        <div className={css.tracks} aria-hidden={shownTypeIds.length === 0 || undefined} style={{ gridTemplateColumns }}>
+        <div ref={tracksRef} className={css.tracks} aria-hidden={shownTypeIds.length === 0 || undefined} style={{ gridTemplateColumns }}>
           {groups.map((group) => {
             const location = locationByType.get(group.typeId)
             const visible = shownIds.has(group.typeId)
@@ -251,8 +268,8 @@ export function WorkbenchRoot({
             const cellStyle: CSSProperties = focusedTypeId !== null || location?.span === true
               ? { gridColumn: column, gridRow: 1, alignSelf: 'stretch', height: '100%', display: visible ? undefined : 'none' }
               : location?.cell === 0
-                ? { gridColumn: column, gridRow: 1, alignSelf: 'start', height: `calc(${firstFraction * 100}% - 2px)`, display: visible ? undefined : 'none' }
-                : { gridColumn: column, gridRow: 1, alignSelf: 'end', height: `calc(${(1 - firstFraction) * 100}% - 2px)`, display: visible ? undefined : 'none' }
+                ? { gridColumn: column, gridRow: 1, alignSelf: 'start', height: `${firstFraction * 100}%`, display: visible ? undefined : 'none' }
+                : { gridColumn: column, gridRow: 1, alignSelf: 'end', height: `${(1 - firstFraction) * 100}%`, display: visible ? undefined : 'none' }
             return (
               <div className={css.cell} key={group.typeId} style={cellStyle}>
                   <Group
@@ -277,10 +294,24 @@ export function WorkbenchRoot({
             if (track.typeIds.length !== 2) return null
             const total = track.cellRatios.reduce((sum, value) => sum + value, 0)
             const fraction = (track.cellRatios[0] ?? 1) / total
-            return <Splitter key={`cell:${trackIndex}`} className={css.cellSplitter} orientation="horizontal" style={{ gridColumn: trackIndex * 2 + 1, gridRow: 1, alignSelf: 'start', position: 'relative', top: `calc(${fraction * 100}% - 2px)` }} onResize={delta => { actions.resizeCells(trackIndex, 0, delta) }} />
+            return <Splitter key={`cell:${trackIndex}`} className={css.cellSplitter} orientation="horizontal" style={{ gridColumn: trackIndex * 2 + 1, gridRow: 1, alignSelf: 'start', position: 'relative', top: `calc(${fraction * 100}% - 4px)` }} onResize={delta => {
+              // Cell heights are fractions of the column: convert the raw
+              // pointer travel into a ratio against the live column height so
+              // the boundary tracks the cursor 1:1 at any panel size.
+              const height = tracksRef.current?.getBoundingClientRect().height ?? 0
+              actions.resizeCells(trackIndex, 0, height > 0 ? delta / height : 0)
+            }} />
           })}
           {focusedTypeId === null && responsiveTracks.slice(0, -1).map((_track, trackIndex) => (
-            <Splitter key={`track:${trackIndex}`} className={css.trackSplitter} orientation="vertical" style={{ gridColumn: trackIndex * 2 + 2, gridRow: 1 }} onResize={delta => { actions.resizeTracks(trackIndex, delta) }} />
+            <Splitter key={`track:${trackIndex}`} className={css.trackSplitter} orientation="vertical" style={{ gridColumn: trackIndex * 2 + 2, gridRow: 1 }} onResize={delta => {
+              // Columns share the available width proportionally to their fr
+              // weights; scale the pointer delta by stored/rendered so the
+              // boundary follows the cursor even while responsive hiding
+              // leaves visible stored widths ≠ rendered pixels.
+              const visible = responsiveTracks.reduce((sum, track) => sum + track.width, 0)
+              const available = Math.max(0, width - 8)
+              actions.resizeTracks(trackIndex, visible > 0 && available > 0 ? delta * visible / available : delta)
+            }} />
           ))}
         </div>
       )}

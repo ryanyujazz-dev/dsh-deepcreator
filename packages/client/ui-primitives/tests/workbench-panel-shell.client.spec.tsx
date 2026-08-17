@@ -7,7 +7,7 @@ import {
 
 afterEach(cleanup)
 
-function renderShell() {
+function renderShell(tabLabels?: Record<string, string>, titleSuffix?: string) {
   const onShowHome = vi.fn()
   const onActivateTab = vi.fn()
   const onCloseTab = vi.fn()
@@ -23,6 +23,8 @@ function renderShell() {
         activeInstanceId="shell-2"
         supportsHome
         focused={false}
+        tabLabels={tabLabels}
+        titleSuffix={titleSuffix}
         backLabel="返回终端"
         focusLabel="展开面板"
         restoreLabel="收起面板"
@@ -79,5 +81,22 @@ describe('shared Workbench PanelShell', () => {
     expect(input.onCloseTab).toHaveBeenCalledWith('shell-1')
     expect(input.onFocus).toHaveBeenCalledOnce()
     expect(input.onHide).toHaveBeenCalledOnce()
+  })
+
+  it('shows provider tab labels while ids stay the interaction identity', () => {
+    const { view, onActivateTab, onCloseTab } = renderShell({ 'shell-1': 'dsh-deepcreator', 'shell-2': 'myapp' })
+    expect(view.getByRole('tab', { name: 'dsh-deepcreator' })).toBeTruthy()
+    expect(view.getByRole('tab', { name: 'myapp' })).toBeTruthy()
+    fireEvent.click(view.getByRole('tab', { name: 'dsh-deepcreator' }))
+    // The shell hands the raw id to closeTabLabel; mapping ids to display
+    // names for close labels is the Workbench layer's job.
+    fireEvent.click(view.getByRole('button', { name: '关闭shell-1' }))
+    expect(onActivateTab).toHaveBeenCalledWith('shell-1')
+    expect(onCloseTab).toHaveBeenCalledWith('shell-1')
+  })
+
+  it('appends the provider title suffix to the accessible group name', () => {
+    const { view } = renderShell(undefined, 'PowerShell')
+    expect(view.getByRole('region', { name: '终端 · PowerShell' })).toBeTruthy()
   })
 })

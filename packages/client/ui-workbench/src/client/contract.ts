@@ -15,6 +15,17 @@ export interface WorkbenchPanelHeaderContribution {
   right?: ReactNode
 }
 
+/**
+ * Provider-supplied presentation names. Tab instance ids stay the identity
+ * for activation, closing and persistence; these only change what is shown.
+ */
+export interface WorkbenchPanelInfoContribution {
+  /** Appended to the group title and its accessible name, e.g. the shell program. */
+  titleSuffix?: string
+  /** Display label per tab instance id; unmapped tabs keep showing their id. */
+  tabLabels?: Readonly<Record<string, string>>
+}
+
 export interface PanelTypeDefinition {
   id: string
   label: () => string
@@ -61,6 +72,7 @@ export interface WorkbenchPanelOwnerProps {
   closeInstance(instanceId: string): void
   showHome(): void
   contributeHeaderActions(contribution: WorkbenchPanelHeaderContribution): () => void
+  contributePanelInfo(contribution: WorkbenchPanelInfoContribution): () => void
   renderArtifact(owner: ArtifactRendererOwnerProps): ReactNode
 }
 

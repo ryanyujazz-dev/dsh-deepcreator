@@ -1,7 +1,7 @@
 import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-runtime/client'
 import type { PanelRoute } from './contract.ts'
 import {
-  MIN_PANEL_COLUMN_WIDTH, SPLITTER_SIZE, initialWorkbenchWidth, oddTrackWorkbenchWidth,
+  MIN_PANEL_COLUMN_WIDTH, initialWorkbenchWidth, oddTrackWorkbenchWidth,
 } from './layout.ts'
 
 export const WORKBENCH_PERSIST_KEY = 'dsh.deepcreator.workbench.session.v2'
@@ -87,12 +87,11 @@ function locationOf(state: WorkbenchState, typeId: string): { track: number; cel
 
 function topologyWidth(tracks: readonly WorkbenchTrackState[]): number {
   if (tracks.length === 0) return 0
-  return Math.round(tracks.reduce((sum, track) => sum + track.width, 0) + (tracks.length - 1) * SPLITTER_SIZE)
+  return Math.round(tracks.reduce((sum, track) => sum + track.width, 0))
 }
 
 function equalizeTracks(state: WorkbenchState, outerWidth: number): void {
-  const content = Math.max(0, outerWidth - Math.max(0, state.tracks.length - 1) * SPLITTER_SIZE)
-  const width = Math.max(MIN_PANEL_COLUMN_WIDTH, content / Math.max(1, state.tracks.length))
+  const width = Math.max(MIN_PANEL_COLUMN_WIDTH, outerWidth / Math.max(1, state.tracks.length))
   for (const track of state.tracks) track.width = width
   state.outerWidth = topologyWidth(state.tracks)
 }
@@ -145,7 +144,7 @@ function placeNewType(state: WorkbenchState, typeId: string, placement?: Workben
     placement?.stageWidth ?? Math.max(900, state.outerWidth * nextTrackCount / state.tracks.length),
     nextTrackCount,
   )
-  const required = nextTrackCount * MIN_PANEL_COLUMN_WIDTH + (nextTrackCount - 1) * SPLITTER_SIZE
+  const required = nextTrackCount * MIN_PANEL_COLUMN_WIDTH
   if (targetOuterWidth < required) {
     replaceTopLeft(state, typeId)
     return
@@ -219,13 +218,13 @@ export function createWorkbenchStore(): EngineStoreHandle<WorkbenchState, Workbe
       },
       setOuterWidth: (d, width) => {
         const next = Math.max(MIN_PANEL_COLUMN_WIDTH, Math.round(width))
-        const required = d.tracks.length * MIN_PANEL_COLUMN_WIDTH + Math.max(0, d.tracks.length - 1) * SPLITTER_SIZE
+        const required = d.tracks.length * MIN_PANEL_COLUMN_WIDTH
         if (d.tracks.length > 0 && next >= required) equalizeTracks(d, next)
         else d.outerWidth = next
       },
       completeOuterResize: (d, _startWidth, endWidth) => {
         const next = Math.max(MIN_PANEL_COLUMN_WIDTH, Math.round(endWidth))
-        const required = d.tracks.length * MIN_PANEL_COLUMN_WIDTH + Math.max(0, d.tracks.length - 1) * SPLITTER_SIZE
+        const required = d.tracks.length * MIN_PANEL_COLUMN_WIDTH
         if (d.tracks.length > 0 && next >= required) equalizeTracks(d, next)
         else d.outerWidth = next
       },

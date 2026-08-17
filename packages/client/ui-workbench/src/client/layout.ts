@@ -2,8 +2,6 @@
 export const MIN_PANEL_COLUMN_WIDTH = 150
 /** Conversation floor inside the Stage (Conversation + Workbench). */
 export const MIN_CONVERSATION_WIDTH = 360
-/** Visual and hit geometry reserved between Workbench columns. */
-export const SPLITTER_SIZE = 4
 
 function clampToStage(target: number, stageWidth: number): number {
   const maximum = Math.max(MIN_PANEL_COLUMN_WIDTH, stageWidth - MIN_CONVERSATION_WIDTH)
@@ -25,7 +23,7 @@ export function oddTrackWorkbenchWidth(stageWidth: number, trackCount: number): 
 export function visibleTrackCount(trackCount: number, renderedWidth: number): number {
   if (trackCount <= 0 || renderedWidth <= 0) return 0
   for (let count = trackCount; count >= 1; count -= 1) {
-    const required = count * MIN_PANEL_COLUMN_WIDTH + (count - 1) * SPLITTER_SIZE
+    const required = count * MIN_PANEL_COLUMN_WIDTH
     if (required <= renderedWidth) return count
   }
   return 0

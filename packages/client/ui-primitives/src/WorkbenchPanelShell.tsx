@@ -38,6 +38,10 @@ export interface WorkbenchPanelShellProps {
   label: string
   route: PanelRoute
   tabs: readonly string[]
+  /** Provider display names per tab id; unmapped tabs show their id. */
+  tabLabels?: Readonly<Record<string, string>> | undefined
+  /** Appended to the accessible name, e.g. "终端 · PowerShell". */
+  titleSuffix?: string | undefined
   activeInstanceId?: string
   supportsHome: boolean
   focused: boolean
@@ -63,18 +67,20 @@ export interface WorkbenchPanelShellProps {
  * geometry; margins, outline, Header, tabs, actions and Body live here.
  */
 export function WorkbenchPanelShell({
-  typeId, label, route, tabs, activeInstanceId, supportsHome, focused,
+  typeId, label, route, tabs, tabLabels, titleSuffix, activeInstanceId, supportsHome, focused,
   backLabel, focusLabel, restoreLabel, closeGroupLabel, closeTabLabel,
   onShowHome, onActivateTab, onCloseTab, onHide, onFocus, onRestore,
   leftActions, rightActions, children, disconnected,
 }: WorkbenchPanelShellProps) {
+  const accessibleLabel = titleSuffix === undefined || titleSuffix === '' ? label : `${label} · ${titleSuffix}`
   return (
-    <section className={css.shell} data-type={typeId} aria-label={label}>
+    <section className={css.shell} data-type={typeId} aria-label={accessibleLabel}>
       <header className={css.header}>
         {tabs.length === 0
           ? <div className={css.leading}><strong className={css.title}>{label}</strong>{leftActions !== undefined && <span className={css.leftActions}>{leftActions}</span>}</div>
           : <WorkbenchPanelTabs
               tabs={tabs}
+              labels={tabLabels}
               {...(route === 'instance' && activeInstanceId !== undefined ? { activeTab: activeInstanceId } : {})}
               closeTabLabel={closeTabLabel}
               onActivateTab={onActivateTab}

@@ -6,7 +6,7 @@ Shell plugin: three-column AppFrame (drag handles and concession chain) plus the
 
 AppFrame always mounts the conversation and details columns; a connected Session renders through `SessionProvider`. The layout store itself remains transient and owns only rendered geometry. The Workbench occupant restores its own session-persisted outer width through `ctx.layout.setWorkbenchWidth()`, while Hero/blank states derive a zero rendered details width without rewriting that preference. The details owner share reports resolved width, Stage width (Conversation + Workbench, excluding Sidebar), and pointer-resize gesture metadata. Conversation has a 360px concession floor while one Workbench column keeps a 150px floor; wider Workbench topology is resolved by its occupant. Focus geometry covers the Stage from the Sidebar edge to the right window edge.
 
-The details column is deliberately frameless. Its occupant owns all visible panel borders and insets, so AppFrame contributes only the outer resize hit strip and floating drag pill; Focus mode preserves the same ownership.
+The details column is deliberately frameless. Its occupant owns all visible panel borders and insets, so AppFrame contributes only the invisible outer resize hit strip; Focus mode preserves the same ownership.
 
 The `/client` exports are the plugin body (`apply`/`inject`), `LayoutController`, and the owner-share interfaces. AppFrame, the panel store, and the concession solver remain package-internal.
 
