@@ -1,5 +1,5 @@
 /**
- * Per-session chat store shared by conversation and details registrations.
+ * Per-session chat store shared by the conversation registrations.
  * The plugin creates its handle at apply time so identity follows the fiber.
  */
 import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-runtime/client'

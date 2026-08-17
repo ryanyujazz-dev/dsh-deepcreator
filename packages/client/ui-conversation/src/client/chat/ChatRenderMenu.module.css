@@ -1,32 +1,60 @@
-/* Render-mode picker seat: one header utility matching the sidebar's circular
-   icon-button treatment. */
+/* Shared Session Header utility seat: responsive Workbench icons followed by
+   one stable More trigger. */
 
 .seat {
-  flex: none;
+  position: relative;
   display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
   align-items: center;
+  justify-content: flex-end;
+  gap: var(--dsh-icon-toolbar-gap, 4px);
+}
+
+.inlineHost {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.inlineHost:empty {
+  display: none;
 }
 
 .trigger {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: var(--dsh-icon-toolbar-button-size, 28px);
+  height: var(--dsh-icon-toolbar-button-size, 28px);
   border: none;
   border-radius: 50%;
   padding: 0;
   background: transparent;
   cursor: pointer;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsw-alias-label-secondary);
 }
 
-.trigger:hover {
-  color: var(--dsw-alias-label-primary);
+.trigger:hover,
+.menuOpen .trigger {
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
 .trigger:focus-visible {
   outline: 1px solid var(--dsw-alias-state-business-primary);
   outline-offset: 1px;
+}
+
+/* The official Session-log contribution remains the sole controller/dialog
+   owner. Only its former capsule is removed from layout and accessibility. */
+.sessionLogHost {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.sessionLogHost button {
+  display: none !important;
 }

@@ -21,6 +21,7 @@ const root = (callId: string, call: ToolResultNode['call']): ToolResultNode => (
 function props(
   block: ToolResultNode,
   selectedCallId?: string,
+  thinkMode?: ToolTreeProps['thinkMode'],
 ): ToolTreeProps {
   const snapshot = {} as ConversationSnapshot
   const useSession = ((selector: (value: ConversationSnapshot) => unknown) => selector(snapshot)) as ToolTreeProps['useSession']
@@ -44,6 +45,7 @@ function props(
     inspectCall: vi.fn(),
     forkAt: vi.fn(),
     fileMentions: vi.fn(),
+    thinkMode,
     t,
   } as unknown as ToolTreeProps
 }
@@ -77,5 +79,16 @@ describe('ToolCallTree', () => {
     expect(view.container.querySelector('[data-chat-call-id="parent:code:1"]')?.hasAttribute('data-selected')).toBe(false)
     expect(view.container.querySelector('[data-chat-call-id="parent:code:1:code:1"]')?.getAttribute('data-selected')).toBe('true')
     expect(nests).toHaveLength(2)
+  })
+
+  it('marks every call boundary when the execution-flow chrome is active', () => {
+    const leaf = root('parent:code:1', { name: 'skill', argsRaw: '{"skill":"demo"}' })
+    const block = {
+      ...root('parent', { name: 'run_code', argsRaw: '{"code":"return 1"}' }),
+      subCalls: [leaf],
+    }
+    const view = render(<ToolCallTree {...props(block, undefined, 'inline')} />)
+    const rows = view.container.querySelectorAll('[data-chat-call-id][data-execflow]')
+    expect(rows).toHaveLength(2)
   })
 })

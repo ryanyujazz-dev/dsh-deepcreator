@@ -1,0 +1,1286 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>DeepCreator · 右侧面板原型</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg-base: #fff;
+      --bg-sidebar: #f9fafb;
+      --bg-subtle: #f5f6f7;
+      --bg-hover: rgba(38, 49, 72, .06);
+      --bg-active: #ebeef2;
+      --bg-code: #f9fafb;
+      --bubble: #edf3fe;
+      --brand: #4176e6;
+      --brand-soft: #e4edfd;
+      --text: #0f1115;
+      --text-2: #61666b;
+      --text-3: #81858c;
+      --caption: #adb2b8;
+      --border-1: rgba(0, 0, 0, .04);
+      --border-2: rgba(0, 0, 0, .10);
+      --border-3: rgba(0, 0, 0, .14);
+      --success: #22c55e;
+      --error: #ec1313;
+      --warning: #f59e0b;
+      --sidebar-width: 274px;
+      --panel-width: 410px;
+      --header-height: 48px;
+      --shadow-1: 0 2px 4px rgba(0, 0, 0, .05);
+      --shadow-float: 0 12px 42px rgba(35, 44, 63, .10);
+      --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      --font-code: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "PingFang SC", monospace;
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body { width: 100%; height: 100%; }
+
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: var(--bg-base);
+      color: var(--text);
+      font: 400 14px/22px var(--font-ui);
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+
+    button,
+    input,
+    textarea { font: inherit; }
+
+    button { color: inherit; }
+
+    svg { display: block; }
+
+    .app {
+      position: relative;
+      display: grid;
+      grid-template-columns: var(--sidebar-width) minmax(0, 1fr) var(--panel-width);
+      width: 100%;
+      height: 100%;
+      min-width: 1120px;
+      transition: grid-template-columns .3s cubic-bezier(.4, 0, .2, 1);
+    }
+
+    .app.panel-collapsed {
+      grid-template-columns: var(--sidebar-width) minmax(0, 1fr) 0;
+    }
+
+    .icon {
+      width: 16px;
+      height: 16px;
+      flex: none;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.45;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .icon-14 { width: 14px; height: 14px; }
+    .icon-12 { width: 12px; height: 12px; }
+
+    .icon-button {
+      display: grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--text-2);
+      cursor: pointer;
+      transition: background .15s ease, color .15s ease;
+    }
+
+    .icon-button:hover { background: var(--bg-hover); color: var(--text); }
+    .icon-button:focus-visible { outline: 1px solid var(--brand); outline-offset: 1px; }
+
+    .sidebar {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--bg-sidebar);
+      border-right: 1px solid var(--border-1);
+    }
+
+    .sidebar-header {
+      position: relative;
+      display: flex;
+      align-items: center;
+      height: var(--header-height);
+      padding: 0 14px;
+      flex: none;
+    }
+
+    .traffic-lights { display: flex; align-items: center; gap: 9px; }
+
+    .traffic-light {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .13);
+    }
+
+    .traffic-light.red { background: #ff5f57; }
+    .traffic-light.yellow { background: #febc2e; }
+    .traffic-light.green { background: #28c840; }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      margin-left: 10px;
+      color: #101217;
+      font-weight: 650;
+      letter-spacing: -.35px;
+    }
+
+    .brand-logo { width: 15px; height: 12px; color: currentColor; }
+    .sidebar-collapse { margin-left: auto; }
+
+    .sidebar-scroll {
+      flex: 1;
+      min-height: 0;
+      padding: 0 7px 18px;
+      overflow-y: auto;
+      scrollbar-width: thin;
+    }
+
+    .nav-list { display: grid; gap: 2px; }
+
+    .nav-row,
+    .session-row,
+    .workspace-row {
+      display: flex;
+      align-items: center;
+      min-width: 0;
+      height: 30px;
+      padding: 0 8px;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--text);
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .nav-row:hover,
+    .session-row:hover,
+    .workspace-row:hover { background: var(--bg-hover); }
+
+    .nav-row .icon,
+    .workspace-row .icon { margin-right: 8px; }
+
+    .sidebar-section { margin-top: 10px; }
+
+    .section-heading {
+      display: flex;
+      align-items: center;
+      height: 30px;
+      padding: 0 8px;
+      color: var(--text-3);
+    }
+
+    .section-heading .heading-actions { display: flex; margin-left: auto; gap: 2px; }
+
+    .session-row.active { background: var(--bg-active); }
+    .session-row .row-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .session-row .row-meta { margin-left: auto; color: var(--text-3); white-space: nowrap; }
+    .workspace-row { color: var(--text-3); }
+
+    .sidebar-footer {
+      flex: none;
+      padding: 8px 7px 7px;
+      border-top: 1px solid transparent;
+    }
+
+    .chat-column {
+      position: relative;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--bg-base);
+    }
+
+    .chat-header,
+    .panel-header {
+      height: var(--header-height);
+      flex: none;
+    }
+
+    .chat-header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+      align-items: center;
+      padding: 8px 12px;
+    }
+
+    .chat-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      font-weight: 500;
+    }
+
+    .chat-title > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .mode-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: var(--text-3);
+      font-weight: 400;
+      white-space: nowrap;
+    }
+
+    .segmented {
+      grid-column: 2;
+      display: flex;
+      align-items: center;
+      padding: 3px;
+      border-radius: 8px;
+      background: var(--bg-sidebar);
+    }
+
+    .segment {
+      min-width: 46px;
+      height: 24px;
+      padding: 0 9px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text-3);
+      cursor: pointer;
+    }
+
+    .segment.active {
+      color: var(--text);
+      background: var(--bg-base);
+      box-shadow: var(--shadow-1);
+    }
+
+    .chat-actions {
+      grid-column: 3;
+      justify-self: end;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .outline-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 32px;
+      padding: 0 12px;
+      border: 1px solid var(--border-2);
+      border-radius: 999px;
+      background: var(--bg-base);
+      color: var(--text-2);
+      cursor: pointer;
+    }
+
+    .outline-button:hover { background: var(--bg-subtle); }
+
+    .panel-restore {
+      display: none;
+      align-items: center;
+      gap: 7px;
+      height: 30px;
+      padding: 0 10px;
+      border: 1px solid var(--border-2);
+      border-radius: 8px;
+      background: var(--bg-base);
+      color: var(--text-2);
+      box-shadow: var(--shadow-1);
+      cursor: pointer;
+    }
+
+    .panel-collapsed .panel-restore { display: inline-flex; }
+
+    .chat-scroll {
+      position: relative;
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+      scrollbar-gutter: stable;
+    }
+
+    .chat-content {
+      width: min(760px, calc(100% - 44px));
+      margin: 0 auto;
+      padding: 8px 0 174px;
+    }
+
+    .intro-line { color: var(--text-3); margin-bottom: 10px; }
+
+    .chat-content p { margin: 12px 0; }
+
+    .chat-content ul {
+      margin: 8px 0 12px;
+      padding-left: 22px;
+    }
+
+    .chat-content li { margin: 6px 0; }
+
+    code,
+    .inline-code {
+      padding: 2px 6px;
+      border-radius: 5px;
+      background: var(--bg-code);
+      color: #30343b;
+      font: 400 12px/18px var(--font-code);
+    }
+
+    .tool-line {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      height: 34px;
+      color: var(--text-3);
+    }
+
+    .approval { display: flex; align-items: center; gap: 7px; }
+    .approval-mark { color: #fff; background: var(--success); border-radius: 3px; line-height: 16px; }
+    .message-actions { display: flex; align-items: center; gap: 8px; margin-top: 18px; color: var(--text-3); }
+
+    .composer-area {
+      position: absolute;
+      z-index: 8;
+      left: 50%;
+      bottom: 10px;
+      width: min(780px, calc(100% - 36px));
+      transform: translateX(-50%);
+    }
+
+    .composer-area::before {
+      content: "";
+      position: absolute;
+      z-index: -1;
+      left: -34px;
+      right: -34px;
+      bottom: -12px;
+      height: 152px;
+      background: linear-gradient(to bottom, rgba(255,255,255,0), #fff 32%);
+      pointer-events: none;
+    }
+
+    .composer {
+      min-height: 86px;
+      padding: 13px 14px 10px;
+      border: 1px solid var(--border-2);
+      border-radius: 21px;
+      background: rgba(255, 255, 255, .97);
+      box-shadow: var(--shadow-float);
+    }
+
+    .composer-placeholder { color: var(--caption); }
+
+    .composer-bottom {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 16px;
+      color: var(--text-2);
+      font-size: 12px;
+    }
+
+    .composer-plus,
+    .composer-send {
+      display: grid;
+      place-items: center;
+      width: 29px;
+      height: 29px;
+      border: 0;
+      border-radius: 50%;
+      cursor: pointer;
+    }
+
+    .composer-plus { background: var(--bg-subtle); color: var(--text-2); }
+    .composer-send { margin-left: auto; background: #a8bff5; color: white; }
+    .model-name { margin-left: auto; }
+    .composer-send { margin-left: 8px; }
+
+    .runtime-line {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      height: 17px;
+      color: var(--caption);
+      font-size: 10px;
+      line-height: 17px;
+      white-space: nowrap;
+    }
+
+    .right-panel {
+      position: relative;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--bg-base);
+      border-left: 1px solid var(--border-2);
+      opacity: 1;
+      transition: opacity .2s ease;
+    }
+
+    .panel-collapsed .right-panel {
+      pointer-events: none;
+      opacity: 0;
+      border-left: 0;
+    }
+
+    .resize-handle {
+      position: absolute;
+      z-index: 20;
+      top: 0;
+      bottom: 0;
+      left: -4px;
+      width: 8px;
+      cursor: col-resize;
+      touch-action: none;
+    }
+
+    .resize-handle::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 12px;
+      height: 32px;
+      border: 1px solid var(--border-2);
+      border-radius: 10px;
+      background: #fff;
+      box-shadow: var(--shadow-1);
+      opacity: 0;
+      transform: translate(-50%, -50%);
+      transition: opacity .18s ease;
+    }
+
+    .right-panel:hover .resize-handle::after,
+    .resize-handle:hover::after,
+    .resize-handle.dragging::after { opacity: 1; }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px 8px 12px;
+      border-bottom: 1px solid var(--border-1);
+    }
+
+    .panel-tabs {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      min-width: 0;
+      flex: 1;
+      padding: 3px;
+      border-radius: 9px;
+      background: var(--bg-sidebar);
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .panel-tabs::-webkit-scrollbar { display: none; }
+
+    .panel-tab {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      height: 26px;
+      padding: 0 8px;
+      flex: none;
+      border: 0;
+      border-radius: 7px;
+      background: transparent;
+      color: var(--text-3);
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .panel-tab:hover:not(.active) { color: var(--text); background: var(--bg-hover); }
+
+    .panel-tab.active {
+      color: var(--text);
+      background: #fff;
+      box-shadow: var(--shadow-1);
+    }
+
+    .tab-count {
+      min-width: 16px;
+      height: 16px;
+      padding: 0 4px;
+      border-radius: 8px;
+      background: var(--bg-active);
+      color: var(--text-2);
+      font-size: 10px;
+      line-height: 16px;
+    }
+
+    .panel-body { flex: 1; min-height: 0; position: relative; overflow: hidden; }
+
+    .panel-view {
+      display: none;
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+    }
+
+    .panel-view.active { display: flex; }
+
+    .sub-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      height: 42px;
+      flex: none;
+      padding: 0 14px;
+      border-bottom: 1px solid var(--border-1);
+    }
+
+    .sub-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 500; }
+    .sub-meta { margin-left: auto; color: var(--text-3); font-size: 11px; }
+
+    .split-view { flex-direction: column; background: #fff; }
+    .split-body { flex: 1; min-height: 0; overflow-y: auto; padding: 18px 16px 126px; }
+
+    .split-system {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 14px;
+      color: var(--text-3);
+      font-size: 11px;
+    }
+
+    .mini-message { margin: 0 0 18px; }
+
+    .mini-message.user {
+      width: fit-content;
+      max-width: 88%;
+      margin-left: auto;
+      padding: 9px 12px;
+      border-radius: 14px 14px 4px 14px;
+      background: var(--bubble);
+    }
+
+    .mini-message.assistant p { margin: 0 0 9px; }
+
+    .mini-tool {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      margin: 9px 0;
+      color: var(--text-3);
+      font-size: 12px;
+    }
+
+    .mini-composer-wrap {
+      position: absolute;
+      left: 12px;
+      right: 12px;
+      bottom: 12px;
+    }
+
+    .mini-composer {
+      min-height: 82px;
+      padding: 11px 12px;
+      border: 1px solid var(--border-2);
+      border-radius: 16px;
+      background: #fff;
+      box-shadow: 0 10px 30px rgba(35,44,63,.09);
+    }
+
+    .mini-input {
+      width: 100%;
+      height: 34px;
+      resize: none;
+      border: 0;
+      outline: 0;
+      color: var(--text);
+      background: transparent;
+    }
+
+    .mini-input::placeholder { color: var(--caption); }
+
+    .mini-composer-bottom { display: flex; align-items: center; color: var(--text-3); font-size: 11px; }
+    .mini-send { margin-left: auto; background: var(--brand); color: white; }
+
+    .review-view { flex-direction: column; background: #fff; }
+
+    .review-summary {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border-1);
+    }
+
+    .metric {
+      padding: 9px 10px;
+      border-radius: 10px;
+      background: var(--bg-subtle);
+    }
+
+    .metric strong { display: block; font-size: 15px; line-height: 18px; }
+    .metric span { color: var(--text-3); font-size: 10px; }
+    .metric.add strong { color: #168947; }
+    .metric.del strong { color: var(--error); }
+
+    .review-main { display: grid; grid-template-columns: 126px minmax(0, 1fr); flex: 1; min-height: 0; }
+
+    .file-list {
+      padding: 9px 7px;
+      overflow-y: auto;
+      border-right: 1px solid var(--border-1);
+      background: var(--bg-sidebar);
+    }
+
+    .file-item {
+      width: 100%;
+      padding: 7px 8px;
+      border: 0;
+      border-radius: 7px;
+      background: transparent;
+      color: var(--text-2);
+      text-align: left;
+      font-size: 11px;
+      cursor: pointer;
+    }
+
+    .file-item:hover,
+    .file-item.active { background: var(--bg-active); color: var(--text); }
+
+    .file-status { display: inline-block; width: 13px; font-weight: 600; }
+    .file-status.m { color: var(--warning); }
+    .file-status.a { color: var(--success); }
+
+    .diff-pane { min-width: 0; overflow: auto; font: 400 11px/19px var(--font-code); }
+
+    .diff-title {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      height: 36px;
+      padding: 0 11px;
+      border-bottom: 1px solid var(--border-1);
+      background: rgba(255,255,255,.96);
+      font-family: var(--font-ui);
+      font-size: 11px;
+    }
+
+    .diff-stat { margin-left: auto; color: var(--text-3); }
+
+    .diff-line { display: grid; grid-template-columns: 32px 18px minmax(max-content, 1fr); min-height: 19px; }
+    .diff-line .ln { padding-right: 7px; color: var(--caption); text-align: right; user-select: none; }
+    .diff-line .sign { text-align: center; user-select: none; }
+    .diff-line .code { padding-right: 12px; white-space: pre; }
+    .diff-line.add { background: #eaf8ef; }
+    .diff-line.add .sign { color: #168947; }
+    .diff-line.del { background: #fff0f0; }
+    .diff-line.del .sign { color: var(--error); }
+
+    .review-footer {
+      display: flex;
+      gap: 8px;
+      padding: 10px 12px;
+      border-top: 1px solid var(--border-1);
+      background: #fff;
+    }
+
+    .review-button {
+      height: 30px;
+      padding: 0 12px;
+      border: 1px solid var(--border-2);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--text-2);
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .review-button.primary { margin-left: auto; border-color: var(--brand); background: var(--brand); color: #fff; }
+
+    .browser-view { flex-direction: column; background: var(--bg-subtle); }
+
+    .browser-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      height: 44px;
+      padding: 7px 9px;
+      border-bottom: 1px solid var(--border-2);
+      background: #fff;
+    }
+
+    .browser-controls { display: flex; gap: 1px; }
+
+    .address-bar {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-width: 0;
+      flex: 1;
+      height: 30px;
+      padding: 0 10px;
+      border: 1px solid var(--border-1);
+      border-radius: 9px;
+      background: var(--bg-subtle);
+      color: var(--text-2);
+      font-size: 11px;
+    }
+
+    .address-bar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .browser-canvas { flex: 1; min-height: 0; padding: 12px; overflow: auto; }
+
+    .mock-site {
+      min-height: 100%;
+      overflow: hidden;
+      border: 1px solid var(--border-1);
+      border-radius: 12px;
+      background: #fff;
+      box-shadow: var(--shadow-1);
+    }
+
+    .mock-site-nav {
+      display: flex;
+      align-items: center;
+      height: 42px;
+      padding: 0 14px;
+      border-bottom: 1px solid var(--border-1);
+      font-size: 11px;
+    }
+
+    .mock-brand { font-weight: 650; letter-spacing: -.3px; }
+    .mock-links { display: flex; gap: 12px; margin-left: auto; color: var(--text-3); }
+
+    .mock-hero { padding: 30px 22px 22px; text-align: center; }
+    .mock-kicker { color: var(--brand); font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; }
+    .mock-hero h2 { margin: 8px 0 8px; font-size: 24px; line-height: 29px; letter-spacing: -.04em; }
+    .mock-hero p { margin: 0 auto; max-width: 280px; color: var(--text-3); font-size: 11px; line-height: 17px; }
+
+    .mock-cta {
+      display: inline-flex;
+      height: 30px;
+      align-items: center;
+      margin-top: 16px;
+      padding: 0 13px;
+      border-radius: 8px;
+      background: var(--text);
+      color: #fff;
+      font-size: 11px;
+    }
+
+    .mock-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 0 14px 14px; }
+    .mock-card { min-height: 88px; padding: 10px; border: 1px solid var(--border-1); border-radius: 9px; background: var(--bg-sidebar); }
+    .mock-card .spark { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; background: var(--brand-soft); color: var(--brand); }
+    .mock-card strong { display: block; margin-top: 7px; font-size: 11px; }
+    .mock-card span { color: var(--text-3); font-size: 9px; }
+
+    .browser-status {
+      display: flex;
+      align-items: center;
+      height: 26px;
+      padding: 0 10px;
+      border-top: 1px solid var(--border-1);
+      background: #fff;
+      color: var(--text-3);
+      font-size: 10px;
+    }
+
+    .status-online { width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--success); }
+    .browser-status .right { margin-left: auto; }
+
+    .terminal-view { flex-direction: column; background: #101317; color: #d9dee7; }
+
+    .terminal-tabs {
+      display: flex;
+      align-items: end;
+      height: 40px;
+      padding: 7px 8px 0;
+      border-bottom: 1px solid rgba(255,255,255,.08);
+      background: #15191f;
+    }
+
+    .terminal-tab {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      height: 32px;
+      padding: 0 10px;
+      border: 0;
+      border-radius: 7px 7px 0 0;
+      background: #101317;
+      color: #e8ebf0;
+      font: 400 11px/20px var(--font-code);
+    }
+
+    .term-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 3px rgba(34,197,94,.12); }
+
+    .terminal-actions { display: flex; margin-left: auto; padding-bottom: 5px; }
+    .terminal-actions .icon-button { color: #8e98a8; }
+    .terminal-actions .icon-button:hover { color: #fff; background: rgba(255,255,255,.08); }
+
+    .terminal-output {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      padding: 14px 14px 46px;
+      font: 400 11px/20px var(--font-code);
+      scrollbar-color: #434b57 transparent;
+    }
+
+    .term-line { min-height: 20px; white-space: pre-wrap; }
+    .term-muted { color: #778292; }
+    .term-blue { color: #79a7ff; }
+    .term-green { color: #6dd894; }
+    .term-yellow { color: #e9be67; }
+    .term-prompt { color: #81a9ff; }
+
+    .terminal-command {
+      position: absolute;
+      left: 12px;
+      right: 12px;
+      bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      height: 32px;
+      padding: 0 10px;
+      border: 1px solid rgba(255,255,255,.10);
+      border-radius: 8px;
+      background: rgba(29,34,42,.96);
+      box-shadow: 0 10px 26px rgba(0,0,0,.25);
+      color: #d9dee7;
+      font: 400 11px/20px var(--font-code);
+    }
+
+    .terminal-command input {
+      min-width: 0;
+      flex: 1;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+    }
+
+    .terminal-command input::placeholder { color: #667181; }
+
+    .toast {
+      position: fixed;
+      z-index: 50;
+      left: 50%;
+      bottom: 24px;
+      padding: 8px 12px;
+      border-radius: 9px;
+      background: #353638;
+      color: #fff;
+      box-shadow: 0 12px 32px rgba(0,0,0,.18);
+      font-size: 12px;
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-50%, 8px);
+      transition: opacity .18s ease, transform .18s ease;
+    }
+
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+    @media (max-width: 1260px) {
+      :root { --sidebar-width: 248px; --panel-width: 360px; }
+      .mode-label { display: none; }
+      .chat-content { width: min(700px, calc(100% - 32px)); }
+      .panel-tab { padding: 0 7px; }
+      .panel-tab .icon { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app" id="app">
+    <aside class="sidebar" aria-label="主侧栏">
+      <header class="sidebar-header">
+        <div class="traffic-lights" aria-hidden="true">
+          <span class="traffic-light red"></span>
+          <span class="traffic-light yellow"></span>
+          <span class="traffic-light green"></span>
+        </div>
+        <div class="brand">
+          <svg class="brand-logo" viewBox="0 0 23.16 17.04" aria-hidden="true">
+            <path fill="currentColor" d="M22.92 1.43c-.25-.12-.35.11-.5.23-.36.38-.78.76-1.46.74-.8-.05-1.48.2-2.08.81-.13-.75-.56-1.2-1.21-1.49-.66-.3-1.03-.62-1.22-1.38-.05-.15-.1-.31-.28-.34-.19-.03-.27.14-.34.27-.3.55-.42 1.16-.41 1.78.03 1.38.62 2.49 1.78 3.27.13.09.17.18.12.31l-.25.8c-.05.18-.13.22-.32.14-.64-.27-1.19-.66-1.68-1.14-.82-.8-1.57-1.68-2.5-2.37-.22-.16-.44-.31-.67-.45-.95-.92.13-1.68.38-1.77.26-.1.09-.42-.75-.41-.84 0-1.61.29-2.59.66l-.45.13c-.89-.17-1.82-.2-2.78-.1C3.88 1.32 2.43 2.18 1.36 3.65.08 5.41-.22 7.42.15 9.51c.39 2.2 1.51 4.03 3.24 5.45 1.79 1.48 3.86 2.21 6.21 2.07 1.43-.08 3.02-.27 4.82-1.8.45.23.93.32 1.72.39.6.05 1.19-.03 1.64-.13.71-.15.66-.81.4-.93-2.08-.97-1.62-.57-2.03-.89 1.06-1.25 2.67-3.47 3.17-6.5.05-.33.11-.8.1-1.07 0-.17.04-.23.23-.25.52-.06 1.03-.2 1.49-.46 1.35-.74 1.89-1.95 2.02-3.4.02-.22 0-.45-.24-.57ZM11.17 14.47c-2.01-1.58-2.99-2.1-3.39-2.08-.38.02-.31.45-.23.74.09.27.2.47.36.71.11.16.19.4-.11.58-.65.4-1.78-.14-1.83-.16-1.31-.78-2.41-1.8-3.19-3.19-.75-1.35-1.18-2.79-1.25-4.33-.02-.37.09-.5.46-.57.49-.09.99-.11 1.48-.04 2.05.3 3.8 1.22 5.27 2.68.84.83 1.47 1.82 2.13 2.79.69 1.03 1.44 2.01 2.39 2.81.34.28.61.5.86.66-.77.09-2.06.1-2.95-.6Zm1.27-5.91a.3.3 0 1 1 0-.6.3.3 0 0 1 0 .6Z"/>
+          </svg>
+          <span>DeepCreator</span>
+        </div>
+        <button class="icon-button sidebar-collapse" aria-label="收起侧栏">
+          <svg class="icon icon-14" viewBox="0 0 16 16"><rect x="2" y="2.5" width="12" height="11" rx="2"/><path d="M5.5 2.5v11"/></svg>
+        </button>
+      </header>
+
+      <div class="sidebar-scroll">
+        <nav class="nav-list" aria-label="主导航">
+          <button class="nav-row"><svg class="icon" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M8 5v6M5 8h6"/></svg>新会话</button>
+          <button class="nav-row"><svg class="icon" viewBox="0 0 16 16"><path d="M3 2.5h7.5A1.5 1.5 0 0 1 12 4v9.5l-3-2-3 2-3-2z"/><path d="M8.5 5.5h4M10.5 3.5v4"/></svg>技能</button>
+          <button class="nav-row"><svg class="icon" viewBox="0 0 16 16"><path d="M8 2a6 6 0 1 1-4.24 1.76"/><path d="M3.8 1.8v3.7h3.7M8 4.5V8l2.2 1.5"/></svg>定时任务</button>
+        </nav>
+
+        <section class="sidebar-section">
+          <div class="section-heading">置顶</div>
+          <button class="session-row"><span class="row-title">mac显示隐藏文件夹方法</span><span class="row-meta">46分钟</span></button>
+        </section>
+
+        <section class="sidebar-section">
+          <div class="section-heading">
+            工作区
+            <div class="heading-actions">
+              <button class="icon-button" aria-label="搜索"><svg class="icon icon-14" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.7"/><path d="m10.5 10.5 3 3"/></svg></button>
+              <button class="icon-button" aria-label="筛选"><svg class="icon icon-14" viewBox="0 0 16 16"><path d="M3 4h10M5 8h6M7 12h2"/><circle cx="10.5" cy="4" r="1" fill="currentColor" stroke="none"/><circle cx="6" cy="8" r="1" fill="currentColor" stroke="none"/></svg></button>
+              <button class="icon-button" aria-label="添加工作区"><svg class="icon icon-14" viewBox="0 0 16 16"><path d="M2.5 5.5v7h11v-8h-5l-1-1h-5z"/><path d="M11.5 1.5v5M9 4h5"/></svg></button>
+            </div>
+          </div>
+          <button class="workspace-row"><svg class="icon" viewBox="0 0 16 16"><path d="M2 5.5h12v7.5H2z"/><path d="M2 5.5V4a1 1 0 0 1 1-1h3l1.2 1.5H14"/></svg>深度求索</button>
+          <button class="session-row active"><span class="row-title">介绍你的能力</span><span class="row-meta">11小时</span></button>
+        </section>
+      </div>
+
+      <footer class="sidebar-footer">
+        <button class="nav-row"><svg class="icon" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.1"/><path d="M6.6 2.3h2.8l.5 1.5 1.2.7 1.6-.3 1.4 2.4-1.1 1v1.3l1.1 1-1.4 2.4-1.6-.3-1.2.7-.5 1.5H6.6l-.5-1.5-1.2-.7-1.6.3-1.4-2.4 1.1-1V7.6l-1.1-1 1.4-2.4 1.6.3 1.2-.7z"/></svg>设置</button>
+      </footer>
+    </aside>
+
+    <section class="chat-column" aria-label="主对话区">
+      <header class="chat-header">
+        <div class="chat-title">
+          <span>介绍你的能力</span>
+          <span class="mode-label"><svg class="icon icon-14" viewBox="0 0 16 16"><path d="m8 1.5 1.1 3.2L12.5 6 9.1 7.2 8 10.5 6.9 7.2 3.5 6l3.4-1.3z"/><path d="m12.5 10 .6 1.7 1.7.6-1.7.6-.6 1.6-.6-1.6-1.7-.6 1.7-.6z"/></svg>创造模式</span>
+        </div>
+        <div class="segmented" role="tablist" aria-label="对话视图">
+          <button class="segment active">对话</button>
+          <button class="segment">轨迹</button>
+        </div>
+        <div class="chat-actions">
+          <button class="panel-restore" id="restorePanel"><svg class="icon icon-14" viewBox="0 0 16 16"><rect x="2" y="2.5" width="12" height="11" rx="2"/><path d="M10.5 2.5v11"/></svg>打开工作面板</button>
+          <button class="outline-button">Session log<svg class="icon icon-12" viewBox="0 0 16 16"><path d="M8 2v8M5 7.5 8 10.5l3-3M3 13h10"/></svg></button>
+          <button class="icon-button" aria-label="更多"><svg class="icon icon-14" viewBox="0 0 16 16"><path d="M3 4.5h10M3 8h10M3 11.5h10"/></svg></button>
+        </div>
+      </header>
+
+      <div class="chat-scroll">
+        <article class="chat-content">
+          <div class="intro-line">实现方式（<code>whal-1</code>，纯 Client 插件）：</div>
+          <ul>
+            <li>该状态条是产品内部渲染，没有专属 Slot。最近的可用 Slot（<code>conversation.chat.render</code>）会整体替换聊天视图，太激进。</li>
+            <li>选择器精确限定为 <code>div[role="status"][aria-live="polite"]</code>，聊天视图里只有 Deep diving 状态条命中。</li>
+            <li>鲸鱼是内联 SVG，不是 emoji——因为状态文字用了渐变，SVG 数据图则稳定。</li>
+          </ul>
+          <p><strong>一个小的副作用说明：</strong>轨迹视图的“历史加载中”状态也有相同的属性组合，所以切到轨迹视图时，加载中鲸鱼也会出现在那里。</p>
+          <p><strong>验证方式：</strong>批准后，随便发一条消息让我干活——“Deep diving...”出现的那一刻，左侧就会有一条摆动的蓝鲸。</p>
+          <div class="tool-line"><svg class="icon icon-14" viewBox="0 0 16 16"><rect x="3" y="2" width="10" height="12" rx="2"/><path d="M5.5 6h5M5.5 9h3.5"/></svg>上下文注入 · cordis-host-runner</div>
+          <p class="approval"><span class="approval-mark">✓</span>批准通过，<code>whal-1/pkg-1</code> 已成功运行。</p>
+          <p>鲸鱼现在生效了——验证方法很简单：<strong>发一条消息让我干活</strong>，回合开始后“Deep diving...”状态条出现，左侧就会有一条蓝色小鲸鱼上下摆动。</p>
+          <p>如果想调整，随时说：</p>
+          <ul>
+            <li>🐋 大小 / 颜色 / 动画快慢</li>
+            <li>换成别的鲸鱼造型</li>
+            <li>限定只在聊天视图显示</li>
+          </ul>
+          <div class="message-actions">
+            <button class="icon-button" aria-label="复制"><svg class="icon icon-14" viewBox="0 0 16 16"><rect x="5" y="4" width="8" height="9" rx="2"/><path d="M3 10V3.5A1.5 1.5 0 0 1 4.5 2H10"/></svg></button>
+            <button class="icon-button" aria-label="赞"><svg class="icon icon-14" viewBox="0 0 16 16"><path d="M5.5 7 7.5 2.5c.4-.9 1.8-.5 1.7.5L9 5h3.3c1 0 1.7.9 1.4 1.8l-1.3 4.5a1.6 1.6 0 0 1-1.5 1.2H5.5zM2.5 7h3v5.5h-3z"/></svg></button>
+            <button class="icon-button" aria-label="踩"><svg class="icon icon-14" viewBox="0 0 16 16"><path d="M5.5 9 7.5 13.5c.4.9 1.8.5 1.7-.5L9 11h3.3c1 0 1.7-.9 1.4-1.8l-1.3-4.5a1.6 1.6 0 0 0-1.5-1.2H5.5zM2.5 3.5h3V9h-3z"/></svg></button>
+            <button class="icon-button" aria-label="分叉"><svg class="icon icon-14" viewBox="0 0 16 16"><path d="M4 3v3a2 2 0 0 0 2 2h4M10 5l3 3-3 3M4 13v-3"/></svg></button>
+          </div>
+        </article>
+      </div>
+
+      <div class="composer-area">
+        <div class="composer">
+          <div class="composer-placeholder">给智能体发消息</div>
+          <div class="composer-bottom">
+            <button class="composer-plus">＋</button>
+            <span>◈ Workspace Write⌄</span>
+            <span class="model-name">DeepSeek-V4-Flash Max⌄</span>
+            <span>◌</span>
+            <button class="composer-send">↑</button>
+          </div>
+        </div>
+        <div class="runtime-line"><span>4 轮 · 28 步</span><span>|</span><span>LLM 4m40s · 工具调用 0.6s</span><span>|</span><span>缓存命中 95%</span></div>
+      </div>
+    </section>
+
+    <aside class="right-panel" aria-label="右侧工作面板">
+      <div class="resize-handle" id="resizeHandle" aria-hidden="true"></div>
+      <header class="panel-header">
+        <div class="panel-tabs" role="tablist" aria-label="工作面板类型">
+          <button class="panel-tab active" data-panel="split" role="tab" aria-selected="true"><svg class="icon icon-12" viewBox="0 0 16 16"><rect x="2" y="2.5" width="12" height="11" rx="2"/><path d="M8 2.5v11"/></svg>会话<span class="tab-count">2</span></button>
+          <button class="panel-tab" data-panel="review" role="tab" aria-selected="false"><svg class="icon icon-12" viewBox="0 0 16 16"><path d="M3 2.5h10v11H3z"/><path d="m5.5 8 1.5 1.5 3.5-4"/></svg>审查<span class="tab-count">3</span></button>
+          <button class="panel-tab" data-panel="browser" role="tab" aria-selected="false"><svg class="icon icon-12" viewBox="0 0 16 16"><rect x="1.8" y="2.3" width="12.4" height="11.4" rx="2"/><path d="M2 5.5h12M4 4h.1M6 4h.1"/></svg>浏览器</button>
+          <button class="panel-tab" data-panel="terminal" role="tab" aria-selected="false"><svg class="icon icon-12" viewBox="0 0 16 16"><rect x="1.8" y="2.3" width="12.4" height="11.4" rx="2"/><path d="m4 6 2 2-2 2M8 10h3"/></svg>终端</button>
+        </div>
+        <button class="icon-button" id="closePanel" aria-label="关闭工作面板"><svg class="icon icon-14" viewBox="0 0 16 16"><path d="m4 4 8 8M12 4l-8 8"/></svg></button>
+      </header>
+
+      <div class="panel-body">
+        <section class="panel-view split-view active" data-view="split">
+          <div class="sub-header">
+            <svg class="icon icon-14" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5"/><path d="M5.5 8h5M8 5.5v5"/></svg>
+            <div class="sub-title">为右侧面板定义交互</div>
+            <span class="sub-meta">独立上下文</span>
+            <button class="icon-button" aria-label="更多"><svg class="icon icon-14" viewBox="0 0 16 16"><circle cx="3.5" cy="8" r=".7" fill="currentColor" stroke="none"/><circle cx="8" cy="8" r=".7" fill="currentColor" stroke="none"/><circle cx="12.5" cy="8" r=".7" fill="currentColor" stroke="none"/></svg></button>
+          </div>
+          <div class="split-body" id="splitBody">
+            <div class="split-system"><span class="term-dot"></span>分屏会话正在运行 · DeepSeek-V4-Flash</div>
+            <div class="mini-message user">右侧面板的标签应该放在哪里更顺手？</div>
+            <div class="mini-message assistant">
+              <p>建议直接放进右侧同高 Header，理由有三个：</p>
+              <p>1. 标签是面板自身的一级导航，不占用内容高度。<br>2. 与中间对话 Header 形成同一水平节奏。<br>3. 面板缩窄时可水平滚动，不挤压关闭按钮。</p>
+              <div class="mini-tool"><svg class="icon icon-12" viewBox="0 0 16 16"><path d="M3 3h10v10H3zM6 3v10M6 7h7"/></svg>读取 AppFrame.module.css</div>
+            </div>
+            <div class="mini-message user">分屏会话继续沿用现有对话 UI。</div>
+            <div class="mini-message assistant"><p>可以。正文、工具行和输入框复用现有语义，只把内容宽度改成面板内自适应。</p></div>
+          </div>
+          <div class="mini-composer-wrap">
+            <div class="mini-composer">
+              <textarea class="mini-input" id="splitInput" placeholder="在分屏会话中继续"></textarea>
+              <div class="mini-composer-bottom"><span>＋</span><span style="margin-left:10px">Workspace Write⌄</span><button class="composer-send mini-send" id="splitSend">↑</button></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel-view review-view" data-view="review">
+          <div class="sub-header">
+            <div class="sub-title">工作区变更</div>
+            <span class="sub-meta">3 个文件</span>
+            <button class="icon-button" aria-label="刷新"><svg class="icon icon-14" viewBox="0 0 16 16"><path d="M13 5V2l-1.4 1.4A5.5 5.5 0 1 0 13 9"/></svg></button>
+          </div>
+          <div class="review-summary">
+            <div class="metric"><strong>3</strong><span>changed files</span></div>
+            <div class="metric add"><strong>+86</strong><span>additions</span></div>
+            <div class="metric del"><strong>−19</strong><span>deletions</span></div>
+          </div>
+          <div class="review-main">
+            <nav class="file-list" aria-label="变更文件">
+              <button class="file-item active"><span class="file-status m">M</span>AppFrame.tsx</button>
+              <button class="file-item"><span class="file-status m">M</span>AppFrame.css</button>
+              <button class="file-item"><span class="file-status a">A</span>RightPanel.tsx</button>
+            </nav>
+            <div class="diff-pane">
+              <div class="diff-title"><span>AppFrame.tsx</span><span class="diff-stat">+24 −4</span></div>
+              <div class="diff-line"><span class="ln">41</span><span class="sign"></span><span class="code">function DetailsColumn(props) {</span></div>
+              <div class="diff-line del"><span class="ln">42</span><span class="sign">−</span><span class="code">  return &lt;div className={css.detailsCol}&gt;</span></div>
+              <div class="diff-line add"><span class="ln">42</span><span class="sign">+</span><span class="code">  return &lt;aside className={css.panelCol}&gt;</span></div>
+              <div class="diff-line add"><span class="ln">43</span><span class="sign">+</span><span class="code">    &lt;PanelHeader tabs={tabs} /&gt;</span></div>
+              <div class="diff-line"><span class="ln">44</span><span class="sign"></span><span class="code">    {props.children}</span></div>
+              <div class="diff-line add"><span class="ln">45</span><span class="sign">+</span><span class="code">    &lt;PanelResizeHandle /&gt;</span></div>
+              <div class="diff-line del"><span class="ln">46</span><span class="sign">−</span><span class="code">  &lt;/div&gt;</span></div>
+              <div class="diff-line add"><span class="ln">46</span><span class="sign">+</span><span class="code">  &lt;/aside&gt;</span></div>
+              <div class="diff-line"><span class="ln">47</span><span class="sign"></span><span class="code">}</span></div>
+              <div class="diff-line"><span class="ln">48</span><span class="sign"></span><span class="code"></span></div>
+              <div class="diff-line add"><span class="ln">49</span><span class="sign">+</span><span class="code">// Panel state remains mounted at width 0.</span></div>
+            </div>
+          </div>
+          <footer class="review-footer">
+            <button class="review-button">全部展开</button>
+            <button class="review-button primary" id="approveReview">批准变更</button>
+          </footer>
+        </section>
+
+        <section class="panel-view browser-view" data-view="browser">
+          <div class="browser-toolbar">
+            <div class="browser-controls">
+              <button class="icon-button" aria-label="后退"><svg class="icon icon-14" viewBox="0 0 16 16"><path d="m9.5 3.5-4.5 4.5 4.5 4.5"/></svg></button>
+              <button class="icon-button" aria-label="前进"><svg class="icon icon-14" viewBox="0 0 16 16"><path d="m6.5 3.5 4.5 4.5-4.5 4.5"/></svg></button>
+              <button class="icon-button" id="refreshBrowser" aria-label="刷新"><svg class="icon icon-14" viewBox="0 0 16 16"><path d="M13 5V2l-1.4 1.4A5.5 5.5 0 1 0 13 9"/></svg></button>
+            </div>
+            <div class="address-bar"><svg class="icon icon-12" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="2"/><path d="M5.5 7V5.2a2.5 2.5 0 0 1 5 0V7"/></svg><span>http://localhost:4173/preview</span></div>
+            <button class="icon-button" aria-label="在外部打开"><svg class="icon icon-14" viewBox="0 0 16 16"><path d="M9 2h5v5M14 2 7.5 8.5"/><path d="M12 9v4H3V4h4"/></svg></button>
+          </div>
+          <div class="browser-canvas">
+            <div class="mock-site" id="mockSite">
+              <div class="mock-site-nav"><span class="mock-brand">DeepCreator Lab</span><div class="mock-links"><span>Overview</span><span>Docs</span><span>GitHub</span></div></div>
+              <div class="mock-hero">
+                <div class="mock-kicker">Local preview</div>
+                <h2>Build with context,<br>ship with confidence.</h2>
+                <p>Agentic workspace tools that stay close to your conversation and your code.</p>
+                <span class="mock-cta">Explore workspace →</span>
+              </div>
+              <div class="mock-cards">
+                <div class="mock-card"><span class="spark">◇</span><strong>Context aware</strong><span>Reads the active workspace.</span></div>
+                <div class="mock-card"><span class="spark">⌁</span><strong>Live preview</strong><span>Iterate without leaving chat.</span></div>
+                <div class="mock-card"><span class="spark">✓</span><strong>Review ready</strong><span>Inspect every change.</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="browser-status"><span class="status-online"></span><span id="browserStatus">Preview server connected</span><span class="right">390 × 742</span></div>
+        </section>
+
+        <section class="panel-view terminal-view" data-view="terminal">
+          <div class="terminal-tabs">
+            <div class="terminal-tab"><span class="term-dot"></span>zsh · dsh</div>
+            <div class="terminal-actions">
+              <button class="icon-button" aria-label="新终端"><svg class="icon icon-14" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg></button>
+              <button class="icon-button" aria-label="清空终端"><svg class="icon icon-14" viewBox="0 0 16 16"><path d="M3 4.5h10M6 4.5V3h4v1.5M5 6.5v6M8 6.5v6M11 6.5v6M4 4.5l.7 9h6.6l.7-9"/></svg></button>
+            </div>
+          </div>
+          <div class="terminal-output" id="terminalOutput">
+            <div class="term-line"><span class="term-prompt">➜</span>  <span class="term-blue">dsh</span> git status --short</div>
+            <div class="term-line"><span class="term-yellow"> M</span> packages/client/ui-layout/src/client/AppFrame.tsx</div>
+            <div class="term-line"><span class="term-yellow"> M</span> packages/client/ui-layout/src/client/AppFrame.module.css</div>
+            <div class="term-line"><span class="term-green">??</span> packages/client/ui-panel/</div>
+            <div class="term-line"></div>
+            <div class="term-line"><span class="term-prompt">➜</span>  <span class="term-blue">dsh</span> pnpm test --filter ui-layout</div>
+            <div class="term-line term-muted"> RUN  v3.2.4 ~/projects/deepcreator</div>
+            <div class="term-line term-green"> ✓ ui-layout/tests/app-frame.client.spec.tsx (18 tests) 296ms</div>
+            <div class="term-line"></div>
+            <div class="term-line term-green"> Test Files  1 passed (1)</div>
+            <div class="term-line term-green">      Tests  18 passed (18)</div>
+            <div class="term-line term-muted">   Duration  1.08s</div>
+            <div class="term-line"></div>
+            <div class="term-line"><span class="term-prompt">➜</span>  <span class="term-blue">dsh</span> <span class="term-muted"># terminal is ready</span></div>
+          </div>
+          <label class="terminal-command"><span class="term-prompt">➜</span><input id="terminalInput" placeholder="输入命令并按 Enter"><span class="term-muted">⌘↵</span></label>
+        </section>
+      </div>
+    </aside>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    const app = document.querySelector('#app');
+    const panelTabs = [...document.querySelectorAll('.panel-tab')];
+    const panelViews = [...document.querySelectorAll('.panel-view')];
+    const toast = document.querySelector('#toast');
+    let toastTimer;
+
+    function showToast(message) {
+      toast.textContent = message;
+      toast.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove('show'), 1700);
+    }
+
+    function openPanel(name) {
+      app.classList.remove('panel-collapsed');
+      panelTabs.forEach(tab => {
+        const active = tab.dataset.panel === name;
+        tab.classList.toggle('active', active);
+        tab.setAttribute('aria-selected', String(active));
+      });
+      panelViews.forEach(view => view.classList.toggle('active', view.dataset.view === name));
+    }
+
+    panelTabs.forEach(tab => tab.addEventListener('click', () => openPanel(tab.dataset.panel)));
+    document.querySelector('#closePanel').addEventListener('click', () => app.classList.add('panel-collapsed'));
+    document.querySelector('#restorePanel').addEventListener('click', () => openPanel('split'));
+
+    const handle = document.querySelector('#resizeHandle');
+    let dragStartX = 0;
+    let dragStartWidth = 0;
+
+    handle.addEventListener('pointerdown', event => {
+      dragStartX = event.clientX;
+      dragStartWidth = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--panel-width'));
+      handle.setPointerCapture(event.pointerId);
+      handle.classList.add('dragging');
+      app.style.transition = 'none';
+    });
+
+    handle.addEventListener('pointermove', event => {
+      if (!handle.hasPointerCapture(event.pointerId)) return;
+      const next = Math.max(300, Math.min(520, dragStartWidth + dragStartX - event.clientX));
+      document.documentElement.style.setProperty('--panel-width', `${Math.round(next)}px`);
+    });
+
+    function finishResize(event) {
+      if (!handle.hasPointerCapture(event.pointerId)) return;
+      handle.releasePointerCapture(event.pointerId);
+      handle.classList.remove('dragging');
+      app.style.transition = '';
+    }
+
+    handle.addEventListener('pointerup', finishResize);
+    handle.addEventListener('pointercancel', finishResize);
+
+    const splitInput = document.querySelector('#splitInput');
+    const splitBody = document.querySelector('#splitBody');
+
+    function sendSplitMessage() {
+      const text = splitInput.value.trim();
+      if (!text) return;
+      const node = document.createElement('div');
+      node.className = 'mini-message user';
+      node.textContent = text;
+      splitBody.appendChild(node);
+      splitInput.value = '';
+      splitBody.scrollTop = splitBody.scrollHeight;
+      setTimeout(() => {
+        const reply = document.createElement('div');
+        reply.className = 'mini-message assistant';
+        reply.innerHTML = '<p>收到。这个原型里四种面板共享同一 Header 和尺寸状态。</p>';
+        splitBody.appendChild(reply);
+        splitBody.scrollTop = splitBody.scrollHeight;
+      }, 420);
+    }
+
+    document.querySelector('#splitSend').addEventListener('click', sendSplitMessage);
+    splitInput.addEventListener('keydown', event => {
+      if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendSplitMessage(); }
+    });
+
+    document.querySelector('#approveReview').addEventListener('click', () => showToast('已批准 3 个文件的变更'));
+
+    document.querySelector('#refreshBrowser').addEventListener('click', () => {
+      const site = document.querySelector('#mockSite');
+      const status = document.querySelector('#browserStatus');
+      site.style.opacity = '.35';
+      status.textContent = 'Refreshing preview…';
+      setTimeout(() => {
+        site.style.opacity = '1';
+        status.textContent = 'Preview updated just now';
+      }, 520);
+    });
+
+    const terminalInput = document.querySelector('#terminalInput');
+    const terminalOutput = document.querySelector('#terminalOutput');
+
+    terminalInput.addEventListener('keydown', event => {
+      if (event.key !== 'Enter') return;
+      const command = terminalInput.value.trim();
+      if (!command) return;
+      const prompt = document.createElement('div');
+      prompt.className = 'term-line';
+      prompt.innerHTML = `<span class="term-prompt">➜</span>  <span class="term-blue">dsh</span> ${command.replace(/[&<>]/g, value => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[value]))}`;
+      terminalOutput.appendChild(prompt);
+      const result = document.createElement('div');
+      result.className = 'term-line term-muted';
+      result.textContent = command === 'clear' ? '' : `command completed · ${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`;
+      if (command === 'clear') terminalOutput.innerHTML = '';
+      else terminalOutput.appendChild(result);
+      terminalInput.value = '';
+      terminalOutput.scrollTop = terminalOutput.scrollHeight;
+    });
+
+    document.querySelectorAll('.segment').forEach(segment => segment.addEventListener('click', () => {
+      document.querySelectorAll('.segment').forEach(item => item.classList.toggle('active', item === segment));
+      showToast(segment.textContent === '轨迹' ? '轨迹视图仅作状态演示' : '已切回对话视图');
+    }));
+  </script>
+</body>
+</html>

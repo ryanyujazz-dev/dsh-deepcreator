@@ -9,6 +9,8 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 const css = readFileSync(fileURLToPath(new URL('../src/client/tool/components/ToolRow.module.css', import.meta.url)), 'utf8')
+const bashCss = readFileSync(fileURLToPath(new URL('../src/client/tool/toolviews/bash-sample.module.css', import.meta.url)), 'utf8')
+const treeCss = readFileSync(fileURLToPath(new URL('../src/client/tool/ToolCallTree.module.css', import.meta.url)), 'utf8')
 /** Declarations only: the sheet's prose names the properties it explains. */
 const declarationText = css.replace(/\/\*[\s\S]*?\*\//g, ' ')
 
@@ -41,5 +43,25 @@ describe('ToolRow.module.css summary line', () => {
       'white-space: nowrap',
     ]))
     expect(declarations('.summarySuffix')).not.toEqual(expect.arrayContaining(['text-overflow: ellipsis']))
+  })
+})
+
+describe('execution-flow guide rails', () => {
+  it('anchors a Code sub-call branch to its parent icon axis', () => {
+    expect(treeCss).toContain('.subCalls::before')
+    expect(treeCss).toContain('left: calc(var(--dsh-execflow-icon-axis) - var(--dsh-execflow-title-column))')
+    expect(treeCss).toContain('margin: 4px 0 2px var(--dsh-execflow-title-column)')
+    expect(treeCss).toContain('padding-left: 0')
+    expect(treeCss).not.toContain('border-left: 1px solid var(--dsw-alias-border-l2)')
+  })
+
+  it('lets the Bash body wrapper own the unclipped rail', () => {
+    expect(bashCss).toContain('.card[data-execflow] .bodyWrap::before')
+    expect(bashCss).not.toContain('.card[data-execflow] .terminal::before')
+  })
+
+  it('adapts the official Skill row at the Tool tree boundary', () => {
+    expect(treeCss).toContain(".callRow[data-execflow] :global([data-tool='skill']) > div:nth-child(2)::before")
+    expect(treeCss).toContain(".callRow[data-execflow] :global([data-tool='skill']) > div:nth-child(2) > section")
   })
 })

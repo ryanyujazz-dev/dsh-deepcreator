@@ -16,6 +16,7 @@ function fakePanels(): PanelActions {
     setNarrow: vi.fn(),
     openDetails: vi.fn(),
     closeDetails: vi.fn(),
+    setDetailsFocused: vi.fn(),
   }
 }
 
@@ -28,12 +29,15 @@ describe('LayoutController', () => {
     service.toggleSidebar()
     service.openDetails()
     service.closeDetails()
+    service.setWorkbenchWidth(640)
+    service.setWorkbenchFocused(true)
 
     expect(panels.toggleSidebar).toHaveBeenCalledTimes(1)
     expect(panels.openDetails).toHaveBeenCalledTimes(1)
     expect(panels.closeDetails).toHaveBeenCalledTimes(1)
     expect(panels.setSidebar).not.toHaveBeenCalled()
-    expect(panels.setDetails).not.toHaveBeenCalled()
+    expect(panels.setDetails).toHaveBeenCalledWith(640)
+    expect(panels.setDetailsFocused).toHaveBeenCalledWith(true)
   })
 
   it('fails loud before the root entry wired its actions', () => {

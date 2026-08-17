@@ -54,6 +54,12 @@ for (const required of [
   '@ryanyujazz/dsh-client-ui-permission-presets',
   '@ryanyujazz/dsh-client-ui-subagent',
   '@ryanyujazz/dsh-client-ui-user-questions',
+  '@ryanyujazz/dsh-client-workbench-remotes',
+  '@ryanyujazz/dsh-artifacts',
+  '@ryanyujazz/dsh-review',
+  '@ryanyujazz/dsh-terminal-workbench',
+  '@deepseek-ai/dsh-terminal',
+  '@deepseek-ai/dsh-terminal-bash',
 ]) {
   if (!bundlePatch.includes(required)) failures.push(`deepcreator-web omits ${required}`)
 }

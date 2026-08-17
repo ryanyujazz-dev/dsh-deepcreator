@@ -4,6 +4,8 @@
 
 纯 React 原子组件（零 cordis）：StateDot、DisclosureRow、官方兼容 `ic_ds_*` 图标、独立持有的 `DeepCreatorIcon*` 产品图标、Button/Pill/Menu/Modal/Input、Toast 短时横幅、OnboardingSurface 首次使用接管层（portal 到 body 的遮罩加不透明展示层，在且仅在自身生命周期内保持 `#root` 为 `inert`）、markdown 家族（MessageText/MarkdownText/JsonBlock）、只读 JsonTree 检查器、`useAnchoredMaxHeight` 钩子（把底部锚定的浮层高度收敛到锚点上方的视口空间，并在 resize、scroll 与调用方提供的依赖变化时重新测量）、TerminalBlock、DiffBlock、ReadBlock、SearchBlock，以及 WebBlock。官方与 Harness／Figma 派生资源保留在 `src/icons/index.tsx`；自绘和产品资源放在 `src/icons/deepcreator.tsx`，使两套图标可以独立演进。
 
+`WorkbenchPanelShell` 是 Workbench 宿主与独立 bundle Provider 共用的、无业务状态的面板框架，统一拥有内缩圆角表面、紧凑 Header、tabs、公共导航与 Body 边界。Workbench owner 通过 shell 的 `leftActions` 与 `rightActions` props 传入 Provider 操作，`WorkbenchPanelIconButton` 保持统一的工具栏命中框与 Tooltip 语义。所有标签、状态和回调都来自 props；该原语不会读取 Cordis 或功能 store。
+
 `SIDEBAR_ICON_SIZE` 是侧边栏操作控件在展开和轨道布局中共用的 14px 图标规格。`BrandWordmark` 渲染由鲸鱼标记和文字组成的 DeepCreator 组合字标，其中鲸鱼以 16px 做视觉放大并与操作图标共用中轴，文字由当前产品字体 token 驱动。
 
 `Menu` 分割线支持 `inset="text"`：当菜单项带前置图标时，分割线可对齐文字列，而不是延伸至卡片两侧。产品图标模块导出置顶、设置、定时任务、文件夹操作、闪光、检查与技能图标；它们都只是呈现原语，自身不持有功能行为。

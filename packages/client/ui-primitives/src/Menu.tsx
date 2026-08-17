@@ -55,6 +55,10 @@ function isLabel(entry: MenuEntry): entry is MenuLabel {
   return 'type' in entry && entry.type === 'label'
 }
 
+function isItem(entry: MenuEntry): entry is MenuItem {
+  return !('type' in entry)
+}
+
 /** Unplaced portal list: hidden but laid out at a fixed origin so offsetWidth/offsetHeight are real. */
 const MEASURE_STYLE: CSSProperties = { visibility: 'hidden', left: 0, top: 0 }
 
@@ -199,7 +203,7 @@ export function Menu({ open, anchor, items, selectedId, selectedIds, onSelect, o
 
   // The submenu card is absolutely positioned outside the list box; the
   // scroll clip would crop it, so only submenu-free menus get the height cap.
-  const scrollable = !items.some(entry => !isSeparator(entry) && !isLabel(entry) && entry.submenu !== undefined && entry.submenu.length > 0)
+  const scrollable = !items.some(entry => isItem(entry) && entry.submenu !== undefined && entry.submenu.length > 0)
 
   const renderEntry = (entry: MenuEntry) => {
     if (isSeparator(entry)) {

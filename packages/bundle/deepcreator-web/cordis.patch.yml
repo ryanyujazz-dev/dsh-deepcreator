@@ -33,8 +33,26 @@
   disabled: true
 - id: ui-user-questions
   disabled: true
+- id: ui-jobs
+  disabled: true
 
 - insert:
+    # Workbench Host plane: domain services stay independent from their UI.
+    - id: deepcreator-terminal-service
+      name: '@deepseek-ai/dsh-terminal'
+
+    - id: deepcreator-terminal-bash
+      name: '@deepseek-ai/dsh-terminal-bash'
+
+    - id: deepcreator-artifacts
+      name: '@ryanyujazz/dsh-artifacts'
+
+    - id: deepcreator-review
+      name: '@ryanyujazz/dsh-review'
+
+    - id: deepcreator-terminal-workbench
+      name: '@ryanyujazz/dsh-terminal-workbench'
+
     - id: deepcreator-ui-primitives
       name: '@ryanyujazz/dsh-client-ui-primitives'
 
@@ -58,6 +76,18 @@
 
     - id: deepcreator-conversation
       name: '@ryanyujazz/dsh-client-ui-conversation'
+
+    - id: deepcreator-workbench
+      name: '@ryanyujazz/dsh-client-ui-workbench'
+
+    - id: deepcreator-workbench-remotes
+      name: '@ryanyujazz/dsh-client-workbench-remotes'
+
+    - id: deepcreator-workbench-activity
+      name: '@ryanyujazz/dsh-client-ui-workbench-activity'
+
+    - id: deepcreator-workbench-tools
+      name: '@ryanyujazz/dsh-client-ui-workbench-tools'
 
     - id: deepcreator-tool
       name: '@ryanyujazz/dsh-client-ui-tool'

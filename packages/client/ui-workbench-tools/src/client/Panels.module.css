@@ -1,0 +1,33 @@
+.empty { min-height: 100%; display: grid; place-content: center; gap: 5px; padding: 24px; box-sizing: border-box; color: var(--dsw-alias-label-tertiary); text-align: center; font-size: 12px; line-height: 18px; }
+.empty strong { color: var(--dsw-alias-label-secondary); font-size: 13px; font-weight: 500; }
+.document, .tool, .browser, .review { display: flex; min-height: 100%; flex-direction: column; }
+.artifactContent { min-height: 0; flex: 1; overflow: auto; }
+.artifactContent > pre { box-sizing: border-box; min-height: 100%; margin: 0; padding: 16px; white-space: pre-wrap; color: var(--dsw-alias-label-primary); font: 12px/1.65 var(--dsw-font-mono); }
+.list { min-height: 0; overflow: auto; padding: 6px; }
+.list > button { width: 100%; min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 0; border-radius: 8px; padding: 8px 10px; color: var(--dsw-alias-label-primary); background: transparent; text-align: left; cursor: pointer; }
+.list > button:hover { background: var(--dsw-alias-fill-hover); }
+.list > button > span { min-width: 0; display: grid; gap: 3px; }
+.list strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 500; }
+.list small, .list time, .list code { color: var(--dsw-alias-label-tertiary); font-size: 10px; }
+.reviewBody { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(120px, 34%) 1fr; }
+.fileList { overflow: auto; border-right: 1px solid var(--dsw-alias-border-l1); padding: 5px; }
+.reviewStatus { display: grid; gap: 2px; padding: 7px 6px 9px; color: var(--dsw-alias-label-tertiary); font-size: 10px; }
+.reviewStatus strong { overflow: hidden; color: var(--dsw-alias-label-secondary); font-size: 11px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.fileList button { width: 100%; display: flex; gap: 7px; border: 0; border-radius: 5px; padding: 6px; color: var(--dsw-alias-label-secondary); background: transparent; text-align: left; cursor: pointer; font-size: 11px; }
+.fileList button:hover { background: var(--dsw-alias-fill-hover); }
+.fileList code { color: var(--dsw-alias-label-tertiary); }
+.fileList span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.diff { min-width: 0; overflow: auto; margin: 0; padding: 12px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-base); white-space: pre-wrap; font: 11px/1.55 var(--dsw-font-mono); }
+.terminal { position: relative; min-height: 100%; display: flex; flex-direction: column; box-sizing: border-box; overflow: hidden; background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-secondary); font-family: var(--dsw-font-mono); }
+.terminalCanvas { min-width: 0; min-height: 0; flex: 1; box-sizing: border-box; padding: 8px 6px 6px 10px; outline: none; }
+.terminalCanvas :global(.xterm) { width: 100%; height: 100%; }
+.terminalCanvas :global(.xterm-viewport) { background: transparent !important; }
+.browserHome { flex: 1; display: grid; place-items: center; min-height: 0; padding: 18px; box-sizing: border-box; }
+.address { width: min(100%, 520px); display: flex; gap: 6px; }
+.address input { min-width: 0; flex: 1; height: 28px; box-sizing: border-box; border: 1px solid var(--dsw-alias-border-l2); border-radius: 7px; padding: 0 9px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-base); font-family: var(--dsw-font-mono); font-size: 11px; outline: none; }
+.address input:focus { border-color: var(--dsw-alias-state-business-primary); }
+.address button, .external { height: 28px; border: 0; border-radius: 7px; padding: 0 10px; color: var(--dsw-static-neutral-bluish-00); background: var(--dsw-alias-button-info-fill); cursor: pointer; }
+.error { padding: 6px 10px; color: var(--dsw-alias-label-error); background: var(--dsw-alias-fill-error); font-size: 11px; line-height: 16px; }
+.viewport { position: relative; flex: 1; min-height: 0; }
+.viewport iframe { width: 100%; height: 100%; border: 0; background: white; }
+.external { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }

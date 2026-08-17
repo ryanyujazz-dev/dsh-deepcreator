@@ -1,0 +1,44 @@
+.controls {
+  display: flex;
+  align-items: center;
+  gap: var(--dsh-icon-toolbar-gap, 4px);
+  -webkit-app-region: no-drag;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--dsh-icon-toolbar-button-size, 28px);
+  height: var(--dsh-icon-toolbar-button-size, 28px);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  cursor: pointer;
+}
+
+.button:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.button > svg {
+  width: var(--dsh-icon-toolbar-glyph-size, 14px);
+  height: var(--dsh-icon-toolbar-glyph-size, 14px);
+}
+
+.button[aria-pressed='true'] {
+  color: var(--dsw-alias-label-primary);
+  background: transparent;
+}
+
+.button:focus-visible {
+  outline: 1px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 1px;
+}
+
+.button:disabled {
+  opacity: .38;
+  cursor: not-allowed;
+}

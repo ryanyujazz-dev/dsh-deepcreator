@@ -1,0 +1,15 @@
+# DeepCreator Workbench
+
+This Client plugin is the sole occupant of the root `details` seat. It owns session-scoped viewing state only: panel-type Groups, same-type tabs/routes, explicit column Tracks, preferred column/cell sizes, outer width, hidden ids, and manual Focus. Business data remains with each Provider or the official Runtime.
+
+Providers register a `PanelTypeDefinition` through `ctx.workbench.registerType()` and contribute keyed renderers to `deepcreator.workbench.panel` and `deepcreator.workbench.panel-icon`. Artifact content renderers use `deepcreator.workbench.artifact.renderer`. Registrations must be disposed together. `initialWidthRatio` declares the first-open Stage share: Activity/Artifact/Terminal use one third; Review/Preview use one half (Preview retains the internal `browser` id).
+
+Every Mosaic cell uses the `WorkbenchPanelShell` exported by ui-primitives. The details column and Tracks own geometry only and draw no outer frame; the shell supplies a 3px inset on every side, the rounded semantic border, the 42px Header, tabs and the Body boundary. Provider bodies begin immediately below that Header. Providers publish Header nodes through the ordinary `contributeHeaderActions()` owner callback and use `WorkbenchPanelIconButton` instead of rendering a second toolbar: create-tab plus actions target the left side, while every other action is placed on the right with back, Focus and hide.
+
+Topology is deterministic. The second type vertically splits the first column without changing its width. The third creates two equal columns at one-half Stage, the fourth splits the second column, and the fifth creates three equal columns at two-thirds Stage. A cell deletion lets its sibling fill the column; an empty column is removed while survivor pixel widths remain unchanged and right-aligned. Every panel column has a 150px floor; Conversation has a 360px floor.
+
+Responsive layout removes whole columns from right to left without rewriting topology. Activating a responsive-hidden type swaps its real cell with the real top-left cell, so later widening reveals the updated topology. If a type absent from topology needs a new odd column that cannot fit, it atomically replaces the top-left type. Same-type instances always remain tabs and do not consume cells. Hidden Groups stay mounted so visibility never implies resource disposal.
+
+The five type controls stay inline before the Session Header's stable More trigger only while the complete strip fits. When it does not, the entire strip becomes one independent Panel launcher whose menu contains all five types; widening restores all five buttons together. Both forms read the same Controller visibility source, so the responsive switch never opens, hides, or remounts a panel.
+
+`dsh.deepcreator.workbench.session.v2.<sessionId>` stores presentation state in browser-local persistence. The retired v1 pair-axis/parked snapshot is removed before registration. Agent data never reveals a panel unless a presentation request carries `reveal: true`.

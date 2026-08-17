@@ -47,6 +47,11 @@
   white-space: nowrap;
 }
 
+.compactIcon {
+  display: none;
+  flex: 0 0 auto;
+}
+
 /* Effort value beside the model name: same 11/20/500, caption tone. */
 .triggerEffort {
   flex: 0 0 auto;
@@ -61,6 +66,32 @@
 
 .chevronOpen {
   transform: rotate(180deg);
+}
+
+/* The composer row is an anonymous inline-size container owned by InputBar.
+   Once its natural control labels would compete for the same pixels, the
+   model selector becomes one semantic icon button. The current model and
+   effort remain in aria-label/title and the same menu opens on activation. */
+@container (max-width: 460px) {
+  .root {
+    flex: 0 0 28px;
+  }
+
+  .trigger {
+    justify-content: center;
+    width: 28px;
+    padding: 0;
+  }
+
+  .compactIcon {
+    display: inline-flex;
+  }
+
+  .triggerLabel,
+  .triggerEffort,
+  .chevron {
+    display: none;
+  }
 }
 
 .menu {

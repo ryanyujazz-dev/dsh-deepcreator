@@ -37,7 +37,14 @@ const OWNED_DEPENDENCIES = new Set([
   '@ryanyujazz/dsh-client-ui-tool',
   '@ryanyujazz/dsh-client-ui-trajectory',
   '@ryanyujazz/dsh-client-ui-user-questions',
+  '@ryanyujazz/dsh-client-ui-workbench',
+  '@ryanyujazz/dsh-client-ui-workbench-activity',
+  '@ryanyujazz/dsh-client-ui-workbench-tools',
+  '@ryanyujazz/dsh-client-workbench-remotes',
   '@ryanyujazz/dsh-client-ui-workspace',
+  '@ryanyujazz/dsh-artifacts',
+  '@ryanyujazz/dsh-review',
+  '@ryanyujazz/dsh-terminal-workbench',
 ])
 const LEGACY_ROW_IDS = new Set(['execflow-conversation', 'execflow-tool'])
 
@@ -103,6 +110,7 @@ if (!existsSync(join(bundlePath, 'package.json'))) {
 }
 
 const sourceManifest = readJson(join(sourceDir, 'package.json'))
+const bundleManifest = readJson(join(bundlePath, 'package.json'))
 const existingTarget = existsSync(join(targetDir, 'package.json'))
   ? readJson(join(targetDir, 'package.json'))
   : undefined
@@ -130,6 +138,15 @@ for (const [name, spec] of Object.entries(sourceManifest.dependencies ?? {})) {
   if (!OWNED_DEPENDENCIES.has(name)) dependencies[name] = spec
 }
 dependencies['@ryanyujazz/dsh-deepcreator-web'] = `link:${bundlePath}`
+for (const name of [
+  '@deepseek-ai/dsh-agent',
+  '@deepseek-ai/dsh-session',
+  '@deepseek-ai/dsh-terminal',
+  '@deepseek-ai/dsh-terminal-bash',
+  '@deepseek-ai/dsh-typert-protocol',
+]) {
+  dependencies[name] = bundleManifest.dependencies[name]
+}
 for (const entry of readdirSync(join(root, 'packages', 'client'), { withFileTypes: true })) {
   if (!entry.isDirectory()) continue
   const packageDir = join(root, 'packages', 'client', entry.name)
@@ -137,6 +154,14 @@ for (const entry of readdirSync(join(root, 'packages', 'client'), { withFileType
   if (!existsSync(manifestPath)) continue
   const manifest = readJson(manifestPath)
   if (manifest.dsh?.client === undefined) continue
+  dependencies[manifest.name] = `link:${packageDir}`
+}
+for (const entry of readdirSync(join(root, 'packages', 'host'), { withFileTypes: true })) {
+  if (!entry.isDirectory()) continue
+  const packageDir = join(root, 'packages', 'host', entry.name)
+  const manifestPath = join(packageDir, 'package.json')
+  if (!existsSync(manifestPath)) continue
+  const manifest = readJson(manifestPath)
   dependencies[manifest.name] = `link:${packageDir}`
 }
 
@@ -156,7 +181,7 @@ const targetManifest = {
   },
   deepcreator: {
     managed: true,
-    profileVersion: 1,
+    profileVersion: 2,
     sourceProfile: sourceName,
   },
 }
@@ -196,6 +221,11 @@ const dump = execFileSync(process.execPath, [dshEntry, '--profile', targetName, 
 })
 if (!dump.includes('@ryanyujazz/dsh-client-ui-conversation')
   || !dump.includes('@ryanyujazz/dsh-client-ui-layout')
+  || !dump.includes('@ryanyujazz/dsh-client-ui-workbench')
+  || !dump.includes('@ryanyujazz/dsh-client-workbench-remotes')
+  || !dump.includes('@ryanyujazz/dsh-artifacts')
+  || !dump.includes('@ryanyujazz/dsh-review')
+  || !dump.includes('@ryanyujazz/dsh-terminal-workbench')
   || dump.includes('execflow-conversation')
   || dump.includes('execflow-tool')) {
   throw new Error('DeepCreator profile migration: composed config omitted required DeepCreator UI rows')

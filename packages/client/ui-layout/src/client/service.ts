@@ -27,6 +27,10 @@ export interface ILayout {
   openDetails(): void
   /** Close the details panel. */
   closeDetails(): void
+  /** Restore a persisted Workbench width and open the details track. */
+  setWorkbenchWidth(px: number): void
+  /** Let the details occupant cover the full Stage without covering Sidebar. */
+  setWorkbenchFocused(focused: boolean): void
 }
 
 /** Cross-plugin panel-action face (ctx.layout). */
@@ -57,6 +61,14 @@ export class LayoutController implements ILayout {
   /** Close the details panel. */
   closeDetails(): void {
     this.#require().closeDetails()
+  }
+
+  setWorkbenchWidth(px: number): void {
+    this.#require().setDetails(px)
+  }
+
+  setWorkbenchFocused(focused: boolean): void {
+    this.#require().setDetailsFocused(focused)
   }
 
   #require(): PanelActions {

@@ -21,6 +21,7 @@ import { SessionInputShell } from '../src/client/input/facade.ts'
 import { en, zh } from '../src/client/locales.ts'
 import { ConversationRoot } from '../src/client/skeleton/ConversationRoot.tsx'
 import { ConversationSession, ConversationSessionHeader } from '../src/client/skeleton/ConversationSession.tsx'
+import { panelControlsMode } from '../src/client/chat/ChatRenderMenu.tsx'
 import { HeroShell } from '../src/client/skeleton/EmptyHero.tsx'
 import { InputBar } from '../src/client/skeleton/InputBar.tsx'
 import type { InputBarProps } from '../src/client/skeleton/InputBar.tsx'
@@ -127,6 +128,7 @@ function mount(
   const inputActions = wiring.actions
   const stop = vi.fn()
   const open = vi.fn()
+  const sessionLogDownload = vi.fn()
   const slotCalls: string[] = []
   const viewTabs = options.viewTabs ?? [
     { id: 'chat', label: 'Chat' },
@@ -159,6 +161,10 @@ function mount(
       seatOwners.push({ key, owner })
     }
     if (key === 'conversation.hero.workspace') { pickerOwner = owner; return null }
+    if (key === 'conversation.session.header.utilities' && opts?.only === 'workbench-controls') return null
+    if (key === 'conversation.session.header.utilities' && opts?.only === 'session-log-download') {
+      return <button type="button" onClick={sessionLogDownload}>Session log</button>
+    }
     if (key === 'conversation.session.header') {
       return (
         <ConversationSessionHeader
@@ -267,7 +273,7 @@ function mount(
   }
   const view = render(<ConversationRoot {...props} />)
   return {
-    view, chat, sink, retargetWorkspace, session, slotCalls, seatOwners, open,
+    view, chat, sink, retargetWorkspace, session, slotCalls, seatOwners, open, sessionLogDownload,
     pickerOwner: () => pickerOwner,
     rerender: () => { view.rerender(<ConversationRoot {...props} />) },
   }
@@ -559,26 +565,33 @@ describe('ConversationRoot resident composer', () => {
   })
 })
 
-describe('ConversationSessionHeader render-mode picker', () => {
+describe('ConversationSessionHeader More menu', () => {
   const THREE_MODES = [
     { id: 'normal', label: '原生模式' },
     { id: 'classic', label: '经典模式' },
     { id: 'think', label: '思考模式' },
   ]
 
-  it('keeps the picker hidden while only the shipped mode is registered', () => {
+  it('keeps More available for Session actions while only one render mode is registered', () => {
     const b = mount(conversationSnapshot())
-    expect(b.view.queryByRole('button', { name: '渲染方式' })).toBeNull()
+    expect(b.view.getByRole('button', { name: '更多' })).toBeTruthy()
   })
 
-  it('places the picker after the Header utility slot and switches modes', () => {
+  it('groups render modes and Session log, forwards the official download control, and switches modes', () => {
     const b = mount(conversationSnapshot(), undefined, undefined, { renderModes: THREE_MODES })
-    const trigger = b.view.getByRole('button', { name: '渲染方式' })
+    const trigger = b.view.getByRole('button', { name: '更多' })
     expect(b.slotCalls).toContain('conversation.session.header.utilities')
     fireEvent.click(trigger)
+    expect(b.view.getByText('渲染模式')).toBeTruthy()
+    expect(b.view.getByText('会话')).toBeTruthy()
     expect(b.view.getByRole('menuitem', { name: '原生模式' })).toBeTruthy()
     expect(b.view.getByRole('menuitem', { name: '经典模式' })).toBeTruthy()
     expect(b.view.getByRole('menuitem', { name: '思考模式' })).toBeTruthy()
+    fireEvent.click(b.view.getByRole('menuitem', { name: '下载 Session log' }))
+    expect(b.sessionLogDownload).toHaveBeenCalledTimes(1)
+    expect(b.view.queryByRole('menu')).toBeNull()
+
+    fireEvent.click(trigger)
     fireEvent.click(b.view.getByRole('menuitem', { name: '经典模式' }))
     expect(b.chat.getSnapshot().renderMode).toBe('classic')
     expect(b.view.queryByRole('menu')).toBeNull()
@@ -586,24 +599,30 @@ describe('ConversationSessionHeader render-mode picker', () => {
 
   it('marks the persisted mode and falls back to Native for a stale id', () => {
     const b = mount(conversationSnapshot(), undefined, undefined, { renderModes: THREE_MODES })
-    fireEvent.click(b.view.getByRole('button', { name: '渲染方式' }))
+    fireEvent.click(b.view.getByRole('button', { name: '更多' }))
     fireEvent.click(b.view.getByRole('menuitem', { name: '思考模式' }))
     expect(b.chat.getSnapshot().renderMode).toBe('think')
-    fireEvent.click(b.view.getByRole('button', { name: '渲染方式' }))
+    fireEvent.click(b.view.getByRole('button', { name: '更多' }))
     const think = b.view.getByRole('menuitem', { name: '思考模式' })
     const normal = b.view.getByRole('menuitem', { name: '原生模式' })
     expect(think.className).not.toBe(normal.className)
 
     b.chat.actions.setRenderMode('ghost')
     b.rerender()
-    expect(b.view.getByRole('button', { name: '渲染方式' })).toBeTruthy()
+    expect(b.view.getByRole('button', { name: '更多' })).toBeTruthy()
   })
 
   it('keeps the picker in the Header across view switches', () => {
     const b = mount(conversationSnapshot(), undefined, undefined, { renderModes: THREE_MODES })
-    expect(b.view.getByRole('button', { name: '渲染方式' })).toBeTruthy()
+    expect(b.view.getByRole('button', { name: '更多' })).toBeTruthy()
     b.chat.actions.setView('trajectory')
     b.rerender()
-    expect(b.view.getByRole('button', { name: '渲染方式' })).toBeTruthy()
+    expect(b.view.getByRole('button', { name: '更多' })).toBeTruthy()
+  })
+
+  it('keeps five panel buttons atomic and collapses the complete strip when it no longer fits', () => {
+    expect(panelControlsMode(188)).toBe('expanded')
+    expect(panelControlsMode(187)).toBe('compact')
+    expect(panelControlsMode(96)).toBe('compact')
   })
 })

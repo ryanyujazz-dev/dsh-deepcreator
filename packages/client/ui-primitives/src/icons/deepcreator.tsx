@@ -6,6 +6,91 @@
  * overwriting or being mistaken for an upstream DeepSeek icon.
  */
 import type { IconProps } from './props.ts'
+import type { ReactNode } from 'react'
+
+function WorkbenchGlyph({ size = 16, className, name, children }: IconProps & { name: string; children: ReactNode }) {
+  return <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" aria-hidden data-deepcreator-icon={name}>{children}</svg>
+}
+
+/** Compact model selector: a literal two-lobed brain rather than the orbital Think glyph. */
+export const DeepCreatorIconBrain16 = (props: IconProps) => (
+  <WorkbenchGlyph {...props} name="brain">
+    <path
+      d="M7.75 2.7A2.5 2.5 0 0 0 3.4 4.4 2.45 2.45 0 0 0 2.15 8.55a2.7 2.7 0 0 0 2.55 4.5 2.35 2.35 0 0 0 3.05 1.4V2.7ZM8.25 2.7a2.5 2.5 0 0 1 4.35 1.7 2.45 2.45 0 0 1 1.25 4.15 2.7 2.7 0 0 1-2.55 4.5 2.35 2.35 0 0 1-3.05 1.4V2.7Z"
+      stroke="currentColor" strokeWidth="1.15" strokeLinecap="round" strokeLinejoin="round"
+    />
+  </WorkbenchGlyph>
+)
+
+/** Workbench launcher: one surface representing the complete panel collection. */
+export const DeepCreatorIconPanels16 = (props: IconProps) => (
+  <WorkbenchGlyph {...props} name="workbench-panels">
+    <rect x="1.75" y="2" width="12.5" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
+    <path d="M7.75 2.25v11.5M8 7.75h6" stroke="currentColor" strokeWidth="1.2" />
+  </WorkbenchGlyph>
+)
+
+/** Workbench Activity: two compact status rows. */
+export const DeepCreatorIconActivity16 = (props: IconProps) => (
+  <WorkbenchGlyph {...props} name="workbench-activity">
+    <circle cx="3.25" cy="5" r="1.25" stroke="currentColor" strokeWidth="1.2" />
+    <circle cx="3.25" cy="11" r="1.25" stroke="currentColor" strokeWidth="1.2" />
+    <path d="M6.25 5h7.5M6.25 11h7.5" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
+  </WorkbenchGlyph>
+)
+
+/** Workbench Artifact: three descending content lines. */
+export const DeepCreatorIconArtifact16 = (props: IconProps) => (
+  <WorkbenchGlyph {...props} name="workbench-artifact">
+    <path d="M2 4h12M2 8h5M2 12h8.5" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" />
+  </WorkbenchGlyph>
+)
+
+/** Workbench Review: addition and removal marks inside one rounded frame. */
+export const DeepCreatorIconReview16 = (props: IconProps) => (
+  <WorkbenchGlyph {...props} name="workbench-review">
+    <rect x="1.75" y="2" width="12.5" height="12" rx="2" stroke="currentColor" strokeWidth="1.2" />
+    <path d="M5.5 6h5M8 3.5v5M6.5 12h3" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
+  </WorkbenchGlyph>
+)
+
+/** Workbench Terminal: an unframed prompt fold and cursor. */
+export const DeepCreatorIconTerminal16 = (props: IconProps) => (
+  <WorkbenchGlyph {...props} name="workbench-terminal">
+    <path d="M2.5 4.25 6.25 8 2.5 11.75M8 11.75h5.5" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" />
+  </WorkbenchGlyph>
+)
+
+/** Workbench Preview: the supplied play silhouette, outlined and optically inset. */
+export const DeepCreatorIconPreview16 = (props: IconProps) => (
+  <WorkbenchGlyph {...props} name="workbench-preview">
+    <path
+      d="M4.51 1.57Q3.97 1.26 3.38 1.38Q2.8 1.49 2.41 1.94Q2.02 2.38 2.02 3.01L2.02 12.98Q2.02 13.6 2.41 14.06Q2.8 14.51 3.38 14.62Q3.97 14.74 4.51 14.43L13.15 9.44Q13.7 9.14 13.89 8.57Q14.08 8 13.89 7.43Q13.7 6.86 13.15 6.56L4.51 1.57Z"
+      transform="translate(8 8) scale(.82) translate(-8 -8)"
+      fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"
+    />
+  </WorkbenchGlyph>
+)
+
+/** Workbench Panel expand: the supplied outward-arrow glyph in its original direction. */
+export const DeepCreatorIconPanelExpand16 = (props: IconProps) => (
+  <WorkbenchGlyph {...props} name="workbench-panel-expand">
+    <path
+      d="M1.58 6.43Q1.58 6.64 1.73 6.78Q1.87 6.93 2.08 6.93Q2.29 6.93 2.44 6.78Q2.59 6.64 2.59 6.43L2.59 3.3L6.1 6.82Q6.24 6.96 6.45 6.96Q6.66 6.96 6.8 6.82Q6.96 6.67 6.96 6.46Q6.96 6.26 6.8 6.11L3.28 2.58L6.42 2.58Q6.62 2.58 6.77 2.43Q6.91 2.29 6.91 2.08Q6.91 1.87 6.77 1.73Q6.62 1.58 6.42 1.58L2.45 1.58Q2.1 1.58 1.84 1.83Q1.58 2.08 1.58 2.45L1.58 6.43ZM9.09 13.92Q9.09 14.13 9.23 14.27Q9.38 14.42 9.58 14.42L13.55 14.42Q13.92 14.42 14.17 14.16Q14.42 13.9 14.42 13.55L14.42 9.57Q14.42 9.36 14.27 9.22Q14.13 9.07 13.92 9.07Q13.71 9.07 13.56 9.22Q13.41 9.36 13.41 9.57L13.41 12.69L9.9 9.18Q9.76 9.04 9.55 9.04Q9.34 9.04 9.2 9.18Q9.04 9.33 9.04 9.54Q9.04 9.74 9.2 9.89L12.7 13.41L9.58 13.41Q9.38 13.41 9.23 13.56Q9.09 13.71 9.09 13.92Z"
+      fill="currentColor"
+    />
+  </WorkbenchGlyph>
+)
+
+/** Workbench Panel collapse: the supplied inward-arrow glyph in its original direction. */
+export const DeepCreatorIconPanelCollapse16 = (props: IconProps) => (
+  <WorkbenchGlyph {...props} name="workbench-panel-collapse">
+    <path
+      d="M5.97 6.67L2.83 6.67Q2.62 6.67 2.47 6.82Q2.32 6.96 2.32 7.17Q2.32 7.38 2.47 7.52Q2.62 7.66 2.83 7.66L6.8 7.66Q7.15 7.66 7.41 7.41Q7.66 7.15 7.66 6.8L7.66 2.82Q7.66 2.61 7.51 2.46Q7.36 2.32 7.15 2.32Q6.94 2.32 6.8 2.46Q6.66 2.61 6.66 2.82L6.66 5.95L2.69 1.98Q2.54 1.84 2.34 1.84Q2.13 1.84 1.98 1.98Q1.84 2.13 1.84 2.34Q1.84 2.54 1.98 2.69ZM8.34 13.17Q8.34 13.38 8.48 13.52Q8.62 13.66 8.83 13.66Q9.04 13.66 9.18 13.52Q9.33 13.38 9.33 13.17L9.33 10.05L13.3 14.02Q13.44 14.16 13.65 14.16Q13.86 14.16 14 14.02Q14.16 13.87 14.16 13.66Q14.16 13.46 14 13.31L10.02 9.33L13.17 9.33Q13.38 9.33 13.52 9.18Q13.66 9.04 13.66 8.83Q13.66 8.62 13.52 8.47Q13.38 8.32 13.17 8.32L9.2 8.32Q8.85 8.32 8.59 8.58Q8.34 8.83 8.34 9.2L8.34 13.17Z"
+      fill="currentColor"
+    />
+  </WorkbenchGlyph>
+)
 
 /** DeepCreator settings-trigger glyph, sourced from gearshape.svg. */
 export const DeepCreatorIconGearshape16 = ({ size = 16, className }: IconProps) => (

@@ -37,6 +37,7 @@ const ToolCall = memo(function ToolCall({
       data-chat-anchor-key={`call:${callId}`}
       data-chat-call-id={callId}
       data-selected={selected || undefined}
+      data-execflow={thinkMode !== undefined || undefined}
     >
       {renderSlot('tool.call.toolview', owner, {
         entryKey: toolName,

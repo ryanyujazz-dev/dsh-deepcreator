@@ -1,10 +1,6 @@
-// DetailsPanel: close button + the selected call's args and
-// result — args as JSON, the result raw except for a terminal-card call, whose
-// Output section is the command's terminal card. Reads the
-// selection from the shared chat
-// store (conversation writes, this panel reads — the cross-registration
-// share the store seat exists for) and derives the call material from the
-// session snapshot — no data of its own.
+// Legacy presenter retained for isolated rendering compatibility. The
+// ui-conversation plugin no longer registers this component in the root
+// `details` seat; ui-workbench is the sole runtime occupant.
 
 import { Fragment } from 'react'
 import { CodeBlock } from '@ryanyujazz/dsh-client-ui-primitives'
@@ -14,28 +10,18 @@ import type { DetailsSlotProps } from '../contract/slots.ts'
 import { findToolCall } from '../chat/tool-node-reader.ts'
 import css from './DetailsPanel.module.css'
 
-/** Full props composed by reference from the contract (automatic shares & injected share). */
 export type DetailsPanelProps = DetailsSlotProps
 
-/**
- * Selected call material: the call's display name and args plus the frozen
- * block slice it came from. `block` is a snapshot-cached reference, so the
- * wrapper stays shallow-equal across unrelated snapshot frames; the settled /
- * running split is read off it with the `'kind' in block` discrimination
- * instead of duplicated as flags.
- */
 interface CallMaterial {
   name: string
   argsRaw: string | null
   block: ToolCallBlock
 }
 
-/** Material of a settled result node (native call or run_code sub-dispatch). */
 function settledMaterial(node: ToolResultNode, callId: string): CallMaterial {
   return { name: node.call?.name ?? callId, argsRaw: node.call?.argsRaw ?? null, block: node }
 }
 
-/** Material of an in-flight call (native call or run_code sub-dispatch). */
 function runningMaterial(call: RunningToolCall): CallMaterial {
   return { name: call.name, argsRaw: call.argsRaw, block: call }
 }
@@ -50,12 +36,10 @@ function pretty(raw: string): string {
   try {
     return JSON.stringify(JSON.parse(raw), null, 2)
   } catch {
-    // Not JSON (streaming fragment or plain text): show verbatim.
     return raw
   }
 }
 
-/** Flatten a settled result for the no-ui-tool fallback. */
 function rawResultText(block: ToolCallBlock): string {
   if (!('kind' in block)) return ''
   const parts = block.content.map(item => item.type === 'text' ? item.text : JSON.stringify(item, null, 2))
@@ -65,18 +49,14 @@ function rawResultText(block: ToolCallBlock): string {
 
 export function DetailsPanel({ useSession, useSessions, sessionId, useStore, renderSlot, closeDetails, t }: DetailsPanelProps) {
   const selection = useStore(s => s.selection)
-  // Session workspace root: an omitted or relative terminal cwd resolves
-  // against it, which the pure presenter cannot see.
   const sessionCwd = useSessions(list => list.byId[sessionId]?.cwd)
   const callId = selection?.callId
-  // materialFor builds a fresh wrapper; shallowEqual short-circuits on its
-  // stable members (result node reference rides the snapshot's structural sharing).
   const material = useSession(
     s => (callId === undefined ? null : materialFor(s, callId)),
     (a, b) => shallowEqual(a, b))
 
   return (
-    <div className={css.root}>
+    <div className={css.root} data-legacy-details-presenter>
       <div className={css.header}>
         <div className={css.title}>
           {selection === null ? t('details.title') : material?.name ?? selection.toolName ?? t('details.title')}
@@ -105,10 +85,6 @@ export function DetailsPanel({ useSession, useSessions, sessionId, useStore, ren
                 )}
                 <section className={css.section}>
                   <div className={css.sectionLabel}>{t('details.output')}</div>
-                  {/* Keyed by the selected call: the body owns per-call view
-                      state (the terminal card's expand and copy), which React
-                      would otherwise carry into the next selection because the
-                      panel does not unmount between calls. */}
                   <Fragment key={callId}>
                     {renderSlot('conversation.details.tool', { block: material.block, cwd: sessionCwd }, {
                       fallback: 'kind' in material.block

@@ -12,9 +12,11 @@ Client 工具展示插件。`ui-conversation` 通过 `conversation.chat.node` �
 
 每个 root 和 child 包装层都保留 `data-chat-anchor-key="call:<id>"` 与 `data-chat-call-id` DOM 约定，供分页和 selection 使用。
 
-本包还通过 `ToolDetails` 填充 `conversation.details.tool`。行 renderer 与详情 renderer 共用同一组面向 `terminal`、`read`、`diff`、`search` 和 `web` render intent 的纯 card model。未知的 intent 标签和格式错误的 wire card 数据都会回退为压平的工具结果文本。
+旧 `conversation.details.tool` 注册现在仅作为惰性兼容代码保留：Workbench 成为根详情区唯一 occupant 后，`ui-conversation` 不再声明该子 seat。工具审查后续必须作为 keyed Workbench Inspector Provider 重做。聊天行 renderer 仍复用 `terminal`、`read`、`diff`、`search` 和 `web` 的纯 card model。
 
 通用行把已知工具名称归类为 search、read、shell、write、edit、code 或 generic 变体。运行中、成功、失败和中断状态只来自冻结的 call/result slice。只有用户调用 Host 打开文件回调时，文件路径才相对会话 `cwd` 解析；展示代码不读取会话服务。
+
+在执行流渲染模式中，展开后的工具内容从 22px 标题列开始，并共用一条位于 16px leading glyph 的 x=8 中轴上的 1px 引导线。Code Dispatch 分支始终由父 Code 行持有这条引导线，而每个子调用的 leading 图标从父级「Code」标题左边界开始。由于当前锁定版本的官方 `ui-skill` keyed row 尚未消费 owner 的 `execflow` 标记，Tool 树也会在这一稳定边界补齐相同几何。
 
 ## 原子工具视图
 

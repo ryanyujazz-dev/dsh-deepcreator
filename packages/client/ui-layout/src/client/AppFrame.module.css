@@ -80,12 +80,15 @@
 .detailsCol {
   min-width: 0;
   overflow: hidden;
-  border-left: 1px solid var(--dsw-alias-border-l2);
 }
 
-/* Zero-width mounted subtrees must not paint one-pixel seams. */
-.frame[data-details-collapsed] .detailsCol {
-  border-left: none;
+/* Focus belongs to the Stage: it covers conversation + Workbench while the
+   Sidebar remains visible and interactive. */
+.frame[data-details-focused] .detailsCol {
+  position: absolute;
+  inset: 0 0 0 var(--dsh-stage-left);
+  z-index: 18;
+  background: var(--dsw-alias-bg-base);
 }
 
 /* Drag handles are frame children (columns clip overflow): an 8px hit strip

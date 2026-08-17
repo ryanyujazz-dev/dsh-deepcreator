@@ -34,22 +34,20 @@
 }
 
 /* ExecFlow row chrome (selected by the execflow render modes): the terminal
-   and IO cards indent to the title column (22px) and carry the think-style
-   rail on the icon centerline — the cards sit at margin-left 22px, so the
-   rail anchors back at -14.5px (= x8 absolute). */
+   and IO cards indent to the title column (22px). The body wrapper owns the
+   icon-axis rail; putting it on TerminalBlock itself lets that rounded,
+   overflow-clipped surface erase the part drawn outside its border box. */
 .card[data-execflow] .terminal,
 .card[data-execflow] .ioCard {
-  position: relative;
   margin: 4px 0 4px 22px;
 }
 
-.card[data-execflow] .terminal::before,
-.card[data-execflow] .ioCard::before {
+.card[data-execflow] .bodyWrap::before {
   content: '';
   position: absolute;
-  top: 0;
-  bottom: 0;
-  left: -14.5px;
+  top: 4px;
+  bottom: 4px;
+  left: 7.5px;
   width: 1px;
   background: var(--dsw-alias-border-l2);
   pointer-events: none;

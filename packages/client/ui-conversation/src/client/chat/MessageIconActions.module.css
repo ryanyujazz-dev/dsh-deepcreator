@@ -5,7 +5,7 @@
 .actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--dsh-icon-toolbar-gap, 4px);
   height: 28px;
 }
 
@@ -50,19 +50,23 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: var(--dsh-icon-toolbar-button-size, 28px);
+  height: var(--dsh-icon-toolbar-button-size, 28px);
   padding: 6px;
   border: none;
   border-radius: 28px;
   background: transparent;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsw-alias-label-secondary);
   cursor: pointer;
 }
 
 .action:hover {
   background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-secondary);
+}
+
+.action > svg {
+  width: var(--dsh-icon-toolbar-glyph-size, 14px);
+  height: var(--dsh-icon-toolbar-glyph-size, 14px);
 }
 
 /* Unavailable stays focusable and hoverable so Tooltip can explain why. */
@@ -73,7 +77,7 @@
 
 .action[data-unavailable]:hover {
   background: transparent;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsw-alias-label-secondary);
 }
 
 .visuallyHidden {

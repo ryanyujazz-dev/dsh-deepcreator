@@ -110,8 +110,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: var(--dsh-icon-toolbar-button-size, 28px);
+  height: var(--dsh-icon-toolbar-button-size, 28px);
   border: none;
   border-radius: 50%;
   padding: 0;

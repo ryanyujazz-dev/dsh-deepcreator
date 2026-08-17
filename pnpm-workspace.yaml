@@ -1,6 +1,10 @@
 packages:
   - 'apps/*'
   - 'packages/*/*'
+  # Static-analysis faces intentionally share official package names so the
+  # Typert compiler can resolve canonical symbols. They are never installable
+  # workspace packages and must not participate in pnpm runtime linking.
+  - '!packages/internal/*'
 
 allowBuilds:
   '@deepseek-ai/dsh-subprocess-local': true

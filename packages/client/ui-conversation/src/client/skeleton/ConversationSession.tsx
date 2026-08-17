@@ -77,7 +77,7 @@ export function ConversationSessionHeader({
   const composerPhase = useSession(s => s.composerPhase)
   const blank = useSession(s => s.blank)
   const hideChrome = blank && composerPhase === 'blank'
-  const pickerVisible = modeTabs.length > 1 && activeMode !== undefined
+  const pickerVisible = activeMode !== undefined
 
   useEffect(
     () => modes.bindSession(sessionId, actions.setRenderMode),
@@ -132,12 +132,12 @@ export function ConversationSessionHeader({
             </div>
           )}
           <div className={css.headerUtilities}>
-            {renderSlot('conversation.session.header.utilities', {})}
             {pickerVisible && (
               <ChatRenderMenu
                 modes={modeTabs}
                 activeId={activeMode.id}
                 onPick={(id) => { modes.select(sessionId, id, actions.setRenderMode) }}
+                renderUtilities={renderSlot}
                 t={t}
               />
             )}

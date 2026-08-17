@@ -1,5 +1,7 @@
 # @deepseek-ai/dsh-client-ui-conversation
 
+> 根 `details` 席位现由 `ui-workbench` 独占。旧 `DetailsPanel` 与运行时 `conversation.details.tool` child declaration 已退役；工具审查后续作为 Workbench Inspector Provider 重做。
+
 [English](README.md) | 中文
 
 会话领域：骨架（标题栏／标签页／编辑器／空状态）、聊天视图（分组步骤摘要流、流式尾部隔离与轮次状态）、编辑器 dock（与输入区一同 sticky 的会话统计行）、输入区 dock（队列行加 todo 计划条）、详情壳层，以及按 scope 寻址的 ConversationController。工具展示属于 [`ui-tool`](../ui-tool/README.md)。
@@ -12,7 +14,7 @@
 
 视图环是一个 slot：严格会话主体注册在 `children` 表中声明会话作用域的 `'conversation.view'` 列表，并通过自身的 renderSlot share 渲染活跃配置项（`only: <active id>`）；视图标签页则从注册选项（`id`／`order`／`label`）投影而来。聊天视图是该包自身的配置项；ui-trajectory 等插件通过 `ctx.slots.register` 贡献标签页，每个视图负责自己的 chrome。
 
-聊天视图还声明会话作用域的 `'conversation.chat.render'` 列表，并提供「原生」、「经典」和「思考」三个配置项。由 Host settings 支撑的 `ui-conversation.defaultRenderMode` 偏好以「默认渲染模式」贡献到 `deepcreator.settings.preferences.item`；它的「原生／经典／思考」分段选项初始选中「经典」。该设置控件与当前会话的标题栏选择器双向同步：任一处切换都会立即更新当前会话、另一处的选中态以及后续会话继承的默认值。偏好选项之外的插件模式仍只作用于当前会话。首选注册被移除时会回退到「原生」，但不会改写任一偏好。
+聊天视图还声明会话作用域的 `'conversation.chat.render'` 列表，并提供「原生」、「经典」和「思考」三个配置项。由 Host settings 支撑的 `ui-conversation.defaultRenderMode` 偏好以「默认渲染模式」贡献到 `deepcreator.settings.preferences.item`；它的「原生／经典／思考」分段选项初始选中「经典」。该设置控件与当前会话标题栏的分组「更多」菜单双向同步：任一处切换都会立即更新当前会话、另一处的选中态以及后续会话继承的默认值。「更多」菜单只容纳渲染模式与会话操作，Workbench 自己维护独立的响应式「面板」入口；「更多」只迁移官方 Session log 控件的位置，下载控制器和弹窗仍归官方插件所有。偏好选项之外的插件模式仍只作用于当前会话。首选注册被移除时会回退到「原生」，但不会改写任一偏好。
 
 Chat 业务行是彼此独立的注册表贡献，不是封闭的内建联合。Client 插件通过 declaration merging 增加类型化 `ChatNodeDataMap` key，在 `ctx.conversationEvents` 上注册 `ConversationNodeDefinition`，再向 `conversation.chat.node` 注册匹配的 keyed renderer；它无须修改会话 fold 或中央 renderer switch。稳定事件 id、append/prepend 回放、Location data 与 renderer 约束见 [Conversation Node 实操手册](../../../docs/cookbook/adding-a-conversation-node.md)。
 
@@ -28,7 +30,7 @@ Think 行默认保持折叠，并在不展开思维链的情况下暴露实时�
 
 聊天流会将跨重试轮次连续出现的模型重试节点投影为一个稳定的弱化状态行，并用最新一次尝试更新该行；每个重试事件仍保留在运行时快照与会话日志中。前端倒计时以客户端收到事件的时刻为计划延迟的起点，避免 Host 与浏览器的时钟偏差；剩余时间向上取整到秒，且下限为 1 秒。最近一次尚未完成的重试会显示从左到右的文字渐变动画。后续轮次事实用于区分已开始的尝试与在退避期间取消的尝试，Host 的 running 位只控制实时动画；随后该行会显示静态的已完成或已取消标签。normal 策略行显示有限重试上限；always 策略行显示 `∞`。激活该行会显示最近一次重试的精确延迟和失败消息。客户端运行时会在相应重试节点到达前移除每个失败步骤的流式输出尾部；后续某次尝试成功后，该状态仍保持可见。未进入重试的终态失败会在其轮次边界渲染为持久的内联状态，展示适合显示的持久消息与可选错误码，但不会提供 Host 无法兑现的操作；AUTH 文案绝不会回显提供方给出的凭据片段。
 
-审批通过本包声明的链条接管编辑器：`ApprovalPanel` 注册为按选择器路由的 `'conversation.composer'` 配置项（ui-user-questions 模式），在审批等待未决期间取代 InputBar 占据编辑器（琥珀色条、理由标题、来自运行中调用参数的配对命令行、一次性的拒绝／允许）。`contract/slots.ts` 中的 `PendingApproval` 领域面在运行时 `PendingWait` 载体之上拥有 wire 编码——带审计关联的 `ApprovalResponsePayload` 值；广播的 `approval/resolved` 帧使等待落定并恢复编辑器。运行时 manager 会将所有审批或问题等待通过 `SessionSummary.pendingInteraction` 投影出来，未实例化的会话也不例外；`ui-workspace` 负责其侧边栏呈现。未决等待完全离开消息流：问题（ui-user-questions）与审批（ApprovalPanel）都经编辑器接管作答，不再保留只读占位卡。编辑器底行的 Access 席位挂载 `PermissionSelect`，由 host 计算的 `permissions` 投影经标准工具包 `useProjection` 供数（key 缺席即隐藏 chip）；chip 打开 Menu 原语下拉，其中 kebab-case 预设名渲染为 Title Case 标签；普通安全预设会立即经输入栏注入的 `command` 回调提交 `/permission <preset>`，而 `danger-full-access` 在界面中显示为 `Full access`，选择后先打开页面内的 Modal 风险确认。用户勾选确认项前启用按钮始终不可用；取消、Escape、关闭按钮与点击遮罩都不会提交命令。
+审批通过本包声明的链条接管编辑器：`ApprovalPanel` 注册为按选择器路由的 `'conversation.composer'` 配置项（ui-user-questions 模式），在审批等待未决期间取代 InputBar 占据编辑器（琥珀色条、理由标题、来自运行中调用参数的配对命令行、一次性的拒绝／允许）。`contract/slots.ts` 中的 `PendingApproval` 领域面在运行时 `PendingWait` 载体之上拥有 wire 编码——带审计关联的 `ApprovalResponsePayload` 值；广播的 `approval/resolved` 帧使等待落定并恢复编辑器。运行时 manager 会将所有审批或问题等待通过 `SessionSummary.pendingInteraction` 投影出来，未实例化的会话也不例外；`ui-workspace` 负责其侧边栏呈现。未决等待完全离开消息流：问题（ui-user-questions）与审批（ApprovalPanel）都经编辑器接管作答，不再保留只读占位卡。编辑器底行的 Access 席位挂载 `PermissionSelect`，由 host 计算的 `permissions` 投影经标准工具包 `useProjection` 供数（key 缺席即隐藏 chip）；chip 打开 Menu 原语下拉，其中 kebab-case 预设名渲染为 Title Case 标签。底行本身是 inline-size 容器：低于控件冲突阈值时，Read Only 等已知预设的 28px 触发器只保留权限图标，无障碍名称与菜单不变；空间恢复后标签自动出现。普通安全预设会立即经输入栏注入的 `command` 回调提交 `/permission <preset>`，而 `danger-full-access` 在界面中显示为 `Full access`，选择后先打开页面内的 Modal 风险确认。用户勾选确认项前启用按钮始终不可用；取消、Escape、关闭按钮与点击遮罩都不会提交命令。
 
 `TodoDock` 以 `order: 0` 占用 `'conversation.input.dock'` 列表 slot（位于 Goal 与 Queue 之前），作为计划条读取 host 计算的 `todos` 投影（当前计划：其后没有更晚 `turn/start` 的最近一次 `todo/write`）并渲染 `TodoPanel`。面板接收纯列表，列表为空时自我隐藏；列表非空时默认折叠，表头显示标题及以 `·` 连接的各状态计数（如 `1 已完成 · 2 进行中 · 1 待处理`，省略零计数）。dock adapter 拥有 selection，因此面板保持为 props 的纯函数。输入区 composer 链隐藏的一切也会隐藏整个 dock。`todo_write` 工具行属于 [`ui-tool`](../ui-tool/README.md)。
 

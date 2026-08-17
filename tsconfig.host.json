@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "es2024",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2024"],
+    "types": ["node"],
+    "strict": true,
+    "skipLibCheck": true,
+    "paths": {
+      "@deepseek-ai/dsh-typert-protocol": ["./packages/internal/typert-protocol-face/src/index.ts"],
+      "@deepseek-ai/dsh-session": ["./packages/internal/session-face/src/index.ts"],
+      "@deepseek-ai/dsh-session/types": ["./packages/internal/session-face/src/types.ts"],
+      "@deepseek-ai/dsh-agent": ["./packages/internal/agent-face/src/index.ts"]
+    }
+  },
+  "files": [],
+  "references": [
+    { "path": "./packages/internal/typert-protocol-face" },
+    { "path": "./packages/internal/session-face" },
+    { "path": "./packages/internal/agent-face" },
+    { "path": "./packages/host/artifacts" },
+    { "path": "./packages/host/review" },
+    { "path": "./packages/host/terminal-workbench" }
+  ]
+}
