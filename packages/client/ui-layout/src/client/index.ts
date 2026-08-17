@@ -63,12 +63,13 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     'conversation': { kind: 'single'; scope: 'session-maybe'; owner: ConvOwnerProps }
     /**
      * The right details column, shown when the layout opens it. OCCUPIED by
-     * ui-conversation's DetailsPanel, which declares the tool-details seat
-     * inside it — registering here replaces the column and takes that seat
-     * with it. Absent an occupant the column renders nothing.
+     * ui-workbench, which declares the keyed panel and icon extension seats.
+     * Registering here replaces the entire Workbench column. Absent an
+     * occupant the column renders nothing.
      *
-     * No owner props: the framework injects the session id and hooks for the
-     * `session` scope, and `ctx.layout` owns whether the column is open.
+     * The framework injects the session id and hooks for the `session` scope;
+     * owner props report Stage width, resolved column width, and pointer-resize
+     * gesture metadata while `ctx.layout` owns rendered geometry.
      */
     'details': { kind: 'single'; scope: 'session'; owner: DetailsOwnerProps }
     /**
@@ -113,7 +114,14 @@ export interface SidebarToggleOwnerProps {}
 export interface ConvOwnerProps {}
 
 /** Details owner share: empty — sessionId arrives as a framework-standard prop. */
-export interface DetailsOwnerProps {}
+export interface DetailsOwnerProps {
+  /** Resolved Workbench width after the frame concession solve. */
+  width: number
+  /** Conversation + Workbench width, excluding Sidebar. */
+  stageWidth: number
+  /** Present only while the user is dragging the outer details boundary. */
+  resizeGesture: { active: true; startWidth: number } | null
+}
 
 /** Required services (cordis fiber inject — the loader passes all module exports as an object plugin). */
 export const inject = ['slots', 'theme']

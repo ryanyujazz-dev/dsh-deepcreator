@@ -10,6 +10,13 @@
     }
   },
   "dependencies": {
+    "@deepseek-ai/dsh-agent": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-session": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-subprocess": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-terminal": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-terminal-bash": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-typert-protocol": "^0.1.0-rc.6",
+    "@ryanyujazz/dsh-artifacts": "workspace:^",
     "@ryanyujazz/dsh-client-locale": "workspace:^",
     "@ryanyujazz/dsh-client-ui-agent-preset": "workspace:^",
     "@ryanyujazz/dsh-client-ui-conversation": "workspace:^",
@@ -25,6 +32,12 @@
     "@ryanyujazz/dsh-client-ui-tool": "workspace:^",
     "@ryanyujazz/dsh-client-ui-trajectory": "workspace:^",
     "@ryanyujazz/dsh-client-ui-user-questions": "workspace:^",
+    "@ryanyujazz/dsh-client-ui-workbench": "workspace:^",
+    "@ryanyujazz/dsh-client-ui-workbench-activity": "workspace:^",
+    "@ryanyujazz/dsh-client-ui-workbench-tools": "workspace:^",
+    "@ryanyujazz/dsh-client-workbench-remotes": "workspace:^",
+    "@ryanyujazz/dsh-review": "workspace:^",
+    "@ryanyujazz/dsh-terminal-workbench": "workspace:^",
     "@ryanyujazz/dsh-client-ui-workspace": "workspace:^"
   },
   "files": [

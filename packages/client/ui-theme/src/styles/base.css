@@ -16,4 +16,8 @@
   --ds-transition-duration: 0.2s;
   --ds-transition-duration-fast: 0.1s;
   --ds-transition-duration-slow: 0.3s;
+  /* Project-wide peer icon-toolbar rhythm, anchored to the Workspace header. */
+  --dsh-icon-toolbar-button-size: 28px;
+  --dsh-icon-toolbar-glyph-size: 14px;
+  --dsh-icon-toolbar-gap: 4px;
 }

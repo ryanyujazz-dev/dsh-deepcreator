@@ -1,0 +1,11 @@
+.root { display: flex; min-height: 100%; flex-direction: column; padding: 10px; box-sizing: border-box; }
+.summary { display: flex; justify-content: space-between; padding: 2px 4px 8px; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; }
+.list { display: flex; flex-direction: column; gap: 6px; }
+.row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 8px; padding: 10px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 8px; background: var(--dsw-alias-fill-l1); }
+.row[data-live] { background: var(--dsw-alias-fill-l2); }
+.copy { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.copy strong { overflow: hidden; color: var(--dsw-alias-label-primary); font-size: 13px; line-height: 18px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.copy span, .row time { color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 18px; }
+.row time { font-family: var(--dsw-font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.empty { min-height: 100%; display: grid; place-content: center; gap: 4px; padding: 24px; text-align: center; color: var(--dsw-alias-label-tertiary); font-size: 12px; }
+.empty strong { color: var(--dsw-alias-label-secondary); font-size: 13px; font-weight: 500; }

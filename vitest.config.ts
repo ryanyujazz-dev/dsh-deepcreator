@@ -72,7 +72,7 @@ export default defineConfig({
   ],
   test: {
     setupFiles: ['./scripts/test-setup.ts'],
-    include: ['packages/client/*/tests/**/*.spec.{ts,tsx}', 'apps/*/tests/**/*.spec.ts'],
+    include: ['packages/client/*/tests/**/*.spec.{ts,tsx}', 'packages/host/*/tests/**/*.spec.ts', 'apps/*/tests/**/*.spec.ts'],
     server: {
       deps: {
         inline: [

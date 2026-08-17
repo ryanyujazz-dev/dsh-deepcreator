@@ -157,20 +157,20 @@
   display: flex;
   flex: none;
   align-items: center;
-  gap: 10px;
+  gap: var(--dsh-icon-toolbar-gap, 4px);
 }
 
 .action {
   display: grid;
   flex: none;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: var(--dsh-icon-toolbar-button-size, 28px);
+  height: var(--dsh-icon-toolbar-button-size, 28px);
   padding: 0;
   border: none;
   border-radius: 999px;
   background: transparent;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsw-alias-label-secondary);
   cursor: pointer;
 }
 
@@ -179,8 +179,13 @@
 }
 
 .action:focus-visible {
-  outline: 2px solid var(--dsw-alias-label-tertiary);
-  outline-offset: -2px;
+  outline: 1px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 1px;
+}
+
+.action > svg {
+  width: var(--dsh-icon-toolbar-glyph-size, 14px);
+  height: var(--dsh-icon-toolbar-glyph-size, 14px);
 }
 
 .action:disabled {

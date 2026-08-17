@@ -9,7 +9,7 @@
     "deepcreator": "lib/bin.js"
   },
   "scripts": {
-    "bundle": "tsc -p tsconfig.json",
+    "bundle": "tsc -p tsconfig.json && cp src/preload.cjs lib/preload.cjs",
     "dev": "pnpm run bundle && electron .",
     "start": "electron .",
     "test": "vitest --root ../.. run apps/desktop/tests",

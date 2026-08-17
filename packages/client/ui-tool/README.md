@@ -12,9 +12,11 @@ Business UI packages register only their wire Tool names and atomic views. They 
 
 Each root and child wrapper preserves the `data-chat-anchor-key="call:<id>"` and `data-chat-call-id` DOM contract used for paging and selection.
 
-The package also fills `conversation.details.tool` with `ToolDetails`. The row and details renderers share the same pure card models for `terminal`, `read`, `diff`, `search`, and `web` render intents. Unknown intent tags and malformed wire card data fall back to flattened Tool result text.
+The former `conversation.details.tool` registration is retained only as inert compatibility code: `ui-conversation` no longer declares that child seat after the Workbench became the sole root-details occupant. Tool inspection must be reintroduced later as a keyed Workbench Inspector Provider. Chat-row renderers continue to share pure card models for `terminal`, `read`, `diff`, `search`, and `web` render intents.
 
 Generic rows classify known Tool names into search, read, shell, write, edit, code, or generic variants. Running, successful, failed, and interrupted lifecycle states come only from the frozen call/result slice. File paths resolve against the session `cwd` only when the user invokes the Host open-file callback; presentation code does not read Session services.
+
+In execution-flow render modes, expanded Tool bodies start at the 22px title column and share a 1px guide on the 16px leading glyph's x=8 centerline. A Code Dispatch branch keeps that guide on the parent Code row, while each child leading icon starts at the parent `Code` title's left edge. The Tool tree also adapts the pinned official `ui-skill` keyed row at this boundary because that renderer does not yet consume the owner's `execflow` flag.
 
 ## Atomic Tool views
 

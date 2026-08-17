@@ -76,7 +76,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * Right-aligned Session utilities kept outside the title-adjacent action
      * group, so an optional utility cannot reorder session context or lineage.
      */
-    'conversation.session.header.utilities': { kind: 'list'; scope: 'session'; owner: ConversationHeaderActionOwnerProps }
+    'conversation.session.header.utilities': { kind: 'list'; scope: 'session'; owner: ConversationHeaderUtilityOwnerProps }
     /**
      * The conversation view ring: one list entry per view tab (chat here;
      * trajectory/waterfall from ui-trajectory), rendered one-at-a-time by
@@ -292,6 +292,12 @@ export interface ConversationSessionOwnerProps {
 /** Header actions derive their state from the standard session/global kit. */
 export interface ConversationHeaderActionOwnerProps {}
 
+/** Placement contract for right-aligned Session Header utility entries. */
+export interface ConversationHeaderUtilityOwnerProps {
+  /** Workbench renders every type button, or one independent Panel menu. */
+  panelControls: 'expanded' | 'compact'
+}
+
 /**
  * The input-region slot currency: dock/left/right entries read
  * the conversation snapshot and the live input state as owner props (both
@@ -412,6 +418,22 @@ export interface DetailsToolOwnerProps {
 }
 
 /**
+ * @deprecated Compatibility face for the inert legacy DetailsPanel presenter.
+ * ui-conversation no longer registers that presenter in the root `details`
+ * seat; ui-workbench is the sole runtime occupant.
+ */
+export interface DetailsInjected {
+  closeDetails: () => void
+}
+
+/**
+ * @deprecated Props retained only for isolated legacy presenter/tests. This
+ * type does not imply a runtime `details` registration.
+ */
+export type DetailsSlotProps = PropsRuntime<'details'> & PropsRenderSlots<'conversation.details.tool'>
+  & PropsStore<ChatStore> & DetailsInjected & PropsLocale<'conversation'>
+
+/**
  * Owner share of the per-command row slot: the frozen {@link CommandNode}
  * slice off the snapshot (cache-stable reference — memo premise). The node
  * carries the whole lifecycle (structured name/args, pairing id, and
@@ -439,7 +461,7 @@ export type CommandRowProps = PropsRuntime<'conversation.chat.commandview'>
  */
 export type ConvViewProps = PropsRuntime<'conversation.view'>
 
-/** The shared chat store handle type declared by the Session header/body, details, and chat-view registrations. */
+/** The shared chat store handle type declared by the Session header/body and chat-view registrations. */
 export type ChatStore = ReturnType<typeof createChatStore>
 
 /** Business callbacks injected into the conversation slot. */
@@ -837,19 +859,6 @@ export interface ChatViewInjected {
 export type ChatViewSlotProps =
   PropsRuntime<'conversation.view'> & PropsRenderSlots<'conversation.chat.node' | 'conversation.chat.render'>
   & PropsStore<ChatStore> & ChatViewInjected & PropsLocale<'conversation'>
-
-/**
- * Injected share of the details slot: the panel is otherwise a pure reader of
- * the shared chat store, but its close button is a layout orchestration call.
- */
-export interface DetailsInjected {
-  /** Close the details panel (layout geometry stays with ctx.layout). */
-  closeDetails: () => void
-}
-
-/** Full details-slot props: selection store, Tool output seat, injected close callback, and locale. */
-export type DetailsSlotProps = PropsRuntime<'details'> & PropsRenderSlots<'conversation.details.tool'>
-  & PropsStore<ChatStore> & DetailsInjected & PropsLocale<'conversation'>
 
 /** Owner share common to the hero / New-Session Workspace pickers. */
 export interface EmptyWorkspaceOwnerProps {

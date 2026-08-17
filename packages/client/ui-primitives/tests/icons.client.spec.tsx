@@ -3,7 +3,10 @@ import { cleanup, render } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import * as primitives from '@ryanyujazz/dsh-client-ui-primitives'
 import {
-  DeepCreatorIconGearshape16, DeepCreatorIconPin16, DeepCreatorIconTimer16,
+  DeepCreatorIconActivity16, DeepCreatorIconArtifact16, DeepCreatorIconBrain16, DeepCreatorIconGearshape16,
+  DeepCreatorIconPanelCollapse16, DeepCreatorIconPanelExpand16, DeepCreatorIconPin16,
+  DeepCreatorIconPreview16, DeepCreatorIconReview16,
+  DeepCreatorIconTerminal16, DeepCreatorIconTimer16,
   IconApiOutline14, IconArchiveOutline20, IconFolderClose16, IconGoalOutline16, IconSendOutline16,
 } from '@ryanyujazz/dsh-client-ui-primitives'
 
@@ -21,9 +24,9 @@ const productIcons = Object.fromEntries(
 const productIconNames = Object.keys(productIcons)
 
 describe('ic_ds_ icon set', () => {
-  it('keeps the 66 official-compatible glyphs separate from seven product glyphs', () => {
+  it('keeps the 66 official-compatible glyphs separate from sixteen product glyphs', () => {
     expect(iconNames.length).toBe(66)
-    expect(productIconNames.length).toBe(7)
+    expect(productIconNames.length).toBe(16)
   })
 
   it.each(productIconNames)('%s renders from the marked DeepCreator product set', (name) => {
@@ -51,6 +54,51 @@ describe('ic_ds_ icon set', () => {
     expect(svg.getAttribute('data-deepcreator-icon')).toBe('timer')
     expect(svg.getAttribute('viewBox')).toBe('0 0 14 14')
     expect(svg.getAttribute('width')).toBe('14')
+  })
+
+  it('keeps the five Workbench type glyphs on their specified minimal geometry', () => {
+    const activity = render(<DeepCreatorIconActivity16 />).container
+    expect(activity.querySelectorAll('circle')).toHaveLength(2)
+    expect(activity.querySelectorAll('rect')).toHaveLength(0)
+    expect(activity.querySelector('path')!.getAttribute('d')).toBe('M6.25 5h7.5M6.25 11h7.5')
+
+    const artifact = render(<DeepCreatorIconArtifact16 />).container
+    expect(artifact.querySelectorAll('path')).toHaveLength(1)
+    expect(artifact.querySelector('path')!.getAttribute('d')).toBe('M2 4h12M2 8h5M2 12h8.5')
+
+    const review = render(<DeepCreatorIconReview16 />).container
+    expect(review.querySelectorAll('rect')).toHaveLength(1)
+    expect(review.querySelector('rect')!.getAttribute('rx')).toBe('2')
+    expect(review.querySelector('path')!.getAttribute('d')).toBe('M5.5 6h5M8 3.5v5M6.5 12h3')
+
+    const terminal = render(<DeepCreatorIconTerminal16 />).container
+    expect(terminal.querySelectorAll('rect, circle')).toHaveLength(0)
+    expect(terminal.querySelector('path')!.getAttribute('d')).toContain('M2.5 4.25')
+
+    const preview = render(<DeepCreatorIconPreview16 />).container
+    expect(preview.querySelectorAll('rect, circle')).toHaveLength(0)
+    expect(preview.querySelector('svg')!.getAttribute('data-deepcreator-icon')).toBe('workbench-preview')
+    expect(preview.querySelector('path')!.getAttribute('d')).toContain('M4.51 1.57Q3.97 1.26')
+    expect(preview.querySelector('path')!.getAttribute('transform')).toBe('translate(8 8) scale(.82) translate(-8 -8)')
+    expect(preview.querySelector('path')!.getAttribute('fill')).toBe('none')
+    expect(preview.querySelector('path')!.getAttribute('stroke')).toBe('currentColor')
+  })
+
+  it('keeps the compact model brain to one untextured outline path', () => {
+    const brain = render(<DeepCreatorIconBrain16 />).container
+    expect(brain.querySelectorAll('path')).toHaveLength(1)
+    expect(brain.querySelector('path')!.getAttribute('fill')).toBeNull()
+  })
+
+  it('preserves the supplied Workbench expand and collapse directions', () => {
+    const expand = render(<DeepCreatorIconPanelExpand16 />).container.querySelector('path')!
+    const collapse = render(<DeepCreatorIconPanelCollapse16 />).container.querySelector('path')!
+    expect(expand.getAttribute('d')).toContain('M1.58 6.43')
+    expect(collapse.getAttribute('d')).toContain('M5.97 6.67')
+    expect(expand.hasAttribute('transform')).toBe(false)
+    expect(collapse.hasAttribute('transform')).toBe(false)
+    expect(expand.getAttribute('fill')).toBe('currentColor')
+    expect(collapse.getAttribute('fill')).toBe('currentColor')
   })
 
   it.each(iconNames)('%s renders an svg with currentColor fills and no hardcoded palette', (name) => {

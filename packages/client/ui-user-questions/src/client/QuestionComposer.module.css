@@ -83,7 +83,7 @@
 .pager {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--dsh-icon-toolbar-gap, 4px);
   flex-shrink: 0;
 }
 
@@ -101,19 +101,28 @@
 .iconButton {
   display: grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
+  width: var(--dsh-icon-toolbar-button-size, 28px);
+  height: var(--dsh-icon-toolbar-button-size, 28px);
   padding: 0;
   border: none;
   border-radius: 999px;
   background: transparent;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsw-alias-label-secondary);
   cursor: pointer;
 }
 
 .iconButton:hover:not(:disabled) {
   background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
+}
+
+.iconButton > svg {
+  width: var(--dsh-icon-toolbar-glyph-size, 14px);
+  height: var(--dsh-icon-toolbar-glyph-size, 14px);
+}
+
+.iconButton:focus-visible {
+  outline: 1px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 1px;
 }
 
 .iconButton:disabled {

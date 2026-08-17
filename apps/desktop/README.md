@@ -6,4 +6,4 @@ On macOS, the renderer extends through the hidden native title bar while the rea
 
 Run `pnpm run profile:migrate` once, then use `pnpm run dev:desktop` from the repository root.
 
-The renderer keeps `sandbox`, `contextIsolation`, and `webSecurity` enabled and does not enable Node integration or a preload bridge. HTTP(S) popups open in the system browser; all other new-window requests are denied.
+The main renderer keeps `sandbox`, `contextIsolation`, and `webSecurity` enabled and does not enable Node integration. Browser Panels are the only reviewed preload use: the frozen bridge contains fixed Browser operations only and exposes no generic IPC, Node, filesystem, Host, or Session state. Their `WebContentsView` instances keep the same security flags, use non-persistent partitions, accept HTTP(S) only, deny downloads, and translate HTTP(S) popups into Workbench tabs.

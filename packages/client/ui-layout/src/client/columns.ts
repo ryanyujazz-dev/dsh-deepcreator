@@ -17,8 +17,8 @@
 export interface Columns { sidebar: number; center: number; details: number }
 
 // Contract-frozen geometry: the three-column concession chain's fixed points.
-/** Center column floor; only the final fallback may go below it. */
-export const CENTER_MIN = 640
+/** Conversation floor agreed with Workbench responsive topology. */
+export const CENTER_MIN = 360
 /** Sidebar drag clamp floor. */
 export const SIDEBAR_MIN = 264
 /** Sidebar drag clamp ceiling. */
@@ -31,12 +31,12 @@ export const SIDEBAR_COLLAPSED = 0
  * LG breakpoint); a manual toggle below it re-expands over the squeezed center
  * (stores.ts narrowExpanded). */
 export const SIDEBAR_AUTO_COLLAPSE = 1024
-/** Details drag clamp floor. */
-export const DETAILS_MIN = 300
-/** Details drag clamp ceiling. */
-export const DETAILS_MAX = 520
+/** One Workbench column floor. */
+export const DETAILS_MIN = 150
+/** Ratios are Stage-relative; retain only a defensive numeric ceiling. */
+export const DETAILS_MAX = 8192
 /** Details width before any user drag. */
-export const DETAILS_DEFAULT = 360
+export const DETAILS_DEFAULT = 520
 
 /**
  * Clamp a panel width into its contract range.

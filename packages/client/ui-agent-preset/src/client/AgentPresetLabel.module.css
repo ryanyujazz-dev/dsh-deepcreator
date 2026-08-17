@@ -21,3 +21,23 @@
   flex: none;
   opacity: 0.7;
 }
+
+.copy {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The title cluster is the anonymous container. Preserve the preset identity
+   through its icon and tooltip when title + actions no longer fit together. */
+@container (max-width: 280px) {
+  .label {
+    justify-content: center;
+    width: 22px;
+    padding: 0;
+  }
+
+  .copy {
+    display: none;
+  }
+}

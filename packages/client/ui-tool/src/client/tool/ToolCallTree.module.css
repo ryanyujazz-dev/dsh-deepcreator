@@ -1,12 +1,54 @@
 .callRow {
+  --dsh-execflow-icon-axis: 7.5px;
+  --dsh-execflow-title-column: 22px;
   border-radius: 6px;
 }
 
 .subCalls {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 4px;
-  margin: 4px 0 2px 22px;
-  padding-left: 8px;
-  border-left: 1px solid var(--dsw-alias-border-l2);
+  margin: 4px 0 2px var(--dsh-execflow-title-column);
+  padding-left: 0;
+}
+
+/* A run_code branch belongs to its parent Code row. Child leading icons start
+   exactly on the parent's 22px title column (the left edge of “Code”), while
+   the branch rail remains anchored to the parent icon's centerline. */
+.subCalls::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--dsh-execflow-icon-axis) - var(--dsh-execflow-title-column));
+  width: 1px;
+  background: var(--dsw-alias-border-l2);
+  pointer-events: none;
+}
+
+/* The pinned official Skill renderer currently ignores the Tool owner's
+   execflow flag. The Tool tree is the stable boundary around that keyed view,
+   so it supplies the same title-column indent and icon-axis rail without
+   reaching into the Skill package's generated class names. The renderer's
+   semantic root (`data-tool=skill`) and two-child disclosure shape are part of
+   its public row contract for this pinned Harness release. */
+.callRow[data-execflow] :global([data-tool='skill']) > div:nth-child(2) {
+  position: relative;
+}
+
+.callRow[data-execflow] :global([data-tool='skill']) > div:nth-child(2)::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: var(--dsh-execflow-icon-axis);
+  width: 1px;
+  background: var(--dsw-alias-border-l2);
+  pointer-events: none;
+}
+
+.callRow[data-execflow] :global([data-tool='skill']) > div:nth-child(2) > section,
+.callRow[data-execflow] :global([data-tool='skill']) > div:nth-child(2) > button {
+  margin-left: var(--dsh-execflow-title-column);
 }

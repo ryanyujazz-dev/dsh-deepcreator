@@ -31,13 +31,34 @@
 - 同一行的图标、标题、分隔点和摘要使用一致的基准行几何；字号与行高通过 `--dsw-font-markdown-base-font-size` 和 `--dsw-font-markdown-base-line-height` 跟随外观偏好，不固定为某个模式自己的像素值。
 - 颜色只表达层级和状态，不以更小字号表达次要内容。标题、摘要可以使用不同 label token，但字号必须一致。
 - 可展开行在折叠和展开状态保持同一标题字号；只有展开内容区允许使用紧凑详情字号。
+- 执行流中展开的 Code、Bash、Skill 与其他工具共用同一条 1px 引导线：中心必须锚定标题行 16px leading glyph 的 x=8 轴，内容从 22px 标题列开始。`run_code` 的子调用由父 Code 节点持有引导线，子调用的 leading 图标必须从父级「Code」标题的左边界（22px 标题列）开始，且不得把父级引导线向右推移；圆角卡片不得自行绘制位于其裁剪边界之外的引导线。
 
 ## 控件和菜单
 
-- 单图标按钮统一采用侧边栏工作区操作按钮的图标尺寸、点击区域、圆角、hover、focus 和 tooltip 规则。
+- 同级纯图标横排统一采用工作区标题右侧操作组的规格，并由全局 `--dsh-icon-toolbar-*` 度量约束：图形 14px、圆形命中框 28×28、相邻按钮间距 4px；默认使用 `--dsw-alias-label-secondary`，hover 只增加通用交互背景，显式选中态才提升为 primary，focus-visible 使用 business primary 轮廓。标题栏、Panel Header、消息操作条、队列操作条均遵循此规则；树节点内嵌小操作、带文字按钮与表单主按钮不属于该规格。
 - 分段按钮只表达同层级互斥选项；容器使用侧边栏背景色，选中项使用浮层表面，不额外增加标题栏高度。
 - 菜单、Popover、Select 和 Tooltip 必须复用公共原语和主题 token。菜单项文字与对应页面正文处于同一基础字号，辅助说明只允许使用统一的 caption token。
+- Composer 底行按自身可用宽度而非桌面 viewport 响应：空间足够时显示权限名称、模型名称和推理等级；宽度不足时，Access 只保留当前权限图标，Model 只保留 14px 大脑图标，两者仍为 28×28 命中框，完整状态继续由 `aria-label`、`title` 与原菜单提供。会话标题簇不足时，Agent preset（包括「创造模式」）同样只保留预设图标；容器恢复空间后必须自动恢复文字。
 - 会话标题行的更多菜单严格按「置顶会话／取消置顶、分叉会话、归档会话、分割线、在系统文件管理器中打开」排序。分割线左侧与带图标菜单项的文字起点对齐、右侧与文字尾部留白对齐，不得顶满卡片；Workspace／项目文件夹菜单不得提供置顶。macOS 使用“在 Finder 中打开”，Windows 使用“在资源管理器中打开”，其他或远程 Host 使用通用文件管理器文案。
+
+## Workbench 右侧面板
+
+- Workbench Mosaic／details 只负责几何和缩放，本身不绘制外框。每个 cell 必须使用公共 `WorkbenchPanelShell`：四边各留 3px，使用 10px 圆角与 1px semantic border，并由这个子容器统一裁切 Header 和 Body。
+- Workbench Panel Header 固定为 42px（比 Conversation Header 低 6px），保留 macOS 空白拖拽语义；Header 内的按钮、tabs 与输入框一律 `no-drag`。Header 下方必须直接进入内容区，Provider 不得再绘制副标题栏、元信息栏、地址栏或 Terminal 工具栏；需要保留的信息应进入正文，需要保留的操作应挂到公共 Header。
+- Header 标题与「新建 Tab」加号位于左侧，tabs 占据中间可滚动空间；Provider 的其他操作以及返回、展开／收起和关闭均在右侧。所有 Header 图标继续遵守 14px glyph、28×28 命中框和 4px 间距。
+- Panel Header 的展开与收起按钮分别直接使用产品提供的 `arrow_up_left_and_arrow_down_right.svg` 与 `arrow_down_right_and_arrow_up_left.svg` 原始方向，不做镜像，并统一使用 `currentColor`；展开后的按钮 Tooltip 为“收起面板”。
+- 类型入口位于 `conversation.session.header.utilities`，固定优先级为 Activity、Artifact、Review、Terminal、Preview，末尾固定保留 28×28 的「更多」按钮。入口使用 28×28 圆形命中框；关闭态透明且为 tertiary 图标，hover 使用通用交互背景，开启态保持透明背景、仅将图标切换为 `--dsw-alias-label-primary`：深色主题下更白，浅色主题下更黑。开启态不得使用业务蓝或白色填充背景。
+- 五类产品图标保持极简语义：Activity 为两行且每行都是「小圆圈＋横线」，Artifact 为长／短／中三条横线，Review 为圆角方框内的上下 2:1 分区——加号占上方约 2/3、减号占底部约 1/3，Terminal 为无外框的折角提示符与一条横线，Preview 使用产品提供的 `play_fill.svg` 原始轮廓，转换为空心 `currentColor` 描边后在 16px 画布内居中缩放至 82%。合并态「面板」按钮继续使用项目内统一的 Workbench 面板图标。
+- 五个类型入口是不可拆分的整组：空间足够时全部内联；整组无法容纳时全部收为一个独立的 28×28「面板」按钮。点击「面板」弹出完整类型菜单，当前可见类型显示勾选；空间恢复后自动还原五个入口。两种形态只投影同一可见性状态，不改变 Workbench 拓扑。
+- 「更多」使用省略号图标，Tooltip 与 `aria-label` 均为「更多」。菜单仅分为「渲染模式」「会话」两组：渲染模式始终在首组，Session log 下载只出现在「会话」组；Workbench 类型不得进入「更多」。
+- `aria-pressed` 只表示该类型 Group 此刻是否实际显示；Tooltip 必须使用“打开…面板／隐藏…面板”语义。多个类型同时显示时允许多个按钮同时点亮。因 Stage 变窄而落到右侧不可见列的类型与用户隐藏的类型都显示关闭态；点击前者会把它与真实拓扑左上角交换，点击后者会重新加入拓扑。
+- 同类型实例进入同一 Group Header 的 tabs，不新建分屏格。活动 tab 只使用 2px business/info 色底线；Tab 关闭按钮在 hover、focus-within 时出现，并保持键盘可达。
+- 分割线使用透明的 4px 可命中区域，视觉分隔由相邻 `WorkbenchPanelShell` 的 margin 与圆角边框形成；支持 pointer resize 与方向对应的方向键 resize，focus-visible 使用 business primary outline。布局固定为每列最多上下两个 Group：1／2 个类型为一列，3／4 个类型为两列，5 个类型为三列，不为数量变化制造独立卡片阴影。
+- 第一列宽由首个类型决定：Activity／Artifact／Terminal 为 Stage 的 1/3，Review／Preview（内部 `browser` type）为 Stage 的 1/2；第二种类型沿用该列宽。新增第三种类型时两列等宽且 Workbench 为 Stage 的 1/2，新增第五种类型时三列等宽且 Workbench 为 Stage 的 2/3。每个 Panel 列的宽度下限为 150px，Conversation 的宽度下限为 360px。
+- 删除一个 Group 时同列 sibling 填满高度；整列为空时仅移除该列，其他列保持实际像素宽度并整体贴住 Stage 右侧。Stage 变窄时从右至左隐藏整列，重新变宽后按当前真实拓扑恢复。点击响应式隐藏类型会与左上角类型交换真实位置；新增奇数列不足 150px 时，新类型原子覆盖左上角类型。
+- 手动 Focus Layer 仍覆盖 Conversation Header、正文与 Workbench，但不覆盖 Sidebar；Escape 恢复 Mosaic。隐藏与响应式不可见 Group 均保持 Provider mounted，不得把可见性切换误当成资源关闭。
+- Panel Body 的空态、disconnected 与 unavailable 必须明确区分。没有 Host Remote 时不得伪造 Artifact、Git、PTY 或 Browser 状态，也不得展示实际不支持的 stage/discard/commit 动作。
+- Terminal Body 使用全尺寸内嵌终端画布，不再出现独立命令输入框、发送按钮或逐行输出 `<pre>`。画布消费紧凑代码字体，获得焦点后直接接收 raw-key，保留 ANSI、光标、选择、滚动与全屏 TUI；Panel resize 必须同步 PTY cols/rows。隐藏 Terminal Group 不终止进程，明确关闭 Tab 才执行 Provider 的终止确认。
 
 ## 侧边栏
 

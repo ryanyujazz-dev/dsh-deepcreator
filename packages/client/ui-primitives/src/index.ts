@@ -26,9 +26,18 @@ export { FishLogo } from './FishLogo.tsx'
 export { BrandWordmark } from './BrandWordmark.tsx'
 export { Tooltip } from './Tooltip.tsx'
 export type { TooltipSide } from './Tooltip.tsx'
+export {
+  WorkbenchPanelIconButton, WorkbenchPanelShell,
+} from './WorkbenchPanelShell.tsx'
+export type {
+  WorkbenchPanelIconButtonProps, WorkbenchPanelShellProps,
+} from './WorkbenchPanelShell.tsx'
 export { SidebarRow } from './SidebarRow.tsx'
 export type { SidebarRowProps } from './SidebarRow.tsx'
-export { SIDEBAR_BRAND_ICON_SIZE, SIDEBAR_ICON_SIZE } from './sidebarMetrics.ts'
+export {
+  ICON_TOOLBAR_BUTTON_SIZE, ICON_TOOLBAR_GAP, ICON_TOOLBAR_GLYPH_SIZE,
+  SIDEBAR_BRAND_ICON_SIZE, SIDEBAR_ICON_SIZE,
+} from './sidebarMetrics.ts'
 export { Toast } from './Toast.tsx'
 export { writeClipboard } from './clipboard.ts'
 export { JsonTree } from './JsonTree.tsx'

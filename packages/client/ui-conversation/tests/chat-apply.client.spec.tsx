@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // apply wiring: the conversation service provided, the chat view registered
-// as the first 'conversation.view' ring entry declaring the whole-Tool seat,
+// as the first 'conversation.view' ring entry declaring the tool renderer seat,
 // the slot registrations land against a root entry's children declarations
 // (the AppFrame role), and the shared store handle rides all strict session
 // entries. Tool composition belongs to ui-tool and its machinery spec.
@@ -79,16 +79,15 @@ describe('apply wiring', () => {
     const conversationSession = renderEntryOf(b.slots, 'conversation.session')
     const conversationHeader = renderEntryOf(b.slots, 'conversation.session.header')
     const chatView = renderEntryOf(b.slots, 'conversation.view')
-    const details = renderEntryOf(b.slots, 'details')
     expect(conversation?.inject).toBeTypeOf('function')
     expect(chatView?.inject).toBeTypeOf('function')
-    expect(details?.inject).toBeTypeOf('function')
     // The shared handle: one apply-built store value on ALL session entries
     // (the session-maybe 'conversation' shell carries no store by design).
     expect(conversationSession?.store).toBeDefined()
     expect(conversationHeader?.store).toBe(conversationSession?.store)
-    expect(details?.store).toBe(conversationSession?.store)
     expect(chatView?.store).toBe(conversationSession?.store)
+    // ui-workbench is now the sole root details occupant.
+    expect(b.slots.entries('details')).toHaveLength(0)
     // The hero holes ride the conversation entry's children declaration (the
     // empty-state occupant is gone). Both are root-scoped: the new-session
     // screen precedes the session either would belong to.

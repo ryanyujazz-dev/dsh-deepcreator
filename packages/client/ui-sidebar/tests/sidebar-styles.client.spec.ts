@@ -48,8 +48,8 @@ describe('SidebarRoot.module.css', () => {
   })
 
   it('uses the shared 28px circle for the frame-seated reopen control', () => {
-    expect(declarations('.iconButton')?.get('width')).toBe('28px')
-    expect(declarations('.iconButton')?.get('height')).toBe('28px')
+    expect(declarations('.iconButton')?.get('width')).toBe('var(--dsh-icon-toolbar-button-size, 28px)')
+    expect(declarations('.iconButton')?.get('height')).toBe('var(--dsh-icon-toolbar-button-size, 28px)')
     expect(declarations('.closedToggle')?.get('color')).toBe('var(--dsw-alias-label-secondary)')
   })
 

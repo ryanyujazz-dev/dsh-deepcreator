@@ -11,8 +11,11 @@ const PLAN_NEXT_ACTION_EN = 'describe your task to generate plan'
 /** Simplified Chinese dictionary (the key-set source of truth). */
 export const zh = {
   'view.chat': '对话',
-  'chat.render.aria': '渲染方式',
-  'chat.render.hint': '执行流渲染模式',
+  'chat.render.aria': '更多',
+  'chat.render.hint': '更多',
+  'chat.more.renderGroup': '渲染模式',
+  'chat.more.sessionGroup': '会话',
+  'chat.more.sessionLog': '下载 Session log',
   'chat.render.normal': '原生模式',
   'chat.render.classic': '经典模式',
   'chat.render.think': '思考模式',
@@ -225,8 +228,11 @@ export type ConversationKey = keyof typeof zh
 /** English dictionary, checked complete against the zh key set. */
 export const en = {
   'view.chat': 'Chat',
-  'chat.render.aria': 'Render mode',
-  'chat.render.hint': 'ExecFlow render mode',
+  'chat.render.aria': 'More',
+  'chat.render.hint': 'More',
+  'chat.more.renderGroup': 'Render mode',
+  'chat.more.sessionGroup': 'Session',
+  'chat.more.sessionLog': 'Download Session log',
   'chat.render.normal': 'Native mode',
   'chat.render.classic': 'Classic mode',
   'chat.render.think': 'Think mode',

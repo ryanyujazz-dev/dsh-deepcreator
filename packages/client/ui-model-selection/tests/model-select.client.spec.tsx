@@ -66,6 +66,8 @@ describe('ModelSelect reasoning effort', () => {
     const trigger = screen.getByRole('button', {
       name: '选择模型，当前 DeepSeek-V4-Flash，推理等级 High',
     })
+    expect(trigger.querySelector('[data-deepcreator-icon="brain"]')).toBeTruthy()
+    expect(trigger.getAttribute('title')).toBe('DeepSeek-V4-Flash · High')
     fireEvent.click(trigger)
     fireEvent.click(screen.getByRole('menuitem', { name: /推理等级/ }))
     expect(screen.getAllByRole('menuitemradio').map(item => item.textContent))

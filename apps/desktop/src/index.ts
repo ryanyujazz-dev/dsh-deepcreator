@@ -11,6 +11,7 @@ import { app, BrowserWindow, dialog, shell, type Event } from 'electron'
 import { resolveDesktopDshLaunch, resolveDesktopWorkspace } from './dsh-launch.ts'
 import { startDesktopHost, type DesktopHost } from './host-process.ts'
 import { nativeWindowChromeOptions } from './window-options.ts'
+import { BrowserViewManager } from './browser-views.ts'
 
 const require = createRequire(import.meta.url)
 const APP_NAME = 'DeepCreator'
@@ -21,6 +22,7 @@ const SHUTDOWN_TIMEOUT_MS = 10_000
 let mainWindow: BrowserWindow | undefined
 let host: DesktopHost | undefined
 let shutdownStarted = false
+let browserViews: BrowserViewManager | undefined
 
 /** Restrict renderer navigation to the exact loopback origin that became ready. */
 function guardNavigation(window: BrowserWindow, trusted: URL): void {
@@ -62,6 +64,7 @@ async function createWindow(activeHost: DesktopHost): Promise<BrowserWindow> {
     backgroundColor: '#0b0d10',
     ...nativeWindowChromeOptions(process.platform),
     webPreferences: {
+      preload: join(import.meta.dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -69,12 +72,16 @@ async function createWindow(activeHost: DesktopHost): Promise<BrowserWindow> {
     },
   })
   guardNavigation(window, activeHost.url)
+  browserViews = new BrowserViewManager(window)
+  browserViews.install()
   window.webContents.on('page-title-updated', (event, title) => {
     event.preventDefault()
     window.setTitle(title.replace(/DeepSeek Harness$/, APP_NAME))
   })
   window.once('ready-to-show', () => { window.show() })
   window.on('closed', () => {
+    browserViews?.dispose()
+    browserViews = undefined
     if (mainWindow === window) mainWindow = undefined
   })
   await window.loadURL(activeHost.url.href)
