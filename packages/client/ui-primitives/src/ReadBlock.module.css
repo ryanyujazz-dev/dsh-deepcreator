@@ -13,8 +13,8 @@
 
   position: relative;
   margin: 16px 0;
-  color: var(--dsw-alias-label-primary);
-  background: var(--dsw-alias-markdown-code-block);
+  color: var(--ds-code-foreground, var(--dsw-alias-label-primary));
+  background: var(--ds-code-background, var(--dsw-alias-markdown-code-block));
   border-radius: var(--dsl-read-radius);
 }
 
@@ -96,9 +96,7 @@
   user-select: none;
 }
 
-.content {
-  color: var(--dsw-alias-label-primary);
-}
+.content { color: var(--ds-code-foreground, var(--dsw-alias-label-primary)); }
 
 .expand {
   display: block;

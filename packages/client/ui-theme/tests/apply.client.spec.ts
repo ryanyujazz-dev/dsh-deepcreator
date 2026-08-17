@@ -9,7 +9,7 @@ import { TestRemote, usePinnedBrowserLanguages } from '@deepseek-ai/dsh-client-t
 import { SettingsScopeBinder } from '@ryanyujazz/dsh-client-ui-settings/client'
 import { apply, inject, SETTINGS_NS } from '@ryanyujazz/dsh-client-ui-theme/client'
 import type { AppearanceRowInjected, ThemeRuntime } from '@ryanyujazz/dsh-client-ui-theme/client'
-import { THEME_SETTINGS_NAMESPACE, ThemeSettingsSchema } from '../src/theme-settings.ts'
+import { THEME_SETTINGS_NAMESPACE, ThemeSettingsSchema, type ThemeSettings } from '../src/theme-settings.ts'
 import { AppearanceRow } from '../src/client/AppearanceRow.tsx'
 import type { createAppearanceRowStore } from '../src/client/settings-store.ts'
 
@@ -30,7 +30,10 @@ async function bench(isLoopback = true) {
   await ctx.plugin(SlotRegistry).await()
   const locale = new LocaleRuntime(ctx)
   ctx.provide('locale', locale)
-  const settings = { preference: 'system', transcriptTextSize: 'standard' }
+  const settings: ThemeSettings = {
+    preference: 'system', transcriptTextSize: 'standard',
+    lightCodeTheme: 'deepcreator-light', darkCodeTheme: 'deepcreator-dark', codeFont: 'system',
+  }
   const namespace = () => ({
     ns: THEME_SETTINGS_NAMESPACE,
     schema: ThemeSettingsSchema.toJSON(),
@@ -48,8 +51,11 @@ async function bench(isLoopback = true) {
   }))
   const mutate = vi.fn((request: { ops: { path: string[]; value: string }[] }) => {
     const op = request.ops[0]!
-    if (op.path[0] === 'preference') settings.preference = op.value
-    if (op.path[0] === 'transcriptTextSize') settings.transcriptTextSize = op.value
+    if (op.path[0] === 'preference') settings.preference = op.value as ThemeSettings['preference']
+    if (op.path[0] === 'transcriptTextSize') settings.transcriptTextSize = op.value as ThemeSettings['transcriptTextSize']
+    if (op.path[0] === 'lightCodeTheme') settings.lightCodeTheme = op.value as ThemeSettings['lightCodeTheme']
+    if (op.path[0] === 'darkCodeTheme') settings.darkCodeTheme = op.value as ThemeSettings['darkCodeTheme']
+    if (op.path[0] === 'codeFont') settings.codeFont = op.value as ThemeSettings['codeFont']
     return Promise.resolve({
       rpcId: 'theme-mutate' as never,
       result: { ok: true as const, value: namespace() },
@@ -131,7 +137,13 @@ describe('ui-theme apply', () => {
     face.setTranscriptTextSize('large')
     expect(theme.getTheme().transcriptTextSize).toBe('large')
     expect(instance.getSnapshot().transcriptTextSize).toBe('large')
-    await vi.waitFor(() => { expect(b.mutate).toHaveBeenCalledTimes(3) })
+    face.setLightCodeTheme('github-light')
+    face.setDarkCodeTheme('one-dark')
+    face.setCodeFont('jetbrains-mono')
+    expect(instance.getSnapshot()).toMatchObject({
+      lightCodeTheme: 'github-light', darkCodeTheme: 'one-dark', codeFont: 'jetbrains-mono',
+    })
+    await vi.waitFor(() => { expect(b.mutate).toHaveBeenCalledTimes(6) })
   })
 
   it('loads Host settings at boot, refreshes its namespace, and keeps remote browsers process-local', async () => {

@@ -8,7 +8,9 @@ import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-web-react'
 import { AppearanceRow } from '../src/client/AppearanceRow.tsx'
 import type { AppearanceRowComponentProps } from '../src/client/AppearanceRow.tsx'
 import { createAppearanceRowStore } from '../src/client/settings-store.ts'
-import type { ThemePreference, TranscriptTextSize } from '../src/client/index.ts'
+import type {
+  CodeFont, DarkCodeTheme, LightCodeTheme, ThemePreference, TranscriptTextSize,
+} from '../src/client/index.ts'
 
 afterEach(cleanup)
 
@@ -22,6 +24,24 @@ const COPY: Record<string, string> = {
   'appearance.interfaceFont.title': 'Interface font',
   'appearance.interfaceFont.description': 'Font for interface chrome.',
   'appearance.interfaceFont.system': 'System font',
+  'appearance.code.title': 'Code appearance',
+  'appearance.code.description': 'Choose code themes.',
+  'appearance.code.light': 'Light code theme',
+  'appearance.code.dark': 'Dark code theme',
+  'appearance.code.preview.light': 'Light code diff preview',
+  'appearance.code.preview.dark': 'Dark code diff preview',
+  'appearance.code.theme.deepcreatorLight': 'DeepCreator Light',
+  'appearance.code.theme.deepcreatorDark': 'DeepCreator Dark',
+  'appearance.code.theme.githubLight': 'GitHub Light',
+  'appearance.code.theme.githubDark': 'GitHub Dark',
+  'appearance.code.theme.oneLight': 'One Light',
+  'appearance.code.theme.oneDark': 'One Dark',
+  'appearance.code.font.title': 'Code font',
+  'appearance.code.font.description': 'Shared code and terminal font.',
+  'appearance.code.font.system': 'System Mono',
+  'appearance.code.font.jetbrains': 'JetBrains Mono',
+  'appearance.code.font.fira': 'Fira Code',
+  'appearance.code.font.source': 'Source Code Pro',
   'appearance.transcript.title': 'Text size',
   'appearance.transcript.description': 'Size of conversation and sidebar text.',
   'appearance.transcript.small': 'Small',
@@ -46,12 +66,18 @@ function emptyWorkspaces() {
 function mount(
   preference: ThemePreference = 'system',
   transcriptTextSize: TranscriptTextSize = 'standard',
+  lightCodeTheme: LightCodeTheme = 'deepcreator-light',
+  darkCodeTheme: DarkCodeTheme = 'deepcreator-dark',
+  codeFont: CodeFont = 'system',
 ) {
   // Real store instance — the sanctioned zero-machinery path for tests.
   const store = createAppearanceRowStore().create()
-  store.actions.sync(preference, transcriptTextSize, 0)
+  store.actions.sync(preference, transcriptTextSize, lightCodeTheme, darkCodeTheme, codeFont, 0)
   const setTheme = vi.fn()
   const setTranscriptTextSize = vi.fn()
+  const setLightCodeTheme = vi.fn()
+  const setDarkCodeTheme = vi.fn()
+  const setCodeFont = vi.fn()
   const props: AppearanceRowComponentProps = {
     useSessions: emptySessions(),
     useWorkspaces: emptyWorkspaces(),
@@ -61,9 +87,12 @@ function mount(
     renderSlot: ((key: string) => <div data-slot={key} />) as AppearanceRowComponentProps['renderSlot'],
     setTheme,
     setTranscriptTextSize,
+    setLightCodeTheme,
+    setDarkCodeTheme,
+    setCodeFont,
   }
   render(<AppearanceRow {...props} />)
-  return { store, setTheme, setTranscriptTextSize }
+  return { store, setTheme, setTranscriptTextSize, setLightCodeTheme, setDarkCodeTheme, setCodeFont }
 }
 
 const pressed = (name: RegExp): string | null =>
@@ -87,7 +116,7 @@ describe('AppearanceRow', () => {
     expect(b.setTheme).toHaveBeenCalledWith('light')
     // No store write yet: selection is unchanged.
     expect(pressed(/Dark/)).toBe('true')
-    act(() => { b.store.actions.sync('light', 'standard', 1) })
+    act(() => { b.store.actions.sync('light', 'standard', 'deepcreator-light', 'deepcreator-dark', 'system', 1) })
     expect(pressed(/Light/)).toBe('true')
     expect(pressed(/Dark/)).toBe('false')
   })
@@ -97,7 +126,17 @@ describe('AppearanceRow', () => {
     fireEvent.click(screen.getByRole('button', { name: /Large/ }))
     expect(b.setTranscriptTextSize).toHaveBeenCalledWith('large')
     expect(pressed(/Standard/)).toBe('true')
-    act(() => { b.store.actions.sync('system', 'large', 1) })
+    act(() => { b.store.actions.sync('system', 'large', 'deepcreator-light', 'deepcreator-dark', 'system', 1) })
     expect(pressed(/Large/)).toBe('true')
+  })
+
+  it('keeps the light and dark selectors independent and writes the shared code font', () => {
+    const b = mount()
+    fireEvent.change(screen.getByLabelText('Light code theme'), { target: { value: 'github-light' } })
+    fireEvent.change(screen.getByLabelText('Dark code theme'), { target: { value: 'one-dark' } })
+    fireEvent.change(screen.getByLabelText('Code font'), { target: { value: 'jetbrains-mono' } })
+    expect(b.setLightCodeTheme).toHaveBeenCalledWith('github-light')
+    expect(b.setDarkCodeTheme).toHaveBeenCalledWith('one-dark')
+    expect(b.setCodeFont).toHaveBeenCalledWith('jetbrains-mono')
   })
 })

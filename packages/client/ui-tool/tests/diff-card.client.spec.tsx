@@ -16,6 +16,7 @@ import type {
 import type { ToolCallView, ToolResultView } from '@deepseek-ai/dsh-api-remotes/client'
 import type { SelectionTarget } from '@ryanyujazz/dsh-client-ui-conversation/client'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+import { computeHunkDiffs } from '@deepseek-ai/dsh-tool-fs'
 import { zh as commonZh } from '@ryanyujazz/dsh-client-locale/src/locales/zh.ts'
 import { CHAT_DIFF_MAX_LINES, diffCardModel } from '../src/client/tool/models/diff-card-model.ts'
 import { createChatStore } from '@ryanyujazz/dsh-client-ui-conversation/src/client/stores.ts'
@@ -33,6 +34,10 @@ type FileMutationRowProps = Parameters<typeof FileMutationRow>[0]
 const SID = 's1' as SessionId
 
 const t = makeTranslate(zh, commonZh)
+
+function hasDiffRowText(container: HTMLElement, text: string): boolean {
+  return [...container.querySelectorAll('[data-diff-row]')].some(row => row.textContent?.includes(text) === true)
+}
 
 const ARGS = '{"file_path":"notes/demo.txt","old_string":"hello","new_string":"hello fixture"}'
 
@@ -62,6 +67,15 @@ const settled = (over?: Partial<ToolResultNode>): ToolResultNode => ({
 })
 
 describe('diffCardModel', () => {
+  it('the pinned official producer emits absolute hunk starts and the client preserves them', () => {
+    const before = Array.from({ length: 12 }, (_value, index) => `line ${index + 1}`).join('\n')
+    const after = before.replace('line 9', 'line changed')
+    const diffs = computeHunkDiffs('demo.ts', before, after)
+    expect(diffs).toMatchObject([{ oldStart: 6, newStart: 6 }])
+    const wire = resultDiff({ diffs })
+    expect(diffCardModel(settled({ resultView: wire }))?.card.diffs).toMatchObject([{ oldStart: 6, newStart: 6 }])
+  })
+
   it('derives a running card from the call view alone', () => {
     expect(diffCardModel(running())).toEqual({
       card: { diffs: [{ path: 'notes/demo.txt', oldText: 'hello', newText: 'hello fixture' }] },
@@ -128,7 +142,7 @@ describe('chat row diff body', () => {
     // The path link is not the expand control; the leading toggle is.
     fireEvent.click(view.container.querySelector('[data-expandable]')!)
     expect(view.container.querySelector('[data-diff]')).not.toBeNull()
-    expect(view.getByText('hello fixture')).toBeTruthy()
+    expect(hasDiffRowText(view.container, 'hello fixture')).toBe(true)
   })
 
   it('a running diff call expands to its intended change', () => {
@@ -181,7 +195,7 @@ describe('FileMutationRow diff card', () => {
     expect(view.queryByText('hello fixture')).toBeNull()
     toggleRow(view)
     expect(view.container.querySelector('[data-diff]')).not.toBeNull()
-    expect(view.getByText('hello fixture')).toBeTruthy()
+    expect(hasDiffRowText(view.container, 'hello fixture')).toBe(true)
     expect(view.getByText('复制')).toBeTruthy()
   })
 
@@ -368,7 +382,7 @@ describe('DetailsPanel diff Output section', () => {
     const view = mount(snapshot({ nodes: [settled()] }), target)
     expect(view.getByText(/"file_path"/)).toBeTruthy()
     expect(view.container.querySelector('[data-diff]')).not.toBeNull()
-    expect(view.getByText('hello fixture')).toBeTruthy()
+    expect(hasDiffRowText(view.container, 'hello fixture')).toBe(true)
   })
 
   it('a running diff call renders its intended change, not the 运行中… placeholder', () => {

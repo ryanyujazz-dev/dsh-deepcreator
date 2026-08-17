@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { WebServer } from '@deepseek-ai/dsh-host-webserver'
 import { SettingsProvider, settingsNamespace, type SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import {
+  DEFAULT_CODE_FONT, DEFAULT_DARK_CODE_THEME, DEFAULT_LIGHT_CODE_THEME,
   DEFAULT_PREFERENCE, DEFAULT_TRANSCRIPT_TEXT_SIZE, THEME_SETTINGS_NAMESPACE, apply,
 } from '@ryanyujazz/dsh-client-ui-theme'
 
@@ -24,11 +25,14 @@ describe('ui-theme host', () => {
     expect(ctx.settings.get(ns)).toEqual({
       preference: DEFAULT_PREFERENCE,
       transcriptTextSize: DEFAULT_TRANSCRIPT_TEXT_SIZE,
+      lightCodeTheme: DEFAULT_LIGHT_CODE_THEME,
+      darkCodeTheme: DEFAULT_DARK_CODE_THEME,
+      codeFont: DEFAULT_CODE_FONT,
     })
     await ctx.settings.update(ns, { preference: 'dark' })
-    expect(ctx.settings.get(ns)).toEqual({ preference: 'dark', transcriptTextSize: DEFAULT_TRANSCRIPT_TEXT_SIZE })
+    expect(ctx.settings.get(ns)).toMatchObject({ preference: 'dark', transcriptTextSize: DEFAULT_TRANSCRIPT_TEXT_SIZE })
     await ctx.settings.update(ns, { transcriptTextSize: 'large' })
-    expect(ctx.settings.get(ns)).toEqual({ preference: 'dark', transcriptTextSize: 'large' })
+    expect(ctx.settings.get(ns)).toMatchObject({ preference: 'dark', transcriptTextSize: 'large' })
     await expect(ctx.settings.update(ns, { preference: 'sepia' })).rejects.toThrow()
     await fiber.dispose()
     expect(ctx.settings.describe().map(row => row.ns)).not.toContain(ns)

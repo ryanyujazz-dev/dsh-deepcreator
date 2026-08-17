@@ -8,6 +8,10 @@
  * settings General section — the theme feature owns its own settings surface.
  */
 import type { Context } from '@deepseek-ai/cordis'
+import '../styles/shiki.css'
+import '@fontsource-variable/jetbrains-mono/wght.css'
+import '@fontsource-variable/fira-code/wght.css'
+import '@fontsource-variable/source-code-pro/wght.css'
 import type { BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ClientContext, SettingsScope } from '@deepseek-ai/dsh-client-runtime/client'
 // Type-only: the ctx.settingsScope Context merge. Cross-plugin collaboration
@@ -20,15 +24,19 @@ import { AppearanceRow } from './AppearanceRow.tsx'
 import { createAppearanceRowStore } from './settings-store.ts'
 import { en, zh, type ThemeKey } from './locales.ts'
 import {
-  DEFAULT_PREFERENCE, DEFAULT_TRANSCRIPT_TEXT_SIZE, isThemePreference,
-  THEME_PREFERENCE_FIELD, THEME_SETTINGS_NAMESPACE, TRANSCRIPT_TEXT_SIZE_FIELD,
+  CODE_FONT_FIELD, DARK_CODE_THEME_FIELD,
+  DEFAULT_CODE_FONT, DEFAULT_DARK_CODE_THEME, DEFAULT_LIGHT_CODE_THEME,
+  DEFAULT_PREFERENCE, DEFAULT_TRANSCRIPT_TEXT_SIZE,
+  isCodeFont, isDarkCodeTheme, isLightCodeTheme, isThemePreference,
+  LIGHT_CODE_THEME_FIELD, THEME_PREFERENCE_FIELD, THEME_SETTINGS_NAMESPACE, TRANSCRIPT_TEXT_SIZE_FIELD,
+  type CodeFont, type DarkCodeTheme, type LightCodeTheme,
   type ThemePreference, type ThemeSettings, type TranscriptTextSize,
 } from '../theme-settings.ts'
 
 export type { AppearanceRowComponentProps, AppearanceRowInjected } from './AppearanceRow.tsx'
 export type { AppearanceRowState } from './settings-store.ts'
 export type { ThemeKey } from './locales.ts'
-export type { ThemePreference, ThemeSettings, TranscriptTextSize } from '../theme-settings.ts'
+export type { CodeFont, DarkCodeTheme, LightCodeTheme, ThemePreference, ThemeSettings, TranscriptTextSize } from '../theme-settings.ts'
 
 /** Namespace owning this feature's settings-row copy. */
 export const SETTINGS_NS = 'settings.theme'
@@ -77,6 +85,8 @@ export interface ThemeSnapshot {
   preference: ThemePreference
   /** Persisted transcript typography size. */
   transcriptTextSize: TranscriptTextSize
+  /** Resolved syntax theme and the two durable per-scheme selections. */
+  codeAppearance: CodeAppearanceSnapshot
   /**
    * The resolved active theme (`system` resolved via prefers-color-scheme)
    * with override layers folded into its tokens (seq order, later layers win
@@ -86,6 +96,14 @@ export interface ThemeSnapshot {
   /** Registered themes in registration order. */
   themes: readonly ThemeDefinition[]
   /** Monotonic change counter (registry or active changes). */
+  revision: number
+}
+
+export interface CodeAppearanceSnapshot {
+  activeThemeId: LightCodeTheme | DarkCodeTheme
+  lightThemeId: LightCodeTheme
+  darkThemeId: DarkCodeTheme
+  fontId: CodeFont
   revision: number
 }
 
@@ -122,6 +140,13 @@ const BUILTIN_THEMES: readonly ThemeDefinition[] = Object.freeze([
   Object.freeze({ id: 'light', colorScheme: 'light' as const, tokens: Object.freeze({}) }),
   Object.freeze({ id: 'dark', colorScheme: 'dark' as const, tokens: Object.freeze({}) }),
 ])
+
+const CODE_FONT_STACKS: Readonly<Record<CodeFont, string>> = Object.freeze({
+  system: "'SF Mono', ui-monospace, Menlo, Monaco, Consolas, 'Liberation Mono', monospace",
+  'jetbrains-mono': "'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, monospace",
+  'fira-code': "'Fira Code Variable', 'Fira Code', ui-monospace, monospace",
+  'source-code-pro': "'Source Code Pro Variable', 'Source Code Pro', ui-monospace, monospace",
+})
 
 /** User-selectable reading roles projected as real font and row tokens. */
 const TRANSCRIPT_TOKENS: Readonly<Record<TranscriptTextSize, ThemeTokens>> = Object.freeze({
@@ -211,6 +236,9 @@ export class ThemeRuntime {
   private themes: ThemeDefinition[] = [...BUILTIN_THEMES]
   private preference: ThemePreference
   private transcriptTextSize: TranscriptTextSize
+  private lightCodeTheme: LightCodeTheme
+  private darkCodeTheme: DarkCodeTheme
+  private codeFont: CodeFont
   private revision = 0
   private snapshot: ThemeSnapshot
   private readonly media: MediaQueryList | undefined
@@ -228,6 +256,9 @@ export class ThemeRuntime {
     this.host = host
     this.preference = DEFAULT_PREFERENCE
     this.transcriptTextSize = DEFAULT_TRANSCRIPT_TEXT_SIZE
+    this.lightCodeTheme = DEFAULT_LIGHT_CODE_THEME
+    this.darkCodeTheme = DEFAULT_DARK_CODE_THEME
+    this.codeFont = DEFAULT_CODE_FONT
     // Non-browser runs (node e2e booting the client tree) have no matchMedia.
     this.media = typeof matchMedia === 'undefined' ? undefined : matchMedia('(prefers-color-scheme: dark)')
     this.snapshot = this.buildSnapshot()
@@ -305,13 +336,44 @@ export class ThemeRuntime {
     this.publish()
   }
 
+  setLightCodeTheme(theme: LightCodeTheme): void {
+    if (!isLightCodeTheme(theme)) throw new Error(`unknown light code theme "${String(theme)}"`)
+    if (this.lightCodeTheme === theme) return
+    this.lightCodeTheme = theme
+    void this.host.set(LIGHT_CODE_THEME_FIELD, theme)
+    this.publish()
+  }
+
+  setDarkCodeTheme(theme: DarkCodeTheme): void {
+    if (!isDarkCodeTheme(theme)) throw new Error(`unknown dark code theme "${String(theme)}"`)
+    if (this.darkCodeTheme === theme) return
+    this.darkCodeTheme = theme
+    void this.host.set(DARK_CODE_THEME_FIELD, theme)
+    this.publish()
+  }
+
+  setCodeFont(font: CodeFont): void {
+    if (!isCodeFont(font)) throw new Error(`unknown code font "${String(font)}"`)
+    if (this.codeFont === font) return
+    this.codeFont = font
+    void this.host.set(CODE_FONT_FIELD, font)
+    this.publish()
+  }
+
   /** Adopt the scope's accepted durable preference without writing it back. */
   private adopt(): void {
     const section = this.host.getSnapshot().value
     if (section === undefined
-      || (this.preference === section.preference && this.transcriptTextSize === section.transcriptTextSize)) return
+      || (this.preference === section.preference
+        && this.transcriptTextSize === section.transcriptTextSize
+        && this.lightCodeTheme === section.lightCodeTheme
+        && this.darkCodeTheme === section.darkCodeTheme
+        && this.codeFont === section.codeFont)) return
     this.preference = section.preference
     this.transcriptTextSize = section.transcriptTextSize
+    this.lightCodeTheme = section.lightCodeTheme
+    this.darkCodeTheme = section.darkCodeTheme
+    this.codeFont = section.codeFont
     this.publish()
   }
 
@@ -379,6 +441,13 @@ export class ThemeRuntime {
     return Object.freeze({
       preference: this.preference,
       transcriptTextSize: this.transcriptTextSize,
+      codeAppearance: Object.freeze({
+        activeThemeId: active.colorScheme === 'dark' ? this.darkCodeTheme : this.lightCodeTheme,
+        lightThemeId: this.lightCodeTheme,
+        darkThemeId: this.darkCodeTheme,
+        fontId: this.codeFont,
+        revision: this.revision,
+      }),
       active: this.composeActive(active),
       themes: Object.freeze([...this.themes]),
       revision: this.revision,
@@ -399,6 +468,8 @@ export class ThemeRuntime {
       }
     }
     Object.assign(tokens, TRANSCRIPT_TOKENS[this.transcriptTextSize])
+    tokens['--ds-font-family-code'] = CODE_FONT_STACKS[this.codeFont]
+    tokens['--dsw-font-mono'] = 'var(--ds-font-family-code)'
     return Object.freeze({ ...active, tokens: Object.freeze(tokens) })
   }
 
@@ -470,7 +541,14 @@ export function apply(ctx: ClientContext): void {
   const store = createAppearanceRowStore()
   let bound: BoundActions<typeof store> | undefined
   const sync = (snapshot: ThemeSnapshot): void => {
-    bound?.sync(snapshot.preference, snapshot.transcriptTextSize, snapshot.revision)
+    bound?.sync(
+      snapshot.preference,
+      snapshot.transcriptTextSize,
+      snapshot.codeAppearance.lightThemeId,
+      snapshot.codeAppearance.darkThemeId,
+      snapshot.codeAppearance.fontId,
+      snapshot.revision,
+    )
   }
   ctx.on('theme/change', sync)
   const injected = (actions: BoundActions<typeof store>): AppearanceRowInjected => {
@@ -481,6 +559,9 @@ export function apply(ctx: ClientContext): void {
     return {
       setTheme: (id) => { theme.setTheme(id) },
       setTranscriptTextSize: (size) => { theme.setTranscriptTextSize(size) },
+      setLightCodeTheme: (id) => { theme.setLightCodeTheme(id) },
+      setDarkCodeTheme: (id) => { theme.setDarkCodeTheme(id) },
+      setCodeFont: (id) => { theme.setCodeFont(id) },
     }
   }
   ctx.slots.inject('deepcreator.settings.preferences.item', () => ctx.slots.register({

@@ -1,0 +1,63 @@
+diff --git a/lib/index.js b/lib/index.js
+index 5da0e650d4f7f2e659c2e735a7f39302009449b6..afb8af09c41a22b59d4dbf484d311d5ff40de667 100644
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -502,7 +502,9 @@ function computeHunkDiffs(path, before, after) {
+ 		diffs.push({
+ 			path,
+ 			oldText: oldLines.length > 0 ? oldLines.join("\n") : null,
+-			newText: newLines.join("\n")
++			newText: newLines.join("\n"),
++			oldStart: hunk.oldStart,
++			newStart: hunk.newStart
+ 		});
+ 	}
+ 	return diffs;
+@@ -645,10 +647,12 @@ function applyWriteTool(ctx, sandbox) {
+ 				type: "text",
+ 				text: formatWriteOutput(value.path, value)
+ 			}],
+-			presentationMeta: (args, value) => ({ diffs: value.before === null ? [] : computeHunkDiffs(args.file_path, value.before, value.after).map(({ path, oldText, newText }) => ({
++			presentationMeta: (args, value) => ({ diffs: value.before === null ? [] : computeHunkDiffs(args.file_path, value.before, value.after).map(({ path, oldText, newText, oldStart, newStart }) => ({
+ 				path,
+ 				oldText,
+-				newText
++				newText,
++				oldStart,
++				newStart
+ 			})) })
+ 		},
+ 		async execute(args, exec) {
+@@ -794,10 +798,12 @@ function applyEditTool(ctx, sandbox) {
+ 				type: "text",
+ 				text: formatEditOutput(value.path, args.replace_all ?? false)
+ 			}],
+-			presentationMeta: (args, value) => ({ diffs: computeHunkDiffs(args.file_path, value.before, value.after).map(({ path, oldText, newText }) => ({
++			presentationMeta: (args, value) => ({ diffs: computeHunkDiffs(args.file_path, value.before, value.after).map(({ path, oldText, newText, oldStart, newStart }) => ({
+ 				path,
+ 				oldText,
+-				newText
++				newText,
++				oldStart,
++				newStart
+ 			})) })
+ 		},
+ 		async execute(args, exec) {
+@@ -1215,4 +1221,4 @@ function apply(ctx, config) {
+ 	applyEditTool(ctx, sandbox);
+ }
+ //#endregion
+-export { Config, apply, inject, name };
++export { Config, apply, computeHunkDiffs, inject, name };
+diff --git a/lib/types/index.d.ts b/lib/types/index.d.ts
+index 3a246680d60d03c0eefd49a64eb14a7663ce6e77..2acfa68296fa17f126a241c84d8fbfc138979f19 100644
+--- a/lib/types/index.d.ts
++++ b/lib/types/index.d.ts
+@@ -6,6 +6,7 @@
+  */
+ import type { Context } from '@deepseek-ai/cordis';
+ import z from '@deepseek-ai/schemastery';
++export { computeHunkDiffs } from './diff.js';
+ /** Cordis plugin name used by loader diagnostics. */
+ export declare const name = "tool-fs";
+ /** Services required by the filesystem tool suite. */

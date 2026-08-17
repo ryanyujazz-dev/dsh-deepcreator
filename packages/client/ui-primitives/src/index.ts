@@ -50,6 +50,10 @@ export { ReadBlock, DEFAULT_READ_MAX_LINES } from './ReadBlock.tsx'
 export type { ReadBlockProps, ReadBlockLine } from './ReadBlock.tsx'
 export { DiffBlock, DEFAULT_DIFF_MAX_LINES } from './DiffBlock.tsx'
 export type { DiffBlockProps, DiffHunk } from './DiffBlock.tsx'
+export { buildDiffHunkModel, diffContentLines, diffLanguageFromPath } from './diff/model.ts'
+export type { AlignedRow, DiffHunkInput, DiffHunkModel, TextRange } from './diff/model.ts'
+export { parseUnifiedDiff } from './diff/unified.ts'
+export type { UnifiedDiffFile } from './diff/unified.ts'
 export { SearchBlock, DEFAULT_SEARCH_MAX_LINES } from './SearchBlock.tsx'
 export type {
   SearchBlockProps, SearchMatchesBlockProps, SearchPathsBlockProps, SearchFileGroup, SearchBlockLineMatch,
@@ -64,5 +68,7 @@ export type { MarkdownCodeLabels, MarkdownFileMentions } from './markdown/Markdo
 export { MessageText } from './markdown/MessageText.tsx'
 export { extractMarkdownPlainText } from './markdown/plain-text.ts'
 export type { MarkdownPlainTextMode, MarkdownPlainTextOptions } from './markdown/plain-text.ts'
+export { CODE_THEME_IDS } from './markdown/code-themes.ts'
+export type { CodeThemeId, LightCodeThemeId, DarkCodeThemeId } from './markdown/code-themes.ts'
 export * from './icons/index.tsx'
 export * from './icons/deepcreator.tsx'

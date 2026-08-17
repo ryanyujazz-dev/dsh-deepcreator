@@ -58,7 +58,7 @@ export interface ReadBlockProps {
  * @returns the line's children.
  */
 function renderSpans(spans: readonly HighlightSpan[]) {
-  return spans.map((span, index) => <span key={index} style={span.style}>{span.text}</span>)
+  return spans.map((span, index) => <span key={index} data-code-token="" style={span.style}>{span.text}</span>)
 }
 
 /**

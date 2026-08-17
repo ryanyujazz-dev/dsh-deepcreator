@@ -4,7 +4,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { createRequire } from 'node:module'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const compatibility = JSON.parse(readFileSync(join(root, 'packages/client/compat/compatibility.json'), 'utf8'))
@@ -14,6 +14,31 @@ const failures = []
 
 if (installedDsh.version !== compatibility.harnessVersion) {
   failures.push(`installed @deepseek-ai/dsh is ${installedDsh.version}; expected ${compatibility.harnessVersion}`)
+}
+
+const workspaceConfig = readFileSync(join(root, 'pnpm-workspace.yaml'), 'utf8')
+for (const patchName of ['@deepseek-ai/dsh-tool-fs@0.1.0-rc.6', '@deepseek-ai/dsh-tools@0.1.0-rc.6']) {
+  if (!workspaceConfig.includes(patchName)) failures.push(`pnpm workspace omits required diff metadata patch ${patchName}`)
+}
+for (const patchFile of [
+  'patches/@deepseek-ai__dsh-tool-fs@0.1.0-rc.6.patch',
+  'patches/@deepseek-ai__dsh-tools@0.1.0-rc.6.patch',
+]) {
+  const absolute = join(root, patchFile)
+  if (!existsSync(absolute)) failures.push(`required diff metadata patch is missing: ${patchFile}`)
+  else {
+    const source = readFileSync(absolute, 'utf8')
+    if (!source.includes('oldStart') || !source.includes('newStart')) failures.push(`${patchFile} no longer carries oldStart/newStart`)
+  }
+}
+
+try {
+  const toolRequire = createRequire(join(root, 'packages/client/ui-tool/package.json'))
+  const fsTool = await import(pathToFileURL(toolRequire.resolve('@deepseek-ai/dsh-tool-fs')).href)
+  const hunks = fsTool.computeHunkDiffs('verify.ts', 'one\ntwo\nthree\nfour\nfive\n', 'one\ntwo\nchanged\nfour\nfive\n')
+  if (hunks[0]?.oldStart !== 1 || hunks[0]?.newStart !== 1) failures.push('patched dsh-tool-fs does not emit absolute hunk starts')
+} catch (error) {
+  failures.push(`cannot verify patched dsh-tool-fs metadata: ${error instanceof Error ? error.message : String(error)}`)
 }
 
 const clientRoot = join(root, 'packages', 'client')

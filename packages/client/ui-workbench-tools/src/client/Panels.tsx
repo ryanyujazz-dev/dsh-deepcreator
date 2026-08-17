@@ -4,7 +4,7 @@ import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ArtifactRecord } from '@ryanyujazz/dsh-artifacts/types'
 import type {} from '@ryanyujazz/dsh-artifacts/remote'
-import type { ReviewChecksResult, ReviewDiffResult, ReviewStatusResult } from '@ryanyujazz/dsh-review/types'
+import type { ReviewChecksResult, ReviewDiffResult, ReviewFileStatus, ReviewStatusResult } from '@ryanyujazz/dsh-review/types'
 import type {} from '@ryanyujazz/dsh-review/remote'
 import type { TerminalSessionView } from '@ryanyujazz/dsh-terminal-workbench/types'
 import type {} from '@ryanyujazz/dsh-terminal-workbench/remote'
@@ -12,7 +12,7 @@ import type {
   WorkbenchPanelHeaderContribution, WorkbenchPanelInfoContribution, WorkbenchPanelProps,
 } from '@ryanyujazz/dsh-client-ui-workbench/client'
 import {
-  IconPlusOutline16, IconRefreshOutline14, WorkbenchPanelIconButton,
+  DiffBlock, IconChevronDownOutline14, IconPlusOutline16, IconRefreshOutline14, parseUnifiedDiff, WorkbenchPanelIconButton,
 } from '@ryanyujazz/dsh-client-ui-primitives'
 import css from './Panels.module.css'
 import { TerminalEmulator } from './TerminalEmulator.tsx'
@@ -133,36 +133,136 @@ export function ArtifactPanel({ remote, sessionId, route, activeInstanceId, open
 export function ReviewPanel({ remote, sessionId, contributeHeaderActions, t }: RemoteProps) {
   const [status, setStatus] = useState<Extract<ReviewStatusResult, { ok: true }> | null>(null)
   const [checks, setChecks] = useState<Extract<ReviewChecksResult, { ok: true }> | null>(null)
-  const [diff, setDiff] = useState<Extract<ReviewDiffResult, { ok: true }> | null>(null)
+  const [files, setFiles] = useState<Record<string, {
+    loading: boolean
+    diff?: Extract<ReviewDiffResult, { ok: true }>
+    error?: string
+  }>>({})
+  const [expandedPaths, setExpandedPaths] = useState<ReadonlySet<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
+  const refreshGeneration = useRef(0)
+  const loadFile = useCallback(async (path: string, generation = refreshGeneration.current) => {
+    setFiles(current => ({ ...current, [path]: { loading: true } }))
+    try {
+      const wire = await remote.review.diff(sessionId, path)
+      if (!wire.ok) throw transportError(wire)
+      if (!wire.value.ok) throw new Error(wire.value.message)
+      const result = wire.value
+      if (generation !== refreshGeneration.current) return
+      setFiles(current => ({ ...current, [path]: { loading: false, diff: result } }))
+    } catch (reason) {
+      if (generation !== refreshGeneration.current) return
+      setFiles(current => ({
+        ...current,
+        [path]: { loading: false, error: reason instanceof Error ? reason.message : String(reason) },
+      }))
+    }
+  }, [remote, sessionId])
   const refresh = useCallback(async () => {
+    const generation = ++refreshGeneration.current
     const [statusWire, checksWire] = await Promise.all([remote.review.status(sessionId), remote.review.checks(sessionId)])
     if (!statusWire.ok) throw transportError(statusWire)
     if (!checksWire.ok) throw transportError(checksWire)
     if (!statusWire.value.ok) throw new Error(statusWire.value.message)
     if (!checksWire.value.ok) throw new Error(checksWire.value.message)
-    setStatus(statusWire.value); setChecks(checksWire.value); setError(null)
-  }, [remote, sessionId])
-  useEffect(() => { void refresh().catch(reason => { setError(reason instanceof Error ? reason.message : String(reason)) }) }, [refresh])
-  const select = async (path: string) => {
-    const wire = await remote.review.diff(sessionId, path)
-    if (!wire.ok) throw transportError(wire)
-    if (!wire.value.ok) throw new Error(wire.value.message)
-    setDiff(wire.value); setError(null)
-  }
+    if (generation !== refreshGeneration.current) return
+    const nextStatus = statusWire.value
+    const paths = nextStatus.files.map(file => file.path)
+    setStatus(nextStatus)
+    setChecks(checksWire.value)
+    const firstPath = paths[0]
+    setExpandedPaths(firstPath === undefined ? new Set() : new Set([firstPath]))
+    setFiles(Object.fromEntries(paths.map(path => [path, { loading: false }])))
+    setError(null)
+    if (firstPath !== undefined) await loadFile(firstPath, generation)
+  }, [loadFile, remote, sessionId])
+  useEffect(() => {
+    void refresh().catch(reason => { setError(reason instanceof Error ? reason.message : String(reason)) })
+    return () => { refreshGeneration.current += 1 }
+  }, [refresh])
   const headerActions = useMemo<WorkbenchPanelHeaderContribution>(() => ({
     right: <WorkbenchPanelIconButton label={t('refresh')} onClick={() => { void refresh().catch(reason => { setError(String(reason)) }) }}><IconRefreshOutline14 /></WorkbenchPanelIconButton>,
   }), [refresh, t])
   usePanelHeaderActions(contributeHeaderActions, headerActions)
+  const toggleFile = useCallback((path: string) => {
+    const opening = !expandedPaths.has(path)
+    setExpandedPaths(current => {
+      const next = new Set(current)
+      if (next.has(path)) next.delete(path)
+      else next.add(path)
+      return next
+    })
+    const view = files[path]
+    if (opening && view?.loading !== true && view?.diff === undefined) void loadFile(path)
+  }, [expandedPaths, files, loadFile])
+  const renderFile = (file: ReviewFileStatus) => {
+    const view = files[file.path]
+    const expanded = expandedPaths.has(file.path)
+    const renderedLayers = view?.diff?.layers.map(layer => ({
+      ...layer,
+      files: parseUnifiedDiff(layer.patch, view.diff?.path ?? file.path),
+    })) ?? []
+    const counts = renderedLayers.reduce((total, layer) => ({
+      added: total.added + layer.files.reduce((sum, item) => sum + item.added, 0),
+      removed: total.removed + layer.files.reduce((sum, item) => sum + item.removed, 0),
+    }), { added: 0, removed: 0 })
+    const oldPath = view?.diff?.oldPath ?? file.oldPath
+    const label = oldPath !== undefined && oldPath !== file.path ? `${oldPath} → ${file.path}` : file.path
+    return (
+      <article key={file.path} className={css.reviewFile}>
+        <button
+          type="button"
+          className={css.reviewFileHeader}
+          aria-expanded={expanded}
+          onClick={() => { toggleFile(file.path) }}
+        >
+          <IconChevronDownOutline14 className={expanded ? undefined : css.reviewFileChevronCollapsed} />
+          <code className={css.reviewFileState}>{file.index}{file.workingTree}</code>
+          <span className={css.reviewFilePath}>{label}</span>
+          {view?.loading === true
+            ? <span className={css.reviewFileLoading}>{t('loading')}</span>
+            : view?.diff !== undefined && <span className={css.reviewCounts}><b>{`+${counts.added}`}</b><i>{`-${counts.removed}`}</i></span>}
+        </button>
+        {expanded && (
+          <div className={css.reviewFileContent}>
+            {(view === undefined || view.loading || (view.diff === undefined && view.error === undefined)) && <div className={css.reviewFileMessage}>{t('loading')}</div>}
+            {view?.error !== undefined && <div className={css.reviewFileError}>{view.error}</div>}
+            {view?.loading === false && view.error === undefined && renderedLayers.map(layer => (
+              <section key={layer.kind} className={css.diffLayer}>
+                <div className={css.diffLayerTitle}>{layer.kind === 'staged' ? t('review.layer.staged') : t('review.layer.working')}</div>
+                {layer.files.map(parsedFile => (
+                  parsedFile.binary
+                    ? <div key={`${parsedFile.oldPath ?? ''}:${parsedFile.path}`} className={css.binary}>{t('review.binary')}</div>
+                    : <DiffBlock
+                        key={`${parsedFile.oldPath ?? ''}:${parsedFile.path}`}
+                        diffs={parsedFile.hunks.map(hunk => ({
+                          ...hunk,
+                          oldSource: layer.oldSource.text,
+                          newSource: layer.newSource.text,
+                        }))}
+                        showPath={false}
+                        showFooter={false}
+                        variant="review"
+                      />
+                ))}
+              </section>
+            ))}
+          </div>
+        )}
+      </article>
+    )
+  }
   return (
     <div className={css.review}>
       {error !== null && <div className={css.error}>{error}</div>}
       <div className={css.reviewBody}>
-        <nav className={css.fileList} aria-label={t('review.files')}>
-          <div className={css.reviewStatus}><strong>{status?.branch || t('review.title')}</strong><span>{checks === null ? '—' : checks.clean ? t('review.checks.clean') : t('review.checks.failed')}</span></div>
-          {status?.files.map(file => <button type="button" key={file.path} onClick={() => { void select(file.path).catch(reason => { setError(String(reason)) }) }}><code>{file.index}{file.workingTree}</code><span>{file.path}</span></button>)}
-        </nav>
-        <pre className={css.diff}>{diff?.diff || (status?.files.length === 0 ? t('review.clean') : t('review.select'))}</pre>
+        <div className={css.reviewStatus}>
+          <strong>{status?.branch || t('review.title')} → {t('review.title')}</strong>
+          <span>{checks === null ? '—' : checks.clean ? t('review.checks.clean') : t('review.checks.failed')}</span>
+        </div>
+        {status?.files.length === 0
+          ? <div className={css.reviewPlaceholder}>{t('review.clean')}</div>
+          : <div className={css.fileList} role="list" aria-label={t('review.files')}>{status?.files.map(renderFile)}</div>}
       </div>
     </div>
   )

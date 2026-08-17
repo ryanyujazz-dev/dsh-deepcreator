@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // CodeBlock + the shiki singleton: registered grammars highlight into token
-// spans colored by --shiki-* custom properties; unknown/absent languages take
+// spans carrying every named theme as --shiki-* custom properties; unknown/absent languages take
 // the identical-geometry plain arm; aliases resolve; the trailing newline is
 // display-trimmed. MarkdownText's fence route is pinned in markdown.spec.tsx
 // alongside the rest of the markdown family.
@@ -17,10 +17,12 @@ beforeEach(() => {
 })
 
 describe('highlightToHtml', () => {
-  it('highlights a registered grammar into css-variables token spans', () => {
+  it('highlights a registered grammar into all named theme token spans', () => {
     const html = highlightToHtml('const x: number = 1', 'typescript')
-    expect(html).toContain('pre class="shiki css-variables"')
-    expect(html).toContain('var(--shiki-')
+    expect(html).toContain('pre class="shiki shiki-themes')
+    for (const theme of ['deepcreator-light', 'deepcreator-dark', 'github-light', 'github-dark', 'one-light', 'one-dark']) {
+      expect(html).toContain(`--shiki-${theme}:`)
+    }
   })
 
   it.each([['ts'], ['js'], ['bash'], ['sh'], ['jsonc']])('resolves the %s alias', (alias) => {

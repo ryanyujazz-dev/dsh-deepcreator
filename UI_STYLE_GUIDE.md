@@ -18,6 +18,15 @@
 - 普通界面、对话正文、执行流、侧边栏、对话标题栏和代码使用 CSS 400 字重；当前标题、表头和其他明确强调保留 500 或 600。
 - 字体平滑由应用根节点统一配置；组件不得单独覆盖抗锯齿，也不得通过不透明度或滤镜制造“更细”的字体。
 
+## 代码外观与 Diff
+
+- 「Code appearance」分别保存浅色与深色代码主题，二者互不覆盖。可选主题为 DeepCreator、GitHub 与 One 的 Light／Dark 版本；设置页左右预览始终强制使用正在配置的明暗主题，不跟随当前应用外观。
+- 代码字体只提供 System Mono、JetBrains Mono、Fira Code 与 Source Code Pro 四个预设。选中的字体同时作用于 Markdown 代码块、Read、Diff、行内代码和 xterm；终端响应字体变化后必须更新 xterm fontFamily 并重新 fit，不得闪烁或裁切。
+- 命名代码主题拥有编辑器前景／背景，以及插入／删除的行级与词级半透明背景；Diff 背景不得完全不透明，以免遮蔽语法前景。行号、`+/-`、折叠按钮、路径和卡片 chrome 属于应用语义，不随代码主题换色。`prefers-contrast: more` 与 forced-colors 必须作为最后一层覆盖。
+- 公共 Diff 行固定为「单行号 gutter／增删符号／代码内容」三列。删除行显示旧行号，新增行和 context 显示新行号；缺少官方起始行元数据的历史记录行号留空。内容使用软换行与安全断词；续行不得重复行号或符号，整条视觉行仍保留对应 Diff 背景。
+- 删除块与新增块使用词级标记精化，但不得破坏 Shiki token 边界、粗体、斜体或下划线。长替换块可只保留行级 Diff。长 context 仅保留变更上下各 3 行，并在原位置插入「⋯ 展开 N 行」FoldRow；通用 head/tail 高度上限也必须使用位于截断位置的 FoldRow，不得在卡片底部另放展开按钮。点击只展开该 FoldRow 所代表的全部行，状态由当前 Diff 组件本地持有。
+- 对话中的 Edit／Write 以独立圆角 hunk 卡片显示完整路径和真实 `+N -N`。Review 内容区不得使用文件栏／Diff 的左右布局，而是一个纵向滚动的可折叠文件列表；文件 Header 显示路径和 `+N -N`，使用 sticky 吸附到内容区顶部，并在下一个文件 Header 到达时由后者自然顶替。同一文件展开后可有多个 hunk；staged（HEAD → index）与 working tree（index → worktree）必须明确分层，rename/copy 显示旧新路径，二进制变化显示明确状态。Review 保持只读，不得出现 stage、discard 或 commit。
+
 ## 插件边界
 
 - UI 按功能域划分插件，不按 Model、ViewModel、View 建立三个全局插件集合。

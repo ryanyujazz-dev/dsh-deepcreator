@@ -1,9 +1,9 @@
 /**
  * The client's ONE syntax highlighter: a synchronous fine-grained shiki core
  * (JavaScript regex engine — no oniguruma WASM, bundle-friendly) with an
- * explicit grammar allowlist and a CSS-variables theme. Colors live in the
- * theme package's token sheets as `--shiki-*` custom properties (light and
- * dark blocks), never here — the repo's tokens-only styling rule.
+ * explicit grammar allowlist and six product code themes. Each token carries
+ * every theme variant through `--shiki-<theme>` custom properties; the active
+ * ancestor `data-code-theme` chooses one without rebuilding the rendered tree.
  *
  * Only the three markdown-fence and `run_code` grammars (TypeScript, shell,
  * JSON) load into the singleton at boot — the set every session renders. The
@@ -18,13 +18,14 @@
  * highlighting, still monospace) — never an error.
  */
 
-import { createHighlighterCoreSync, createCssVariablesTheme } from 'shiki/core'
+import { createHighlighterCoreSync } from 'shiki/core'
 import { createJavaScriptRegexEngine, defaultJavaScriptRegexConstructor } from 'shiki/engine/javascript'
 import langTs from '@shikijs/langs/typescript'
 import langBash from '@shikijs/langs/shellscript'
 import langJson from '@shikijs/langs/json'
 import type { HighlighterCore } from 'shiki/core'
 import type { CSSProperties } from 'react'
+import { CODE_THEME_MAP, CODE_THEME_REGISTRATIONS } from './code-themes.ts'
 
 /** A shiki grammar module's default export (a `LanguageRegistration[]`), taken
  *  from a boot grammar so no direct `@shikijs/types` dependency is needed. */
@@ -132,13 +133,6 @@ const LANG_ALIASES = new Map<string, string>([
   ['lua', 'lua'],
 ])
 
-/** All token colors resolve through `--shiki-*` custom properties (theme package sheets). */
-const cssVariablesTheme = createCssVariablesTheme({
-  name: 'css-variables',
-  variablePrefix: '--shiki-',
-  fontStyle: true,
-})
-
 /**
  * The client regex engine compiles each TextMate pattern when its scanner is
  * created. Shiki otherwise defers patterns longer than 3,000 characters until
@@ -165,14 +159,14 @@ const BOOT_GRAMMAR_WARMUPS = [
 /** Construct and pre-tokenize the boot grammars outside the user-content scan budget. */
 function createHighlighter(): HighlighterCore {
   const instance = createHighlighterCoreSync({
-    themes: [cssVariablesTheme],
+    themes: [...CODE_THEME_REGISTRATIONS],
     langs: LANGS,
     engine: regexEngine,
   })
   for (const sample of BOOT_GRAMMAR_WARMUPS) {
     instance.codeToTokens(sample.code, {
       lang: sample.lang,
-      theme: 'css-variables',
+      theme: 'deepcreator-light',
       tokenizeTimeLimit: 0,
     })
   }
@@ -264,18 +258,44 @@ export function highlightToHtml(code: string, lang: string | undefined): string 
   const resolved = lang === undefined ? undefined : LANG_ALIASES.get(lang.toLowerCase())
   if (resolved === undefined) return undefined
   if (!ensureGrammar(resolved)) return undefined
-  return highlighter().codeToHtml(code, { lang: resolved, theme: 'css-variables' })
+  return highlighter().codeToHtml(code, {
+    lang: resolved,
+    themes: CODE_THEME_MAP,
+    defaultColor: false,
+  })
 }
 
 /**
- * One highlighted run of a line: the text and the inline style shiki assigned
- * it. The css-variables theme colors every run through a `--shiki-*` custom
- * property, so `style.color` is always present; it is held as a style object
- * rather than a bare color so a run spreads onto a `<span style>` uniformly.
+ * One highlighted run of a line: the text and the theme-variant custom
+ * properties Shiki assigned it. The style object spreads onto a `<span>`;
+ * theme CSS resolves its color and TextMate font decorations.
  */
 export interface HighlightSpan {
   text: string
   style: CSSProperties
+}
+
+/** Convert one Shiki font-style bitset to CSS declarations stored per theme. */
+function fontDeclarations(fontStyle: number | undefined): { style: string; weight: string; decoration: string } {
+  const value = fontStyle ?? 0
+  return {
+    style: (value & 1) !== 0 ? 'italic' : 'normal',
+    weight: (value & 2) !== 0 ? '700' : '400',
+    decoration: (value & 4) !== 0 ? 'underline' : 'none',
+  }
+}
+
+/** React style carrying every theme variant; the ancestor data attribute chooses the active values. */
+function variantStyle(variants: Record<string, { color?: string; fontStyle?: number }>): CSSProperties {
+  const style: Record<string, string> = {}
+  for (const [theme, variant] of Object.entries(variants)) {
+    if (variant.color !== undefined) style[`--shiki-${theme}`] = variant.color
+    const font = fontDeclarations(variant.fontStyle)
+    style[`--shiki-${theme}-font-style`] = font.style
+    style[`--shiki-${theme}-font-weight`] = font.weight
+    style[`--shiki-${theme}-text-decoration`] = font.decoration
+  }
+  return style as CSSProperties
 }
 
 /**
@@ -284,10 +304,8 @@ export interface HighlightSpan {
  * A line-numbered view needs the token runs split per line (one gutter number
  * per line), which the single-`<pre>` {@link highlightToHtml} does not expose,
  * so this returns shiki's own 2D line/token structure narrowed to what a run
- * renders. Each run's color is a `--shiki-*` custom property, keeping token
- * colors on the theme package's sheets exactly as the HTML path does; the
- * css-variables theme carries no font-style bits, matching that path's
- * color-only output. The trailing newline shiki appends as a final empty line
+ * renders. Each run carries every named theme's color and TextMate font-style
+ * bits. The trailing newline shiki appends as a final empty line
  * is dropped so the run count matches the caller's own line array.
  * @param code - the source text.
  * @param lang - the language hint (a file-extension-derived language id).
@@ -297,7 +315,7 @@ export function highlightLines(code: string, lang: string | undefined): Highligh
   const resolved = lang === undefined ? undefined : LANG_ALIASES.get(lang.toLowerCase())
   if (resolved === undefined) return undefined
   if (!ensureGrammar(resolved)) return undefined
-  const { tokens } = highlighter().codeToTokens(code, { lang: resolved, theme: 'css-variables' })
+  const tokens = highlighter().codeToTokensWithThemes(code, { lang: resolved, themes: CODE_THEME_MAP })
   // shiki tokenizes `a\nb` into two lines; a trailing newline (`a\n`) adds a
   // third, empty line the caller's own line array does not carry. Drop that
   // one terminator line so the two structures stay in step. The explicit
@@ -307,5 +325,5 @@ export function highlightLines(code: string, lang: string | undefined): Highligh
   const lines = tokens.length > 1 && last !== undefined && last.length === 0
     ? tokens.slice(0, -1)
     : tokens
-  return lines.map(line => line.map(token => ({ text: token.content, style: { color: token.color } })))
+  return lines.map(line => line.map(token => ({ text: token.content, style: variantStyle(token.variants) })))
 }

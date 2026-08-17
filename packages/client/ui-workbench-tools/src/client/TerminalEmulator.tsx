@@ -58,6 +58,21 @@ export function TerminalEmulator({ terminal, agentSessionId, terminalSessionId, 
     let resizeTimer: ReturnType<typeof setTimeout> | undefined
     let lastSize = ''
 
+    const applyAppearance = () => {
+      if (disposed) return
+      const nextStyles = getComputedStyle(host)
+      emulator.options.fontFamily = token(nextStyles, '--dsw-font-mono', 'ui-monospace, SFMono-Regular, Consolas, monospace')
+      emulator.options.theme = {
+        background: 'rgba(0, 0, 0, 0)',
+        foreground: token(nextStyles, '--dsw-alias-label-primary', '#d8d8d8'),
+        cursor: token(nextStyles, '--dsw-alias-label-primary', '#d8d8d8'),
+        cursorAccent: token(nextStyles, '--dsw-alias-bg-base', '#0b0d10'),
+        selectionBackground: token(nextStyles, '--dsw-alias-fill-selected', 'rgba(120, 150, 220, 0.3)'),
+      }
+      lastSize = ''
+      scheduleSize()
+    }
+
     const report = (reason: unknown) => { if (!disposed) onError(messageOf(reason)) }
     const sendSize = () => {
       if (disposed || host.clientWidth === 0 || host.clientHeight === 0) return
@@ -110,6 +125,13 @@ export function TerminalEmulator({ terminal, agentSessionId, terminalSessionId, 
       ? undefined
       : new ResizeObserver(scheduleSize)
     resizeObserver?.observe(host)
+    const appearanceObserver = typeof MutationObserver === 'undefined'
+      ? undefined
+      : new MutationObserver(applyAppearance)
+    appearanceObserver?.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['data-ds-dark-theme', 'data-code-theme', 'style'],
+    })
     const focus = () => { emulator.focus() }
     host.addEventListener('pointerdown', focus)
     scheduleSize()
@@ -120,6 +142,7 @@ export function TerminalEmulator({ terminal, agentSessionId, terminalSessionId, 
       disposed = true
       if (resizeTimer !== undefined) clearTimeout(resizeTimer)
       resizeObserver?.disconnect()
+      appearanceObserver?.disconnect()
       host.removeEventListener('pointerdown', focus)
       inputDisposable.dispose()
       fit.dispose()

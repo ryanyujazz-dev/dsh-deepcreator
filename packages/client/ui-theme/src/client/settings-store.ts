@@ -4,7 +4,9 @@
  * reads via props.useStore.
  */
 import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-runtime/client'
-import type { ThemePreference, TranscriptTextSize } from '../theme-settings.ts'
+import type {
+  CodeFont, DarkCodeTheme, LightCodeTheme, ThemePreference, TranscriptTextSize,
+} from '../theme-settings.ts'
 
 /** Store state mirrored from the theme snapshot. */
 export interface AppearanceRowState {
@@ -12,6 +14,9 @@ export interface AppearanceRowState {
   preference: ThemePreference
   /** Persisted transcript typography size. */
   transcriptTextSize: TranscriptTextSize
+  lightCodeTheme: LightCodeTheme
+  darkCodeTheme: DarkCodeTheme
+  codeFont: CodeFont
   /** Service revision; -1 until first sync so revision 0 lands as a change. */
   revision: number
 }
@@ -22,6 +27,9 @@ type AppearanceRowActions = {
     draft: AppearanceRowState,
     preference: ThemePreference,
     transcriptTextSize: TranscriptTextSize,
+    lightCodeTheme: LightCodeTheme,
+    darkCodeTheme: DarkCodeTheme,
+    codeFont: CodeFont,
     revision: number,
   ) => void
 }
@@ -32,12 +40,26 @@ type AppearanceRowActions = {
  */
 export function createAppearanceRowStore(): EngineStoreHandle<AppearanceRowState, AppearanceRowActions> {
   return defineStore({
-    init: (): AppearanceRowState => ({ preference: 'system', transcriptTextSize: 'standard', revision: -1 }),
+    init: (): AppearanceRowState => ({
+      preference: 'system', transcriptTextSize: 'standard',
+      lightCodeTheme: 'deepcreator-light', darkCodeTheme: 'deepcreator-dark', codeFont: 'system', revision: -1,
+    }),
     actions: {
-      sync: (d, preference: ThemePreference, transcriptTextSize: TranscriptTextSize, revision: number) => {
+      sync: (
+        d,
+        preference: ThemePreference,
+        transcriptTextSize: TranscriptTextSize,
+        lightCodeTheme: LightCodeTheme,
+        darkCodeTheme: DarkCodeTheme,
+        codeFont: CodeFont,
+        revision: number,
+      ) => {
         if (revision <= d.revision) return
         d.preference = preference
         d.transcriptTextSize = transcriptTextSize
+        d.lightCodeTheme = lightCodeTheme
+        d.darkCodeTheme = darkCodeTheme
+        d.codeFont = codeFont
         d.revision = revision
       },
     },

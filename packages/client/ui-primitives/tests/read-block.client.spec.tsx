@@ -2,7 +2,7 @@
 // ReadBlock + the highlightLines token path: the banner (label, language, the
 // "showing N of M" note only when the read is a window, copy control), the
 // gutter-numbered rows keeping the file's own line numbers, the shiki per-line
-// highlighting resolved to css-variables token spans with an identical-geometry
+// highlighting carrying all named-theme custom properties with an identical-geometry
 // plain fallback for an unknown/absent language, the head/tail height cap and
 // its expand control, and the copy control writing the raw window text on both
 // the accepted and refused clipboard paths.
@@ -34,24 +34,27 @@ function gutters(container: HTMLElement): string[] {
 }
 
 describe('highlightLines', () => {
-  it('tokenizes a registered grammar into per-line css-variables runs', () => {
+  it('tokenizes a registered grammar into per-line named-theme runs', () => {
     const result = highlightLines('const x = 1\n// c', 'ts')
     expect(result).not.toBeUndefined()
     expect(result).toHaveLength(2)
-    // The keyword run carries a color style through a --shiki-* custom property.
+    // The keyword run carries every named theme through a --shiki-* custom property.
     const keyword = result![0]!.find(span => span.text === 'const')
-    expect(keyword?.style?.color).toContain('var(--shiki-')
+    expect(keyword?.style).toHaveProperty('--shiki-deepcreator-light')
+    expect(keyword?.style).toHaveProperty('--shiki-github-dark')
     // Whitespace between tokens is a run of its own; the comment is line two.
     expect(result![0]!.map(span => span.text).join('')).toBe('const x = 1')
     expect(result![1]!.map(span => span.text).join('')).toBe('// c')
   })
 
-  it('colors every run through a --shiki-* custom property', () => {
-    // The css-variables theme colors even the whitespace run (as the foreground
-    // token), so every run is a styled span; the plain fallback is the whole
+  it('colors every run through every named theme custom property', () => {
+    // The multi-theme token stream colors even the whitespace run, so every run is a styled span; the plain fallback is the whole
     // unknown-language path, not a per-run one.
     const result = highlightLines('const x = 1', 'ts')
-    for (const span of result!) for (const run of span) expect(run.style.color).toContain('var(--shiki-')
+    for (const span of result!) for (const run of span) {
+      expect(run.style).toHaveProperty('--shiki-deepcreator-light')
+      expect(run.style).toHaveProperty('--shiki-one-dark')
+    }
   })
 
   it('drops the trailing terminator line so the run count matches the source lines', () => {
@@ -85,9 +88,10 @@ describe('highlightLines', () => {
     expect(grammarLoadCount()).toBeGreaterThan(0)
     const result = highlightLines('def f(): pass', 'py')
     expect(result).not.toBeUndefined()
-    // `def` is a python keyword and carries a --shiki-* color once highlighted.
+    // `def` is a python keyword and carries all named-theme colors once highlighted.
     const keyword = result!.flat().find(span => span.text === 'def')
-    expect(keyword?.style?.color).toContain('var(--shiki-')
+    expect(keyword?.style).toHaveProperty('--shiki-deepcreator-light')
+    expect(keyword?.style).toHaveProperty('--shiki-one-dark')
     stop()
   })
 })
