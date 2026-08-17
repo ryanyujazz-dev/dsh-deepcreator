@@ -6,3 +6,5 @@ dist/
 .DS_Store
 .playwright-cli/
 output/
+CLAUDE.md
+.claude/
