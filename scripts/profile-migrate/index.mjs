@@ -182,11 +182,13 @@ const inheritedPatch = existsSync(inheritedPatchPath)
   : '[]'
 writeFileSync(join(targetDir, 'cordis.patch.yml'), `${migratePatch(inheritedPatch)}\n`)
 
-execFileSync('pnpm', ['install', '--dir', targetDir], { stdio: 'inherit' })
+execFileSync('pnpm', ['install', '--dir', targetDir], { stdio: 'inherit', shell: process.platform === 'win32' })
 if (!existsSync(dshBin)) {
   throw new Error(`DeepCreator profile migration: dsh CLI is unavailable at ${dshBin}; run pnpm install in ${root}`)
 }
-const dump = execFileSync(dshBin, ['--profile', targetName, '--dump-config'], {
+// Node cannot exec the extensionless .bin shim on Windows; run the dsh CLI entry under the current Node.
+const dshEntry = join(root, 'apps', 'desktop', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
+const dump = execFileSync(process.execPath, [dshEntry, '--profile', targetName, '--dump-config'], {
   cwd: root,
   env: { ...process.env, DSH_HOME: dshHome },
   encoding: 'utf8',
