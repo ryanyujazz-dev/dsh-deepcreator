@@ -11,6 +11,24 @@ export type { ReviewChecksResult, ReviewDiffResult, ReviewFileStatus, ReviewStat
 
 const exec = promisify(execFile)
 
+function parsePorcelainStatus(stdout: string): { branch: string; files: Array<{ index: string; workingTree: string; path: string }> } {
+  const records = stdout.split('\0')
+  const branchRecord = records.shift() ?? ''
+  const branch = branchRecord.startsWith('## ') ? branchRecord.slice(3) : ''
+  const files: Array<{ index: string; workingTree: string; path: string }> = []
+
+  for (let index = 0; index < records.length; index += 1) {
+    const record = records[index]
+    if (record === undefined || record === '') continue
+    const indexStatus = record[0] ?? ' '
+    const workingTreeStatus = record[1] ?? ' '
+    files.push({ index: indexStatus, workingTree: workingTreeStatus, path: record.slice(3) })
+    if (indexStatus === 'R' || indexStatus === 'C' || workingTreeStatus === 'R' || workingTreeStatus === 'C') index += 1
+  }
+
+  return { branch, files }
+}
+
 declare module '@deepseek-ai/cordis' { interface Context { review: ReviewService } }
 
 class ReviewBoundaryError extends Error {
@@ -48,10 +66,8 @@ export class ReviewService extends TypertRemoteService {
   async status(session: Session): Promise<ReviewStatusResult> {
     try {
       const { repository } = await repositoryFor(session)
-      const { stdout } = await exec('git', ['-C', repository, 'status', '--porcelain=v1', '--branch'], { encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 })
-      const lines = stdout.split(/\r?\n/u).filter(Boolean)
-      const branch = lines[0]?.startsWith('## ') === true ? lines.shift()!.slice(3) : ''
-      const files = lines.map(line => ({ index: line[0] ?? ' ', workingTree: line[1] ?? ' ', path: line.slice(3) }))
+      const { stdout } = await exec('git', ['-C', repository, 'status', '--porcelain=v1', '--branch', '-z'], { encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 })
+      const { branch, files } = parsePorcelainStatus(stdout)
       return { ok: true, repositoryRoot: repository, branch, files }
     } catch (error) { return boundaryFailure(error) }
   }
