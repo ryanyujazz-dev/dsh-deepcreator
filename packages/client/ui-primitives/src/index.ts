@@ -32,6 +32,8 @@ export {
 export type {
   WorkbenchPanelIconButtonProps, WorkbenchPanelShellProps,
 } from './WorkbenchPanelShell.tsx'
+export { WorkbenchPanelTabs } from './WorkbenchPanelTabs.tsx'
+export type { WorkbenchPanelTabsProps } from './WorkbenchPanelTabs.tsx'
 export { SidebarRow } from './SidebarRow.tsx'
 export type { SidebarRowProps } from './SidebarRow.tsx'
 export {

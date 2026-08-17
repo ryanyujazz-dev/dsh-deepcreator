@@ -12,8 +12,7 @@ import type {
   WorkbenchPanelHeaderContribution, WorkbenchPanelProps,
 } from '@ryanyujazz/dsh-client-ui-workbench/client'
 import {
-  IconPlusOutline16, IconRefreshOutline14, IconStopFill16, IconTrashOutline16,
-  WorkbenchPanelIconButton,
+  IconPlusOutline16, IconRefreshOutline14, WorkbenchPanelIconButton,
 } from '@ryanyujazz/dsh-client-ui-primitives'
 import css from './Panels.module.css'
 import { TerminalEmulator } from './TerminalEmulator.tsx'
@@ -145,7 +144,7 @@ export function ReviewPanel({ remote, sessionId, contributeHeaderActions, t }: R
   )
 }
 
-export function TerminalPanel({ terminal, useSessions, sessionId, route, tabs, activeInstanceId, openInstance, contributeHeaderActions, t }: TerminalProps) {
+export function TerminalPanel({ terminal, useSessions, sessionId, tabs, activeInstanceId, openInstance, contributeHeaderActions, t }: TerminalProps) {
   const addressed = useSessions(snapshot => snapshot.currentAddress?.childSessionId === sessionId)
   const [sessions, setSessions] = useState<TerminalSessionView[]>([])
   const [backends, setBackends] = useState<string[]>([])
@@ -162,13 +161,20 @@ export function TerminalPanel({ terminal, useSessions, sessionId, route, tabs, a
 
   useEffect(() => { void refresh().catch(reason => { setError(reason instanceof Error ? reason.message : String(reason)) }) }, [refresh])
 
-  const previousTabs = useRef<readonly string[]>(tabs)
+  const previousTabs = useRef({ sessionId, tabs })
   useEffect(() => {
-    for (const id of previousTabs.current) {
-      if (!tabs.includes(id) && window.confirm(t('terminal.closePrompt'))) void terminal.kill(sessionId, id)
+    const previous = previousTabs.current
+    if (previous.sessionId === sessionId) {
+      for (const id of previous.tabs) {
+        if (tabs.includes(id)) continue
+        void terminal.kill(sessionId, id).then((wire) => {
+          if (!wire.ok) throw transportError(wire)
+          if (!wire.value.ok) throw new Error(wire.value.message)
+        }).catch(reason => { setError(reason instanceof Error ? reason.message : String(reason)) })
+      }
     }
-    previousTabs.current = tabs
-  }, [sessionId, tabs, t, terminal])
+    previousTabs.current = { sessionId, tabs }
+  }, [sessionId, tabs, terminal])
 
   const spawn = useCallback(async () => {
     const type = backends[0]
@@ -178,28 +184,31 @@ export function TerminalPanel({ terminal, useSessions, sessionId, route, tabs, a
     if (!wire.value.ok) throw new Error(wire.value.message)
     openInstance(wire.value.session.sessionId); await refresh()
   }, [backends, openInstance, refresh, sessionId, t, terminal])
+  const initializedSessions = useRef(new Set<string>())
+  useEffect(() => {
+    if (addressed || initializedSessions.current.has(sessionId)) return
+    if (tabs.length > 0) {
+      initializedSessions.current.add(sessionId)
+      return
+    }
+    if (backends.length === 0) return
+    initializedSessions.current.add(sessionId)
+    const existing = sessions.find(item => item.status.kind === 'running' && item.interactive === true)
+      ?? sessions.find(item => item.status.kind === 'running')
+    if (existing !== undefined) {
+      openInstance(existing.sessionId)
+      return
+    }
+    void spawn().catch(reason => { setError(reason instanceof Error ? reason.message : String(reason)) })
+  }, [addressed, backends.length, openInstance, sessionId, sessions, spawn, tabs.length])
   const handleTerminalExit = useCallback(() => { void refresh() }, [refresh])
   const headerActions = useMemo<WorkbenchPanelHeaderContribution>(() => ({
     left: <WorkbenchPanelIconButton label={t('terminal.new')} disabled={addressed || backends.length === 0} onClick={() => { void spawn().catch(reason => { setError(String(reason)) }) }}><IconPlusOutline16 size={14} /></WorkbenchPanelIconButton>,
-    ...(route === 'instance' && activeInstanceId !== undefined
-      ? {
-          right: <>
-            <WorkbenchPanelIconButton label="SIGINT" onClick={() => {
-              const active = sessions.find(item => item.sessionId === activeInstanceId)
-              const operation = active?.interactive === true
-                ? terminal.input(sessionId, activeInstanceId, '\u0003')
-                : terminal.signal(sessionId, activeInstanceId, 'SIGINT')
-              void operation.catch(() => undefined)
-            }}><IconStopFill16 size={14} /></WorkbenchPanelIconButton>
-            <WorkbenchPanelIconButton label={t('terminal.kill')} onClick={() => { void terminal.kill(sessionId, activeInstanceId).then(() => { void refresh() }) }}><IconTrashOutline16 size={14} /></WorkbenchPanelIconButton>
-          </>,
-        }
-      : {}),
-  }), [activeInstanceId, addressed, backends.length, refresh, route, sessionId, sessions, spawn, t, terminal])
+  }), [addressed, backends.length, spawn, t])
   usePanelHeaderActions(contributeHeaderActions, headerActions)
   if (addressed) return <Empty title={t('terminal')} body={t('terminal.unavailable')} />
-  if (route !== 'instance' || activeInstanceId === undefined) {
-    return <div className={css.tool}>{error !== null && <div className={css.error}>{error}</div>}<div className={css.list}>{sessions.map(item => <button type="button" key={item.sessionId} onClick={() => { openInstance(item.sessionId) }}><span><strong>{item.shell ?? item.name ?? item.type}</strong><small>{item.cwd ?? item.status.kind}</small></span><code>{item.status.kind}</code></button>)}</div></div>
+  if (activeInstanceId === undefined) {
+    return <div className={css.tool}>{error !== null && <div className={css.error}>{error}</div>}<Empty title={t('terminal.empty.title')} body={t('terminal.empty.body')} /></div>
   }
   const active = sessions.find(item => item.sessionId === activeInstanceId)
   return (

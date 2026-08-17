@@ -19,6 +19,7 @@ describe('Terminal Remote identity', () => {
       },
     })
     const panels = new Map<string, (props: unknown) => ReactElement>()
+    const definitions: Array<{ id: string; supportsHome: boolean }> = []
     const dispose = () => undefined
     const ctx = {
       get: () => remote,
@@ -26,7 +27,7 @@ describe('Terminal Remote identity', () => {
         bind: () => ((key: string) => key),
         register: () => dispose,
       },
-      workbench: { registerType: () => dispose },
+      workbench: { registerType: (definition: { id: string; supportsHome: boolean }) => { definitions.push(definition); return dispose } },
       slots: {
         inject: (_name: string, register: () => unknown) => register(),
         register: (entry: { name: string; id?: string }, component: (props: unknown) => ReactElement) => {
@@ -45,5 +46,6 @@ describe('Terminal Remote identity', () => {
 
     expect(namespaceReads).toBe(1)
     expect(first?.props.terminal).toBe(second?.props.terminal)
+    expect(definitions.find(definition => definition.id === 'terminal')?.supportsHome).toBe(false)
   })
 })

@@ -1,8 +1,9 @@
 import type {
-  ButtonHTMLAttributes, KeyboardEvent as ReactKeyboardEvent, ReactNode,
+  ButtonHTMLAttributes, ReactNode,
 } from 'react'
 import clsx from 'clsx'
 import { Tooltip } from './Tooltip.tsx'
+import { WorkbenchPanelTabs } from './WorkbenchPanelTabs.tsx'
 import { DeepCreatorIconPanelCollapse16, DeepCreatorIconPanelExpand16 } from './icons/deepcreator.tsx'
 import css from './WorkbenchPanelShell.module.css'
 
@@ -67,31 +68,19 @@ export function WorkbenchPanelShell({
   onShowHome, onActivateTab, onCloseTab, onHide, onFocus, onRestore,
   leftActions, rightActions, children, disconnected,
 }: WorkbenchPanelShellProps) {
-  const onTabKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
-    const current = activeInstanceId === undefined ? -1 : tabs.indexOf(activeInstanceId)
-    const delta = event.key === 'ArrowRight' ? 1 : -1
-    const next = tabs[(current + delta + tabs.length) % tabs.length]
-    if (next !== undefined) onActivateTab(next)
-  }
-
   return (
     <section className={css.shell} data-type={typeId} aria-label={label}>
       <header className={css.header}>
-        <div className={css.leading}>
-          <strong className={css.title}>{label}</strong>
-          {leftActions !== undefined && <span className={css.leftActions}>{leftActions}</span>}
-        </div>
-        {tabs.length > 0 && (
-          <div className={css.tabs} role="tablist" onKeyDown={onTabKeyDown}>
-            {tabs.map(tab => (
-              <div key={tab} className={clsx(css.tab, route === 'instance' && tab === activeInstanceId && css.tabActive)}>
-                <button type="button" role="tab" aria-selected={route === 'instance' && tab === activeInstanceId} onClick={() => { onActivateTab(tab) }}><span>{tab}</span></button>
-                <button type="button" className={css.tabClose} aria-label={closeTabLabel(tab)} onClick={() => { onCloseTab(tab) }}><CloseIcon /></button>
-              </div>
-            ))}
-          </div>
-        )}
+        {tabs.length === 0
+          ? <div className={css.leading}><strong className={css.title}>{label}</strong>{leftActions !== undefined && <span className={css.leftActions}>{leftActions}</span>}</div>
+          : <WorkbenchPanelTabs
+              tabs={tabs}
+              {...(route === 'instance' && activeInstanceId !== undefined ? { activeTab: activeInstanceId } : {})}
+              closeTabLabel={closeTabLabel}
+              onActivateTab={onActivateTab}
+              onCloseTab={onCloseTab}
+              trailingAction={leftActions}
+            />}
         <div className={css.headerActions}>
           {rightActions !== undefined && <span className={css.rightActions}>{rightActions}</span>}
           {supportsHome && route === 'instance' && (

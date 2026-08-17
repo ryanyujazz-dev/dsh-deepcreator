@@ -4,7 +4,7 @@
   flex: 1;
   min-width: 0;
   min-height: 0;
-  margin: 3px;
+  margin: 2px;
   box-sizing: border-box;
   overflow: hidden;
   flex-direction: column;
@@ -29,10 +29,7 @@
 .headerActions,
 .leftActions,
 .rightActions,
-.tabs,
-.tab,
-.iconButton,
-.tab button {
+.iconButton {
   -webkit-app-region: no-drag;
 }
 
@@ -59,74 +56,6 @@
   white-space: nowrap;
 }
 
-.tabs {
-  display: flex;
-  align-items: stretch;
-  flex: 1;
-  min-width: 0;
-  height: 100%;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.tabs::-webkit-scrollbar { display: none; }
-
-.tab {
-  position: relative;
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  flex: 0 1 144px;
-  color: var(--dsw-alias-label-tertiary);
-}
-
-.tab > button:first-child {
-  min-width: 0;
-  flex: 1;
-  height: 100%;
-  border: 0;
-  padding: 0 22px 0 10px;
-  color: inherit;
-  background: transparent;
-  cursor: pointer;
-}
-
-.tab span {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-}
-
-.tabActive { color: var(--dsw-alias-label-primary); }
-.tabActive::after {
-  content: '';
-  position: absolute;
-  inset: auto 8px 0;
-  height: 2px;
-  border-radius: 1px;
-  background: var(--dsw-alias-button-info-fill);
-}
-
-.tabClose {
-  position: absolute;
-  right: 4px;
-  top: 50%;
-  transform: translateY(-50%);
-  display: none;
-  width: 18px;
-  height: 18px;
-  padding: 2px;
-  border: 0;
-  border-radius: 50%;
-  color: inherit;
-  background: transparent;
-}
-
-.tab:hover .tabClose,
-.tab:focus-within .tabClose { display: inline-flex; }
-
 .iconButton {
   display: inline-flex;
   align-items: center;
@@ -148,8 +77,7 @@
   height: var(--dsh-icon-toolbar-glyph-size, 14px);
 }
 
-.iconButton:focus-visible,
-.tab button:focus-visible {
+.iconButton:focus-visible {
   outline: 1px solid var(--dsw-alias-state-business-primary);
   outline-offset: 1px;
 }
