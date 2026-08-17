@@ -43,6 +43,25 @@ function props(panelControls: 'expanded' | 'compact') {
 }
 
 describe('WorkbenchControls responsive placement', () => {
+  it('orders the entry strip by declared order, unordered types last', () => {
+    // Registration order is Activity, Artifact, Review, Terminal, Preview;
+    // the declared product priority is Terminal, Artifact, Activity, Review,
+    // and Preview stays unordered to prove the registration-order fallback.
+    const orders: Record<string, number> = { terminal: 1, artifact: 2, activity: 3, review: 4 }
+    const registered = definitions.map(definition => ({
+      ...definition,
+      ...(definition.id in orders ? { order: orders[definition.id] } : {}),
+    }))
+    const controller = {
+      types: { list: () => registered, subscribe: () => () => {}, version: () => 1 },
+      visibility: { list: () => [], subscribe: () => () => {}, version: () => 1 },
+      hide: vi.fn(), activate: vi.fn(),
+    }
+    const view = render(<WorkbenchControls {...{ ...props('expanded').value, controller } as unknown as WorkbenchControlsProps} />)
+    const labels = view.getAllByRole('button').map(button => button.getAttribute('aria-label'))
+    expect(labels).toEqual(['打开Terminal面板', '打开Artifact面板', '打开Activity面板', '打开Review面板', '打开Preview面板'])
+  })
+
   it('shows every type button when the complete strip fits', () => {
     const input = props('expanded')
     const view = render(<WorkbenchControls {...input.value} />)

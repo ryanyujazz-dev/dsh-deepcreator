@@ -40,10 +40,10 @@ export function apply(ctx: ClientContext): void {
   const reviewPanel: PanelComponent = props => createElement(ReviewPanel, { ...props, remote })
   const terminalPanel: PanelComponent = props => createElement(TerminalPanel, { ...props, terminal })
   const providers: Array<{ definition: PanelTypeDefinition; panel: PanelComponent; icon: IconComponent }> = [
-    { definition: { id:'artifact',label:()=>t('artifact'),scope:'session',supportsHome:true,supportsCreate:false,supportsMultipleInstances:true,minWidth:150,minHeight:260,preferredWidth:520,initialWidthRatio:1/3,closePolicy:'detach' }, panel: artifactPanel, icon: DeepCreatorIconArtifact16 },
-    { definition: { id:'review',label:()=>t('review'),scope:'workspace',supportsHome:true,supportsCreate:false,supportsMultipleInstances:true,minWidth:150,minHeight:260,preferredWidth:560,initialWidthRatio:1/2,closePolicy:'dispose' }, panel: reviewPanel, icon: DeepCreatorIconReview16 },
-    { definition: { id:'terminal',label:()=>t('terminal'),scope:'session',supportsHome:false,supportsCreate:true,supportsMultipleInstances:true,minWidth:150,minHeight:220,preferredWidth:520,initialWidthRatio:1/3,closePolicy:'provider-controlled',disabledWhenAddressed:true }, panel: terminalPanel, icon: DeepCreatorIconTerminal16 },
-    { definition: { id:'browser',label:()=>t('browser'),scope:'session',supportsHome:true,supportsCreate:true,supportsMultipleInstances:true,minWidth:150,minHeight:280,preferredWidth:640,initialWidthRatio:1/2,closePolicy:'provider-controlled' }, panel: BrowserPanel, icon: DeepCreatorIconPreview16 },
+    { definition: { id:'artifact',label:()=>t('artifact'),scope:'session',order:2,supportsHome:true,supportsCreate:false,supportsMultipleInstances:true,minWidth:150,minHeight:260,preferredWidth:520,initialWidthRatio:1/3,closePolicy:'detach' }, panel: artifactPanel, icon: DeepCreatorIconArtifact16 },
+    { definition: { id:'review',label:()=>t('review'),scope:'workspace',order:4,supportsHome:true,supportsCreate:false,supportsMultipleInstances:true,minWidth:150,minHeight:260,preferredWidth:560,initialWidthRatio:1/2,closePolicy:'dispose' }, panel: reviewPanel, icon: DeepCreatorIconReview16 },
+    { definition: { id:'terminal',label:()=>t('terminal'),scope:'session',order:1,supportsHome:false,supportsCreate:true,supportsMultipleInstances:true,minWidth:150,minHeight:220,preferredWidth:520,initialWidthRatio:1/3,closePolicy:'provider-controlled',disabledWhenAddressed:true }, panel: terminalPanel, icon: DeepCreatorIconTerminal16 },
+    { definition: { id:'browser',label:()=>t('browser'),scope:'session',order:5,supportsHome:true,supportsCreate:true,supportsMultipleInstances:true,minWidth:150,minHeight:280,preferredWidth:640,initialWidthRatio:1/2,closePolicy:'provider-controlled' }, panel: BrowserPanel, icon: DeepCreatorIconPreview16 },
   ]
   ctx.effect(() => {
     const disposers: Array<() => void> = []

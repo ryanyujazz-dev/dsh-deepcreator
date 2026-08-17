@@ -13,11 +13,13 @@ describe('Workbench Header control states', () => {
     expect(css).toContain('width: var(--dsh-icon-toolbar-glyph-size, 14px)')
   })
 
-  it('signals visibility through the icon color without a blue background fill', () => {
+  it('colors the open-state glyph with the send button blue and keeps hover in both states', () => {
     const activeRule = css.match(/\.button\[aria-pressed='true'\]\s*\{([^}]*)\}/)?.[1] ?? ''
-    expect(activeRule).toContain('color: var(--dsw-alias-label-primary)')
-    expect(activeRule).toContain('background: transparent')
-    expect(activeRule).not.toContain('color: var(--dsw-static-neutral-bluish-00)')
-    expect(activeRule).not.toContain('color: var(--dsw-alias-button-info-fill)')
+    expect(activeRule).toContain('color: var(--dsw-alias-button-info-fill)')
+    // No background declaration on the pressed rule: it would out-rank the
+    // earlier :hover rule (equal specificity, later source order) and blank
+    // the hover wash while the panel is open.
+    expect(activeRule).not.toContain('background')
+    expect(css).toContain('.button:hover')
   })
 })

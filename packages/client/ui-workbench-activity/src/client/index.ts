@@ -18,7 +18,7 @@ export function apply(ctx: ClientContext): void {
     const disposers: Array<() => void> = []
     try {
       disposers.push(ctx.workbench.registerType({
-        id: 'activity', label: () => t('type'), scope: 'session', supportsHome: true, supportsCreate: false,
+        id: 'activity', label: () => t('type'), scope: 'session', order: 3, supportsHome: true, supportsCreate: false,
         supportsMultipleInstances: false, minWidth: 150, minHeight: 220, preferredWidth: 360, initialWidthRatio: 1 / 3, closePolicy: 'dispose',
       }))
       disposers.push(ctx.slots.inject('deepcreator.workbench.panel', () => ctx.slots.register({ name: 'deepcreator.workbench.panel', id: 'activity', locale: NS }, ActivityPanel)))
