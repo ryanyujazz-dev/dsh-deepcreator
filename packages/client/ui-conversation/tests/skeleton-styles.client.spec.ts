@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 const css = readFileSync(fileURLToPath(new URL('../src/client/skeleton/ConversationRoot.module.css', import.meta.url)), 'utf8')
 const inputCss = readFileSync(fileURLToPath(new URL('../src/client/skeleton/InputBar.module.css', import.meta.url)), 'utf8')
 const heroCss = readFileSync(fileURLToPath(new URL('../src/client/skeleton/HeroShell.module.css', import.meta.url)), 'utf8')
+const detailsCss = readFileSync(fileURLToPath(new URL('../src/client/skeleton/DetailsPanel.module.css', import.meta.url)), 'utf8')
 
 /** Extract one CSS rule as normalized property/value pairs. */
 function declarations(selector: string): Map<string, string> | undefined {
@@ -58,10 +59,25 @@ describe('ConversationRoot.module.css', () => {
   it('keeps the single header row at 48px without a divider', () => {
     const header = declarations('.header')
     expect(header?.get('height')).toBe('48px')
-    expect(header?.get('padding')).toBe('8px 28px')
+    expect(header?.get('padding')).toBe('8px 12px')
     expect(header?.get('font-size')).toBe('var(--dsw-font-sidebar-font-size, 12px)')
     expect(header?.has('border-bottom')).toBe(false)
     expect(css).not.toContain('.header::after')
+  })
+
+  it('keeps header padding fixed and reserves the reopen lane inside the title cluster', () => {
+    expect(declarations('[data-sidebar-collapsed] .header')).toBeUndefined()
+    expect(declarations('[data-sidebar-collapsed] .titleCluster')?.get('padding-left'))
+      .toBe('var(--dsh-collapsed-title-leading, 32px)')
+  })
+
+  it('makes every macOS header blank surface draggable while controls stay interactive', () => {
+    expect(declarations("[data-native-window-chrome='macos'] .header")?.get('-webkit-app-region'))
+      .toBe('drag')
+    expect(css).toMatch(/\[data-native-window-chrome='macos'\] \.header :is\([\s\S]*?button,[\s\S]*?\)\s*\{[\s\S]*?-webkit-app-region: no-drag;/)
+    expect(css).toMatch(/\.root\[data-phase='hero'\]::before,[\s\S]*?\.root\[data-phase='settling'\]::before[\s\S]*?height: 48px;[\s\S]*?-webkit-app-region: drag;/)
+    expect(detailsCss).toMatch(/\[data-native-window-chrome='macos'\] \.header\s*\{[\s\S]*?-webkit-app-region: drag;/)
+    expect(detailsCss).toMatch(/\[data-native-window-chrome='macos'\] \.close\s*\{[\s\S]*?-webkit-app-region: no-drag;/)
   })
 
   it('keeps both view-segment labels on the header text-size role', () => {

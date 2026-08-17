@@ -3,7 +3,7 @@ import type {
   SessionId, SessionListState, SessionSummary, WorkspaceId, WorkspaceView,
 } from '@deepseek-ai/dsh-client-runtime/client'
 import {
-  deriveFlat, deriveGroups, deriveSearchResults, workspaceLabel, relativeTime,
+  deriveFlat, deriveGroups, derivePinned, deriveSearchResults, workspaceLabel, relativeTime,
   UNGROUPED_KEY, UNGROUPED_LABEL,
 } from '../src/client/tree.ts'
 import { createWorkspaceViewStore } from '../src/client/stores.ts'
@@ -46,6 +46,21 @@ describe('deriveGroups', () => {
     const grouped = deriveGroups(sessions, [workspace('project', ['awaiting'])], noArchive, view(['project']))
     expect(grouped[0]!.sessions[0]).toMatchObject({ pendingInteraction: 'plan-review', running: true })
     expect(deriveFlat(sessions, noArchive)[0]).toMatchObject({ pendingInteraction: 'plan-review', running: true })
+  })
+
+  it('moves pinned sessions out of ordinary groups and preserves the pin order', () => {
+    const sessions = list(summary('one', 1), summary('two', 2), summary('three', 3))
+    const workspaces = [workspace('project', ['one', 'two', 'three'])]
+    const groups = deriveGroups(sessions, workspaces, noArchive, {
+      expandedGroups: ['project'], pinnedSessionIds: ['two', 'one'],
+    })
+    expect(groups[0]!.sessions.map(session => session.id)).toEqual([sid('three')])
+    expect(deriveFlat(sessions, noArchive, [sid('two'), sid('one')]).map(session => session.id))
+      .toEqual([sid('three')])
+    expect(derivePinned(sessions, noArchive, ['two', 'one']).map(session => session.id))
+      .toEqual([sid('two'), sid('one')])
+    expect(derivePinned(sessions, archived('two'), ['two', 'missing', 'one']).map(session => session.id))
+      .toEqual([sid('one')])
   })
 
   it('puts only real unaccounted Sessions in the trailing Ungrouped group', () => {
@@ -401,13 +416,20 @@ describe('createWorkspaceViewStore', () => {
     store.actions.setGroupExpanded('alpha', true)
     store.actions.syncSessionOrderAccount('alpha', ['two', 'one'], { one: 1, two: 2 })
     store.actions.setSessionOrder('alpha', ['one', 'two'])
+    store.actions.setSessionPinned('one', true)
+    store.actions.setSessionPinned('two', true)
+    store.actions.setSessionPinned('one', true)
     expect(store.getSnapshot().groupBy).toBe('flat')
     expect(store.getSnapshot()).toMatchObject({
       orderBy: 'updated',
       groupExpansion: { alpha: true },
       sessionOrderByAccount: { alpha: ['one', 'two'] },
       sessionUpdatedAtByAccount: { alpha: { one: 1, two: 2 } },
+      pinnedSessionIds: ['one', 'two'],
     })
+    store.actions.setSessionPinned('one', false)
+    store.actions.retainSessionIds(['missing'])
+    expect(store.getSnapshot().pinnedSessionIds).toEqual([])
   })
 
   it('removes view state outside the retained Workspace key set', () => {

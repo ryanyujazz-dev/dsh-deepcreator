@@ -6,7 +6,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import {
   IconChevronRightOutline14,
   IconSettingsOutline16,
-  IconSparkle16,
+  DeepCreatorIconSparkle16,
   IconUserOutline16,
   JsonTree,
   MarkdownText,
@@ -111,7 +111,7 @@ const KIND_ICON: Record<TrajectoryCellKind, ReactNode> = {
   user: <IconUserOutline16 size={13} />,
   context: <InformationIcon />,
   compacted: <CompactedIcon />,
-  message: <IconSparkle16 size={13} />,
+  message: <DeepCreatorIconSparkle16 size={13} />,
   tool: <ToolWrenchIcon />,
   subtool: <ToolWrenchIcon />,
 }

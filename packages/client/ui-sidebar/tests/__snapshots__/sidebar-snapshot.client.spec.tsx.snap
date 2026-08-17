@@ -1,88 +1,5 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`sidebar shell snapshots > renders the collapsed rail after the crossfade settles, in place 1`] = `
-<div
-  data-slot="sidebar"
-  style="display: contents;"
->
-  <div
-    class="root collapsed railIn quietBars"
-    style=""
-  >
-    <div
-      class="logoRow"
-    >
-      <button
-        aria-label="Open sidebar"
-        class="iconButton toggle"
-        type="button"
-      >
-        <svg
-          aria-hidden="true"
-          class="railFish"
-          data-content="965fe321"
-          fill="none"
-          height="11.7720207253886"
-          viewBox="0 0 23.16 17.04"
-          width="16"
-        />
-        <svg
-          class="panelIcon"
-          data-content="35f95b0c"
-          fill="none"
-          height="14"
-          viewBox="0 0 16 16"
-          width="14"
-          xmlns="http://www.w3.org/2000/svg"
-        />
-      </button>
-    </div>
-    <button
-      aria-label="New session"
-      class="row newSession"
-      type="button"
-    >
-      <svg
-        data-content="c0ce4dcc"
-        fill="none"
-        height="14"
-        viewBox="0 0 16 16"
-        width="14"
-        xmlns="http://www.w3.org/2000/svg"
-      />
-    </button>
-    <div
-      class="regionArea"
-    >
-      <div
-        data-slot="sidebar.workspaces"
-        style="display: contents;"
-      />
-    </div>
-    <div
-      class="footArea"
-    >
-      <div
-        class="footerActions"
-      >
-        <div
-          data-slot="sidebar.footer.action"
-          style="display: contents;"
-        />
-      </div>
-      <div
-        class="settingsArea"
-      >
-        <div
-          data-slot="sidebar.settings"
-          style="display: contents;"
-        />
-      </div>
-    </div>
-  </div>
-</div>
-`;
-
 exports[`sidebar shell snapshots > renders the expanded column (wordmark, capsule, empty holes) 1`] = `
 <div
   data-slot="sidebar"
@@ -125,25 +42,84 @@ exports[`sidebar shell snapshots > renders the expanded column (wordmark, capsul
         />
       </button>
     </div>
-    <button
-      aria-label="New session"
-      class="row newSession"
-      type="button"
+    <ul
+      aria-label="Primary actions"
+      class="primaryList"
     >
-      <svg
-        data-content="c0ce4dcc"
-        fill="none"
-        height="14"
-        viewBox="0 0 16 16"
-        width="14"
-        xmlns="http://www.w3.org/2000/svg"
-      />
-      <span
-        class="newSessionLabel wide"
+      <li
+        class="primaryListItem"
       >
-        New Session
-      </span>
-    </button>
+        <button
+          aria-label="New session"
+          class="row newSession"
+          type="button"
+        >
+          <svg
+            data-content="c0ce4dcc"
+            fill="none"
+            height="14"
+            viewBox="0 0 16 16"
+            width="14"
+            xmlns="http://www.w3.org/2000/svg"
+          />
+          <span
+            class="primaryLabel wide"
+          >
+            New Session
+          </span>
+        </button>
+      </li>
+      <li
+        class="primaryListItem"
+      >
+        <button
+          aria-label="Skills (coming soon)"
+          class="row skillsPlaceholder"
+          disabled=""
+          type="button"
+        >
+          <svg
+            data-content="8571130c"
+            data-deepcreator-icon="skill"
+            fill="none"
+            height="14"
+            viewBox="0 0 16 16"
+            width="14"
+            xmlns="http://www.w3.org/2000/svg"
+          />
+          <span
+            class="primaryLabel wide"
+          >
+            Skills
+          </span>
+        </button>
+      </li>
+      <li
+        class="primaryListItem"
+      >
+        <button
+          aria-label="Scheduled tasks (coming soon)"
+          class="row scheduledTasksPlaceholder"
+          disabled=""
+          type="button"
+        >
+          <svg
+            data-content="5ec07d89"
+            data-deepcreator-icon="timer"
+            fill="none"
+            height="14"
+            viewBox="0 0 14 14"
+            width="14"
+            xmlns="http://www.w3.org/2000/svg"
+          />
+          <span
+            class="primaryLabel wide"
+          >
+            Scheduled Tasks
+          </span>
+        </button>
+      </li>
+    </ul>
     <div
       class="regionArea"
     >
@@ -218,25 +194,84 @@ exports[`sidebar shell snapshots > renders the expanded column in the default lo
         />
       </button>
     </div>
-    <button
-      aria-label="新建会话"
-      class="row newSession"
-      type="button"
+    <ul
+      aria-label="主要操作"
+      class="primaryList"
     >
-      <svg
-        data-content="c0ce4dcc"
-        fill="none"
-        height="14"
-        viewBox="0 0 16 16"
-        width="14"
-        xmlns="http://www.w3.org/2000/svg"
-      />
-      <span
-        class="newSessionLabel wide"
+      <li
+        class="primaryListItem"
       >
-        新会话
-      </span>
-    </button>
+        <button
+          aria-label="新建会话"
+          class="row newSession"
+          type="button"
+        >
+          <svg
+            data-content="c0ce4dcc"
+            fill="none"
+            height="14"
+            viewBox="0 0 16 16"
+            width="14"
+            xmlns="http://www.w3.org/2000/svg"
+          />
+          <span
+            class="primaryLabel wide"
+          >
+            新会话
+          </span>
+        </button>
+      </li>
+      <li
+        class="primaryListItem"
+      >
+        <button
+          aria-label="技能（即将推出）"
+          class="row skillsPlaceholder"
+          disabled=""
+          type="button"
+        >
+          <svg
+            data-content="8571130c"
+            data-deepcreator-icon="skill"
+            fill="none"
+            height="14"
+            viewBox="0 0 16 16"
+            width="14"
+            xmlns="http://www.w3.org/2000/svg"
+          />
+          <span
+            class="primaryLabel wide"
+          >
+            技能
+          </span>
+        </button>
+      </li>
+      <li
+        class="primaryListItem"
+      >
+        <button
+          aria-label="定时任务（即将推出）"
+          class="row scheduledTasksPlaceholder"
+          disabled=""
+          type="button"
+        >
+          <svg
+            data-content="5ec07d89"
+            data-deepcreator-icon="timer"
+            fill="none"
+            height="14"
+            viewBox="0 0 14 14"
+            width="14"
+            xmlns="http://www.w3.org/2000/svg"
+          />
+          <span
+            class="primaryLabel wide"
+          >
+            定时任务
+          </span>
+        </button>
+      </li>
+    </ul>
     <div
       class="regionArea"
     >

@@ -17,7 +17,7 @@ import { useState, type KeyboardEvent } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 import clsx from 'clsx'
 import {
-  IconApiOutline14, IconChevronDownOutline14, IconInspectOutline12, StateDot, TerminalBlock, Tooltip,
+  DeepCreatorIconInspectOutline12, IconApiOutline14, IconChevronDownOutline14, StateDot, TerminalBlock, Tooltip,
 } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ToolCallViewProps } from '../../contract/slots.ts'
@@ -159,7 +159,7 @@ export function BashRow({ toolName, block, sessionId, useSessions, inspect, exec
                 aria-label={t('execflow.inspect')}
                 onClick={inspect}
               >
-                <IconInspectOutline12 />
+                <DeepCreatorIconInspectOutline12 />
               </button>
             </Tooltip>
           )}

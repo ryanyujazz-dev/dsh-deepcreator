@@ -19,7 +19,13 @@ async function bench(declare = true) {
   const slots = ctx.get('slots') as SlotRegistry
   if (declare) {
     slots.register(
-      { name: 'root', children: { 'sidebar': { kind: 'single', scope: 'root' } } } as never,
+      {
+        name: 'root',
+        children: {
+          'sidebar': { kind: 'single', scope: 'root' },
+          'deepcreator.shell.sidebar-toggle': { kind: 'single', scope: 'root' },
+        },
+      } as never,
       () => null,
     )
   }
@@ -35,6 +41,7 @@ describe('ui-sidebar apply', () => {
     const b = await bench()
     await b.ctx.plugin({ inject: [...inject], apply }).await()
     expect(b.slots.entries('sidebar')).toHaveLength(1)
+    expect(b.slots.entries('deepcreator.shell.sidebar-toggle')).toHaveLength(1)
     expect(b.slots.spec('sidebar.workspaces')).toEqual({ kind: 'single', scope: 'root' })
     expect(b.slots.spec('sidebar.settings')).toEqual({ kind: 'single', scope: 'root' })
     expect(b.slots.spec('sidebar.footer.action')).toEqual({ kind: 'list', scope: 'root' })
@@ -49,6 +56,9 @@ describe('ui-sidebar apply', () => {
     expect(b.workspaces.startSession).toHaveBeenLastCalledWith(undefined)
     injected.toggleSidebar()
     expect(b.layout.toggleSidebar).toHaveBeenCalledOnce()
+    const toggleInjected = (b.slots.entries('deepcreator.shell.sidebar-toggle')[0]!.inject as () => { toggleSidebar: () => void })()
+    toggleInjected.toggleSidebar()
+    expect(b.layout.toggleSidebar).toHaveBeenCalledTimes(2)
   })
 
   it('fails when no live owner declared the sidebar slot', async () => {
@@ -62,6 +72,7 @@ describe('ui-sidebar apply', () => {
     await fiber.await()
     await fiber.dispose()
     expect(b.slots.entries('sidebar')).toHaveLength(0)
+    expect(b.slots.entries('deepcreator.shell.sidebar-toggle')).toHaveLength(0)
     expect(b.slots.spec('sidebar.workspaces')).toBeUndefined()
     expect(b.slots.spec('sidebar.footer.action')).toBeUndefined()
   })

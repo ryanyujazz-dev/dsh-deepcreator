@@ -375,6 +375,22 @@ describe('Menu', () => {
     expect(onSelect).toHaveBeenCalledWith('new')
   })
 
+  it('supports a text-aligned separator for icon-bearing command groups', () => {
+    render(
+      <Menu
+        open
+        anchor={<span>trigger</span>}
+        items={[
+          { id: 'first', label: 'First' },
+          { type: 'separator', id: 'commands', inset: 'text' },
+          { id: 'last', label: 'Last' },
+        ]}
+        onSelect={() => {}}
+        onClose={() => {}}
+      />)
+    expect(screen.getByRole('separator').className).toMatch(/separatorTextInset/)
+  })
+
   it('caps the list height for internal scrolling unless a submenu row is present', () => {
     const { rerender } = render(
       <Menu open anchor={<span>trigger</span>} items={items} onSelect={() => {}} onClose={() => {}} />)

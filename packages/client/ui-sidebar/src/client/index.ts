@@ -2,11 +2,12 @@
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@ryanyujazz/dsh-client-locale/client'
-import type { SidebarRootInjected } from './contract/slots.ts'
-import { SidebarRoot } from './SidebarRoot.tsx'
+import type { SidebarClosedToggleInjected, SidebarRootInjected } from './contract/slots.ts'
+import { SidebarClosedToggle, SidebarRoot } from './SidebarRoot.tsx'
 import { en, zh, type SidebarKey } from './locales.ts'
 
 export type {
+  SidebarClosedToggleComponentProps, SidebarClosedToggleInjected,
   SidebarFooterActionOwnerProps, SidebarRootComponentProps, SidebarRootInjected,
   SidebarSectionOwnerProps, SidebarSettingsOwnerProps,
 } from './contract/slots.ts'
@@ -53,4 +54,13 @@ export function apply(ctx: ClientContext): void {
     }, SidebarRoot),
     'ui-sidebar: slot registration',
   )
+
+  const injectClosedToggle = (): SidebarClosedToggleInjected => ({
+    toggleSidebar: () => { ctx.layout.toggleSidebar() },
+  })
+  ctx.slots.inject('deepcreator.shell.sidebar-toggle', () => ctx.slots.register({
+    name: 'deepcreator.shell.sidebar-toggle',
+    locale: NS,
+    inject: injectClosedToggle,
+  }, SidebarClosedToggle))
 }

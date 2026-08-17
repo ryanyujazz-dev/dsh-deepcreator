@@ -12,7 +12,7 @@
     "bundle": "tsc -p tsconfig.json",
     "dev": "pnpm run bundle && electron .",
     "start": "electron .",
-    "test": "vitest run tests/host-process.spec.ts",
+    "test": "vitest --root ../.. run apps/desktop/tests",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

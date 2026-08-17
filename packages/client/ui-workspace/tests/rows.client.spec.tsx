@@ -264,6 +264,7 @@ describe('workspace browser rows', () => {
     fireEvent.click(screen.getByRole('button', { name: '工作区“Project”的操作' }))
     // Opening the menu neither toggles the group nor renames yet.
     expect(onToggle).not.toHaveBeenCalled()
+    expect(screen.queryByRole('menuitem', { name: '置顶会话' })).toBeNull()
     expect(screen.getByRole('menuitem', { name: '删除工作区' }).className).toMatch(/danger/)
     fireEvent.click(screen.getByRole('menuitem', { name: '重命名' }))
     expect(onRename).toHaveBeenCalledOnce()
@@ -338,26 +339,33 @@ describe('workspace browser rows', () => {
     }
   })
 
-  it('session row menu opens without opening the session and dispatches rename, fork, and archive', () => {
+  it('orders session actions as pin/fork/archive, then an inset divider and native open', () => {
     const onOpen = vi.fn()
     const onRename = vi.fn()
     const onFork = vi.fn()
     const onArchive = vi.fn()
+    const onPinnedChange = vi.fn()
+    const onOpenLocation = vi.fn()
     const node: SessionNode = {
       id: sid('s1'), title: 'One', blank: false, running: false,
-      runningSubagentCount: 0, completed: false, updatedAt: 0,
+      runningSubagentCount: 0, completed: false, updatedAt: 0, cwd: '/projects/one',
     }
     render(<SessionNodeItem node={node} currentId={undefined} now={0} onOpen={onOpen}
-      onRename={onRename} onFork={onFork} onArchive={onArchive} t={t} />)
+      onRename={onRename} onFork={onFork} onArchive={onArchive}
+      onPinnedChange={onPinnedChange} onOpenLocation={onOpenLocation}
+      canOpenLocation fileManager="finder" t={t} />)
     fireEvent.click(screen.getByRole('button', { name: '会话“One”的操作' }))
     expect(onOpen).not.toHaveBeenCalled()
+    expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual([
+      '置顶会话', '分叉会话', '归档会话', '在 Finder 中打开',
+    ])
+    expect(screen.getByRole('menuitem', { name: '置顶会话' }).querySelector('svg')
+      ?.getAttribute('data-deepcreator-icon')).toBe('pin')
+    expect(screen.getByRole('separator').className).toMatch(/separatorTextInset/)
     // Archive is not destructive (log and accounting slot remain): no danger styling.
     expect(screen.getByRole('menuitem', { name: '归档会话' }).className).not.toMatch(/danger/)
-    // Rename dispatches with the current display title (dialog prefill).
-    fireEvent.click(screen.getByRole('menuitem', { name: '重命名' }))
-    expect(screen.queryByRole('menu')).toBeNull()
-    expect(onRename).toHaveBeenCalledWith(node.id, 'One')
-    expect(onOpen).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('menuitem', { name: '置顶会话' }))
+    expect(onPinnedChange).toHaveBeenCalledWith(node.id, true)
     fireEvent.click(screen.getByRole('button', { name: '会话“One”的操作' }))
     fireEvent.click(screen.getByRole('menuitem', { name: '分叉会话' }))
     expect(onFork).toHaveBeenCalledWith(node.id)
@@ -365,12 +373,31 @@ describe('workspace browser rows', () => {
     fireEvent.click(screen.getByRole('button', { name: '会话“One”的操作' }))
     fireEvent.click(screen.getByRole('menuitem', { name: '归档会话' }))
     expect(onArchive).toHaveBeenCalledWith(node.id)
-    expect(onRename).toHaveBeenCalledOnce()
+    fireEvent.click(screen.getByRole('button', { name: '会话“One”的操作' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '在 Finder 中打开' }))
+    expect(onOpenLocation).toHaveBeenCalledWith('/projects/one')
+    expect(onRename).not.toHaveBeenCalled()
     expect(onOpen).not.toHaveBeenCalled()
     // Escape closes without selecting (Menu onClose path).
     fireEvent.click(screen.getByRole('button', { name: '会话“One”的操作' }))
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(screen.queryByRole('menu')).toBeNull()
+  })
+
+  it('uses Windows Explorer copy and capability-gates native opening', () => {
+    const node: SessionNode = {
+      id: sid('windows'), title: 'Windows', blank: false, running: false,
+      runningSubagentCount: 0, completed: false, updatedAt: 0, cwd: 'C:\\projects\\one',
+    }
+    const view = render(<SessionNodeItem node={node} currentId={undefined} now={0} onOpen={vi.fn()}
+      onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()}
+      onOpenLocation={vi.fn()} canOpenLocation={false} fileManager="explorer" t={t} />)
+    fireEvent.click(screen.getByRole('button', { name: '会话“Windows”的操作' }))
+    expect(screen.getByRole<HTMLButtonElement>('menuitem', { name: '在资源管理器中打开' }).disabled).toBe(true)
+    view.rerender(<SessionNodeItem node={node} currentId={undefined} now={0} onOpen={vi.fn()}
+      onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()}
+      onOpenLocation={vi.fn()} canOpenLocation fileManager="explorer" t={t} />)
+    expect(screen.getByRole<HTMLButtonElement>('menuitem', { name: '在资源管理器中打开' }).disabled).toBe(false)
   })
 
 

@@ -20,7 +20,7 @@ import type {
 } from '@deepseek-ai/dsh-client-runtime/client'
 import type { WorkspaceBrowserProps } from './contract/slots.ts'
 import type { SessionNode, SessionOrderBy } from './tree.ts'
-import { deriveFlat, deriveGroups, deriveSearchResults, UNGROUPED_KEY } from './tree.ts'
+import { deriveFlat, deriveGroups, derivePinned, deriveSearchResults, UNGROUPED_KEY } from './tree.ts'
 import { ProjectRowItem, SearchResultItem, SessionNodeItem } from './rows/Rows.tsx'
 import { FLAT_SESSION_ORDER_KEY } from './stores.ts'
 import { WorkspacePickFlow } from './WorkspacePicker.tsx'
@@ -37,6 +37,8 @@ const SEARCH_DEBOUNCE_MS = 250
 const SEARCH_QUERY_MAX_CODE_UNITS = 500
 /** Session rows visible per Workspace before the local overflow control. */
 const COLLAPSED_SESSION_LIMIT = 5
+/** Stable fallback for persisted v5 snapshots created before pinning existed. */
+const EMPTY_PINNED_SESSION_IDS: readonly string[] = []
 
 /** Keep controlled input and RPC payload inside the session.search wire contract. */
 function sanitizeSearchQuery(value: string): string {
@@ -216,7 +218,8 @@ function workspaceGroupHalf(e: { clientY: number; currentTarget: HTMLElement }):
 type SessionTreeProps = Pick<
   WorkspaceBrowserProps,
   'useSessions' | 'startSession' | 'open' | 'forkSession'
-  | 'insertWorkspaceBefore' | 'insertSessionBefore' | 't'
+  | 'insertWorkspaceBefore' | 'insertSessionBefore'
+  | 'openWorkspaceLocation' | 'fileManager' | 't'
 > & {
   workspaces: readonly WorkspaceView[]
   /** Explicit persisted zero-or-five-session state by Workspace group. */
@@ -233,6 +236,12 @@ type SessionTreeProps = Pick<
   setSessionOrder: (accountKey: string, order: string[]) => void
   /** Registry-global archive set (hidden rows). */
   archivedSessionIds: readonly SessionNode['id'][]
+  /** Browser-local pinned Session order (the pinned region owns these rows). */
+  pinnedSessionIds: readonly string[]
+  /** Move a Session into or out of the independent pinned region. */
+  setSessionPinned: (sessionId: string, pinned: boolean) => void
+  /** Whether the connected Host exposes a native path opener. */
+  canOpenPath: boolean
   /** Open the browser-owned rename dialog for a real Workspace group. */
   onRenameRequest: (workspaceId: WorkspaceId, currentTitle: string) => void
   /** Open the browser-owned delete-confirmation dialog for a real Workspace group. */
@@ -249,6 +258,7 @@ type SessionTreeProps = Pick<
 function SessionTree({
   useSessions, startSession, open, forkSession, workspaces, archivedSessionIds,
   onRenameRequest, onDeleteRequest, onSessionRename, onSessionArchive,
+  pinnedSessionIds, setSessionPinned, openWorkspaceLocation, canOpenPath, fileManager,
   insertWorkspaceBefore, insertSessionBefore, orderBy,
   groupExpansion, setGroupExpanded,
   sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder, t,
@@ -321,11 +331,12 @@ function SessionTree({
   const groups = useMemo(
     () => deriveGroups(list, orderedWorkspaces, archivedSessionIds, {
       expandedGroups,
+      pinnedSessionIds,
       ...(sessionOrderByAccount[UNGROUPED_KEY] === undefined
         ? {}
         : { ungroupedOrder: sessionOrderByAccount[UNGROUPED_KEY] }),
     }),
-    [list, orderedWorkspaces, archivedSessionIds, expandedGroups, sessionOrderByAccount],
+    [list, orderedWorkspaces, archivedSessionIds, expandedGroups, pinnedSessionIds, sessionOrderByAccount],
   )
   const now = Date.now()
   const commitSessionDrag = (activeDrag: DragState, over: NonNullable<DragState['over']>): void => {
@@ -516,6 +527,10 @@ function SessionTree({
                     onRename={onSessionRename}
                     onFork={forkSession}
                     onArchive={onSessionArchive}
+                    onPinnedChange={setSessionPinned}
+                    onOpenLocation={openWorkspaceLocation}
+                    canOpenLocation={canOpenPath}
+                    fileManager={fileManager}
                     drag={dragProps}
                     t={t}
                   />
@@ -545,6 +560,7 @@ function SessionTree({
 /** The flat "In one list" body: every session is one draggable top-level row. */
 function FlatList({
   useSessions, open, forkSession, onSessionRename, onSessionArchive, archivedSessionIds,
+  pinnedSessionIds, setSessionPinned, openWorkspaceLocation, canOpenPath, fileManager,
   orderBy, sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder, t,
 }: Pick<
   SessionTreeProps,
@@ -554,6 +570,11 @@ function FlatList({
   | 'onSessionRename'
   | 'onSessionArchive'
   | 'archivedSessionIds'
+  | 'pinnedSessionIds'
+  | 'setSessionPinned'
+  | 'openWorkspaceLocation'
+  | 'canOpenPath'
+  | 'fileManager'
   | 'orderBy'
   | 'sessionOrderByAccount'
   | 'sessionUpdatedAtByAccount'
@@ -563,8 +584,8 @@ function FlatList({
 >) {
   const list = useSessions(s => s)
   const baseRows = useMemo(
-    () => deriveFlat(list, archivedSessionIds),
-    [list, archivedSessionIds],
+    () => deriveFlat(list, archivedSessionIds, pinnedSessionIds.map(id => id as SessionId)),
+    [list, archivedSessionIds, pinnedSessionIds],
   )
   const sessionIds = useMemo(() => baseRows.map(row => row.id), [baseRows])
   const previousOrderBy = useRef(orderBy)
@@ -632,6 +653,10 @@ function FlatList({
               onRename={onSessionRename}
               onFork={forkSession}
               onArchive={onSessionArchive}
+              onPinnedChange={setSessionPinned}
+              onOpenLocation={openWorkspaceLocation}
+              canOpenLocation={canOpenPath}
+              fileManager={fileManager}
               flat
               drag={{
                 start: () => {
@@ -659,6 +684,79 @@ function FlatList({
       </div>
       <span className={css.fade} />
     </div>
+  )
+}
+
+/** Independent, non-draggable region above the ordinary Workspace browser. */
+function PinnedSessions({
+  useSessions,
+  open,
+  forkSession,
+  onSessionRename,
+  onSessionArchive,
+  workspaces,
+  archivedSessionIds,
+  pinnedSessionIds,
+  setSessionPinned,
+  retainSessionIds,
+  openWorkspaceLocation,
+  canOpenPath,
+  fileManager,
+  t,
+}: Pick<
+  SessionTreeProps,
+  | 'useSessions'
+  | 'open'
+  | 'forkSession'
+  | 'onSessionRename'
+  | 'onSessionArchive'
+  | 'workspaces'
+  | 'archivedSessionIds'
+  | 'pinnedSessionIds'
+  | 'setSessionPinned'
+  | 'openWorkspaceLocation'
+  | 'canOpenPath'
+  | 'fileManager'
+  | 't'
+> & {
+  retainSessionIds: (sessionIds: readonly string[]) => void
+}) {
+  const list = useSessions(state => state)
+  useEffect(() => {
+    if (list.phase !== 'ready') return
+    retainSessionIds(list.ids.map(id => id as string))
+  }, [list.ids, list.phase, retainSessionIds])
+  const rows = useMemo(
+    () => derivePinned(list, archivedSessionIds, pinnedSessionIds, workspaces),
+    [archivedSessionIds, list, pinnedSessionIds, workspaces],
+  )
+  if (rows.length === 0) return null
+  const now = Date.now()
+  return (
+    <section className={clsx(css.pinnedRegion, css.wide)} aria-label={t('section.pinned')}>
+      <div className={css.pinnedHeader}>{t('section.pinned')}</div>
+      <div className={css.pinnedList} role="tree" aria-label={t('section.pinned')}>
+        {rows.map(node => (
+          <SessionNodeItem
+            key={node.id}
+            node={node}
+            currentId={list.current}
+            now={now}
+            onOpen={open}
+            onRename={onSessionRename}
+            onFork={forkSession}
+            onArchive={onSessionArchive}
+            pinned
+            onPinnedChange={setSessionPinned}
+            onOpenLocation={openWorkspaceLocation}
+            canOpenLocation={canOpenPath}
+            fileManager={fileManager}
+            flat
+            t={t}
+          />
+        ))}
+      </div>
+    </section>
   )
 }
 
@@ -758,6 +856,9 @@ export function WorkspaceBrowser({
   searchSessions,
   searchResultLimit,
   useDirectoryFlow,
+  useCanOpenPath,
+  openWorkspaceLocation,
+  fileManager,
   renderSlot,
   t,
 }: WorkspaceBrowserProps) {
@@ -772,6 +873,8 @@ export function WorkspaceBrowser({
   const groupExpansion = useStore(s => s.groupExpansion)
   const sessionOrderByAccount = useStore(s => s.sessionOrderByAccount)
   const sessionUpdatedAtByAccount = useStore(s => s.sessionUpdatedAtByAccount)
+  const pinnedSessionIds = useStore(s => s.pinnedSessionIds ?? EMPTY_PINNED_SESSION_IDS)
+  const canOpenPath = useCanOpenPath(capable => capable)
   useEffect(() => {
     if (workspacePhase !== 'ready') return
     actions.retainAccountKeys([
@@ -932,7 +1035,9 @@ export function WorkspaceBrowser({
   // archive-set echo lands. Failures are non-fatal console diagnostics, the
   // same posture as reorder rejections.
   const onSessionArchive = (sessionId: SessionNode['id']) => {
-    archiveSession(sessionId).catch((reason: unknown) => {
+    archiveSession(sessionId).then(() => {
+      actions.setSessionPinned(sessionId as string, false)
+    }).catch((reason: unknown) => {
       console.warn('session archive rejected:', reason)
     })
   }
@@ -973,7 +1078,26 @@ export function WorkspaceBrowser({
   }
 
   return (
-    <div className={clsx(css.root, !wide && css.rail)}>
+    <>
+      {wide && normalizedQuery === '' && (
+        <PinnedSessions
+          useSessions={useSessions}
+          open={open}
+          forkSession={forkSession}
+          onSessionRename={onSessionRename}
+          onSessionArchive={onSessionArchive}
+          workspaces={workspaces}
+          archivedSessionIds={archivedSessionIds}
+          pinnedSessionIds={pinnedSessionIds}
+          setSessionPinned={actions.setSessionPinned}
+          retainSessionIds={actions.retainSessionIds}
+          openWorkspaceLocation={openWorkspaceLocation}
+          canOpenPath={canOpenPath}
+          fileManager={fileManager}
+          t={t}
+        />
+      )}
+      <div className={clsx(css.root, !wide && css.rail)}>
       <div className={css.sectionHeader}>
         {wide && (
           <span className={clsx(css.sectionLabel, css.wide, searchExpanded && css.sectionLabelHidden)}>
@@ -1125,6 +1249,11 @@ export function WorkspaceBrowser({
                 useSessions={useSessions} open={open} forkSession={forkSession}
                 onSessionRename={onSessionRename} onSessionArchive={onSessionArchive}
                 archivedSessionIds={archivedSessionIds}
+                pinnedSessionIds={pinnedSessionIds}
+                setSessionPinned={actions.setSessionPinned}
+                openWorkspaceLocation={openWorkspaceLocation}
+                canOpenPath={canOpenPath}
+                fileManager={fileManager}
                 orderBy={orderBy}
                 sessionOrderByAccount={sessionOrderByAccount}
                 sessionUpdatedAtByAccount={sessionUpdatedAtByAccount}
@@ -1147,6 +1276,11 @@ export function WorkspaceBrowser({
                 syncSessionOrderAccount={actions.syncSessionOrderAccount}
                 setSessionOrder={actions.setSessionOrder}
                 archivedSessionIds={archivedSessionIds}
+                pinnedSessionIds={pinnedSessionIds}
+                setSessionPinned={actions.setSessionPinned}
+                openWorkspaceLocation={openWorkspaceLocation}
+                canOpenPath={canOpenPath}
+                fileManager={fileManager}
                 startSession={startSession}
                 open={open}
                 insertWorkspaceBefore={insertWorkspaceBefore}
@@ -1257,6 +1391,7 @@ export function WorkspaceBrowser({
         {deleting && <div className={css.deleteStatus} role="status">{t('delete.pending')}</div>}
         {deleteError !== null && <div className={css.renameError} role="alert">{deleteError}</div>}
       </Modal>
-    </div>
+      </div>
+    </>
   )
 }

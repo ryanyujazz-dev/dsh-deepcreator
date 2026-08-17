@@ -49,6 +49,7 @@ describe('WorkspaceBrowser.module.css list', () => {
     expect(root?.get('--dsh-session-list-edge-inset')).toBe('var(--dsh-sidebar-inline-padding)')
     expect(root?.get('--dsh-session-list-scrollbar-width')).toBe('8px')
     expect(root?.get('--dsh-session-list-scrollbar-offset')).toBe('2px')
+    expect(root?.get('margin')).toBe('var(--dsh-sidebar-section-margin-top, 10px) 0 0')
     expect(root?.get('padding-right')).toBe('var(--dsh-session-list-edge-inset)')
     expect(listArea?.get('margin-left')).toBe('-4px')
     expect(listArea?.get('padding-left')).toBe('4px')
@@ -69,6 +70,17 @@ describe('WorkspaceBrowser.module.css list', () => {
 
   it('reserves the scrollbar whether or not the list overflows', () => {
     expect(list!.get('scrollbar-gutter')).toBe('stable')
+  })
+
+  it('gives the independent pinned region the same 10px section rhythm and bounded scrolling', () => {
+    const pinned = declarations('.pinnedRegion')
+    const pinnedList = declarations('.pinnedList')
+    expect(pinned?.get('margin')).toBe('var(--dsh-sidebar-section-margin-top, 10px) 0 0')
+    expect(pinned?.get('max-height')).toBe('40%')
+    expect(pinned?.get('padding-right')).toBe('var(--dsh-session-list-edge-inset)')
+    expect(pinnedList?.get('overflow-y')).toBe('auto')
+    expect(pinnedList?.get('scrollbar-gutter')).toBe('stable')
+    expect(declarations('.pinnedList > * + *')?.get('margin-top')).toBe('2px')
   })
 
   it('keeps 2px between rows and 4px between workspace groups', () => {
@@ -116,6 +128,7 @@ describe('WorkspaceBrowser.module.css list', () => {
   it('uses one sidebar text role and color-only Workspace-row hover emphasis', () => {
     expect(declarations('.sectionHeader')?.get('height')).toBe('var(--dsw-sidebar-row-height, 32px)')
     expect(declarations('.sectionHeader')?.get('padding-left')).toBe('8px')
+    expect(declarations('.root:not(.rail) .sectionHeader')?.get('margin-top')).toBeUndefined()
     expect(declarations('.sectionLabel')?.get('font-size')).toBe('var(--dsw-font-sidebar-font-size, 12px)')
     expect(declarations('.sectionLabel')?.get('line-height')).toBe('var(--dsw-font-sidebar-line-height, 18px)')
     expect(rowDeclarations('.projectRow')?.get('color')).toBe('var(--dsw-alias-label-tertiary)')

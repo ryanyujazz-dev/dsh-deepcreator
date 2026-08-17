@@ -3,6 +3,7 @@
    this fills its cell. */
 
 .root {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -43,17 +44,54 @@
 .header {
   flex: none;
   height: 48px;
-  padding: 8px 28px;
+  padding: 8px 12px;
   box-sizing: border-box;
   font-size: var(--dsw-font-sidebar-font-size, 12px);
   line-height: var(--dsw-font-sidebar-line-height, 18px);
   font-weight: var(--dsw-font-weight-regular, 400);
 }
 
+/* Electron's hidden macOS title bar delegates dragging to the visible app
+   chrome. Blank header pixels drag the native window; actual controls remain
+   clickable through the no-drag exclusions below. */
+[data-native-window-chrome='macos'] .header {
+  -webkit-app-region: drag;
+}
+
+[data-native-window-chrome='macos'] .header :is(
+  button,
+  a,
+  input,
+  textarea,
+  select,
+  label,
+  summary,
+  [role='button'],
+  [role='tab'],
+  [role='menuitem'],
+  [contenteditable='true']
+) {
+  -webkit-app-region: no-drag;
+}
+
 /* Blank hero/settling: keep the strict Session header mounted without taking
    column space; the root-owned scrollport and composer remain below it. */
 .headerHidden {
   display: none;
+}
+
+/* Hero and settling deliberately remove the Session header from layout so
+   their vertical centering does not shift. Supply the same 48px native drag
+   surface without adding a row; the frame-owned sidebar control sits above
+   it in its own no-drag seat. */
+[data-native-window-chrome='macos'] .root[data-phase='hero']::before,
+[data-native-window-chrome='macos'] .root[data-phase='settling']::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 48px;
+  z-index: 2;
+  -webkit-app-region: drag;
 }
 
 .titleRow {
@@ -70,6 +108,14 @@
   align-items: center;
   gap: 10px;
   min-width: 0;
+}
+
+/* Header padding stays 12px in every sidebar state. When closed, only the
+   title cluster reserves the frame-chrome lane; centered tabs and the header
+   container geometry remain unchanged. */
+[data-sidebar-collapsed] .titleCluster {
+  box-sizing: border-box;
+  padding-left: var(--dsh-collapsed-title-leading, 32px);
 }
 
 .viewSwitcher {

@@ -3,6 +3,7 @@ import { cleanup, render } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import * as primitives from '@ryanyujazz/dsh-client-ui-primitives'
 import {
+  DeepCreatorIconGearshape16, DeepCreatorIconPin16, DeepCreatorIconTimer16,
   IconApiOutline14, IconArchiveOutline20, IconFolderClose16, IconGoalOutline16, IconSendOutline16,
 } from '@ryanyujazz/dsh-client-ui-primitives'
 
@@ -14,10 +15,42 @@ const icons = Object.fromEntries(
   Object.entries(primitives).filter(([name]) => name.startsWith('Icon')),
 ) as Record<string, (p: primitives.IconProps) => React.JSX.Element>
 const iconNames = Object.keys(icons)
+const productIcons = Object.fromEntries(
+  Object.entries(primitives).filter(([name]) => name.startsWith('DeepCreatorIcon')),
+) as Record<string, (p: primitives.IconProps) => React.JSX.Element>
+const productIconNames = Object.keys(productIcons)
 
 describe('ic_ds_ icon set', () => {
-  it('exports the full icon set (46 deepsuite + 20 figma extracts + four product glyphs outside those sets)', () => {
-    expect(iconNames.length).toBe(70)
+  it('keeps the 66 official-compatible glyphs separate from seven product glyphs', () => {
+    expect(iconNames.length).toBe(66)
+    expect(productIconNames.length).toBe(7)
+  })
+
+  it.each(productIconNames)('%s renders from the marked DeepCreator product set', (name) => {
+    const Icon = productIcons[name]!
+    const { container } = render(<Icon />)
+    const svg = container.querySelector('svg')!
+    expect(svg.getAttribute('data-deepcreator-icon')).toBeTruthy()
+    expect(container.innerHTML).toContain('currentColor')
+    expect(container.innerHTML).not.toMatch(/#[0-9a-fA-F]{3,8}"/)
+  })
+
+  it.each([
+    ['gearshape', DeepCreatorIconGearshape16],
+    ['pin', DeepCreatorIconPin16],
+  ] as const)('preserves the supplied 24px %s source geometry', (name, Icon) => {
+    const { container } = render(<Icon />)
+    const svg = container.querySelector('svg')!
+    expect(svg.getAttribute('data-deepcreator-icon')).toBe(name)
+    expect(svg.getAttribute('viewBox')).toBe('0 0 24 24')
+  })
+
+  it('optically fits the supplied timer geometry to the 14px sidebar grid', () => {
+    const { container } = render(<DeepCreatorIconTimer16 size={14} />)
+    const svg = container.querySelector('svg')!
+    expect(svg.getAttribute('data-deepcreator-icon')).toBe('timer')
+    expect(svg.getAttribute('viewBox')).toBe('0 0 14 14')
+    expect(svg.getAttribute('width')).toBe('14')
   })
 
   it.each(iconNames)('%s renders an svg with currentColor fills and no hardcoded palette', (name) => {

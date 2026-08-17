@@ -213,6 +213,13 @@
   background: var(--dsw-alias-border-l1);
 }
 
+/* Icon-bearing rows start their label 34px into the menu viewport
+   (10px item inset + 16px glyph + 8px gap). This variant aligns a grouped
+   command divider with that text edge and the ordinary 10px trailing inset. */
+.separatorTextInset {
+  margin: 4px 10px 4px 34px;
+}
+
 /* Nested card to the right of the parent row (figma 419:16920).
  * Bottom-aligned with the parent menu card (grows upward): itemWrap sits in
  * .list's 4px pad, so bottom: -4px matches the list's outer bottom edge.

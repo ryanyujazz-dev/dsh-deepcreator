@@ -14,13 +14,14 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import type { ReactNode } from 'react'
 import type { PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import { computeColumns, SIDEBAR_AUTO_COLLAPSE, SIDEBAR_DEFAULT } from './columns.ts'
+import { detectNativeWindowChrome } from './native-window-chrome.ts'
 import type { createLayoutStore } from './stores.ts'
 import css from './AppFrame.module.css'
 
 /** Full composed props: runtime share + child-slot render share + store share. */
 export type AppFrameProps =
   & PropsRuntime<'root'>
-  & PropsRenderSlots<'sidebar' | 'conversation' | 'details' | 'shell.overlay'>
+  & PropsRenderSlots<'sidebar' | 'conversation' | 'details' | 'deepcreator.shell.sidebar-toggle' | 'shell.overlay'>
   & PropsStore<ReturnType<typeof createLayoutStore>>
 
 /** Center column grid item (session-body building block). */
@@ -91,6 +92,7 @@ export function AppFrame({
   renderSlot,
 }: AppFrameProps) {
   const panels = useStore(s => s)
+  const nativeWindowChrome = detectNativeWindowChrome(window.navigator.userAgent)
   const detailsSession = useSessions((s) => {
     const current = s.current
     return current !== undefined && s.byId[current]?.blank === false ? current : undefined
@@ -169,13 +171,12 @@ export function AppFrame({
       data-sidebar-collapsed={sidebarCollapsed || undefined}
       data-details-collapsed={cols.details === 0 || undefined}
       data-dragging={dragging || undefined}
+      data-native-window-chrome={nativeWindowChrome}
     >
       <div className={css.sidebarCol}>
-        {/* Render-site slot call with live concession output: a closed
-            sidebar keeps the mounted slot at the compact-rail width, and the
-            component sees its rendered state as owner params decided here
-            (collapsed follows the resolved rail, so a derived auto-collapse
-            renders the rail UI too). */}
+        {/* Render-site slot call with live concession output. The subtree
+            remains mounted at zero width so its state survives reopening;
+            the external reopen control is seated by the frame below. */}
         {renderSlot('sidebar', {
           collapsed: sidebarCollapsed,
           width: cols.sidebar,
@@ -193,7 +194,12 @@ export function AppFrame({
       <div className={css.overlayLayer} data-shell-overlay>
         {renderSlot('shell.overlay', {})}
       </div>
-      {/* The collapsed rail is fixed-width: no resize handle while closed. */}
+      {sidebarCollapsed && (
+        <div className={css.sidebarToggleSeat} data-sidebar-toggle-seat>
+          {renderSlot('deepcreator.shell.sidebar-toggle', {})}
+        </div>
+      )}
+      {/* A closed zero-width sidebar has no resize handle. */}
       {!sidebarCollapsed && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />}
       {cols.details > 0 && <DragHandle side="details" left={viewport - cols.details} onStart={onDetailsStart} onDrag={onDetailsDrag} onEnd={onDragEnd} />}
     </div>

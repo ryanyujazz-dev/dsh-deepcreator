@@ -2,12 +2,12 @@
    fill + 1px right border painted by the layout column. Collapse is a
    slide + crossfade, not a morph: the content holds its frozen expanded
    layout (inline width set by the component) and fades in place (.fading)
-   while the sliding column (AppFrame grid tracks) clips it; the rail layout
-   (.collapsed) only applies after the fade settles, so nothing reflows
-   mid-slide. */
+   while the sliding column (AppFrame grid tracks) clips it; after the fade
+   settles the component contributes no DOM, so nothing reflows mid-slide. */
 
 .root {
   --dsh-sidebar-inline-padding: 12px;
+  --dsh-sidebar-section-margin-top: 10px;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -24,12 +24,6 @@
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
-/* Rail geometry reuses the expanded controls on a 32px center column inside
-   the 56px rail. The top toggle stays on the expanded header's 48px track. */
-.root.collapsed {
-  padding: 0 12px 6px;
-}
-
 /* Scrollbars in the column are a pointer affordance: the shell adds this
    class whenever the pointer is not inside (SidebarRoot.tsx owns the linger),
    and rebinding ui-theme's indirection pair to `transparent` takes the thumb
@@ -43,8 +37,8 @@
   --dsh-scrollbar-thumb-hover: transparent;
 }
 
-/* Collapse phase 1: the whole frozen-width content fades out in place over
-   150ms; at settle the children unmount/snap to the rail layout. */
+/* The whole frozen-width content fades out in place over 150ms; at settle
+   the sidebar DOM unmounts and frame chrome remains. */
 .fading > * {
   opacity: 0;
   transition: opacity 150ms var(--ds-ease-in-out);
@@ -59,36 +53,9 @@
   from { opacity: 0; }
 }
 
-/* At the 150ms rail settle, the four upper controls enter from the former
-   rail right edge over the remaining 150ms of the AppFrame track transition.
-   The bottom-pinned settings seat shares their opacity timeline but stays
-   horizontally fixed. Only a live collapse gets .railIn; a cold collapsed
-   render stays static. */
-.railIn .iconButton,
-.railIn .newSession,
-.railIn .regionArea {
-  animation: rail-in 150ms var(--ds-ease-in-out) backwards;
-}
-
-.railIn .footArea {
-  animation: rail-fade-in 150ms var(--ds-ease-in-out) backwards;
-}
-
-@keyframes rail-in {
-  from {
-    opacity: 0;
-    transform: translateX(49px);
-  }
-}
-
-@keyframes rail-fade-in {
-  from { opacity: 0; }
-}
-
 /* Expanded brand chrome shares the conversation header's 48px vertical
    track: wordmark left, panel toggle right, both centered on one baseline.
-   The rail gives every control the same base left anchor before the shared
-   entry translation is applied. */
+   Closed-state chrome is rendered outside this column. */
 .logoRow {
   flex: none;
   display: flex;
@@ -97,16 +64,18 @@
   gap: 8px;
   height: 48px;
   padding: 0 0 0 7px;
-  margin-bottom: 8px;
+  margin: 0;
   box-sizing: border-box;
   overflow: hidden;
 }
 
-.collapsed .logoRow {
-  height: 48px;
-  padding: 0;
-  margin-bottom: 8px;
-  justify-content: center;
+/* The main process fixes the red macOS traffic light at x=20, aligned with
+   the New Session icon; 77px inside the padded row starts the wordmark at x=89, one native-button gap past
+   the final native button. Closed-state chrome is frame-owned. The ancestor
+   marker exists only in Electron on macOS; browser geometry is unchanged. */
+[data-native-window-chrome='macos'] .logoRow {
+  padding-left: 77px;
+  -webkit-app-region: drag;
 }
 
 /* Brand group (figma I133:7632): the full wordmark rides the text ink
@@ -114,7 +83,10 @@
    emphasis only). A button only in behavior (New Session shortcut): the
    pointer cursor is the sole affordance — no hover chrome on the mark. */
 .brand {
-  flex: 1;
+  /* Keep the hit target on the visible wordmark. The remaining row surface
+     belongs to the macOS window drag region rather than an invisible New
+     Session button. */
+  flex: 0 1 auto;
   min-width: 0;
   display: inline-flex;
   align-items: center;
@@ -124,6 +96,13 @@
   background: transparent;
   color: inherit;
   cursor: pointer;
+}
+
+/* A draggable header must explicitly return its real controls to normal
+   pointer handling. This selector is platform-gated with the drag region. */
+[data-native-window-chrome='macos'] .brand,
+[data-native-window-chrome='macos'] .iconButton {
+  -webkit-app-region: no-drag;
 }
 
 .iconButton {
@@ -145,63 +124,51 @@
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
-.collapsed .iconButton {
-  width: 28px;
-  height: 28px;
+.closedToggle {
+  color: var(--dsw-alias-label-secondary);
 }
 
-/* Rail logo swap: collapsed, the toggle rests as the whale mark (brand ink,
-   no hover circle) and hovering reveals the panel icon — the expand
-   affordance (figma sidebar-hover flow). Expanded it is a plain panel icon. */
-.collapsed .toggle .panelIcon {
-  display: none;
+/* Primary navigation is a marginless list of the same SidebarRow used by
+   Workspace/project and Session titles. Row rhythm belongs to the list, not
+   to either button's outer margins. */
+.primaryList {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.collapsed .toggle:hover .panelIcon {
-  display: inline;
+.primaryListItem {
+  margin: 0;
+  padding: 0;
 }
 
-.collapsed .toggle:hover .railFish {
-  display: none;
+.newSession {
+  flex: none;
+  margin: 0;
+  overflow: hidden;
 }
 
-/* Rail icons ride the primary ink (figma rail spec); expanded keeps the
-   secondary icon-button ink. */
-.collapsed .iconButton {
+.skillsPlaceholder,
+.scheduledTasksPlaceholder {
+  margin: 0;
+  overflow: hidden;
+  cursor: default;
   color: var(--dsw-alias-label-primary);
 }
 
-/* New Session uses SidebarRow's project-row chrome; this class owns only its
-   placement and the collapsed rail override. */
-.newSession {
-  flex: none;
-  margin: 0 0 8px;
-  overflow: hidden;
+.skillsPlaceholder:disabled,
+.scheduledTasksPlaceholder:disabled {
+  opacity: 1;
 }
 
-.collapsed .newSession {
-  align-self: center;
-  justify-content: center;
-  width: var(--dsw-sidebar-row-height, 32px);
-  height: var(--dsw-sidebar-row-height, 32px);
-  padding: 0;
-  margin: 0 0 8px;
-  gap: 0;
-  background: transparent;
-}
-
-.collapsed .newSession:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-}
-
-.newSessionLabel {
+.primaryLabel {
   max-width: 200px;
   overflow: hidden;
   white-space: nowrap;
-}
-
-.collapsed .newSessionLabel {
-  max-width: 0;
 }
 
 /* Region seat: always mounted so the foot never moves. Its trailing margin
@@ -216,12 +183,6 @@
   margin-right: calc(-1 * var(--dsh-sidebar-inline-padding));
   padding-left: 4px;
   overflow: hidden;
-}
-
-.collapsed .regionArea {
-  margin-left: 0;
-  margin-right: 0;
-  padding-left: 0;
 }
 
 /* Footer seats: additive actions stack above Settings. Each occupant owns its
@@ -243,24 +204,9 @@
   display: flex;
 }
 
-.collapsed .footArea {
-  align-items: center;
-}
-
-.collapsed .settingsArea,
-.collapsed .footerActions {
-  display: flex;
-  justify-content: center;
-  width: auto;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .wide,
-  .fading > *,
-  .railIn .iconButton,
-  .railIn .newSession,
-  .railIn .footArea,
-  .railIn .regionArea {
+  .fading > * {
     transition: none;
     animation: none;
   }

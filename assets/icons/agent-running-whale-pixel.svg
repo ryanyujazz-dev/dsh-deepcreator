@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none" shape-rendering="crispEdges" role="img" aria-labelledby="title desc">
+  <title id="title">官方 Logo 衍生像素运行鲸鱼</title>
+  <desc id="desc">按照官方 DeepSeek 鲸鱼标志的卷身、尾鳍和腹部曲线，以 2 像素网格重绘并镜像为头朝左。</desc>
+
+  <!-- Pixel translation of @deepseek-ai/dsh-web-frontend/dist/favicon.svg. -->
+  <g id="activity-pixels">
+    <path d="M56 12h2v2h-2zM60 18h4v2h-4zM58 24h2v2h-2z" fill="#72E8FF"/>
+    <path d="M58 44h2v2h-2zM54 50h4v2h-4z" fill="#756BFF" opacity=".7"/>
+  </g>
+
+  <g id="official-tail">
+    <path d="M8 8h6v4h4v4h4v-4h2V8h6v12h-2v6h-4v4h-8v-2h-4v-4H8v-4H6v-8h2z" fill="#183D96"/>
+    <path d="M10 10h2v4h4v4h4v6h-4v-2h-4v-4h-2z" fill="#6DE7FF"/>
+    <path d="M24 10h4v10h-2v4h-4v-6h2z" fill="#7B70FF"/>
+    <path d="M16 18h4v2h-4z" fill="#D9FAFF"/>
+  </g>
+
+  <g id="official-body">
+    <path d="M34 14h10v2h6v4h4v6h2v14h-2v4h-2v4h-4v4h-6v2H28v-2h-8v-2h-6v-4h-4v-4H8v-8h2v-6h4v-4h4v-2h6v-4h10z" fill="#14347F"/>
+    <path d="M32 16h12v2h6v4h2v4h2v10h-2v4h-2v4h-4v4h-6v2H28v-2h-8v-2h-4v-4h-2v-6h2v-6h4v-4h6v-4h6z" fill="#477CE9"/>
+    <path d="M34 16h10v2h6v4h2v4h-8v-2H30v2h-8v4h-6v-2h4v-4h6v-4h8z" fill="#6BE4FF"/>
+
+    <g id="belly-sweep">
+      <path d="M16 30h8v2h4v4h4v4h6v4h8v4h-6v2H28v-2h-8v-2h-4v-4h-2v-8h2z" fill="#BDE9FF"/>
+      <path d="M18 34h6v2h4v4h6v4h8v2H30v-2h-6v-4h-4v-2h-2z" fill="#E8FAFF"/>
+      <path d="M14 32h4v2h-2v8h2v2h-4v-2h-2v-8h2z" fill="#2B5EC8"/>
+    </g>
+
+    <g id="head-and-face">
+      <path d="M8 36h8v10h-4v-2H8z" fill="#14347F"/>
+      <path d="M14 32h4v4h-4z" fill="#102A68"/>
+      <path d="M14 32h2v2h-2z" fill="white"/>
+      <path d="M8 40h6v2H8z" fill="#74E7FF"/>
+      <path d="M10 44h8v2h-6v-2z" fill="#7B70FF"/>
+    </g>
+
+    <g id="flipper">
+      <path d="M28 48h14v2h-2v4h-4v2h-8v-2h-2v-4h2z" fill="#2049AE"/>
+      <path d="M30 50h8v2h-2v2h-4v-2h-2z" fill="#776CFF"/>
+    </g>
+  </g>
+
+  <g id="agent-core">
+    <path d="M38 30h8v2h2v8h-2v2h-8v-2h-2v-8h2z" fill="#254DB6"/>
+    <path d="M40 32h4v2h2v4h-2v2h-4v-2h-2v-4h2z" fill="#77EBFF"/>
+    <path d="M40 34h4v4h-4z" fill="#F0FDFF"/>
+  </g>
+</svg>

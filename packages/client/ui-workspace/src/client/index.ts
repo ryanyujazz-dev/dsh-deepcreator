@@ -10,6 +10,7 @@
  */
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ConnectionHandle } from '@deepseek-ai/dsh-api-remotes/client'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@ryanyujazz/dsh-client-locale/client'
 import type { WorkspaceBrowserInjected, WorkspacePickerInjected } from './contract/slots.ts'
@@ -17,6 +18,7 @@ import { createWorkspaceViewStore } from './stores.ts'
 import { WorkspaceBrowser } from './WorkspaceBrowser.tsx'
 import { WorkspacePicker } from './WorkspacePicker.tsx'
 import { en, zh, type WorkspaceKey } from './locales.ts'
+import { nativeFileManagerFromUserAgent } from './file-manager.ts'
 
 export type {
   DirectoryFlowOwnerProps, DirectoryFlowSlotName, DirectoryPickingHooks, DirectoryPickingInjected,
@@ -42,7 +44,7 @@ const NS = 'workspace'
  * provides a waitable service. apply therefore depends on each slot
  * declaration through `slots.inject()` instead of assuming order.
  */
-export const inject = ['slots', 'sessions', 'workspaces', 'locale']
+export const inject = ['slots', 'sessions', 'workspaces', 'locale', 'connection']
 
 /**
  * Register the browser and picker once their slot declarations are on the
@@ -67,11 +69,25 @@ export function apply(ctx: ClientContext): void {
   })
   const browserFlowSource = flowSource('sidebar.workspaces.directoryFlow')
   const pickerFlowSource = flowSource('conversation.hero.workspace.directoryFlow')
+  const connection = ctx.get('connection') as ConnectionHandle
+  const canOpenPathSource: HostObservable<boolean> = {
+    getSnapshot: () => connection.hostDescription.getSnapshot()?.canOpenPath === true,
+    subscribe: listener => connection.hostDescription.subscribe(listener),
+  }
+  const fileManager = connection.isLoopback
+    ? nativeFileManagerFromUserAgent(typeof navigator === 'undefined' ? '' : navigator.userAgent)
+    : 'generic'
   const browserInjected = (): WorkspaceBrowserInjected => ({
     // Explicit group actions keep their target; unscoped New Session inherits
     // the current Session Workspace before the recent-Workspace fallback.
     startSession: (workspaceId) => { ctx.workspaces.startSession(workspaceId) },
     open: (sessionId) => { ctx.sessions.open(sessionId) },
+    openWorkspaceLocation: (path) => {
+      void ctx.workspaces.openPath(path).catch((reason: unknown) => {
+        console.warn('workspace path open rejected:', reason)
+      })
+    },
+    fileManager,
     searchSessions,
     searchResultLimit: ctx.sessions.searchResultLimit,
     renameSession: async (sessionId, title) => {
@@ -99,7 +115,7 @@ export function apply(ctx: ClientContext): void {
       await ctx.workspaces.insertSessionBefore(workspaceId, sessionId, beforeSessionId)
     },
     createWorkspace: input => ctx.workspaces.create(input),
-    hooks: { directoryFlow: browserFlowSource },
+    hooks: { directoryFlow: browserFlowSource, canOpenPath: canOpenPathSource },
   })
   const pickerInjected = (): WorkspacePickerInjected => ({
     createWorkspace: input => ctx.workspaces.create(input),

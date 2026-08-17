@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type {
   SidebarFooterActionOwnerProps, SidebarRootComponentProps, SidebarSectionOwnerProps,
   SidebarSettingsOwnerProps,
 } from '../src/client/contract/slots.ts'
-import { SidebarRoot } from '../src/client/SidebarRoot.tsx'
+import { SidebarClosedToggle, SidebarRoot } from '../src/client/SidebarRoot.tsx'
 import { en } from '../src/client/locales.ts'
 
 // English-dictionary translate stub: the shell renders the same copy the
@@ -83,6 +83,8 @@ describe('SidebarRoot shell', () => {
     expect(b.startSession).toHaveBeenCalledTimes(2)
     fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
     expect(b.toggleSidebar).toHaveBeenCalledOnce()
+    expect(screen.getByRole('button', { name: 'Skills (coming soon)' })).toHaveProperty('disabled', true)
+    expect(screen.getByRole('list', { name: 'Primary actions' })).toBeTruthy()
   })
 
   it('hands the region its wide flag and clamps expandSidebar to the collapsed state', () => {
@@ -96,24 +98,37 @@ describe('SidebarRoot shell', () => {
     expect(b.toggleSidebar).not.toHaveBeenCalled()
   })
 
-  it('keeps the region mounted through collapse and expands on its request', () => {
+  it('keeps the region through the exit fade, then removes all sidebar DOM', () => {
     vi.useFakeTimers()
     const b = mountShell()
     b.rerender({ collapsed: true })
-    // Wide content survives the crossfade window, then settles into the rail.
+    // Wide content survives the crossfade window, then fully unmounts.
     expect(b.regionOwner().wide).toBe(true)
-    vi.advanceTimersByTime(200)
-    b.rerender({})
-    expect(b.regionOwner().wide).toBe(false)
-    expect(b.footerActionOwner().wide).toBe(false)
     expect(screen.getByTestId('region')).toBeTruthy()
-    b.regionOwner().expandSidebar()
-    expect(b.toggleSidebar).toHaveBeenCalledOnce()
+    act(() => { vi.advanceTimersByTime(200) })
+    expect(screen.queryByTestId('region')).toBeNull()
+    expect(b.toggleSidebar).not.toHaveBeenCalled()
   })
 
   it('renders statically collapsed on a cold start (no crossfade classes)', () => {
     const b = mountShell({ collapsed: true })
-    expect(b.regionOwner().wide).toBe(false)
-    expect(screen.getByRole('button', { name: 'Open sidebar' })).toBeTruthy()
+    expect(screen.queryByRole('button')).toBeNull()
+    expect(b.toggleSidebar).not.toHaveBeenCalled()
+  })
+})
+
+describe('SidebarClosedToggle', () => {
+  it('is the sole accessible reopen control when seated by the frame', () => {
+    const toggleSidebar = vi.fn()
+    render((
+      <SidebarClosedToggle
+        toggleSidebar={toggleSidebar}
+        t={t}
+        useSessions={neverHook}
+        useWorkspaces={neverHook}
+      />
+    ) as never)
+    fireEvent.click(screen.getByRole('button', { name: 'Open sidebar' }))
+    expect(toggleSidebar).toHaveBeenCalledOnce()
   })
 })

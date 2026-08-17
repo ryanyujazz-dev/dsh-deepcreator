@@ -2,10 +2,10 @@
  * Sidebar shell: column geometry only. Collapse is a slide plus crossfade:
  * content freezes at its expanded width (inline style) and fades out in place
  * while the sliding column (AppFrame grid tracks) clips it — nothing reflows
- * mid-slide. At settle the wide-only content unmounts and the four upper
- * controls enter the 56px rail from the same horizontal offset (one icon each,
- * same top-down order) on one fade that ends with the slide. The bottom-pinned
- * settings control only fades. The workspace/session browsing region between
+ * mid-slide. At settle the wide-only content unmounts, the column closes to
+ * zero, and the layout-owned frame control becomes the
+ * sole reopen affordance. The bottom-pinned settings control also fades. The
+ * workspace/session browsing region between
  * the New Session button and the foot is the `sidebar.workspaces` registrant's,
  * and the foot holds `sidebar.settings` plus `sidebar.footer.action`; the shell
  * hands them the wide flag (plus an expand request callback for the browser).
@@ -18,11 +18,11 @@
 import { useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
-  BrandWordmark, FishLogo,
+  BrandWordmark, DeepCreatorIconSkillOutline16, DeepCreatorIconTimer16,
   IconNewChatOutline16, IconPanelLeftOutline16,
-  SIDEBAR_BRAND_ICON_SIZE, SIDEBAR_ICON_SIZE, SidebarRow, Tooltip,
+  SIDEBAR_ICON_SIZE, SidebarRow, Tooltip,
 } from '@ryanyujazz/dsh-client-ui-primitives'
-import type { SidebarRootComponentProps } from './contract/slots.ts'
+import type { SidebarClosedToggleComponentProps, SidebarRootComponentProps } from './contract/slots.ts'
 import css from './SidebarRoot.module.css'
 
 /** Wide-content unmount delay; matches the 150ms wide-content fade-out. */
@@ -61,14 +61,9 @@ export function SidebarRoot({
 
   // Freeze the content at its expanded width while it fades out (collapsed
   // && wide): the sliding column then clips it instead of reflowing it. The
-  // rail layout (.collapsed styles) only applies once the fade settles.
+  // component returns no DOM once the fade settles.
   const lastWideWidth = useRef(width)
   if (!collapsed) lastWideWidth.current = width
-
-  // Rail-in only crossfades a live collapse: a refresh straight into the
-  // collapsed state renders the rail statically (no delay-hidden icons).
-  const everWide = useRef(!collapsed)
-  if (!collapsed) everWide.current = true
 
   // Scrollbars in the column follow the pointer (.quietBars rebinds them
   // away): drawn while it is inside, and for SCROLLBAR_LINGER_MS after it
@@ -113,12 +108,23 @@ export function SidebarRoot({
     }
   }, [pointerInside])
 
+  // During the short visual exit the shrinking column is already closed for
+  // interaction. Native inert keeps its fading controls out of pointer and
+  // keyboard navigation; after settle this component renders no DOM at all.
+  useEffect(() => {
+    const element = column.current
+    if (element === null) return
+    if (collapsed) element.setAttribute('inert', '')
+    else element.removeAttribute('inert')
+  }, [collapsed])
+
+  if (collapsed && settled) return null
+
   return (
     <div
       ref={column}
       className={clsx(
-        css.root, !wide && css.collapsed, !wide && everWide.current && css.railIn,
-        collapsed && wide && css.fading, !pointerInside && css.quietBars,
+        css.root, collapsed && css.fading, !pointerInside && css.quietBars,
       )}
       style={wide ? { width: collapsed ? lastWideWidth.current : width } : undefined}
       onPointerEnter={() => {
@@ -126,10 +132,11 @@ export function SidebarRoot({
         setPointerInside(true)
       }}
       onPointerLeave={() => { armLinger() }}
+      aria-hidden={collapsed || undefined}
     >
       <div className={css.logoRow}>
-        {/* Expanded, the wordmark doubles as a New Session shortcut; the
-            collapsed rail's logo is the expand toggle below instead. */}
+        {/* Expanded, the wordmark doubles as a New Session shortcut. The
+            closed state has no sidebar DOM; its toggle lives in frame chrome. */}
         {wide && (
           <button
             type="button"
@@ -149,28 +156,56 @@ export function SidebarRoot({
             aria-label={collapsed ? t('toggle.open') : t('toggle.collapse')}
             onClick={() => { toggleSidebar() }}
           >
-            {!wide && <FishLogo className={css.railFish} size={SIDEBAR_BRAND_ICON_SIZE} />}
             <IconPanelLeftOutline16 className={css.panelIcon} size={SIDEBAR_ICON_SIZE} />
           </button>
         </Tooltip>
       </div>
 
-      {/* Expanded, the button carries its own label — tooltip only on the rail. */}
-      <Tooltip label={t('session.new.label')} delayMs={500} disabled={wide}>
-        <SidebarRow
-          as="button"
-          type="button"
-          className={css.newSession}
-          aria-label={t('session.new.label')}
-          onClick={() => { startSession() }}
-        >
-          <IconNewChatOutline16 size={SIDEBAR_ICON_SIZE} />
-          {wide && <span className={clsx(css.newSessionLabel, css.wide)}>{t('session.new')}</span>}
-        </SidebarRow>
-      </Tooltip>
+      {/* Shell-owned primary list: identical SidebarRow geometry to project
+          and Session titles. Skills and Scheduled Tasks are visual
+          placeholders until feature plugins own their behavior. */}
+      <ul className={css.primaryList} aria-label={t('primary.aria')}>
+        <li className={css.primaryListItem}>
+          <Tooltip label={t('session.new.label')} delayMs={500} disabled={wide}>
+            <SidebarRow
+              as="button"
+              type="button"
+              className={css.newSession}
+              aria-label={t('session.new.label')}
+              onClick={() => { startSession() }}
+            >
+              <IconNewChatOutline16 size={SIDEBAR_ICON_SIZE} />
+              {wide && <span className={clsx(css.primaryLabel, css.wide)}>{t('session.new')}</span>}
+            </SidebarRow>
+          </Tooltip>
+        </li>
+        <li className={css.primaryListItem}>
+          <SidebarRow
+            as="button"
+            type="button"
+            className={css.skillsPlaceholder}
+            aria-label={t('skills.placeholder.label')}
+            disabled
+          >
+            <DeepCreatorIconSkillOutline16 size={SIDEBAR_ICON_SIZE} />
+            {wide && <span className={clsx(css.primaryLabel, css.wide)}>{t('skills')}</span>}
+          </SidebarRow>
+        </li>
+        <li className={css.primaryListItem}>
+          <SidebarRow
+            as="button"
+            type="button"
+            className={css.scheduledTasksPlaceholder}
+            aria-label={t('scheduledTasks.placeholder.label')}
+            disabled
+          >
+            <DeepCreatorIconTimer16 size={SIDEBAR_ICON_SIZE} />
+            {wide && <span className={clsx(css.primaryLabel, css.wide)}>{t('scheduledTasks')}</span>}
+          </SidebarRow>
+        </li>
+      </ul>
 
-      {/* The browsing region fills the column between the controls and the
-          foot in both states; its rail icon column rides the same slot. */}
+      {/* The browsing region fills the expanded column between controls and foot. */}
       <div className={css.regionArea}>
         {renderSlot('sidebar.workspaces', {
           wide,
@@ -188,5 +223,21 @@ export function SidebarRoot({
         </div>
       </div>
     </div>
+  )
+}
+
+/** Reopen control rendered by the layout's stable frame-chrome seat. */
+export function SidebarClosedToggle({ toggleSidebar, t }: SidebarClosedToggleComponentProps) {
+  return (
+    <Tooltip label={t('toggle.open')} delayMs={500}>
+      <button
+        type="button"
+        className={clsx(css.iconButton, css.closedToggle)}
+        aria-label={t('toggle.open')}
+        onClick={() => { toggleSidebar() }}
+      >
+        <IconPanelLeftOutline16 size={SIDEBAR_ICON_SIZE} />
+      </button>
+    </Tooltip>
   )
 }

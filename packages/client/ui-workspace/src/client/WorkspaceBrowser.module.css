@@ -12,11 +12,62 @@
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+  margin: var(--dsh-sidebar-section-margin-top, 10px) 0 0;
   padding-right: var(--dsh-session-list-edge-inset);
 }
 
 .root.rail {
   padding-right: 0;
+}
+
+/* Independent pinned-session region. It is a sibling of the Workspace
+   browser so pinned rows cannot be mistaken for members of a project group. */
+.pinnedRegion {
+  --dsh-session-list-edge-inset: var(--dsh-sidebar-inline-padding);
+  --dsh-session-list-scrollbar-width: 8px;
+  --dsh-session-list-scrollbar-offset: 2px;
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 40%;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  margin: var(--dsh-sidebar-section-margin-top, 10px) 0 0;
+  padding-right: var(--dsh-session-list-edge-inset);
+}
+
+.pinnedHeader {
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: var(--dsw-sidebar-row-height, 32px);
+  margin-bottom: 4px;
+  padding-left: 8px;
+  box-sizing: border-box;
+  font-size: var(--dsw-font-sidebar-font-size, 12px);
+  line-height: var(--dsw-font-sidebar-line-height, 18px);
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.pinnedList {
+  min-height: 0;
+  overflow-y: auto;
+  margin-left: -4px;
+  margin-right: calc(
+    -1 * var(--dsh-session-list-edge-inset)
+    + var(--dsh-session-list-scrollbar-offset)
+  );
+  padding-left: 4px;
+  padding-right: calc(
+    var(--dsh-session-list-edge-inset)
+    - var(--dsh-session-list-scrollbar-width)
+    - var(--dsh-session-list-scrollbar-offset)
+  );
+  scrollbar-gutter: stable;
+}
+
+.pinnedList > * + * {
+  margin-top: 2px;
 }
 
 .iconButton {
@@ -56,7 +107,6 @@
 }
 
 .root:not(.rail) .sectionHeader {
-  margin-top: 2px;
   margin-right: -4px;
 }
 

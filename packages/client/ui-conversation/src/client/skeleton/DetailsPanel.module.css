@@ -21,6 +21,12 @@
   border-bottom: 1px solid var(--dsw-alias-border-l2);
 }
 
+/* Match the other macOS app headers: blank surface drags the native window,
+   while the close button keeps ordinary pointer behavior. */
+[data-native-window-chrome='macos'] .header {
+  -webkit-app-region: drag;
+}
+
 /* figma I54:42735;43:41479: 14/20 wt500. */
 .title {
   overflow: hidden;
@@ -43,6 +49,10 @@
   background: transparent;
   color: var(--dsw-alias-label-secondary);
   cursor: pointer;
+}
+
+[data-native-window-chrome='macos'] .close {
+  -webkit-app-region: no-drag;
 }
 
 .close:hover {

@@ -10,6 +10,7 @@ import { createRequire } from 'node:module'
 import { app, BrowserWindow, dialog, shell, type Event } from 'electron'
 import { resolveDesktopDshLaunch, resolveDesktopWorkspace } from './dsh-launch.ts'
 import { startDesktopHost, type DesktopHost } from './host-process.ts'
+import { nativeWindowChromeOptions } from './window-options.ts'
 
 const require = createRequire(import.meta.url)
 const APP_NAME = 'DeepCreator'
@@ -59,6 +60,7 @@ async function createWindow(activeHost: DesktopHost): Promise<BrowserWindow> {
     minHeight: 640,
     show: false,
     backgroundColor: '#0b0d10',
+    ...nativeWindowChromeOptions(process.platform),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

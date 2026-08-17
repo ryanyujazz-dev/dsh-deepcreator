@@ -30,6 +30,8 @@ export interface SessionNode {
   /** Finished running while not selected and not yet opened (the green "done" reminder dot). */
   completed: boolean
   updatedAt: number
+  /** Host working directory opened by the native file-manager action. */
+  cwd?: string
 }
 
 /** Session order selected by the Workspace browser. */
@@ -80,6 +82,8 @@ export interface TreeView {
   expandedGroups: readonly string[]
   /** Browser-local order for Sessions without a backing Workspace account. */
   ungroupedOrder?: readonly string[]
+  /** Sessions rendered in the independent pinned region, omitted from ordinary groups. */
+  pinnedSessionIds?: readonly string[]
 }
 
 interface Group {
@@ -115,9 +119,15 @@ function byRecency(a: SessionSummary, b: SessionSummary): number {
  * sessions are visible nowhere, while their accounting slots remain so
  * unarchiving restores position.
  */
-function sessionVisible(session: SessionSummary, current: SessionId | undefined, archived: ReadonlySet<SessionId>): boolean {
+function sessionVisible(
+  session: SessionSummary,
+  current: SessionId | undefined,
+  archived: ReadonlySet<SessionId>,
+  omitted: ReadonlySet<SessionId> = new Set(),
+): boolean {
   return session.origin !== 'subagent'
     && !archived.has(session.id)
+    && !omitted.has(session.id)
     && (!session.blank || session.id === current)
 }
 
@@ -175,6 +185,7 @@ function groupByWorkspace(
   list: SessionListState,
   workspaces: readonly WorkspaceView[],
   archived: ReadonlySet<SessionId>,
+  omitted: ReadonlySet<SessionId>,
   ungroupedOrder: readonly string[] | undefined,
 ): Group[] {
   const groups: Group[] = []
@@ -185,7 +196,7 @@ function groupByWorkspace(
       const summary = list.byId[id]
       if (summary === undefined) continue // account may lead the list pull; the row appears when the summary lands
       accounted.add(id)
-      if (!sessionVisible(summary, list.current, archived)) continue
+      if (!sessionVisible(summary, list.current, archived, omitted)) continue
       members.push(summary)
     }
     groups.push(buildGroup(
@@ -196,7 +207,7 @@ function groupByWorkspace(
   const stray = list.ids
     .map(id => list.byId[id])
     .filter((s): s is SessionSummary =>
-      s !== undefined && !accounted.has(s.id) && sessionVisible(s, list.current, archived))
+      s !== undefined && !accounted.has(s.id) && sessionVisible(s, list.current, archived, omitted))
   if (stray.length > 0) {
     groups.push(buildGroup(
       UNGROUPED_KEY,
@@ -214,7 +225,9 @@ function groupByWorkspace(
 function sessionNode(
   s: SessionSummary,
   descendants: ReadonlyMap<SessionId, SubagentDescendantSummary>,
+  fallbackCwd?: string,
 ): SessionNode {
+  const cwd = s.cwd ?? fallbackCwd
   return {
     id: s.id,
     title: sessionTitle(s),
@@ -223,6 +236,7 @@ function sessionNode(
     runningSubagentCount: descendants.get(s.id)?.runningCount ?? 0,
     completed: s.completed === true,
     updatedAt: s.updatedAt,
+    ...(cwd === undefined ? {} : { cwd }),
     ...(s.pendingInteraction === undefined ? {} : { pendingInteraction: s.pendingInteraction }),
   }
 }
@@ -248,6 +262,7 @@ export function deriveGroups(
   view: TreeView,
 ): GroupNode[] {
   const archived = new Set(archivedSessionIds)
+  const pinned = new Set((view.pinnedSessionIds ?? []).map(id => id as SessionId))
   const expandedGroups = new Set(view.expandedGroups)
   const descendants = indexSubagentDescendants(list.byId)
   const currentGroup = list.current === undefined
@@ -255,7 +270,7 @@ export function deriveGroups(
     : (workspaces.find(w => w.sessionIds.includes(list.current as SessionId))?.workspaceId as string | undefined)
         ?? UNGROUPED_KEY
   const groups: GroupNode[] = []
-  for (const g of groupByWorkspace(list, workspaces, archived, view.ungroupedOrder)) {
+  for (const g of groupByWorkspace(list, workspaces, archived, pinned, view.ungroupedOrder)) {
     const expanded = expandedGroups.has(g.key)
     groups.push({
       key: g.key,
@@ -266,7 +281,7 @@ export function deriveGroups(
       sessionCount: g.sessions.length,
       expanded,
       containsCurrent: g.key === currentGroup,
-      sessions: expanded ? g.sessions.map(session => sessionNode(session, descendants)) : [],
+      sessions: expanded ? g.sessions.map(session => sessionNode(session, descendants, g.cwd)) : [],
     })
   }
   return groups
@@ -284,17 +299,40 @@ export function deriveGroups(
 export function deriveFlat(
   list: SessionListState,
   archivedSessionIds: readonly SessionId[],
+  omittedSessionIds: readonly SessionId[] = [],
 ): SessionNode[] {
   const archived = new Set(archivedSessionIds)
+  const omitted = new Set(omittedSessionIds)
   const descendants = indexSubagentDescendants(list.byId)
   const rows: SessionSummary[] = []
   for (const id of list.ids) {
     const s = list.byId[id]
-    if (s === undefined || !sessionVisible(s, list.current, archived)) continue
+    if (s === undefined || !sessionVisible(s, list.current, archived, omitted)) continue
     rows.push(s)
   }
   rows.sort(byRecency)
   return rows.map(session => sessionNode(session, descendants))
+}
+
+/**
+ * Derive the independent pinned region in the user's persisted pin order.
+ * Missing, archived, blank, and subagent-origin sessions are omitted without
+ * rewriting the preference until the list baseline performs its retention pass.
+ */
+export function derivePinned(
+  list: SessionListState,
+  archivedSessionIds: readonly SessionId[],
+  pinnedSessionIds: readonly string[],
+  workspaces: readonly WorkspaceView[] = [],
+): SessionNode[] {
+  const archived = new Set(archivedSessionIds)
+  const descendants = indexSubagentDescendants(list.byId)
+  return pinnedSessionIds.flatMap((id) => {
+    const session = list.byId[id as SessionId]
+    if (session === undefined || session.blank || !sessionVisible(session, list.current, archived)) return []
+    const fallbackCwd = workspaces.find(workspace => workspace.sessionIds.includes(session.id))?.path
+    return [sessionNode(session, descendants, fallbackCwd)]
+  })
 }
 
 /** Relative-time bucket of a session row's trailing label. */

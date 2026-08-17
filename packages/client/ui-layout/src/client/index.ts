@@ -1,7 +1,7 @@
 /**
  * Layout plugin, browser half: one register() call contributes AppFrame into
  * the runtime's built-in 'root' slot and, in the same breath, declares the
- * four child slots (declaration = exclusive render authority), seats the
+ * five child slots (declaration = exclusive render authority), seats the
  * layout store (panel geometry), and wires the panel-action service face.
  * ctx.layout is the cross-plugin panel-action contract; navigation state lives
  * with the runtime sessions service. A second effect seats the theme
@@ -33,7 +33,7 @@ declare module '@deepseek-ai/cordis' {
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
     // The 'root' entry itself is the runtime's built-in slot (declared
-    // there); these four are the frame's children, declared by the same
+    // there); these five are the frame's children, declared by the same
     // register() call that contributes AppFrame. Session owners never pass
     // sessionId: the framework injects it as a standard prop.
     /**
@@ -43,8 +43,9 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * the seats it declares disappear with it. To add something to the
      * sidebar, register into one of those inner seats instead.
      *
-     * The occupant receives the frame's live column state (collapsed, width)
-     * and is expected to render the compact control rail while collapsed.
+     * The occupant receives the frame's live column state (collapsed, width).
+     * At zero width it remains mounted only for state continuity; the frame's
+     * dedicated sidebar-toggle seat owns the visible reopen affordance.
      */
     'sidebar': { kind: 'single'; scope: 'root'; owner: SidebarOwnerProps }
     /**
@@ -71,6 +72,13 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      */
     'details': { kind: 'single'; scope: 'session'; owner: DetailsOwnerProps }
     /**
+     * Stable frame-chrome seat for the sidebar reopen control. AppFrame
+     * renders it only while the sidebar is fully closed, independently of
+     * the no-session hero or active-conversation body. On macOS it sits just
+     * after the native traffic lights on the shared 48px header baseline.
+     */
+    'deepcreator.shell.sidebar-toggle': { kind: 'single'; scope: 'root'; owner: SidebarToggleOwnerProps }
+    /**
      * Frame-wide floating layer, above every column and outside their scroll
      * containers. Deliberately generic and unowned by any feature: a badge, a
      * toast stack or a status pill all belong here, and entries order among
@@ -92,11 +100,14 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 
 /** Sidebar owner share: live column state from the frame's concession solve. */
 export interface SidebarOwnerProps {
-  /** True when the sidebar is closed (the column renders the compact control rail). */
+  /** True when the sidebar is fully closed. */
   collapsed: boolean
-  /** Rendered column width in px (SIDEBAR_COLLAPSED when collapsed). */
+  /** Rendered column width in px (zero when collapsed). */
   width: number
 }
+
+/** Sidebar-toggle owner share: geometry and visibility are frame-owned. */
+export interface SidebarToggleOwnerProps {}
 
 /** Conversation owner share: business state and actions belong to the registrant. */
 export interface ConvOwnerProps {}
@@ -109,7 +120,7 @@ export const inject = ['slots', 'theme']
 
 /**
  * Client plugin body: provide ctx.layout, then one register() call — AppFrame
- * into 'root' with the four child-slot declarations, the layout store seat,
+ * into 'root' with the five child-slot declarations, the layout store seat,
  * and the inject hook that hands the store's bound actions to the service.
  * @param ctx - client root context.
  */
@@ -123,6 +134,7 @@ export function apply(ctx: ClientContext): void {
         'sidebar': { kind: 'single', scope: 'root' },
         'conversation': { kind: 'single', scope: 'session-maybe' },
         'details': { kind: 'single', scope: 'session' },
+        'deepcreator.shell.sidebar-toggle': { kind: 'single', scope: 'root' },
         'shell.overlay': { kind: 'list', scope: 'root' },
       },
       // Exclusive store: the factory itself — the framework instantiates per

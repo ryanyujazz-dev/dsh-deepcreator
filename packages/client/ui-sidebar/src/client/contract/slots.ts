@@ -41,7 +41,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
  * boundary. Business data and actions arrive through the region's own inject.
  */
 export interface SidebarSectionOwnerProps {
-  /** Shell fold-state output: wide renders the full browser, rail the icon column. */
+  /** True while the expanded browser surface is rendered. */
   wide: boolean
   /** Rail icons request expansion; the browser rides the wide flip for focus. */
   expandSidebar: () => void
@@ -49,16 +49,16 @@ export interface SidebarSectionOwnerProps {
 
 /**
  * Owner share of the sidebar settings seat: the column display state the
- * occupant's trigger row must render against (wide row vs rail icon).
+ * occupant's trigger row renders only while the expanded surface exists.
  */
 export interface SidebarSettingsOwnerProps {
-  /** Whether the sidebar renders wide content (false = 56px rail). */
+  /** Whether expanded sidebar content is visible. */
   wide: boolean
 }
 
 /** Owner share of an action rendered beside Settings at the sidebar foot. */
 export interface SidebarFooterActionOwnerProps {
-  /** Whether the sidebar renders wide content (false = 56px rail). */
+  /** Whether expanded sidebar content is visible. */
   wide: boolean
 }
 
@@ -77,6 +77,18 @@ export type SidebarRootInjected = {
   /** Toggle the sidebar column through the layout service. */
   toggleSidebar: () => void
 }
+
+/** Injected face for the frame-owned closed-sidebar control. */
+export type SidebarClosedToggleInjected = {
+  /** Reopen the fully closed sidebar through the layout service. */
+  toggleSidebar: () => void
+}
+
+/** Stable frame-chrome reopen control; layout owns its position and visibility. */
+export type SidebarClosedToggleComponentProps =
+  PropsRuntime<'deepcreator.shell.sidebar-toggle'>
+  & SidebarClosedToggleInjected
+  & PropsLocale<'sidebar'>
 
 /**
  * Full component props: layout owner state/actions plus the declared holes'

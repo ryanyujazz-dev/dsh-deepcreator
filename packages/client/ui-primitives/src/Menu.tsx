@@ -33,6 +33,8 @@ export interface MenuItem {
 export interface MenuSeparator {
   type: 'separator'
   id: string
+  /** Align the rule with icon-bearing item labels instead of the card edges. */
+  inset?: 'text'
 }
 
 /** Non-interactive heading row above a group of items. */
@@ -201,7 +203,13 @@ export function Menu({ open, anchor, items, selectedId, selectedIds, onSelect, o
 
   const renderEntry = (entry: MenuEntry) => {
     if (isSeparator(entry)) {
-      return <div key={entry.id} className={css.separator} role="separator" />
+      return (
+        <div
+          key={entry.id}
+          className={clsx(css.separator, entry.inset === 'text' && css.separatorTextInset)}
+          role="separator"
+        />
+      )
     }
     if (isLabel(entry)) {
       return <div key={entry.id} className={css.label} role="presentation">{entry.text}</div>

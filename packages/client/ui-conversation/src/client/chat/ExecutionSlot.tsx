@@ -10,7 +10,7 @@
 import { memo, useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   IconApiOutline14, IconBrowseOutline16, IconChevronDownOutline14, IconChevronRightOutline14, IconCodeOutline16,
-  IconEditOutline16, IconSearchOutline16, IconSkillOutline16, IconSparkle16, IconStopFill16, IconTrashOutline16,
+  DeepCreatorIconSkillOutline16, DeepCreatorIconSparkle16, IconEditOutline16, IconSearchOutline16, IconStopFill16, IconTrashOutline16,
 } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { ChatViewSlotProps } from '../contract/slots.ts'
 
@@ -49,10 +49,10 @@ function toolIcon(name: string): ReactNode {
       return <IconSearchOutline16 size={14} />
     case 'write': case 'edit': return <IconEditOutline16 size={14} />
     case 'run_code': case 'cordis_define': case 'cordis_run': return <IconCodeOutline16 size={14} />
-    case 'skill': return <IconSkillOutline16 size={14} />
+    case 'skill': return <DeepCreatorIconSkillOutline16 size={14} />
     case 'cordis_stop': return <IconStopFill16 size={14} />
     case 'cordis_undefine': return <IconTrashOutline16 size={14} />
-    default: return <IconSparkle16 size={14} />
+    default: return <DeepCreatorIconSparkle16 size={14} />
   }
 }
 

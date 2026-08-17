@@ -2,18 +2,21 @@
  * Workspace browser tree row components (figma Cell set 14:3080): pure presentational —
  * all data and callbacks arrive via props. Hover swaps (folder->chevron,
  * time->ellipsis, action buttons) are CSS-only. Row ... menus are visual-only
- * except workspace Rename/Delete and session Rename/Fork/Archive; the session
+ * except workspace Rename/Delete and session Pin/Fork/Archive/native-open; the session
  * and workspace hover cards are suppressed while a menu is open.
  */
 import { useState } from 'react'
 import clsx from 'clsx'
 import {
-  HoverCard, IconArchiveOutline20, IconBranchOutline16, IconEditOutline16,
-  IconEllipsisOutline16, IconFolderClose16, IconFolderOpen16, IconPlusOutline16,
-  IconTrashOutline16, IconTriangleRightFill14, Menu, SidebarRow, StateDot,
+  DeepCreatorIconFolderOpenOutline16, DeepCreatorIconPin16, HoverCard,
+  IconArchiveOutline20, IconBranchOutline16, IconEditOutline16,
+  IconEllipsisOutline16, IconFolderClose16, IconFolderOpen16,
+  IconPlusOutline16, IconTrashOutline16, IconTriangleRightFill14,
+  Menu, SidebarRow, StateDot,
 } from '@ryanyujazz/dsh-client-ui-primitives'
-import type { StateDotState } from '@ryanyujazz/dsh-client-ui-primitives'
+import type { MenuEntry, StateDotState } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { WorkspaceBrowserProps } from '../contract/slots.ts'
+import type { NativeFileManager } from '../file-manager.ts'
 import type { GroupNode, SearchResultNode, SessionNode } from '../tree.ts'
 import { relativeTime } from '../tree.ts'
 import css from './Rows.module.css'
@@ -48,6 +51,13 @@ function createdLabel(createdAt: number, t: RowTranslate): string {
   const pad2 = (v: number): string => String(v).padStart(2, '0')
   const date = t('date.ymd', { y: d.getFullYear(), m: d.getMonth() + 1, d: d.getDate() })
   return t('hover.created', { time: `${date} ${pad2(d.getHours())}:${pad2(d.getMinutes())}` })
+}
+
+/** Platform-specific native directory action copy. */
+function openLocationLabel(fileManager: NativeFileManager, t: RowTranslate): string {
+  if (fileManager === 'finder') return t('menu.openInFinder')
+  if (fileManager === 'explorer') return t('menu.openInExplorer')
+  return t('menu.openInFileManager')
 }
 
 /** Hover-card body: workspace title, full directory path, absolute creation time. */
@@ -341,7 +351,7 @@ export function SearchResultItem({ result, currentId, onOpen, t }: {
  * @param props.currentId - selected session id (row highlight).
  * @param props.now - epoch ms for relative-time formatting.
  * @param props.onOpen - open a session by id.
- * @param props.onRename - open the session rename dialog (id + current title).
+ * @param props.onRename - retained callback seat for compatibility; the ordered row menu does not expose rename.
  * @param props.onFork - fork a session at its last completed turn.
  * @param props.onArchive - archive a session by id.
  * @param props.drag - optional draggable-row wiring.
@@ -349,17 +359,31 @@ export function SearchResultItem({ result, currentId, onOpen, t }: {
  * @param props.t - the browser root's locale seat.
  * @returns the session row.
  */
-export function SessionNodeItem({ node, currentId, now, onOpen, onRename, onFork, onArchive, drag, flat = false, t }: {
+export function SessionNodeItem({
+  node, currentId, now, onOpen, onRename: _onRename, onFork, onArchive,
+  onPinnedChange, pinned = false, onOpenLocation, canOpenLocation = false,
+  fileManager = 'generic', drag, flat = false, t,
+}: {
   node: SessionNode
   currentId: string | undefined
   now: number
   onOpen: (id: SessionNode['id']) => void
-  /** Open the browser-owned session rename dialog (row menu action). */
+  /** Compatibility callback seat; the current row menu intentionally omits rename. */
   onRename: (id: SessionNode['id'], currentTitle: string) => void
   /** Fork a session at its last completed turn (row menu action). */
   onFork: (id: SessionNode['id']) => void
   /** Archive this session (row menu action; commits without a dialog). */
   onArchive: (id: SessionNode['id']) => void
+  /** Add/remove this Session from the independent pinned region. */
+  onPinnedChange?: ((id: SessionNode['id'], pinned: boolean) => void) | undefined
+  /** Whether this row is currently rendered from the pinned preference. */
+  pinned?: boolean | undefined
+  /** Ask the Host to open this Session's working directory. */
+  onOpenLocation?: ((path: string) => void) | undefined
+  /** Host capability gate for the native file-manager action. */
+  canOpenLocation?: boolean | undefined
+  /** Local platform name used only for the action label. */
+  fileManager?: NativeFileManager | undefined
   /** Present only on draggable rows (workspace-group sessions outside search). */
   drag?: RowDragProps | undefined
   /** The row is rendered without a parent Workspace header. */
@@ -376,11 +400,23 @@ export function SessionNodeItem({ node, currentId, now, onOpen, onRename, onFork
   // Archive hides the row through the registry-global archive set and never
   // touches the session log, so it is not styled as destructive and needs no
   // confirmation dialog.
-  const sessionMenuItems = [
-    { id: 'rename', label: t('rename'), icon: <IconEditOutline16 /> },
+  const sessionMenuItems: MenuEntry[] = [
+    {
+      id: 'pin',
+      label: pinned ? t('menu.unpinSession') : t('menu.pinSession'),
+      icon: <DeepCreatorIconPin16 />,
+      disabled: onPinnedChange === undefined,
+    },
     { id: 'fork', label: t('menu.fork'), icon: <IconBranchOutline16 /> },
     // 20-native glyph in the menu's 16px icon slot (Menu.module.css .itemIcon).
     { id: 'archive', label: t('menu.archiveSession'), icon: <IconArchiveOutline20 size={16} /> },
+    { type: 'separator', id: 'native-location-separator', inset: 'text' },
+    {
+      id: 'open-location',
+      label: openLocationLabel(fileManager, t),
+      icon: <DeepCreatorIconFolderOpenOutline16 />,
+      disabled: !canOpenLocation || row.cwd === undefined || onOpenLocation === undefined,
+    },
   ]
   // Figma session cell: pad 8, status slot 16, then a 4px title gap.
   const ownRow = (
@@ -429,7 +465,7 @@ export function SessionNodeItem({ node, currentId, now, onOpen, onRename, onFork
       <span className={css.title}>{title}</span>
       {/* A blank New Session row is a provisional placeholder: nothing has
           happened in it yet, so a "now" timestamp and the row verbs
-          (rename/fork/archive) would all act on content that does not
+          (pin/fork/archive/open) would all act on content that does not
           exist — both trailing cells stay off until the first prompt. */}
       {!row.blank && <span className={css.time}>{timeLabel(row.updatedAt, now, t)}</span>}
       {!row.blank && (
@@ -440,9 +476,10 @@ export function SessionNodeItem({ node, currentId, now, onOpen, onRename, onFork
             items={sessionMenuItems}
             onSelect={(id) => {
               setMenuOpen(false)
-              if (id === 'rename') onRename(node.id, row.title)
+              if (id === 'pin') onPinnedChange?.(node.id, !pinned)
               if (id === 'fork') onFork(node.id)
               if (id === 'archive') onArchive(node.id)
+              if (id === 'open-location' && row.cwd !== undefined) onOpenLocation?.(row.cwd)
             }}
             portal
             closeOnPointerLeave

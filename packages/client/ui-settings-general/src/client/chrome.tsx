@@ -4,7 +4,7 @@
  * The shell renders the surrounding chrome (button, nav heading row) and
  * reads each entry's `label` option for aria text.
  */
-import { IconSettingsOutline16, SIDEBAR_ICON_SIZE } from '@ryanyujazz/dsh-client-ui-primitives'
+import { DeepCreatorIconGearshape16, SIDEBAR_ICON_SIZE } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import css from './chrome.module.css'
 
@@ -22,7 +22,7 @@ export type HeaderContentProps = PropsRuntime<'settings.header'> & PropsLocale<'
 export function TriggerContent({ wide, t }: TriggerContentProps) {
   return (
     <>
-      <IconSettingsOutline16 size={SIDEBAR_ICON_SIZE} />
+      <DeepCreatorIconGearshape16 size={SIDEBAR_ICON_SIZE} />
       {wide && <span className={css.triggerLabel}>{t('trigger')}</span>}
     </>
   )

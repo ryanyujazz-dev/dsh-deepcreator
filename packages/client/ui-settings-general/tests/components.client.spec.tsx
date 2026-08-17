@@ -24,6 +24,7 @@ describe('chrome content', () => {
   it('TriggerContent renders the icon with the label in the wide column', () => {
     const { container } = render(<TriggerContent {...kit} wide t={t} />)
     expect(container.querySelector('svg')?.getAttribute('width')).toBe('14')
+    expect(container.querySelector('svg')?.getAttribute('data-deepcreator-icon')).toBe('gearshape')
     expect(screen.getByText('Settings')).toBeTruthy()
   })
 

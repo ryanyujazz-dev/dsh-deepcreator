@@ -61,6 +61,7 @@ function mountFrame() {
     if (key === 'sidebar') return <div data-testid="sidebar-content" />
     if (key === 'conversation') return <div data-testid="center-content" />
     if (key === 'details') return <div data-testid="details-content" />
+    if (key === 'deepcreator.shell.sidebar-toggle') return <button data-testid="sidebar-toggle">open</button>
     if (key === 'conversation.empty') return <div data-testid="empty-content" />
     return <div data-testid="other-content" />
   }) as AppFrameProps['renderSlot']
@@ -251,14 +252,27 @@ describe('AppFrame', () => {
     expect(frame.hasAttribute('data-details-collapsed')).toBe(true)
   })
 
-  it('closed sidebar keeps its compact rail with mounted slot content and collapsed owner props', () => {
+  it('fully closes the sidebar and renders the independent reopen control', () => {
     const { frame, instance, slotCalls, getByTestId } = mountFrame()
     act(() => { instance.actions.toggleSidebar() })
     expect(tracks(frame)).toEqual([SIDEBAR_COLLAPSED, 0])
     expect(getByTestId('sidebar-content')).toBeTruthy()
+    expect(getByTestId('sidebar-toggle')).toBeTruthy()
     expect(frame.hasAttribute('data-sidebar-collapsed')).toBe(true)
     const lastSidebarCall = slotCalls.filter(c => c.key === 'sidebar').at(-1)!
     expect(lastSidebarCall.props).toEqual({ collapsed: true, width: SIDEBAR_COLLAPSED })
+  })
+
+  it('keeps the reopen control in the same frame seat across hero and active states', () => {
+    const { frame, instance, rerenderFrame, getByTestId } = mountFrame()
+    act(() => { instance.actions.toggleSidebar() })
+    const seat = frame.querySelector('[data-sidebar-toggle-seat]')
+    const toggle = getByTestId('sidebar-toggle')
+    expect(seat).toBeTruthy()
+    selectedSession.current = undefined
+    act(() => { rerenderFrame() })
+    expect(frame.querySelector('[data-sidebar-toggle-seat]')).toBe(seat)
+    expect(getByTestId('sidebar-toggle')).toBe(toggle)
   })
 
   it('viewport shrink triggers the concession chain via ResizeObserver', () => {
@@ -290,6 +304,7 @@ describe('AppFrame — narrow-viewport auto-collapse', () => {
     const { frame, slotCalls } = mountFrame()
     expect(tracks(frame)).toEqual([SIDEBAR_COLLAPSED, 0])
     expect(frame.hasAttribute('data-sidebar-collapsed')).toBe(true)
+    expect(frame.querySelector('[data-sidebar-toggle-seat]')).toBeTruthy()
     expect(slotCalls.filter(c => c.key === 'sidebar').at(-1)!.props).toEqual({ collapsed: true, width: SIDEBAR_COLLAPSED })
     expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(0)
   })

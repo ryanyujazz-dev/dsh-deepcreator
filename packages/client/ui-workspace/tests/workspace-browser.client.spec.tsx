@@ -76,10 +76,13 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
     renameWorkspace: vi.fn(async () => {}),
     deleteWorkspace: vi.fn(async () => {}),
     archiveSession: vi.fn(async () => {}),
+    openWorkspaceLocation: vi.fn(),
+    fileManager: 'finder',
     insertWorkspaceBefore: vi.fn(async () => {}),
     insertSessionBefore: vi.fn(async () => {}),
     createWorkspace: vi.fn(async () => workspace('created', [])),
     useDirectoryFlow: bindSnapshotSelector({ getSnapshot: () => true, subscribe: () => () => {} }),
+    useCanOpenPath: hook(true),
     renderSlot: ((_name: string, owner: { open: boolean }) => (owner.open ? <div data-testid="directory-flow" /> : null)) as never,
     t,
     ...overrides,
@@ -334,10 +337,12 @@ describe('WorkspaceBrowser', () => {
       useWorkspaces: hook(workspaceState([workspace('alpha', ['kept-s', 'gone-s'])])),
       archiveSession,
     })
+    act(() => { b.store.actions.setSessionPinned('gone-s', true) })
     fireEvent.click(screen.getByText('alpha'))
     fireEvent.click(screen.getByRole('button', { name: '会话“gone-s”的操作' }))
     fireEvent.click(screen.getByRole('menuitem', { name: '归档会话' }))
     expect(archiveSession).toHaveBeenCalledWith(sid('gone-s'))
+    await waitFor(() => { expect(b.store.getSnapshot().pinnedSessionIds).toEqual([]) })
 
     // The archive-set echo hides the row in grouped and flat modes.
     rerender(b, { useWorkspaces: hook(workspaceState([workspace('alpha', ['kept-s', 'gone-s'])], [sid('gone-s')])) })
@@ -346,6 +351,34 @@ describe('WorkspaceBrowser', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: '单列表' }))
     expect(screen.getByText('kept-s')).toBeTruthy()
     expect(screen.queryByText('gone-s')).toBeNull()
+  })
+
+  it('moves sessions into the independent pinned region, opens their folder, and unpins them', async () => {
+    const openWorkspaceLocation = vi.fn()
+    const b = mount({
+      useSessions: hook(sessionState([summary('alpha-s', 1)])),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['alpha-s'])])),
+      openWorkspaceLocation,
+      fileManager: 'finder',
+    })
+    fireEvent.click(screen.getByText('alpha'))
+    fireEvent.click(screen.getByRole('button', { name: '会话“alpha-s”的操作' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '置顶会话' }))
+
+    await waitFor(() => { expect(screen.getByText('置顶')).toBeTruthy() })
+    expect(b.store.getSnapshot().pinnedSessionIds).toEqual(['alpha-s'])
+    // The title appears once: the pinned row is removed from its project group.
+    expect(screen.getAllByText('alpha-s')).toHaveLength(1)
+
+    fireEvent.click(screen.getByRole('button', { name: '会话“alpha-s”的操作' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '在 Finder 中打开' }))
+    expect(openWorkspaceLocation).toHaveBeenCalledWith('/projects/alpha')
+
+    fireEvent.click(screen.getByRole('button', { name: '会话“alpha-s”的操作' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '取消置顶' }))
+    await waitFor(() => { expect(screen.queryByText('置顶')).toBeNull() })
+    expect(b.store.getSnapshot().pinnedSessionIds).toEqual([])
+    expect(screen.getAllByText('alpha-s')).toHaveLength(1)
   })
 
   it('logs and keeps the tree when the archive call rejects', async () => {

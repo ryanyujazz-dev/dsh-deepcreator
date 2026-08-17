@@ -2,9 +2,11 @@
 
 English | [中文](README.zh.md)
 
-Pure React atoms (zero cordis): StateDot, DisclosureRow, ic_ds_* icons, Button/Pill/Menu/Modal/Input, the Toast transient banner, the OnboardingSurface first-run takeover (body-portaled mask + opaque stage that holds `#root` inert for exactly its own lifetime), the markdown family (MessageText/MarkdownText/JsonBlock), the read-only JsonTree inspector, the `useAnchoredMaxHeight` hook that clamps a bottom-anchored overlay to the viewport space above its anchor (re-measured on resize, scroll, and a caller-supplied dependency), TerminalBlock, DiffBlock, ReadBlock, SearchBlock, and WebBlock.
+Pure React atoms (zero cordis): StateDot, DisclosureRow, official-compatible `ic_ds_*` icons, separately owned `DeepCreatorIcon*` product glyphs, Button/Pill/Menu/Modal/Input, the Toast transient banner, the OnboardingSurface first-run takeover (body-portaled mask + opaque stage that holds `#root` inert for exactly its own lifetime), the markdown family (MessageText/MarkdownText/JsonBlock), the read-only JsonTree inspector, the `useAnchoredMaxHeight` hook that clamps a bottom-anchored overlay to the viewport space above its anchor (re-measured on resize, scroll, and a caller-supplied dependency), TerminalBlock, DiffBlock, ReadBlock, SearchBlock, and WebBlock. Official and Harness/Figma-derived resources stay in `src/icons/index.tsx`; self-drawn and product assets live in `src/icons/deepcreator.tsx`, so the two sets can evolve independently.
 
 `SIDEBAR_ICON_SIZE` is the shared 14px glyph metric for sidebar action controls in both wide and rail layouts. `BrandWordmark` renders the DeepCreator whale-and-label lockup with a 16px optically enlarged whale centered on the same action axis and text driven by the active product font token.
+
+`Menu` separators accept `inset="text"` when an icon-bearing action group needs a divider aligned to the item-label column instead of spanning the card edges. The product module exposes pin, gear, timer, folder-action, sparkle, inspect, and skill glyphs; they remain presentation primitives and carry no feature behavior themselves.
 
 ## Hover cards
 

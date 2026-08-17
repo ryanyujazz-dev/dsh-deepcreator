@@ -20,7 +20,7 @@
 import { useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import clsx from 'clsx'
 import {
-  CodeBlock, DiffBlock, DisclosureRow, IconInspectOutline12, ReadBlock, SearchBlock, StateDot, TerminalBlock, Tooltip, WebBlock,
+  CodeBlock, DeepCreatorIconInspectOutline12, DiffBlock, DisclosureRow, ReadBlock, SearchBlock, StateDot, TerminalBlock, Tooltip, WebBlock,
 } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { WebBlockProps } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
@@ -305,7 +305,7 @@ export function ToolRow({
                 aria-label={t('execflow.inspect')}
                 onClick={inspect}
               >
-                <IconInspectOutline12 />
+                <DeepCreatorIconInspectOutline12 />
               </button>
             </Tooltip>
           )}

@@ -33,7 +33,10 @@ async function bench(options: { locale?: 'en' } = {}) {
   if (options.locale === 'en') locale.setLocale('en')
   runtime.provide('locale', locale)
   runtime.slots.installLocale(locale)
-  await runtime.declare({ 'sidebar': { kind: 'single', scope: 'root' } })
+  await runtime.declare({
+    'sidebar': { kind: 'single', scope: 'root' },
+    'deepcreator.shell.sidebar-toggle': { kind: 'single', scope: 'root' },
+  })
   await runtime.mount({ inject: [...inject], apply })
   return { runtime, locale }
 }
@@ -44,6 +47,8 @@ describe('sidebar shell snapshots', () => {
     const slot = runtime.renderSlot('sidebar', { collapsed: false, width: 300 })
     // Wordmark + capsule both start a session in the expanded state.
     expect(slot.view.getAllByRole('button', { name: '新建会话' })).toHaveLength(2)
+    expect(slot.view.getByRole('button', { name: '技能（即将推出）' })).toHaveProperty('disabled', true)
+    expect(slot.view.getByRole('button', { name: '定时任务（即将推出）' })).toHaveProperty('disabled', true)
     expect(slot.container.querySelector('text')?.textContent).toBe('DeepCreator')
     expect(slot.container).toMatchSnapshot()
     await runtime.dispose()
@@ -54,23 +59,21 @@ describe('sidebar shell snapshots', () => {
     const slot = runtime.renderSlot('sidebar', { collapsed: false, width: 300 })
     // Wordmark + capsule both start a session in the expanded state.
     expect(slot.view.getAllByRole('button', { name: 'New session' })).toHaveLength(2)
+    expect(slot.view.getByRole('button', { name: 'Skills (coming soon)' })).toHaveProperty('disabled', true)
+    expect(slot.view.getByRole('button', { name: 'Scheduled tasks (coming soon)' })).toHaveProperty('disabled', true)
     expect(slot.container).toMatchSnapshot()
     await runtime.dispose()
   })
 
-  it('renders the collapsed rail after the crossfade settles, in place', async () => {
+  it('removes all sidebar DOM after the zero-width close settles', async () => {
     const { runtime } = await bench({ locale: 'en' })
     const slot = runtime.renderSlot('sidebar', { collapsed: false, width: 300 })
-    const shell = slot.container.firstElementChild
-    slot.update({ collapsed: true, width: 56 })
-    // The wide content (wordmark shortcut) unmounts at the 150ms settle;
-    // only the rail's capsule remains a New-session button.
+    slot.update({ collapsed: true, width: 0 })
+    // The wide content fades during the track transition, then the sidebar
+    // contributes no DOM; reopening lives in the independent frame seat.
     await waitFor(() => {
-      expect(slot.view.getAllByRole('button', { name: 'New session' })).toHaveLength(1)
+      expect(slot.container.firstElementChild).toBeNull()
     })
-    expect(slot.container).toMatchSnapshot()
-    // Same tree position: the owner flip re-rendered the shell in place.
-    expect(slot.container.firstElementChild).toBe(shell)
     await runtime.dispose()
   })
 

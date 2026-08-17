@@ -6,7 +6,7 @@
 
 import type { ReactNode } from 'react'
 import {
-  IconApiOutline14, IconBrowseOutline16, IconCodeOutline16, IconEditOutline16, IconSearchOutline16, IconSparkle16,
+  DeepCreatorIconSparkle16, IconApiOutline14, IconBrowseOutline16, IconCodeOutline16, IconEditOutline16, IconSearchOutline16,
 } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { ToolCallOwnerProps, ToolTreeProps } from '../../contract/slots.ts'
 import { readCardModel } from '../models/read-card-model.ts'
@@ -25,7 +25,7 @@ const VARIANT_ICONS: Record<ToolRowVariant, ReactNode> = {
   write: <IconEditOutline16 size={14} />,
   edit: <IconEditOutline16 size={14} />,
   code: <IconCodeOutline16 size={14} />,
-  others: <IconSparkle16 size={14} />,
+  others: <DeepCreatorIconSparkle16 size={14} />,
 }
 
 /** Card props: the owner payload plus the render site's locale seat (plain prop). */

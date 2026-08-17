@@ -1,4 +1,6 @@
 .frame {
+  --dsh-sidebar-toggle-left: 16px;
+  --dsh-collapsed-title-leading: 32px;
   position: relative; /* anchors the drag handles, which straddle column borders */
   display: grid;
   grid-template-rows: 100%;
@@ -8,6 +10,29 @@
   /* Collapse/expand animates the tracks on the deepsuite sider curve
      (--ds-ease-in-out / --ds-transition-duration-slow, ui-theme base.css). */
   transition: grid-template-columns var(--ds-transition-duration-slow) var(--ds-ease-in-out);
+}
+
+/* The red light begins at x=20, aligned with the New Session icon below. The
+   reopen button's 28px box starts at x=82, so its centered 14px glyph begins
+   at x=89 — the expanded whale's exact leading edge. Native controls, glyph,
+   and header content share y=24, the center of the 48px header. */
+.frame[data-native-window-chrome='macos'] {
+  --dsh-sidebar-toggle-left: 82px;
+  --dsh-collapsed-title-leading: 98px;
+}
+
+/* A shallow frame-level fallback keeps the very top edge draggable after
+   Electron removes the macOS title bar. Each visible column header owns its
+   full blank drag surface; this strip only covers the seam above their
+   interactive controls. The data marker is emitted only by the sandboxed
+   macOS Electron renderer. */
+.frame[data-native-window-chrome='macos']::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 8px;
+  z-index: 19;
+  -webkit-app-region: drag;
 }
 
 /* Dragging writes widths at pointer cadence; easing them would detach the
@@ -29,6 +54,22 @@
   border-right: 1px solid var(--dsw-alias-border-l1);
 }
 
+.frame[data-sidebar-collapsed] .sidebarCol {
+  border-right: none;
+}
+
+/* Layout-owned fixed seat: it does not participate in the sidebar track, so
+   its position is identical in the New Session hero and active conversations. */
+.sidebarToggleSeat {
+  position: absolute;
+  top: 10px;
+  left: var(--dsh-sidebar-toggle-left);
+  width: 28px;
+  height: 28px;
+  z-index: 19;
+  -webkit-app-region: no-drag;
+}
+
 .centerCol {
   min-width: 0;
   display: flex;
@@ -42,8 +83,7 @@
   border-left: 1px solid var(--dsw-alias-border-l2);
 }
 
-/* The details subtree stays mounted at zero width, so its border must not paint
-   a 1px seam. The collapsed sidebar instead retains a bordered compact rail. */
+/* Zero-width mounted subtrees must not paint one-pixel seams. */
 .frame[data-details-collapsed] .detailsCol {
   border-left: none;
 }

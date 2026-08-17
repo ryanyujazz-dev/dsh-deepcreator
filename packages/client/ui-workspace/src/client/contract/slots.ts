@@ -31,6 +31,7 @@ import type {
   SessionId, SessionSearchResultItem, WorkspaceId, WorkspaceView,
 } from '@deepseek-ai/dsh-client-runtime/client'
 import type { createWorkspaceViewStore } from '../stores.ts'
+import type { NativeFileManager } from '../file-manager.ts'
 
 /**
  * Owner share of the directory-flow holes: the complete conversation between
@@ -89,7 +90,11 @@ export type DirectoryPickingHooks = {
  * Data reads use the global framework hooks; these are the Host actions the
  * browsing region drives.
  */
-export type WorkspaceBrowserInjected = DirectoryPickingInjected & {
+export type WorkspaceBrowserInjected = {
+  hooks: DirectoryPickingInjected['hooks'] & {
+    /** Whether the connected Host can hand a path to a visible native desktop. */
+    canOpenPath: HostObservable<boolean>
+  }
   /**
    * Start a New Session in a Workspace: reuse-or-create its blank session and
    * open it; without an explicit workspace, inherit the current Session
@@ -98,6 +103,10 @@ export type WorkspaceBrowserInjected = DirectoryPickingInjected & {
   startSession: (workspaceId?: WorkspaceId) => void
   /** Open a real Session. */
   open: (sessionId: SessionId) => void
+  /** Open a Session working directory with the Host operating system. */
+  openWorkspaceLocation: (path: string) => void
+  /** Platform-specific file-manager name; remote connections stay generic. */
+  fileManager: NativeFileManager
   /**
    * Search current visible conversation messages. The Host fixes the result
    * bound; `hasMore` means the query needs narrowing.
@@ -144,6 +153,10 @@ export type WorkspaceBrowserProps =
   & PropsStore<ReturnType<typeof createWorkspaceViewStore>>
   & Omit<WorkspaceBrowserInjected, 'hooks'>
   & DirectoryPickingHooks
+  & {
+    /** Selector hook over the connected Host's native path-opening capability. */
+    useCanOpenPath: SnapshotSelectorHook<boolean>
+  }
   & PropsLocale<'workspace'>
 
 /**
