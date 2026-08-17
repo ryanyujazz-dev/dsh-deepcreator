@@ -28,9 +28,12 @@
   height: var(--dsh-icon-toolbar-glyph-size, 14px);
 }
 
+/* Open state colors only the glyph — the same business-blue fill the composer
+   send button uses (#3964FE light / #679EFE dark). No background declaration
+   here: the base rule's transparent background lets :hover show through in
+   both states. */
 .button[aria-pressed='true'] {
-  color: var(--dsw-alias-label-primary);
-  background: transparent;
+  color: var(--dsw-alias-button-info-fill);
 }
 
 .button:focus-visible {

@@ -30,6 +30,8 @@ export interface PanelTypeDefinition {
   id: string
   label: () => string
   scope: PanelScope
+  /** Entry-strip position: lower comes first. Unordered types keep registration order after all ordered ones. */
+  order?: number
   supportsHome: boolean
   supportsCreate: boolean
   supportsMultipleInstances: boolean

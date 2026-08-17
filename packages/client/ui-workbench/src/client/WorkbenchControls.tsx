@@ -12,12 +12,16 @@ export function WorkbenchControls({
   useSyncExternalStore(controller.types.subscribe, controller.types.version)
   useSyncExternalStore(controller.visibility.subscribe, controller.visibility.version)
   const definitions = controller.types.list()
+  // The strip order is a declared product priority (`order`), not plugin
+  // activation order; the stable sort keeps unordered types in registration
+  // order after all ordered ones.
+  const ordered = [...definitions].sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity))
   const visibleTypeIds = controller.visibility.list()
 
   if (definitions.length === 0) return null
 
   if (panelControls === 'compact') {
-    const items: MenuEntry[] = definitions.map(definition => ({
+    const items: MenuEntry[] = ordered.map(definition => ({
       id: definition.id,
       label: definition.label(),
       icon: renderSlot('deepcreator.workbench.panel-icon', { size: 16 }, { only: definition.id }),
@@ -59,7 +63,7 @@ export function WorkbenchControls({
 
   return (
     <div className={css.controls} aria-label={t('panels')}>
-      {definitions.map((definition) => {
+      {ordered.map((definition) => {
         const visible = visibleTypeIds.includes(definition.id)
         const label = definition.label()
         const disabled = addressed && definition.disabledWhenAddressed === true
