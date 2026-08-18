@@ -74,6 +74,15 @@ describe('createLayoutStore', () => {
     expect(store.getSnapshot().narrowExpanded).toBe(false)
   })
 
+  it('closeDetails zeroes the track and focus, bypassing the width clamp', () => {
+    const { store, actions } = createLayoutStore().create()
+    actions.setDetails(500)
+    actions.setDetailsFocused(true)
+    actions.closeDetails()
+    expect(store.getSnapshot().details).toBe(0)
+    expect(store.getSnapshot().detailsFocused).toBe(false)
+  })
+
   it('does not persist panel geometry', () => {
     const first = createLayoutStore().create()
     first.actions.setSidebar(400)

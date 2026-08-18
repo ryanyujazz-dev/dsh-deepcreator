@@ -291,12 +291,10 @@ describe('AppFrame', () => {
     expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(1)
     act(() => { instance.actions.setDetails(520) })
     expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(2)
-    // Width writes clamp to DETAILS_MIN, so the details handle only leaves
-    // with its occupant (details session unbound), never by a width write.
-    act(() => { instance.actions.setDetails(0) })
-    expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(2)
-    act(() => { instance.actions.toggleSidebar() })
+    act(() => { instance.actions.closeDetails() })
     expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(1)
+    act(() => { instance.actions.toggleSidebar() })
+    expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(0)
   })
 })
 

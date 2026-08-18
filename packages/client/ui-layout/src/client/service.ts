@@ -23,6 +23,8 @@ export type PanelActions = BoundActions<ReturnType<typeof createLayoutStore>>
 export interface ILayout {
   /** Toggle the sidebar panel (closed ⟷ contract default width). */
   toggleSidebar(): void
+  /** Zero the details track (Workbench close); bypasses the width clamp. */
+  closeDetails(): void
   /** Restore a persisted Workbench width and open the details track. */
   setWorkbenchWidth(px: number): void
   /** Let the details occupant cover the full Stage without covering Sidebar. */
@@ -47,6 +49,11 @@ export class LayoutController implements ILayout {
   /** Toggle the sidebar panel (closed ⟷ contract default width). */
   toggleSidebar(): void {
     this.#require().toggleSidebar()
+  }
+
+  /** Zero the details track (Workbench close); bypasses the width clamp. */
+  closeDetails(): void {
+    this.#require().closeDetails()
   }
 
   setWorkbenchWidth(px: number): void {

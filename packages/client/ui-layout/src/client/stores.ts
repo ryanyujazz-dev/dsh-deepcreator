@@ -38,6 +38,7 @@ type LayoutActions = {
   toggleSidebar: (draft: LayoutState) => void
   setNarrow: (draft: LayoutState, narrow: boolean) => void
   setDetailsFocused: (draft: LayoutState, focused: boolean) => void
+  closeDetails: (draft: LayoutState) => void
 }
 
 /**
@@ -62,6 +63,7 @@ export function createLayoutStore(): EngineStoreHandle<LayoutState, LayoutAction
     actions: {
       setSidebar: (d, px: number) => { d.sidebar = clampWidth(px, SIDEBAR_MIN, SIDEBAR_MAX) },
       setDetails: (d, px: number) => { d.details = clampWidth(px, DETAILS_MIN, DETAILS_MAX) },
+      closeDetails: (d) => { d.details = 0; d.detailsFocused = false },
       // Narrow toggles flip only the override: the width preference survives
       // untouched, so re-widening restores the pre-squeeze layout.
       toggleSidebar: (d) => {
