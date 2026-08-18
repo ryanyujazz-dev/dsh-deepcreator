@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -17,6 +17,17 @@ describe('ArtifactReader', () => {
     const reader = new ArtifactReader(new Context())
     await expect(reader.read(session, join(workspace, 'plan.md'))).resolves.toMatchObject({ ok: true, content: '# plan' })
     await expect(reader.read(session, 'plan.md')).resolves.toMatchObject({ ok: true, content: '# plan' })
+  })
+
+  it('reads absolute paths that carry a symlinked workspace prefix', async () => {
+    const workspace = await mkdtemp(join(tmpdir(), 'dsh-artifacts-workspace-')); temporary.push(workspace)
+    const linkedRoot = await mkdtemp(join(tmpdir(), 'dsh-artifacts-linked-')); temporary.push(linkedRoot)
+    const linked = join(linkedRoot, 'link')
+    await symlink(workspace, linked)
+    await writeFile(join(workspace, 'plan.md'), '# plan')
+    const session = { id: 's1', header: { cwd: linked } } as unknown as Session
+    const reader = new ArtifactReader(new Context())
+    await expect(reader.read(session, join(linked, 'plan.md'))).resolves.toMatchObject({ ok: true, content: '# plan' })
   })
 
   it('rejects paths that escape the canonical workspace', async () => {

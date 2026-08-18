@@ -27,20 +27,27 @@ export class ArtifactReader extends TypertRemoteService {
     try {
       const root = await realpath(cwd)
       const candidate = resolve(root, path)
-      const rel = relative(root, candidate)
-      if (isAbsolute(rel) || rel === '..' || rel.startsWith(`..${sep}`)) {
-        return { ok: false, code: 'OUTSIDE_WORKSPACE', message: 'Artifact path is outside the session workspace.' }
+      // Fence on the canonical form: an absolute input may carry a symlinked
+      // prefix (macOS temp roots sit behind /var) that a lexical comparison
+      // misreads as an escape. A missing target is fenced lexically first —
+      // a path that escapes and does not exist is still an escape.
+      let target: string
+      try {
+        target = await realpath(candidate)
+      } catch (error) {
+        if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error
+        const lexical = relative(root, candidate)
+        if (isAbsolute(lexical) || lexical === '..' || lexical.startsWith(`..${sep}`)) {
+          return { ok: false, code: 'OUTSIDE_WORKSPACE', message: 'Artifact path is outside the session workspace.' }
+        }
+        return { ok: false, code: 'NOT_FOUND', message: `File ${path} was not found.` }
       }
-      const target = await realpath(candidate)
-      const resolvedRel = relative(root, target)
-      if (isAbsolute(resolvedRel) || resolvedRel === '..' || resolvedRel.startsWith(`..${sep}`)) {
+      const rel = relative(root, target)
+      if (isAbsolute(rel) || rel === '..' || rel.startsWith(`..${sep}`)) {
         return { ok: false, code: 'OUTSIDE_WORKSPACE', message: 'Artifact path resolves outside the session workspace.' }
       }
       return { ok: true, content: await readFile(target, 'utf8') }
     } catch (error) {
-      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-        return { ok: false, code: 'NOT_FOUND', message: `File ${path} was not found.` }
-      }
       return { ok: false, code: 'READ_FAILED', message: error instanceof Error ? error.message : String(error) }
     }
   }
