@@ -21,9 +21,10 @@ describe('Workbench PanelShell geometry', () => {
     expect(mosaic).toContain('inset: 4px')
   })
 
-  it('raises every cell card one gray step above the conversation base', () => {
+  it('matches the conversation base in light and keeps the dark sidebar step', () => {
+    expect(shell).toContain('background: var(--dsw-alias-bg-base)')
+    expect(shell).toContain(':global(body[data-ds-dark-theme]) .shell {')
     expect(shell).toContain('background: var(--dsw-specific-sidebar-fill)')
-    expect(shell).not.toContain('background: var(--dsw-alias-bg-base)')
     expect(mosaic).toContain('background: var(--dsw-alias-bg-base)')
     // Full-size provider surfaces must show the shell surface instead of
     // repainting the conversation base; the address input keeps its inset fill.
