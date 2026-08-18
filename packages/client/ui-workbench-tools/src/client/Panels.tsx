@@ -158,32 +158,40 @@ const ReviewFileRow = memo(function ReviewFileRow({
 }) {
   const file = entry.status
   const ready = entry.cache.kind === 'ready' ? entry.cache : null
-  // Parent-driven fold control: DiffBlocks report their expanded-fold counts,
-  // the header grows a re-fold button once any fold in this file is open, and
-  // one click re-folds every hunk and gap in the file.
-  const [foldSignal, setFoldSignal] = useState(0)
-  const [expandedFolds, setExpandedFolds] = useState(0)
+  // Parent-driven fold control, scoped per layer: each layer's DiffBlocks
+  // report their expanded-fold counts, the layer title bar grows a re-fold
+  // button on its trailing edge once any fold in that layer is open, and one
+  // click re-folds that layer's hunks and gaps only.
+  const [foldSignals, setFoldSignals] = useState<Record<string, number>>({})
+  const [layerFolds, setLayerFolds] = useState<Record<string, number>>({})
   const foldCounts = useRef(new Map<string, number>())
-  const onFileFoldState = useCallback((key: string, count: number) => {
-    foldCounts.current.set(key, count)
-    let sum = 0
-    for (const value of foldCounts.current.values()) sum += value
-    setExpandedFolds(sum)
+  const onFoldState = useCallback((layer: string, key: string, count: number) => {
+    foldCounts.current.set(`${layer}:${key}`, count)
+    setLayerFolds(current => {
+      let sum = 0
+      for (const [mapKey, value] of foldCounts.current) {
+        if (mapKey.startsWith(`${layer}:`)) sum += value
+      }
+      return { ...current, [layer]: sum }
+    })
   }, [])
-  const foldRefold = useCallback(() => {
-    setFoldSignal(signal => signal + 1)
-    foldCounts.current.clear()
-    setExpandedFolds(0)
+  const layerRefold = useCallback((layer: string) => {
+    setFoldSignals(current => ({ ...current, [layer]: (current[layer] ?? 0) + 1 }))
+    for (const mapKey of [...foldCounts.current.keys()]) {
+      if (mapKey.startsWith(`${layer}:`)) foldCounts.current.delete(mapKey)
+    }
+    setLayerFolds(current => ({ ...current, [layer]: 0 }))
   }, [])
   const foldReporters = useRef(new Map<string, (count: number) => void>())
-  const foldReporterFor = useCallback((key: string): (count: number) => void => {
-    let reporter = foldReporters.current.get(key)
+  const foldReporterFor = useCallback((layer: string, key: string): (count: number) => void => {
+    const cacheKey = `${layer}:${key}`
+    let reporter = foldReporters.current.get(cacheKey)
     if (reporter === undefined) {
-      reporter = (count: number) => { onFileFoldState(key, count) }
-      foldReporters.current.set(key, reporter)
+      reporter = (count: number) => { onFoldState(layer, key, count) }
+      foldReporters.current.set(cacheKey, reporter)
     }
     return reporter
-  }, [onFileFoldState])
+  }, [onFoldState])
   const pending = entry.cache.kind === 'loading' || entry.cache.kind === 'empty'
   const failed = entry.cache.kind === 'error' ? entry.cache.message : null
   const oldPath = ready?.raw.oldPath ?? file.oldPath
@@ -234,7 +242,7 @@ const ReviewFileRow = memo(function ReviewFileRow({
     <article ref={anchorRef} className={css.reviewFile} data-review-path={file.path}>
       <button
         type="button"
-        className={`${css.reviewFileHeader}${expanded && expandedFolds > 0 ? ` ${css.reviewFileHeaderRefold}` : ''}`}
+        className={css.reviewFileHeader}
         aria-expanded={expanded}
         onClick={onHeaderClick}
       >
@@ -245,17 +253,6 @@ const ReviewFileRow = memo(function ReviewFileRow({
           ? <span className={css.reviewFileLoading}>{t('loading')}</span>
           : ready !== null && <span className={css.reviewCounts}><b>{`+${ready.added}`}</b><i>{`-${ready.removed}`}</i></span>}
       </button>
-      {bodyMounted && expanded && expandedFolds > 0 && (
-        <button
-          type="button"
-          className={css.reviewFileRefold}
-          aria-label={t('review.refold')}
-          title={t('review.refold')}
-          onClick={foldRefold}
-        >
-          <IconUnfoldLessOutline16 size={14} />
-        </button>
-      )}
       {expanded && skeletonMounted && !bodyMounted && (
         <div className={css.reviewFileSkeleton} style={{ height: skeletonHeight }} aria-hidden>
           {t('loading')}
@@ -267,7 +264,20 @@ const ReviewFileRow = memo(function ReviewFileRow({
           {failed !== null && <div className={css.reviewFileError}>{failed}</div>}
           {ready !== null && ready.layers.map(layer => (
             <section key={layer.kind} className={css.diffLayer}>
-              <div className={css.diffLayerTitle}>{layer.kind === 'staged' ? t('review.layer.staged') : t('review.layer.working')}</div>
+              <div className={css.diffLayerTitle}>
+                <span>{layer.kind === 'staged' ? t('review.layer.staged') : t('review.layer.working')}</span>
+                {(layerFolds[layer.kind] ?? 0) > 0 && (
+                  <button
+                    type="button"
+                    className={css.layerRefold}
+                    aria-label={t('review.refold')}
+                    title={t('review.refold')}
+                    onClick={() => { layerRefold(layer.kind) }}
+                  >
+                    <IconUnfoldLessOutline16 size={12} />
+                  </button>
+                )}
+              </div>
               {layer.files.map(parsed => (
                 parsed.binary
                   ? <div key={parsed.key} className={css.binary}>{t('review.binary')}</div>
@@ -277,8 +287,8 @@ const ReviewFileRow = memo(function ReviewFileRow({
                     showPath={false}
                     showFooter={false}
                     variant="review"
-                    foldResetSignal={foldSignal}
-                    onFoldStateChange={foldReporterFor(parsed.key)}
+                    foldResetSignal={foldSignals[layer.kind] ?? 0}
+                    onFoldStateChange={foldReporterFor(layer.kind, parsed.key)}
                   />
               ))}
             </section>
