@@ -6,7 +6,7 @@ import {
   cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync,
 } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -59,9 +59,18 @@ function timestamp() {
   return new Date().toISOString().replaceAll(':', '-').replaceAll('.', '-')
 }
 
+/**
+ * Back up the authored profile state (manifest, composition, patches, dumps).
+ * node_modules is a reproducible pnpm install whose link: entries junction back
+ * into the workspace — recursing into it copies the whole harness tree (close
+ * to a million files per profile) into every timestamped backup, so skip it.
+ */
 function backup(path, name, backupRoot) {
   if (!existsSync(path)) return
-  cpSync(path, join(backupRoot, name), { recursive: true })
+  cpSync(path, join(backupRoot, name), {
+    recursive: true,
+    filter: source => basename(source) !== 'node_modules',
+  })
 }
 
 /** Remove only the two obsolete direct-insert rows while preserving all unrelated patch text. */
