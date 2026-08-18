@@ -50,7 +50,11 @@ function manifests(dir) {
   return out
 }
 
-const targets = [...manifests(join(root, 'packages')), ...manifests(join(root, 'bundles'))]
+const targets = [
+  ...manifests(join(root, 'packages', 'client')),
+  ...manifests(join(root, 'packages', 'host')),
+  ...manifests(join(root, 'packages', 'bundle')),
+]
 for (const file of targets) {
   const manifest = JSON.parse(readFileSync(file, 'utf8'))
   manifest.version = to
@@ -58,6 +62,6 @@ for (const file of targets) {
 }
 writeFileSync(versionFile, `${to}\n`)
 
-execSync('git add VERSION packages bundles package.json pnpm-lock.yaml', { cwd: root, stdio: 'inherit' })
+execSync('git add VERSION packages package.json pnpm-lock.yaml', { cwd: root, stdio: 'inherit' })
 execSync(`git commit -m "release(dsh-plugins): v${to}"`, { cwd: root, stdio: 'inherit' })
 console.log(`bumped to v${to}; tag it after the commit merges: git tag plugins-v${to} <merge commit> && git push origin plugins-v${to}`)

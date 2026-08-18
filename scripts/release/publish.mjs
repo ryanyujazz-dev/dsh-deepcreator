@@ -24,7 +24,11 @@ function manifests(dir) {
   return out
 }
 
-const planned = [...manifests(join(root, 'packages')), ...manifests(join(root, 'bundles'))]
+const planned = [
+  ...manifests(join(root, 'packages', 'client')),
+  ...manifests(join(root, 'packages', 'host')),
+  ...manifests(join(root, 'packages', 'bundle')),
+]
   .map((file) => JSON.parse(readFileSync(file, 'utf8')))
   .filter((manifest) => manifest.name.startsWith('@ryanyujazz/'))
   .filter((manifest) => manifest.version === version)
