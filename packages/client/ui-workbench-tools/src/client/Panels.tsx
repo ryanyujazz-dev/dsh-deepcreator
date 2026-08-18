@@ -9,8 +9,8 @@ import type {
   WorkbenchPanelHeaderContribution, WorkbenchPanelInfoContribution, WorkbenchPanelProps,
 } from '@ryanyujazz/dsh-client-ui-workbench/client'
 import {
-  DiffBlock, IconChevronDownOutline14, IconPlusOutline16, IconRefreshOutline14, IconUnfoldLessOutline14,
-  IconUnfoldMoreOutline14, WorkbenchPanelIconButton,
+  DiffBlock, IconChevronDownOutline14, IconPlusOutline16, IconRefreshOutline14, IconUnfoldLessOutline16,
+  IconUnfoldMoreOutline16, WorkbenchPanelIconButton,
 } from '@ryanyujazz/dsh-client-ui-primitives'
 import {
   matchReviewFile, type FileEntry,
@@ -341,6 +341,7 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
     right: <>
       <WorkbenchPanelIconButton
         label={anyExpanded ? t('review.collapseAll') : t('review.expandAll')}
+        className={css.reviewBulkToggle}
         disabled={(cache.status?.files.length ?? 0) === 0}
         onClick={() => {
           const paths = cache.status?.files.map(file => file.path) ?? []
@@ -356,7 +357,7 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
           controller.loadAll(next)
         }}
       >
-        {anyExpanded ? <IconUnfoldLessOutline14 /> : <IconUnfoldMoreOutline14 />}
+        {anyExpanded ? <IconUnfoldLessOutline16 /> : <IconUnfoldMoreOutline16 />}
       </WorkbenchPanelIconButton>
       <WorkbenchPanelIconButton label={t('refresh')} onClick={() => { void controller.refresh({ runChecks: true }) }}><IconRefreshOutline14 /></WorkbenchPanelIconButton>
     </>

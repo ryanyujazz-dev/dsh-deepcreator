@@ -8,6 +8,7 @@ import {
   DeepCreatorIconPreview16, DeepCreatorIconReview16,
   DeepCreatorIconTerminal16, DeepCreatorIconTimer16,
   IconApiOutline14, IconArchiveOutline20, IconFolderClose16, IconGoalOutline16, IconSendOutline16,
+  IconUnfoldLessOutline16, IconUnfoldMoreOutline16,
 } from '@ryanyujazz/dsh-client-ui-primitives'
 
 afterEach(cleanup)
@@ -24,8 +25,8 @@ const productIcons = Object.fromEntries(
 const productIconNames = Object.keys(productIcons)
 
 describe('ic_ds_ icon set', () => {
-  it('keeps the 68 shared glyphs (66 official-compatible + 2 harness-only) separate from sixteen product glyphs', () => {
-    expect(iconNames.length).toBe(68)
+  it('keeps the 70 shared glyphs (66 official-compatible + 4 harness-only) separate from sixteen product glyphs', () => {
+    expect(iconNames.length).toBe(70)
     expect(productIconNames.length).toBe(16)
   })
 
@@ -99,6 +100,19 @@ describe('ic_ds_ icon set', () => {
     expect(collapse.hasAttribute('transform')).toBe(false)
     expect(expand.getAttribute('fill')).toBe('currentColor')
     expect(collapse.getAttribute('fill')).toBe('currentColor')
+  })
+
+  it('keeps the Review expand-all and collapse-all list lines equal while reversing the arrows', () => {
+    const expandRoot = render(<IconUnfoldMoreOutline16 />).container.querySelector('svg')!
+    const collapseRoot = render(<IconUnfoldLessOutline16 />).container.querySelector('svg')!
+    const expand = expandRoot.querySelector('path')!
+    const collapse = collapseRoot.querySelector('path')!
+    expect(expandRoot.getAttribute('width')).toBe('16')
+    expect(collapseRoot.getAttribute('viewBox')).toBe('0 0 16 16')
+    expect(expand.getAttribute('d')).toBe('M7.25 6H13.25M7.25 10H13.25M4.5 6V2.5M2.75 4.25L4.5 2.5L6.25 4.25M4.5 10V13.5M2.75 11.75L4.5 13.5L6.25 11.75')
+    expect(collapse.getAttribute('d')).toBe('M7.25 6H13.25M7.25 10H13.25M4.5 2.5V6M2.75 4.25L4.5 6L6.25 4.25M4.5 13.5V10M2.75 11.75L4.5 10L6.25 11.75')
+    expect(expand.getAttribute('stroke-width')).toBe('1.35')
+    expect(collapse.getAttribute('stroke-width')).toBe('1.35')
   })
 
   it.each(iconNames)('%s renders an svg with currentColor fills and no hardcoded palette', (name) => {

@@ -252,23 +252,35 @@ export const IconRefreshOutline16 = ({ size = 16, className }: IconProps) => (
 )
 
 /**
- * Harness-only glyphs (no deepsuite figma source): stacked chevrons for the
+ * Harness-only glyphs (no deepsuite figma source): list-edge arrows for the
  * Review panel's expand-all / collapse-all header action. Stroke-drawn to
- * match the outline weight of the converted-fill library glyphs.
+ * keep the source shape crisp inside the shared 28px header hit target.
  */
-/** Expand-all: chevrons spreading away from the center line. */
+/** Expand-all: arrows spreading away from the two equal-length list lines. */
 export const IconUnfoldMoreOutline14 = ({ size = 14, className }: IconProps) => (
   <svg width={size} height={size} className={className} viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M3 6.5L7 4L11 6.5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M3 7.5L7 10L11 7.5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M6.75 5.5H11.25M6.75 8.5H11.25M4 5.5V2.5M2.5 4L4 2.5L5.5 4M4 8.5V11.5M2.5 10L4 11.5L5.5 10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 )
 
-/** Collapse-all: chevrons closing toward the center line. */
+/** Collapse-all: arrows closing toward the two equal-length list lines. */
 export const IconUnfoldLessOutline14 = ({ size = 14, className }: IconProps) => (
   <svg width={size} height={size} className={className} viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M3 4L7 6.6L11 4" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M3 10L7 7.4L11 10" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M6.75 5.5H11.25M6.75 8.5H11.25M4 2.5V5.5M2.5 4L4 5.5L5.5 4M4 11.5V8.5M2.5 10L4 8.5L5.5 10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+
+/** Expand-all: 16px arrows spreading away from the two equal-length list lines. */
+export const IconUnfoldMoreOutline16 = ({ size = 16, className }: IconProps) => (
+  <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M7.25 6H13.25M7.25 10H13.25M4.5 6V2.5M2.75 4.25L4.5 2.5L6.25 4.25M4.5 10V13.5M2.75 11.75L4.5 13.5L6.25 11.75" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+
+/** Collapse-all: 16px arrows closing toward the two equal-length list lines. */
+export const IconUnfoldLessOutline16 = ({ size = 16, className }: IconProps) => (
+  <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M7.25 6H13.25M7.25 10H13.25M4.5 2.5V6M2.75 4.25L4.5 6L6.25 4.25M4.5 13.5V10M2.75 11.75L4.5 10L6.25 11.75" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 )
 
