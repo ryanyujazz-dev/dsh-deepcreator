@@ -20,27 +20,3 @@ export function rootToolCall(
 ): ToolCallBlock | undefined {
   return toolNode(snapshot.chat.nodes.get(conversationContextKey('tool-call', rootCallId)))?.data.root
 }
-
-/**
- * Find any root or nested Tool lifecycle through the internal Node store.
- * @param snapshot - current Conversation snapshot.
- * @param callId - root or nested call identity.
- * @returns current Tool lifecycle when materialized in the loaded window.
- */
-export function findToolCall(snapshot: ConversationSnapshot, callId: string): ToolCallBlock | undefined {
-  const visit = (block: ToolCallBlock): ToolCallBlock | undefined => {
-    if (block.callId === callId) return block
-    for (const child of block.subCalls) {
-      const found = visit(child)
-      if (found !== undefined) return found
-    }
-    return undefined
-  }
-  for (const node of snapshot.chat.nodes.values()) {
-    const root = toolNode(node)?.data.root
-    if (root === undefined) continue
-    const found = visit(root)
-    if (found !== undefined) return found
-  }
-  return undefined
-}
