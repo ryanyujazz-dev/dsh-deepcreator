@@ -50,7 +50,10 @@ export { ReadBlock, DEFAULT_READ_MAX_LINES } from './ReadBlock.tsx'
 export type { ReadBlockProps, ReadBlockLine } from './ReadBlock.tsx'
 export { DiffBlock, DEFAULT_DIFF_MAX_LINES } from './DiffBlock.tsx'
 export type { DiffBlockProps, DiffHunk } from './DiffBlock.tsx'
-export { buildDiffHunkModel, diffContentLines, diffLanguageFromPath } from './diff/model.ts'
+export {
+  buildCachedDiffHunkModel, buildDiffHunkModel, diffContentLines, diffLanguageFromPath, prioritizeSnapshotHighlights,
+  snapshotHighlightKey, subscribeSnapshotHighlight, warmDiffHunkModels,
+} from './diff/model.ts'
 export type { AlignedRow, DiffHunkInput, DiffHunkModel, TextRange } from './diff/model.ts'
 export { parseUnifiedDiff } from './diff/unified.ts'
 export type { UnifiedDiffFile } from './diff/unified.ts'

@@ -28,6 +28,13 @@ describe('Terminal Remote identity', () => {
         register: () => dispose,
       },
       workbench: { registerType: (definition: { id: string; supportsHome: boolean }) => { definitions.push(definition); return dispose } },
+      sessions: {
+        list: {
+          getSnapshot: () => ({ ids: [], current: undefined }),
+          subscribe: () => () => undefined,
+        },
+        binding: () => undefined,
+      },
       slots: {
         inject: (_name: string, register: () => unknown) => register(),
         register: (entry: { name: string; id?: string }, component: (props: unknown) => ReactElement) => {

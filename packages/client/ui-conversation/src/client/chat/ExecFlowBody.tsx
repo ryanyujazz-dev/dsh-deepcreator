@@ -206,7 +206,7 @@ export type ExecFlowBodyProps = ChatRenderSlotProps & ExecFlowBodyInjected
  * delegated keyed seat) or an aggregated tool run (through ExecutionSlot).
  */
 export function ExecFlowBody({
-  useSession, useSessions, useStore, sessionId, openFile, loadOlder, loadImage, inspectCall, chatScroll, forkAt,
+  useSession, useSessions, useStore, sessionId, openFile, revealChange, loadOlder, loadImage, inspectCall, chatScroll, forkAt,
   fileMentions, selectRenderMode, renderSlot, t, actions, thinkForm, siblingId,
 }: ExecFlowBodyProps) {
   const order = useSession(s => s.chat.order)
@@ -368,6 +368,7 @@ export function ExecFlowBody({
       selectedCallId={selectedCallId}
       cwd={cwd}
       openFile={openFile}
+      revealChange={revealChange}
       inspectCall={inspectCall}
       forkAt={forkAt}
       loadImage={loadImage}
@@ -375,7 +376,7 @@ export function ExecFlowBody({
       renderSlot={renderSlot}
       t={t}
     />
-  ), [useSession, thinkForm, selectedCallId, cwd, openFile, inspectCall, forkAt, loadImage, fileMentions, renderSlot, t])
+  ), [useSession, thinkForm, selectedCallId, cwd, openFile, revealChange, inspectCall, forkAt, loadImage, fileMentions, renderSlot, t])
 
   const listRef = useRef<HTMLDivElement | null>(null)
   const columnRef = useRef<HTMLDivElement | null>(null)
@@ -600,6 +601,7 @@ export function ExecFlowBody({
               selectedCallId={selectedCallId}
               cwd={cwd}
               openFile={openFile}
+              revealChange={revealChange}
               inspectCall={inspectCall}
               forkAt={forkAt}
               loadImage={loadImage}

@@ -33,7 +33,7 @@ export interface GenericToolCardProps extends ToolCallOwnerProps {
   t: ToolTreeProps['t']
 }
 
-export function GenericToolCard({ toolName, block, cwd, openFile, inspect, execflow, t }: GenericToolCardProps) {
+export function GenericToolCard({ toolName, block, cwd, openFile, revealChange, inspect, execflow, t }: GenericToolCardProps) {
   const model = toolRowModel(toolName, block, cwd)
   const terminal = terminalCardModel(block, cwd)
   const read = readCardModel(block, cwd)
@@ -71,6 +71,10 @@ export function GenericToolCard({ toolName, block, cwd, openFile, inspect, execf
       state={state}
       filePath={model.filePath}
       onOpenFile={singleFile ? openFile : undefined}
+      // The reveal affordance belongs to change semantics: only a call whose
+      // render intent is a diff card points its path link at the review
+      // surface; reads and the like keep the host open behavior.
+      onRevealChange={singleFile && diff !== null ? revealChange : undefined}
       inspect={inspect}
       execflow={execflow}
     />

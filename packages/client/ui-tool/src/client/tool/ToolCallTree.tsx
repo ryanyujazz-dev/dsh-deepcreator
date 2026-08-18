@@ -12,8 +12,8 @@ function callName(node: ToolCallBlock): string {
 
 /** One atomic call dispatched through the Tool-owned keyed slot. */
 const ToolCall = memo(function ToolCall({
-  renderSlot, callId, toolName, block, openFile, selected, cwd, inspectCall, thinkMode, t, children,
-}: Pick<ToolTreeProps, 'renderSlot' | 'openFile' | 'cwd' | 'inspectCall' | 'thinkMode' | 't'> & {
+  renderSlot, callId, toolName, block, openFile, revealChange, selected, cwd, inspectCall, thinkMode, t, children,
+}: Pick<ToolTreeProps, 'renderSlot' | 'openFile' | 'revealChange' | 'cwd' | 'inspectCall' | 'thinkMode' | 't'> & {
   callId: string
   toolName: string
   block: ToolCallBlock
@@ -25,12 +25,13 @@ const ToolCall = memo(function ToolCall({
     toolName,
     block,
     openFile,
+    revealChange,
     cwd,
     inspect: () => { inspectCall(callId) },
     // The execflow render modes pass a think form to every node owner; its
     // presence selects the execflow row chrome (rail + title-column align).
     execflow: thinkMode !== undefined,
-  }), [callId, toolName, block, openFile, cwd, inspectCall, thinkMode])
+  }), [callId, toolName, block, openFile, revealChange, cwd, inspectCall, thinkMode])
   return (
     <div
       className={css.callRow}
@@ -49,8 +50,8 @@ const ToolCall = memo(function ToolCall({
 })
 
 const ToolCallBranch = memo(function ToolCallBranch({
-  renderSlot, block, selectedCallId, cwd, openFile, inspectCall, thinkMode, t,
-}: Pick<ToolTreeProps, 'renderSlot' | 'selectedCallId' | 'cwd' | 'openFile' | 'inspectCall' | 'thinkMode' | 't'> & {
+  renderSlot, block, selectedCallId, cwd, openFile, revealChange, inspectCall, thinkMode, t,
+}: Pick<ToolTreeProps, 'renderSlot' | 'selectedCallId' | 'cwd' | 'openFile' | 'revealChange' | 'inspectCall' | 'thinkMode' | 't'> & {
   block: ToolCallBlock
 }) {
   return (
@@ -60,6 +61,7 @@ const ToolCallBranch = memo(function ToolCallBranch({
       toolName={callName(block)}
       block={block}
       openFile={openFile}
+      revealChange={revealChange}
       selected={block.callId === selectedCallId}
       cwd={cwd}
       inspectCall={inspectCall}
@@ -76,6 +78,7 @@ const ToolCallBranch = memo(function ToolCallBranch({
               selectedCallId={selectedCallId}
               cwd={cwd}
               openFile={openFile}
+              revealChange={revealChange}
               inspectCall={inspectCall}
               thinkMode={thinkMode}
               t={t}
@@ -94,7 +97,7 @@ const ToolCallBranch = memo(function ToolCallBranch({
  * @returns the Tool call tree.
  */
 export function ToolCallTree({
-  renderSlot, node, selectedCallId, cwd, openFile, inspectCall, thinkMode, t,
+  renderSlot, node, selectedCallId, cwd, openFile, revealChange, inspectCall, thinkMode, t,
 }: ToolTreeProps) {
   const block = node.data.root
   return (
@@ -104,6 +107,7 @@ export function ToolCallTree({
       selectedCallId={selectedCallId}
       cwd={cwd}
       openFile={openFile}
+      revealChange={revealChange}
       inspectCall={inspectCall}
       thinkMode={thinkMode}
       t={t}

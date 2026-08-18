@@ -93,6 +93,10 @@ export class WorkbenchController extends Service implements WorkbenchService {
     this.present({ typeId, ...(instanceId === undefined ? {} : { instanceId }), route: instanceId === undefined ? 'home' : 'instance', reveal: true, reason: 'user' })
   }
 
+  reveal(typeId: string, target: string): void {
+    this.present({ typeId, target, reveal: true, reason: 'user' })
+  }
+
   hide(typeId: string): void { this.publishCommand({ kind: 'hide', typeId }) }
   closeTab(typeId: string, instanceId: string): void { this.publishCommand({ kind: 'close-tab', typeId, instanceId }) }
   focus(typeId: string): void { this.publishCommand({ kind: 'focus', typeId }) }

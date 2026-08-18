@@ -139,6 +139,32 @@ describe('keyed toolview hole through the real machinery', () => {
     await b.runtime.dispose()
   })
 
+  it('mutation path clicks reveal through the composed workbench review face', async () => {
+    const editArgs = '{"file_path":"src/a.ts","old_string":"a","new_string":"b"}'
+    const b = await bench([toolResult(3, 'c1', 'edit', editArgs)])
+    const reveal = vi.fn()
+    b.runtime.provide('workbench', { types: { list: () => [{ id: 'review' }] }, reveal })
+    const view = b.runtime.renderRoot()
+    view.getByText('a.ts').click()
+    // The mutation row's link routes through revealChange: the review reveal
+    // replaces the host open, resolved against the session cwd upstream.
+    expect(reveal).toHaveBeenCalledWith('review', 'src/a.ts')
+    expect(b.runtime.workspaces.calls.some(c => c.method === 'openPath')).toBe(false)
+    await b.runtime.dispose()
+  })
+
+  it('mutation path clicks keep the host open when no workbench is composed', async () => {
+    const editArgs = '{"file_path":"src/a.ts","old_string":"a","new_string":"b"}'
+    const b = await bench([toolResult(3, 'c1', 'edit', editArgs)])
+    const view = b.runtime.renderRoot()
+    view.getByText('a.ts').click()
+    // No composed review surface: the change link degrades to the host open.
+    await vi.waitFor(() => {
+      expect(b.runtime.workspaces.calls).toContainEqual({ method: 'openPath', args: ['src/a.ts'] })
+    })
+    await b.runtime.dispose()
+  })
+
   it('bash summary clicks do not open details or host paths', async () => {
     const b = await bench([toolResult(3, 'c1', 'bash')])
     const view = b.runtime.renderRoot()

@@ -31,6 +31,17 @@ describe('WorkbenchController', () => {
     expect(layout.setWorkbenchWidth).not.toHaveBeenCalled()
   })
 
+  it('publishes reveal as a user presentation carrying the focus target', () => {
+    const controller = new WorkbenchController(new Context(), layout)
+    controller.registerType(activity)
+    controller.reveal('activity', 'src/app.ts')
+    expect(controller.commands.getSnapshot()?.action).toEqual({
+      kind: 'present',
+      request: { typeId: 'activity', target: 'src/app.ts', reveal: true, reason: 'user' },
+    })
+    expect(() => controller.reveal('missing', 'x')).toThrow(/unknown panel type/)
+  })
+
   it('shares mutable state with Cordis traced service views', () => {
     const controller = new WorkbenchController(new Context(), layout)
     const traced = Object.create(controller) as WorkbenchController

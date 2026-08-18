@@ -1,4 +1,5 @@
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import { createElement, type ReactNode } from 'react'
@@ -10,6 +11,7 @@ import {
 import type { ArtifactRendererProps, PanelTypeDefinition, WorkbenchPanelIconProps, WorkbenchPanelProps } from '@ryanyujazz/dsh-client-ui-workbench/client'
 import type {} from '@ryanyujazz/dsh-client-ui-workbench/client'
 import { ArtifactPanel, BrowserPanel, ReviewPanel, TerminalPanel } from './Panels.tsx'
+import { ReviewCacheController } from './review-cache.ts'
 import { en, NS, zh, type ToolsKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' { interface LocaleNamespaceMap { 'workbench-tools': ToolsKey } }
@@ -22,7 +24,7 @@ function iconRenderer(Icon: IconComponent) { return ({ size }: WorkbenchPanelIco
 function TextArtifact({ content }: ArtifactRendererProps) { return createElement('pre', null, content) }
 
 export const inject = [
-  'slots', 'workbench', 'locale', 'remote',
+  'slots', 'workbench', 'locale', 'remote', 'sessions',
   'remote.artifacts', 'remote.review', 'remote.terminal-workbench',
 ]
 
@@ -36,8 +38,50 @@ export function apply(ctx: ClientContext): void {
   // Capture this namespace once: using remote['terminal-workbench'] inside a
   // React render would invalidate every Terminal effect on every render.
   const terminal = remote['terminal-workbench']
+  // Review caches are session data planes, not panel state: one controller
+  // per session starts when the session becomes current (before any panel
+  // opens, so review data is warm on first open) and dies when the session
+  // leaves the list. The panel is a view over its snapshot.
+  const reviewCaches = new Map<SessionId, ReviewCacheController>()
+  const reviewCacheFor = (sessionId: SessionId): ReviewCacheController => {
+    const existing = reviewCaches.get(sessionId)
+    if (existing !== undefined) return existing
+    const session = ctx.sessions.binding(sessionId)?.session
+    const controller = new ReviewCacheController({
+      remote,
+      sessionId,
+      session: session ?? {
+        // Defensive: the staged session always resolves a binding; a stale
+        // panel render must still get a cache, inert until the real feed
+        // exists.
+        subscribe: () => () => {},
+        getSnapshot: () => ({ nodes: [], turnEnds: new Map() }) as never,
+      },
+    })
+    reviewCaches.set(sessionId, controller)
+    return controller
+  }
+  ctx.effect(() => {
+    const sync = () => {
+      const state = ctx.sessions.list.getSnapshot()
+      for (const [id, controller] of reviewCaches) {
+        if (state.ids.includes(id)) continue
+        controller.dispose()
+        reviewCaches.delete(id)
+      }
+      const current = state.current
+      if (current !== undefined && !reviewCaches.has(current)) reviewCacheFor(current)
+    }
+    const unsubscribe = ctx.sessions.list.subscribe(sync)
+    sync()
+    return () => {
+      unsubscribe()
+      for (const controller of reviewCaches.values()) controller.dispose()
+      reviewCaches.clear()
+    }
+  }, 'ui-workbench-tools: review caches')
   const artifactPanel: PanelComponent = props => createElement(ArtifactPanel, { ...props, remote })
-  const reviewPanel: PanelComponent = props => createElement(ReviewPanel, { ...props, remote })
+  const reviewPanel: PanelComponent = props => createElement(ReviewPanel, { ...props, controller: reviewCacheFor(props.sessionId) })
   const terminalPanel: PanelComponent = props => createElement(TerminalPanel, { ...props, terminal })
   const providers: Array<{ definition: PanelTypeDefinition; panel: PanelComponent; icon: IconComponent }> = [
     { definition: { id:'artifact',label:()=>t('artifact'),scope:'session',order:2,supportsHome:true,supportsCreate:false,supportsMultipleInstances:true,minWidth:150,minHeight:260,preferredWidth:520,initialWidthRatio:1/3,closePolicy:'detach' }, panel: artifactPanel, icon: DeepCreatorIconArtifact16 },

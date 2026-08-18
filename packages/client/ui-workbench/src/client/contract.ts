@@ -50,14 +50,24 @@ export interface WorkbenchPresentRequest {
   typeId: string
   instanceId?: string
   route?: PanelRoute
+  /**
+   * Provider-defined focus target carried to the addressed panel's owner
+   * props (`reveal`); the provider interprets the string — the review panel
+   * treats it as a workspace file path.
+   */
+  target?: string
   reveal?: boolean
   reason: 'user' | 'agent' | 'system'
 }
 
 export interface WorkbenchService {
   registerType(definition: PanelTypeDefinition): () => void
+  /** Registered panel-type definitions (availability checks by id). */
+  types: { list(): readonly PanelTypeDefinition[] }
   present(request: WorkbenchPresentRequest): void
   activate(typeId: string, instanceId?: string): void
+  /** Present the type as a user action and focus `target` inside its panel. */
+  reveal(typeId: string, target: string): void
   hide(typeId: string): void
   closeTab(typeId: string, instanceId: string): void
   focus(typeId: string): void
@@ -76,6 +86,20 @@ export interface WorkbenchPanelOwnerProps {
   contributeHeaderActions(contribution: WorkbenchPanelHeaderContribution): () => void
   contributePanelInfo(contribution: WorkbenchPanelInfoContribution): () => void
   renderArtifact(owner: ArtifactRendererOwnerProps): ReactNode
+  /**
+   * Pending focus target from the latest `reveal`/`present` request carrying a
+   * `target`. `nonce` is the publishing command's sequence, so repeating the
+   * same target re-fires; providers consume it from an effect keyed on the
+   * nonce. Undefined on panels the request did not address.
+   */
+  reveal?: { target: string; nonce: number } | undefined
+  /**
+   * Whether this group's cell is actually rendered. Hidden and
+   * responsive-removed Groups stay mounted (display:none) with `visible:
+   * false`; providers gate background work (watches, polling, refreshes) on
+   * it.
+   */
+  visible?: boolean | undefined
 }
 
 export interface WorkbenchPanelIconOwnerProps { size: number }

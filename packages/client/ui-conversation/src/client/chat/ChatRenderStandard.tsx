@@ -147,7 +147,7 @@ function TurnStatus({ startTime, t }: {
  * keyed renderer seat.
  */
 export function ChatRenderStandard({
-  useSession, useSessions, useStore, sessionId, openFile, loadOlder, loadImage, inspectCall, chatScroll, forkAt,
+  useSession, useSessions, useStore, sessionId, openFile, revealChange, loadOlder, loadImage, inspectCall, chatScroll, forkAt,
   fileMentions, renderSlot, t,
 }: ChatRenderSlotProps) {
   const order = useSession(s => s.chat.order)
@@ -391,6 +391,7 @@ export function ChatRenderStandard({
               selectedCallId={selectedCallId}
               cwd={cwd}
               openFile={openFile}
+              revealChange={revealChange}
               inspectCall={inspectCall}
               forkAt={forkAt}
               loadImage={loadImage}

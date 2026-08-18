@@ -13,9 +13,11 @@
 // message flow. Every card kind starts collapsed, so a run of tool calls stays
 // scannable; the details panel is the single-call full-height reading surface.
 // Expand state is component-local view state. File-tool summaries are path
-// links that open through the host (stopPropagation keeps the two gestures
-// independent); an error row's collapsed summary is the failure's first line in
-// the error color.
+// links (stopPropagation keeps the two gestures independent): they focus the
+// file's change in the review surface when the owner supplies onRevealChange
+// (the mutation rows' link points at the change, not the file) and open
+// through the host otherwise; an error row's collapsed summary is the
+// failure's first line in the error color.
 
 import { useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import clsx from 'clsx'
@@ -88,12 +90,18 @@ export interface ToolRowProps {
   web?: WebBlockProps | null | undefined
   state: ToolRowState
   /**
-   * Filesystem path from tool args; when set with onOpenFile, the summary
-   * renders as a hover-underline link that opens the host default app.
+   * Filesystem path from tool args; when set with an activation callback, the
+   * summary renders as a hover-underline link.
    */
   filePath?: string | undefined
   /** Open the path with the host OS default application (already cwd-resolved). */
   onOpenFile?: ((path: string) => void) | undefined
+  /**
+   * Focus the path's change in the review surface (already cwd-resolved).
+   * Preferred over `onOpenFile` when both exist — the file-mutation rows'
+   * path link points at the change, not the file.
+   */
+  onRevealChange?: ((path: string) => void) | undefined
   /**
    * Jump to this call in the trajectory view: a hover-revealed Inspect pill
    * over the expanded body. Absent = no affordance.
@@ -150,6 +158,7 @@ export function ToolRow({
   state,
   filePath,
   onOpenFile,
+  onRevealChange,
   inspect,
   execflow,
 }: ToolRowProps) {
@@ -176,14 +185,16 @@ export function ToolRow({
   // The failure line replaces the summary wholesale, so a suffix derived from
   // the call args has nothing left to sit beside.
   const suffix = failureLine === null ? summarySuffix ?? null : null
-  // The failure line is error prose, not the path: no open-file affordance.
-  const fileLink = filePath !== undefined && onOpenFile !== undefined && failureLine === null
+  // The failure line is error prose, not the path: no file affordance.
+  const activateFile = onRevealChange ?? onOpenFile
+  const fileLink = filePath !== undefined && activateFile !== undefined && failureLine === null
+  const revealLink = fileLink && onRevealChange !== undefined
   const toggleExpand = () => {
     setExpanded(v => !v)
   }
   const openFile = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation()
-    if (filePath !== undefined) onOpenFile?.(filePath)
+    if (filePath !== undefined) activateFile?.(filePath)
   }
   // Keep Enter/Space on the focused path link from bubbling to the row's
   // keydown handler, which would preventDefault() the key and toggle expand
@@ -192,6 +203,16 @@ export function ToolRow({
   const fileLinkKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
     if (event.key === 'Enter' || event.key === ' ') event.stopPropagation()
   }
+  const fileLinkButton = (
+    <button
+      type="button"
+      className={css.fileLink}
+      onClick={openFile}
+      onKeyDown={fileLinkKeyDown}
+    >
+      {summaryText}
+    </button>
+  )
   // The code variant's program renders through CodeBlock (shiki), so only its
   // output joins the IN/OUT card; every other variant's input does too.
   const cardBody = variant === 'code' ? null : body
@@ -219,14 +240,9 @@ export function ToolRow({
           <>
             <span className={css.sep} aria-hidden />
             {fileLink ? (
-              <button
-                type="button"
-                className={css.fileLink}
-                onClick={openFile}
-                onKeyDown={fileLinkKeyDown}
-              >
-                {summaryText}
-              </button>
+              revealLink ? (
+                <Tooltip label={t('row.revealChange')} side="bottom">{fileLinkButton}</Tooltip>
+              ) : fileLinkButton
             ) : (
               <span
                 className={clsx(css.summary, failureLine !== null && css.errorSummary)}

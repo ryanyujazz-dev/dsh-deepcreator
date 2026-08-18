@@ -251,6 +251,27 @@ export const IconRefreshOutline16 = ({ size = 16, className }: IconProps) => (
   </svg>
 )
 
+/**
+ * Harness-only glyphs (no deepsuite figma source): stacked chevrons for the
+ * Review panel's expand-all / collapse-all header action. Stroke-drawn to
+ * match the outline weight of the converted-fill library glyphs.
+ */
+/** Expand-all: chevrons spreading away from the center line. */
+export const IconUnfoldMoreOutline14 = ({ size = 14, className }: IconProps) => (
+  <svg width={size} height={size} className={className} viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M3 6.5L7 4L11 6.5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M3 7.5L7 10L11 7.5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+
+/** Collapse-all: chevrons closing toward the center line. */
+export const IconUnfoldLessOutline14 = ({ size = 14, className }: IconProps) => (
+  <svg width={size} height={size} className={className} viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M3 4L7 6.6L11 4" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M3 10L7 7.4L11 10" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+
 /** ic_ds_refresh_outline_14 */
 export const IconRefreshOutline14 = ({ size = 14, className }: IconProps) => (
   <svg width={size} height={size} className={className} viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">

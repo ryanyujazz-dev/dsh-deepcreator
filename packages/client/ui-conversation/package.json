@@ -74,7 +74,8 @@
     "@ryanyujazz/dsh-client-locale": "^0.1.0",
     "@ryanyujazz/dsh-client-ui-primitives": "^0.1.0",
     "@ryanyujazz/dsh-client-ui-layout": "^0.1.0",
-    "@ryanyujazz/dsh-client-ui-settings": "^0.1.0"
+    "@ryanyujazz/dsh-client-ui-settings": "^0.1.0",
+    "@ryanyujazz/dsh-client-ui-workbench": "^0.1.0"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.1",
@@ -106,7 +107,8 @@
     "@ryanyujazz/dsh-client-locale": "workspace:^",
     "@ryanyujazz/dsh-client-ui-layout": "workspace:^",
     "@ryanyujazz/dsh-client-ui-primitives": "workspace:^",
-    "@ryanyujazz/dsh-client-ui-settings": "workspace:^"
+    "@ryanyujazz/dsh-client-ui-settings": "workspace:^",
+    "@ryanyujazz/dsh-client-ui-workbench": "workspace:^"
   },
   "files": [
     "lib/index.js",

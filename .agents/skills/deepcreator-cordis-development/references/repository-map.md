@@ -32,6 +32,7 @@
 - Render-mode ids: `normal | classic | think`
 - Default render mode: `classic`
 - Preferences child Slot: `deepcreator.settings.preferences.item`
+- Review panel type id (the change-reveal handoff target): `review`
 - Official shared Slots retain their official names; inspect the owning `contract/slots.ts` before registration.
 
 ## Registration checklist

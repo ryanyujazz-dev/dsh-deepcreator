@@ -73,11 +73,15 @@ function commandEffect(
 }
 
 function Group({
-  group, definition, focused, renderPanel, renderArtifact, onHide, onFocus, onRestore, actions, t,
+  group, definition, focused, visible, reveal, renderPanel, renderArtifact, onHide, onFocus, onRestore, actions, t,
 }: {
   group: WorkbenchGroupState
   definition: PanelTypeDefinition | undefined
   focused: boolean
+  /** Whether the group's cell is rendered (hidden groups stay mounted). */
+  visible: boolean
+  /** Pending reveal target when the latest command addressed this type. */
+  reveal: WorkbenchPanelOwnerProps['reveal']
   renderPanel(owner: WorkbenchPanelOwnerProps): ReactNode
   renderArtifact: WorkbenchPanelOwnerProps['renderArtifact']
   onHide(): void
@@ -122,6 +126,8 @@ function Group({
     contributeHeaderActions,
     contributePanelInfo,
     renderArtifact,
+    visible,
+    ...(reveal === undefined ? {} : { reveal }),
   }
   return (
     <WorkbenchPanelShell
@@ -165,6 +171,11 @@ export function WorkbenchRoot({
   const focusedTypeId = useStore(state => state.focusedTypeId)
   const definitions = controller.types.list()
   const definitionById = useMemo(() => new Map(definitions.map(def => [def.id, def])), [definitions])
+  // The reveal target rides the latest command into render: panels consume it
+  // from an effect keyed on the nonce, so it does not need store persistence.
+  const revealCommand = command !== null && command.action.kind === 'present' && command.action.request.target !== undefined
+    ? { typeId: command.action.request.typeId, target: command.action.request.target, nonce: command.sequence }
+    : null
   const processed = useRef(0)
   const dragStart = useRef<number | null>(null)
   const tracksRef = useRef<HTMLDivElement | null>(null)
@@ -276,6 +287,10 @@ export function WorkbenchRoot({
                     group={group}
                     definition={definitionById.get(group.typeId)}
                     focused={focusedTypeId === group.typeId}
+                    visible={visible}
+                    reveal={revealCommand !== null && revealCommand.typeId === group.typeId
+                      ? { target: revealCommand.target, nonce: revealCommand.nonce }
+                      : undefined}
                     actions={actions}
                     t={t}
                     onHide={() => { actions.hide(group.typeId) }}

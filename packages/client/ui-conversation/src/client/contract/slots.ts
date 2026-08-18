@@ -395,6 +395,13 @@ export interface ChatNodeOwnerProps {
   /** Session workspace root; Tool summaries display paths relative to it. */
   cwd?: string | undefined
   openFile: (path: string) => void
+  /**
+   * Focus a tool-arg path's change in the review surface when one is
+   * composed (relative paths resolve against the session cwd); absent = the
+   * file rows keep the `openFile` host behavior. Consumed by the mutation
+   * rows' path links.
+   */
+  revealChange?: ((path: string) => void) | undefined
   inspectCall: (callId: CallId) => void
   forkAt: (seq: number) => void
   /** Resolve a session-authorized historical image for inline display. */
@@ -760,6 +767,12 @@ export interface ChatRenderOwnerProps {
    * (relative paths resolve against the session cwd).
    */
   openFile: (path: string) => void
+  /**
+   * Focus a tool-arg path's change in the review surface when one is
+   * composed (relative paths resolve against the session cwd); absent = the
+   * file rows keep the `openFile` host behavior.
+   */
+  revealChange?: ((path: string) => void) | undefined
   loadOlder: () => void
   /** Resolve a session-authorized historical image for inline display. */
   loadImage: (attachment: ImageAttachmentRef) => Promise<string>
@@ -808,6 +821,12 @@ export interface ChatViewInjected {
    * (relative paths resolve against the session cwd).
    */
   openFile: (path: string) => void
+  /**
+   * Focus a tool-arg path's change in the review surface when one is
+   * composed (relative paths resolve against the session cwd); absent = the
+   * file rows keep the `openFile` host behavior.
+   */
+  revealChange?: ((path: string) => void) | undefined
   loadOlder: () => void
   /** Resolve a session-authorized historical image for inline display. */
   loadImage: (attachment: ImageAttachmentRef) => Promise<string>

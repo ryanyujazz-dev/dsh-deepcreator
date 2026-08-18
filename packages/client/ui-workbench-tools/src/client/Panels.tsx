@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { FormEvent } from 'react'
 import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ArtifactRecord } from '@ryanyujazz/dsh-artifacts/types'
 import type {} from '@ryanyujazz/dsh-artifacts/remote'
-import type { ReviewChecksResult, ReviewDiffResult, ReviewFileStatus, ReviewStatusResult } from '@ryanyujazz/dsh-review/types'
 import type {} from '@ryanyujazz/dsh-review/remote'
 import type { TerminalSessionView } from '@ryanyujazz/dsh-terminal-workbench/types'
 import type {} from '@ryanyujazz/dsh-terminal-workbench/remote'
@@ -12,10 +11,17 @@ import type {
   WorkbenchPanelHeaderContribution, WorkbenchPanelInfoContribution, WorkbenchPanelProps,
 } from '@ryanyujazz/dsh-client-ui-workbench/client'
 import {
-  DiffBlock, IconChevronDownOutline14, IconPlusOutline16, IconRefreshOutline14, parseUnifiedDiff, WorkbenchPanelIconButton,
+  DiffBlock, IconChevronDownOutline14, IconPlusOutline16, IconRefreshOutline14, IconUnfoldLessOutline14,
+  IconUnfoldMoreOutline14, WorkbenchPanelIconButton,
 } from '@ryanyujazz/dsh-client-ui-primitives'
+import {
+  matchReviewFile, type FileEntry,
+} from './review-model.ts'
+import type { ReviewCacheController } from './review-cache.ts'
 import css from './Panels.module.css'
 import { TerminalEmulator } from './TerminalEmulator.tsx'
+
+export { matchReviewFile } from './review-model.ts'
 
 type Props = WorkbenchPanelProps & PropsLocale<'workbench-tools'>
 type RemoteProps = Props & { remote: TypertClientRemote }
@@ -130,139 +136,319 @@ export function ArtifactPanel({ remote, sessionId, route, activeInstanceId, open
   )
 }
 
-export function ReviewPanel({ remote, sessionId, contributeHeaderActions, t }: RemoteProps) {
-  const [status, setStatus] = useState<Extract<ReviewStatusResult, { ok: true }> | null>(null)
-  const [checks, setChecks] = useState<Extract<ReviewChecksResult, { ok: true }> | null>(null)
-  const [files, setFiles] = useState<Record<string, {
-    loading: boolean
-    diff?: Extract<ReviewDiffResult, { ok: true }>
-    error?: string
-  }>>({})
-  const [expandedPaths, setExpandedPaths] = useState<ReadonlySet<string>>(new Set())
-  const [error, setError] = useState<string | null>(null)
-  const refreshGeneration = useRef(0)
-  const loadFile = useCallback(async (path: string, generation = refreshGeneration.current) => {
-    setFiles(current => ({ ...current, [path]: { loading: true } }))
-    try {
-      const wire = await remote.review.diff(sessionId, path)
-      if (!wire.ok) throw transportError(wire)
-      if (!wire.value.ok) throw new Error(wire.value.message)
-      const result = wire.value
-      if (generation !== refreshGeneration.current) return
-      setFiles(current => ({ ...current, [path]: { loading: false, diff: result } }))
-    } catch (reason) {
-      if (generation !== refreshGeneration.current) return
-      setFiles(current => ({
-        ...current,
-        [path]: { loading: false, error: reason instanceof Error ? reason.message : String(reason) },
-      }))
-    }
-  }, [remote, sessionId])
-  const refresh = useCallback(async () => {
-    const generation = ++refreshGeneration.current
-    const [statusWire, checksWire] = await Promise.all([remote.review.status(sessionId), remote.review.checks(sessionId)])
-    if (!statusWire.ok) throw transportError(statusWire)
-    if (!checksWire.ok) throw transportError(checksWire)
-    if (!statusWire.value.ok) throw new Error(statusWire.value.message)
-    if (!checksWire.value.ok) throw new Error(checksWire.value.message)
-    if (generation !== refreshGeneration.current) return
-    const nextStatus = statusWire.value
-    const paths = nextStatus.files.map(file => file.path)
-    setStatus(nextStatus)
-    setChecks(checksWire.value)
-    const firstPath = paths[0]
-    setExpandedPaths(firstPath === undefined ? new Set() : new Set([firstPath]))
-    setFiles(Object.fromEntries(paths.map(path => [path, { loading: false }])))
-    setError(null)
-    if (firstPath !== undefined) await loadFile(firstPath, generation)
-  }, [loadFile, remote, sessionId])
-  useEffect(() => {
-    void refresh().catch(reason => { setError(reason instanceof Error ? reason.message : String(reason)) })
-    return () => { refreshGeneration.current += 1 }
-  }, [refresh])
-  const headerActions = useMemo<WorkbenchPanelHeaderContribution>(() => ({
-    right: <WorkbenchPanelIconButton label={t('refresh')} onClick={() => { void refresh().catch(reason => { setError(String(reason)) }) }}><IconRefreshOutline14 /></WorkbenchPanelIconButton>,
-  }), [refresh, t])
-  usePanelHeaderActions(contributeHeaderActions, headerActions)
-  const toggleFile = useCallback((path: string) => {
-    const opening = !expandedPaths.has(path)
-    setExpandedPaths(current => {
-      const next = new Set(current)
-      if (next.has(path)) next.delete(path)
-      else next.add(path)
-      return next
-    })
-    const view = files[path]
-    if (opening && view?.loading !== true && view?.diff === undefined) void loadFile(path)
-  }, [expandedPaths, files, loadFile])
-  const renderFile = (file: ReviewFileStatus) => {
-    const view = files[file.path]
-    const expanded = expandedPaths.has(file.path)
-    const renderedLayers = view?.diff?.layers.map(layer => ({
-      ...layer,
-      files: parseUnifiedDiff(layer.patch, view.diff?.path ?? file.path),
-    })) ?? []
-    const counts = renderedLayers.reduce((total, layer) => ({
-      added: total.added + layer.files.reduce((sum, item) => sum + item.added, 0),
-      removed: total.removed + layer.files.reduce((sum, item) => sum + item.removed, 0),
-    }), { added: 0, removed: 0 })
-    const oldPath = view?.diff?.oldPath ?? file.oldPath
-    const label = oldPath !== undefined && oldPath !== file.path ? `${oldPath} → ${file.path}` : file.path
-    return (
-      <article key={file.path} className={css.reviewFile}>
-        <button
-          type="button"
-          className={css.reviewFileHeader}
-          aria-expanded={expanded}
-          onClick={() => { toggleFile(file.path) }}
-        >
-          <IconChevronDownOutline14 className={expanded ? undefined : css.reviewFileChevronCollapsed} />
-          <code className={css.reviewFileState}>{file.index}{file.workingTree}</code>
-          <span className={css.reviewFilePath}>{label}</span>
-          {view?.loading === true
-            ? <span className={css.reviewFileLoading}>{t('loading')}</span>
-            : view?.diff !== undefined && <span className={css.reviewCounts}><b>{`+${counts.added}`}</b><i>{`-${counts.removed}`}</i></span>}
-        </button>
-        {expanded && (
-          <div className={css.reviewFileContent}>
-            {(view === undefined || view.loading || (view.diff === undefined && view.error === undefined)) && <div className={css.reviewFileMessage}>{t('loading')}</div>}
-            {view?.error !== undefined && <div className={css.reviewFileError}>{view.error}</div>}
-            {view?.loading === false && view.error === undefined && renderedLayers.map(layer => (
-              <section key={layer.kind} className={css.diffLayer}>
-                <div className={css.diffLayerTitle}>{layer.kind === 'staged' ? t('review.layer.staged') : t('review.layer.working')}</div>
-                {layer.files.map(parsedFile => (
-                  parsedFile.binary
-                    ? <div key={`${parsedFile.oldPath ?? ''}:${parsedFile.path}`} className={css.binary}>{t('review.binary')}</div>
-                    : <DiffBlock
-                        key={`${parsedFile.oldPath ?? ''}:${parsedFile.path}`}
-                        diffs={parsedFile.hunks.map(hunk => ({
-                          ...hunk,
-                          oldSource: layer.oldSource.text,
-                          newSource: layer.newSource.text,
-                        }))}
-                        showPath={false}
-                        showFooter={false}
-                        variant="review"
-                      />
-                ))}
-              </section>
-            ))}
-          </div>
-        )}
-      </article>
-    )
+/** Mount a file's diff content when it is this close to the viewport. */
+const NEAR_VIEWPORT_MARGIN = 400
+
+/** A frame gap above this means scrolling paused; heavy bodies fill then. */
+const BODY_FILL_IDLE_MS = 120
+
+/**
+ * One heavy body per frame, only when scrolling pauses. Batch-expanded files
+ * mount a light skeleton as they enter the viewport (scrolling stays on the
+ * compositor); the real DiffBlock mounts through this queue once scroll
+ * activity has been quiet for a pause window, one per frame, so a fast scroll
+ * never waits on a burst of heavy commits.
+ */
+const bodyFillQueue: Array<() => void> = []
+let bodyFillFrame: number | null = null
+/** After this timestamp with no scroll activity, bodies may fill. */
+let bodyFillIdleAt = 0
+let scrollListening = false
+
+function onScrollCapture(): void {
+  bodyFillIdleAt = performance.now() + BODY_FILL_IDLE_MS
+}
+
+function requestBodyFill(fill: () => void): void {
+  // jsdom (and other hosts without rAF) fills synchronously: tests observe
+  // the fully mounted body without frame machinery.
+  if (typeof requestAnimationFrame === 'undefined') { fill(); return }
+  if (!scrollListening && typeof window !== 'undefined') {
+    scrollListening = true
+    window.addEventListener('scroll', onScrollCapture, true)
   }
+  bodyFillQueue.push(fill)
+  bodyFillIdleAt = performance.now() + BODY_FILL_IDLE_MS
+  if (bodyFillFrame === null) {
+    bodyFillFrame = requestAnimationFrame(tickBodyFill)
+  }
+}
+
+function tickBodyFill(now: number): void {
+  bodyFillFrame = null
+  if (now < bodyFillIdleAt) {
+    // Scrolling (or a fresh request) is still active: wait it out.
+    bodyFillFrame = requestAnimationFrame(tickBodyFill)
+    return
+  }
+  const fill = bodyFillQueue.shift()
+  if (fill === undefined) return
+  fill()
+  if (bodyFillQueue.length > 0) {
+    // One heavy commit per frame, then breathe before the next.
+    bodyFillIdleAt = now + 40
+    bodyFillFrame = requestAnimationFrame(tickBodyFill)
+  }
+}
+
+type ReviewPanelProps = WorkbenchPanelProps & PropsLocale<'workbench-tools'> & { controller: ReviewCacheController }
+
+/**
+ * One file row: header + expanded body. All props are stable references
+ * (the merge keeps unchanged entries' identity), so one entry's fetch or
+ * revalidate re-renders only its own row and the parse-once layer objects
+ * keep DiffBlock's internal diff/highlight memos alive.
+ *
+ * Mounting is two-stage so scrolling never waits on heavy work. Approaching
+ * the viewport mounts a light skeleton (an estimated-height box, ~1 ms);
+ * the real DiffBlock mounts either immediately for a single-file expand
+ * gesture, or through the pause-detecting body-fill queue after a batch
+ * expand-all. Once mounted the body stays mounted: collapsing only hides it,
+ * so a collapse→expand cycle is a pure CSS flip with zero rebuild.
+ */
+const ReviewFileRow = memo(function ReviewFileRow({
+  entry, expanded, onToggle, t,
+}: {
+  entry: FileEntry
+  expanded: boolean
+  onToggle: (path: string) => void
+  t: RemoteProps['t']
+}) {
+  const file = entry.status
+  const ready = entry.cache.kind === 'ready' ? entry.cache : null
+  const pending = entry.cache.kind === 'loading' || entry.cache.kind === 'empty'
+  const failed = entry.cache.kind === 'error' ? entry.cache.message : null
+  const oldPath = ready?.raw.oldPath ?? file.oldPath
+  const label = oldPath !== undefined && oldPath !== file.path ? `${oldPath} → ${file.path}` : file.path
+  const [skeletonMounted, setSkeletonMounted] = useState(false)
+  const [bodyMounted, setBodyMounted] = useState(false)
+  const anchorRef = useRef<HTMLElement | null>(null)
+  // Approaching the viewport mounts only the light skeleton — a scrolling
+  // frame must never commit a full diff body.
+  useEffect(() => {
+    if (skeletonMounted || !expanded) return
+    const node = anchorRef.current
+    if (node === null) return
+    // jsdom (and any host without IntersectionObserver) mounts immediately;
+    // browsers mount near the viewport now and observe the rest.
+    if (typeof IntersectionObserver === 'undefined') { setSkeletonMounted(true); return }
+    const rect = node.getBoundingClientRect()
+    const viewport = window.innerHeight || 0
+    if (rect.top <= viewport + NEAR_VIEWPORT_MARGIN && rect.bottom >= -NEAR_VIEWPORT_MARGIN) {
+      setSkeletonMounted(true)
+      return
+    }
+    const observer = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) {
+        setSkeletonMounted(true)
+        observer.disconnect()
+      }
+    }, { rootMargin: `${NEAR_VIEWPORT_MARGIN}px 0px` })
+    observer.observe(node)
+    return () => { observer.disconnect() }
+  }, [expanded, skeletonMounted])
+  // The skeleton waits for a scroll pause, then the real body fills in.
+  useEffect(() => {
+    if (!skeletonMounted || bodyMounted) return
+    requestBodyFill(() => { setBodyMounted(true) })
+  }, [bodyMounted, skeletonMounted])
+  // A single-file expand is a user gesture: mount the body immediately
+  // instead of waiting for the pause detector.
+  const onHeaderClick = useCallback(() => {
+    if (!expanded) setBodyMounted(true)
+    onToggle(file.path)
+  }, [expanded, file.path, onToggle])
+  const hunks = useMemo(() => ready?.layers.reduce((sum, layer) => sum + layer.files.reduce((files, parsed) => (
+    files + (parsed.binary ? 0 : parsed.hunks.length)
+  ), 0), 0) ?? 0, [ready])
+  const skeletonHeight = Math.max(120, Math.min(hunks * 16 + 40, 600))
+  return (
+    <article ref={anchorRef} className={css.reviewFile} data-review-path={file.path}>
+      <button
+        type="button"
+        className={css.reviewFileHeader}
+        aria-expanded={expanded}
+        onClick={onHeaderClick}
+      >
+        <IconChevronDownOutline14 className={expanded ? undefined : css.reviewFileChevronCollapsed} />
+        <code className={css.reviewFileState}>{file.index}{file.workingTree}</code>
+        <span className={css.reviewFilePath}>{label}</span>
+        {pending
+          ? <span className={css.reviewFileLoading}>{t('loading')}</span>
+          : ready !== null && <span className={css.reviewCounts}><b>{`+${ready.added}`}</b><i>{`-${ready.removed}`}</i></span>}
+      </button>
+      {expanded && skeletonMounted && !bodyMounted && (
+        <div className={css.reviewFileSkeleton} style={{ height: skeletonHeight }} aria-hidden>
+          {t('loading')}
+        </div>
+      )}
+      {bodyMounted && (
+        <div className={expanded ? css.reviewFileContent : css.reviewFileContentCollapsed} aria-hidden={!expanded}>
+          {pending && <div className={css.reviewFileMessage}>{t('loading')}</div>}
+          {failed !== null && <div className={css.reviewFileError}>{failed}</div>}
+          {ready !== null && ready.layers.map(layer => (
+            <section key={layer.kind} className={css.diffLayer}>
+              <div className={css.diffLayerTitle}>{layer.kind === 'staged' ? t('review.layer.staged') : t('review.layer.working')}</div>
+              {layer.files.map(parsed => (
+                parsed.binary
+                  ? <div key={parsed.key} className={css.binary}>{t('review.binary')}</div>
+                  : <DiffBlock key={parsed.key} diffs={parsed.hunks} showPath={false} showFooter={false} variant="review" />
+              ))}
+            </section>
+          ))}
+        </div>
+      )}
+    </article>
+  )
+})
+
+export function ReviewPanel({ controller, reveal, visible, contributeHeaderActions, t }: ReviewPanelProps) {
+  const cache = useSyncExternalStore(controller.subscribe, controller.getSnapshot)
+  const [expandedPaths, setExpandedPaths] = useState<ReadonlySet<string>>(new Set())
+  const [missedPath, setMissedPath] = useState<string | null>(null)
+  const listRef = useRef<HTMLDivElement | null>(null)
+  const expandedRef = useRef(expandedPaths); expandedRef.current = expandedPaths
+  const prevVisible = useRef(false)
+  /** Whether the current open has already been handled (expand-all or reveal). */
+  const openHandled = useRef(false)
+
+  // Opening the panel (first mount visible, or hidden→visible) means
+  // expand-all with the list focused at the top — unless this open is driven
+  // by a reveal command, which keeps its own expand-and-scroll behavior.
+  useEffect(() => {
+    const nowVisible = visible !== false
+    const wasVisible = prevVisible.current
+    prevVisible.current = nowVisible
+    if (!nowVisible || wasVisible) return
+    openHandled.current = reveal !== undefined
+  }, [reveal, visible])
+
+  // The expand-all above waits for the first status, then expands every file
+  // and scrolls the list back to its top.
+  useEffect(() => {
+    if (openHandled.current || reveal !== undefined || !(visible !== false)) return
+    const files = cache.status?.files ?? []
+    if (files.length === 0) return
+    openHandled.current = true
+    const next = new Set(files.map(file => file.path))
+    expandedRef.current = next
+    startTransition(() => { setExpandedPaths(next) })
+    // Batch open loads through the sequential queue; ready files mount
+    // immediately from the warm caches.
+    controller.loadAll(next)
+    // Focus the top after the expansion joins the layout.
+    requestAnimationFrame(() => {
+      listRef.current?.querySelector<HTMLElement>('[data-review-path]')
+        ?.scrollIntoView({ block: 'start' })
+    })
+  }, [cache.status, controller, reveal, visible])
+
+  // A reveal expands and scrolls to the target: the optimistic pass points
+  // at a cached file immediately, the silent refresh corrects and re-fetches
+  // the focused file. The nonce (command sequence) makes same-path repeats
+  // re-fire.
+  useEffect(() => {
+    if (reveal === undefined) return
+    const optimistic = matchReviewFile(cache.status?.files ?? [], reveal.target)
+    if (optimistic !== undefined && cache.entries[optimistic] !== undefined) {
+      const next = new Set([...expandedRef.current, optimistic])
+      expandedRef.current = next
+      setExpandedPaths(next)
+    }
+    void controller.refresh({ focusPath: reveal.target, silent: true }).then((focus) => {
+      if (focus === undefined) {
+        setMissedPath(reveal.target)
+        return
+      }
+      setMissedPath(null)
+      const next = new Set([...expandedRef.current, focus])
+      expandedRef.current = next
+      setExpandedPaths(next)
+      // Scroll after paint: the expansion above must join the layout first.
+      requestAnimationFrame(() => {
+        const escaped = focus.replaceAll('\\', '\\\\').replaceAll('"', '\\"')
+        listRef.current?.querySelector<HTMLElement>(`[data-review-path="${escaped}"]`)
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      })
+    }).catch(() => {
+      // Reveal refresh failures keep the last good panel; the optimistic
+      // expansion above already pointed the user at the file.
+    })
+  }, [reveal, controller])
+
+  // The controller gates its hidden→visible catch-all refresh on this share.
+  useEffect(() => { controller.setVisible(visible !== false) }, [controller, visible])
+  // Expansion exempts entries from the controller's cache eviction.
+  useEffect(() => { controller.setExpanded(expandedPaths) }, [controller, expandedPaths])
+
+  const toggleFile = useCallback((path: string): void => {
+    const opening = !expandedRef.current.has(path)
+    const next = new Set(expandedRef.current)
+    if (opening) next.add(path)
+    else next.delete(path)
+    expandedRef.current = next
+    setExpandedPaths(next)
+    // SWR on expand: a stale cache displays immediately and revalidates.
+    if (opening) controller.ensure(path)
+  }, [controller])
+
+  // One header action left of the refresh button: expand-all when nothing is
+  // expanded, collapse-all otherwise — the icon states swap with the action.
+  const anyExpanded = expandedPaths.size > 0
+  const headerActions = useMemo<WorkbenchPanelHeaderContribution>(() => ({
+    right: <>
+      <WorkbenchPanelIconButton
+        label={anyExpanded ? t('review.collapseAll') : t('review.expandAll')}
+        disabled={(cache.status?.files.length ?? 0) === 0}
+        onClick={() => {
+          const paths = cache.status?.files.map(file => file.path) ?? []
+          const next = anyExpanded ? new Set<string>() : new Set(paths)
+          expandedRef.current = next
+          // Mounting many warmed DiffBlocks is still a large render: mark the
+          // expansion as a transition so the UI keeps answering input.
+          if (anyExpanded) setExpandedPaths(next)
+          else startTransition(() => { setExpandedPaths(next) })
+          // Anything not already ready revalidates through the sequential
+          // queue — never N concurrent fetches whose sync warm-ups would
+          // freeze the frame.
+          controller.loadAll(next)
+        }}
+      >
+        {anyExpanded ? <IconUnfoldLessOutline14 /> : <IconUnfoldMoreOutline14 />}
+      </WorkbenchPanelIconButton>
+      <WorkbenchPanelIconButton label={t('refresh')} onClick={() => { void controller.refresh({ runChecks: true }) }}><IconRefreshOutline14 /></WorkbenchPanelIconButton>
+    </>
+  }), [anyExpanded, cache.status, controller, t])
+  usePanelHeaderActions(contributeHeaderActions, headerActions)
+
   return (
     <div className={css.review}>
-      {error !== null && <div className={css.error}>{error}</div>}
+      {cache.error !== null && <div className={css.error}>{cache.error}</div>}
       <div className={css.reviewBody}>
         <div className={css.reviewStatus}>
-          <strong>{status?.branch || t('review.title')} → {t('review.title')}</strong>
-          <span>{checks === null ? '—' : checks.clean ? t('review.checks.clean') : t('review.checks.failed')}</span>
+          <strong>{cache.status?.branch || t('review.title')} → {t('review.title')}</strong>
+          <span>{cache.checks === null ? '—' : cache.checks.clean ? t('review.checks.clean') : t('review.checks.failed')}</span>
         </div>
-        {status?.files.length === 0
+        {missedPath !== null && (
+          <div className={css.reviewMissed} role="status">{t('review.missedFile')}<code>{missedPath}</code></div>
+        )}
+        {cache.status?.files.length === 0
           ? <div className={css.reviewPlaceholder}>{t('review.clean')}</div>
-          : <div className={css.fileList} role="list" aria-label={t('review.files')}>{status?.files.map(renderFile)}</div>}
+          : <div ref={listRef} className={css.fileList} role="list" aria-label={t('review.files')}>
+              {cache.status?.files.map(file => {
+                const entry = cache.entries[file.path]
+                if (entry === undefined) return null
+                return (
+                  <ReviewFileRow
+                    key={file.path}
+                    entry={entry}
+                    expanded={expandedPaths.has(file.path)}
+                    onToggle={toggleFile}
+                    t={t}
+                  />
+                )
+              })}
+            </div>}
       </div>
     </div>
   )

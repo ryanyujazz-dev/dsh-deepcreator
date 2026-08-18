@@ -9,6 +9,9 @@ import {
 import type {} from '@ryanyujazz/dsh-client-ui-settings/client'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@ryanyujazz/dsh-client-locale/client'
+// Type-only: the ctx.workbench Context merge — the change-reveal handoff reads
+// the optional service; ui-workbench stays an undirected runtime collaborator.
+import type {} from '@ryanyujazz/dsh-client-ui-workbench/client'
 import type { ViewTab } from './contract/views.ts'
 import type {
   ApprovalWait, ChatNodeTurnDataInjected, ChatScrollPosition, ChatViewInjected, ComposerBarInjected,
@@ -440,6 +443,19 @@ export function apply(ctx: Context): void {
             // Host/OS open failures stay silent in the chat row; the native
             // app surfaces its own error dialog when the path is unusable.
           })
+        },
+        // The mutation rows' path link: focus the file's change in the review
+        // panel when the Workbench and its review type are composed, and keep
+        // the host open behavior otherwise (no silent dead link).
+        revealChange: (path) => {
+          const cwd = sessions.list.getSnapshot().byId[sessionId]?.cwd
+          const resolved = resolveWorkspacePath(cwd, path)
+          const workbench = ctx.get('workbench')
+          if (workbench !== undefined && workbench.types.list().some(definition => definition.id === 'review')) {
+            workbench.reveal('review', resolved)
+            return
+          }
+          void workspaces.openPath(resolved).catch(() => { })
         },
         loadOlder: () => { void scoped.loadOlder() },
         loadImage: attachment => conversation.resolveImage(sessionId, attachment),

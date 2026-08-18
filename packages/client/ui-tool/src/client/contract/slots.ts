@@ -36,6 +36,12 @@ export interface ToolCallOwnerProps {
   cwd?: string | undefined
   /** Open a Tool argument path through the Host. */
   openFile: (path: string) => void
+  /**
+   * Focus this file's change in the review surface when available (the
+   * file-mutation rows prefer it over `openFile`); absent = the path link
+   * keeps the host open behavior.
+   */
+  revealChange?: ((path: string) => void) | undefined
   /** Inspect this call in the trajectory view when available. */
   inspect?: (() => void) | undefined
   /**

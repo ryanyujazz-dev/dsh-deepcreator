@@ -194,6 +194,39 @@ describe('DiffBlock height cap', () => {
     expect(screen.queryByRole('button', { name: '展开 14 行' })).toBeNull()
     expect(bodyRows(container)).toHaveLength(20)
   })
+
+  it('reconstructs Review head, inter-hunk, and tail gaps as local FoldRows', () => {
+    const oldLines = Array.from({ length: 30 }, (_value, index) => `line ${index + 1}`)
+    const newLines = [...oldLines]
+    newLines[4] = 'line 5 changed'
+    newLines[24] = 'line 25 changed'
+    const oldSource = `${oldLines.join('\n')}\n`
+    const newSource = `${newLines.join('\n')}\n`
+    const diffs: DiffHunk[] = [
+      {
+        path: 'review.ts', oldStart: 3, newStart: 3,
+        oldText: oldLines.slice(2, 7).join('\n'), newText: newLines.slice(2, 7).join('\n'),
+        oldSource, newSource,
+      },
+      {
+        path: 'review.ts', oldStart: 23, newStart: 23,
+        oldText: oldLines.slice(22, 27).join('\n'), newText: newLines.slice(22, 27).join('\n'),
+        oldSource, newSource,
+      },
+    ]
+    const { container } = render(<DiffBlock diffs={diffs} variant="review" showPath={false} showFooter={false} />)
+
+    expect(screen.getByRole('button', { name: '展开 2 行' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '展开 15 行' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '展开 3 行' })).toBeTruthy()
+    expect(container.textContent).not.toContain('line 12')
+
+    fireEvent.click(screen.getByRole('button', { name: '展开 15 行' }))
+    expect(screen.queryByRole('button', { name: '展开 15 行' })).toBeNull()
+    expect(container.textContent).toContain('line 12')
+    expect(screen.getByRole('button', { name: '展开 2 行' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '展开 3 行' })).toBeTruthy()
+  })
 })
 
 describe('DiffBlock copy', () => {

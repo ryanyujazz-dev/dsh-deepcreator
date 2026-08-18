@@ -165,6 +165,28 @@ describe('chat row diff body', () => {
     expect(view.container.querySelector('[data-diff]')).toBeNull()
     expect(view.getByText(/"foo"/)).toBeTruthy()
   })
+
+  it('a generic diff row reveals its change; a generic read keeps the host open', () => {
+    const openFile = vi.fn()
+    const revealChange = vi.fn()
+    // Diff render intent: the path link points at the review surface.
+    const diffView = render(<GenericToolCard {...{ ...ownerProps(settled()), openFile, revealChange }} />)
+    fireEvent.click(diffView.getByRole('button', { name: 'demo.txt' }))
+    expect(revealChange).toHaveBeenCalledWith('notes/demo.txt')
+    cleanup()
+    // Read intent (no diff card): the reveal share stays unconsumed and the
+    // link keeps the host open behavior.
+    const readView = render(<GenericToolCard {...{
+      callId: 'c1', toolName: 'read', openFile, revealChange, t,
+      block: settled({
+        call: { name: 'read', argsRaw: '{"path":"notes/demo.txt"}' },
+        callView: null, resultView: null,
+      }),
+    }} />)
+    fireEvent.click(readView.getByRole('button', { name: 'demo.txt' }))
+    expect(revealChange).toHaveBeenCalledTimes(1)
+    expect(openFile).toHaveBeenCalledWith('notes/demo.txt')
+  })
 })
 
 describe('FileMutationRow diff card', () => {
@@ -207,6 +229,17 @@ describe('FileMutationRow diff card', () => {
     // The row passes the tool's own path; the injected openFile resolves it
     // against the session cwd (apply.ts), so the row must not resolve twice.
     expect(openFile).toHaveBeenCalledWith('notes/demo.txt')
+  })
+
+  it('the path link prefers the review reveal when the owner supplies one', () => {
+    const openFile = vi.fn()
+    const revealChange = vi.fn()
+    const view = render(<FileMutationRow {...{ ...rowProps(settled()), openFile, revealChange }} />)
+    fireEvent.click(view.getByRole('button', { name: 'demo.txt' }))
+    // The mutation row's link points at the change, not the file: the reveal
+    // share wins and the host open is untouched.
+    expect(revealChange).toHaveBeenCalledWith('notes/demo.txt')
+    expect(openFile).not.toHaveBeenCalled()
   })
 
   it('registers under write too, rendering a create as an added-only diff', () => {

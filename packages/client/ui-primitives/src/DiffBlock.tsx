@@ -1,7 +1,10 @@
-import { useCallback, useMemo, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import clsx from 'clsx'
 import { writeClipboard } from './clipboard.ts'
-import { buildDiffHunkModel, type AlignedRow, type DiffHunkInput, type TextRange } from './diff/model.ts'
+import {
+  buildCachedDiffHunkModel, buildDiffHunkModel, diffContentLines, diffLanguageFromPath, prioritizeSnapshotHighlights,
+  snapshotHighlightKey, subscribeSnapshotHighlight, type AlignedRow, type DiffHunkInput, type DiffHunkModel, type TextRange,
+} from './diff/model.ts'
 import {
   grammarLoadCount, subscribeGrammarLoaded, type HighlightSpan,
 } from './markdown/highlight.ts'
@@ -47,6 +50,28 @@ interface FoldRow { kind: 'fold'; hidden: AlignedRow[]; key: string }
 interface LimitFoldRow { kind: 'limit-fold'; hiddenCount: number }
 type VisibleRow = AlignedRow | FoldRow | LimitFoldRow
 
+interface ContextBasis {
+  side: 'old' | 'new'
+  source: string
+  start: number
+  consumed: number
+}
+
+interface OmittedContextGap {
+  kind: 'gap'
+  key: string
+  path: string
+  rows: AlignedRow[]
+}
+
+interface HunkEntry {
+  kind: 'hunk'
+  key: string
+  model: DiffHunkModel
+}
+
+type ReviewEntry = OmittedContextGap | HunkEntry
+
 function representedRowCount(row: VisibleRow): number {
   if (row.kind === 'fold') return row.hidden.length
   if (row.kind === 'limit-fold') return row.hiddenCount
@@ -71,6 +96,97 @@ function foldedRows(rows: AlignedRow[], expanded: ReadonlySet<string>): VisibleR
 
 function rowLineNumber(row: AlignedRow): number | null {
   return row.kind === 'del' ? row.oldLineNo : row.newLineNo
+}
+
+function contextBasis(input: DiffHunk, model: DiffHunkModel): ContextBasis | undefined {
+  if (input.newSource !== undefined && input.newSource !== null && input.newStart !== undefined && input.newStart > 0) {
+    return {
+      side: 'new', source: input.newSource, start: input.newStart,
+      consumed: model.rows.filter(row => row.kind !== 'del').length,
+    }
+  }
+  if (input.oldSource !== undefined && input.oldSource !== null && input.oldStart !== undefined && input.oldStart > 0) {
+    return {
+      side: 'old', source: input.oldSource, start: input.oldStart,
+      consumed: model.rows.filter(row => row.kind !== 'add').length,
+    }
+  }
+  return undefined
+}
+
+function omittedContextGap(
+  path: string, basis: ContextBasis, start: number, count: number, position: string,
+): OmittedContextGap | undefined {
+  if (count <= 0 || start <= 0) return undefined
+  const sourceLines = diffContentLines(basis.source)
+  const lines = sourceLines.slice(start - 1, start - 1 + count)
+  if (lines.length === 0) return undefined
+  // The explicit terminator preserves a gap consisting solely of blank lines.
+  const text = `${lines.join('\n')}\n`
+  const rows = buildDiffHunkModel({
+    path,
+    oldText: text,
+    newText: text,
+    oldStart: start,
+    newStart: start,
+    oldSource: basis.source,
+    newSource: basis.source,
+  }).rows
+  if (rows.length === 0) return undefined
+  return { kind: 'gap', key: `${path}:${basis.side}:${start}:${rows.length}:${position}`, path, rows }
+}
+
+/** Reconstruct Git-omitted head, inter-hunk and tail context from Review snapshots. */
+function reviewEntries(diffs: readonly DiffHunk[], models: readonly DiffHunkModel[]): ReviewEntry[] {
+  const entries: ReviewEntry[] = []
+  let previous: { path: string; basis: ContextBasis } | undefined
+
+  for (let index = 0; index < models.length; index += 1) {
+    const model = models[index]
+    const input = diffs[index]
+    if (model === undefined || input === undefined) continue
+    const basis = contextBasis(input, model)
+
+    if (previous !== undefined && (previous.path !== model.path || basis === undefined || previous.basis.side !== basis.side || previous.basis.source !== basis.source)) {
+      const tailStart = previous.basis.start + previous.basis.consumed
+      const tail = omittedContextGap(
+        previous.path,
+        previous.basis,
+        tailStart,
+        diffContentLines(previous.basis.source).length - tailStart + 1,
+        'tail',
+      )
+      if (tail !== undefined) entries.push(tail)
+      previous = undefined
+    }
+
+    if (basis !== undefined) {
+      if (previous === undefined) {
+        const leading = omittedContextGap(model.path, basis, 1, basis.start - 1, 'head')
+        if (leading !== undefined) entries.push(leading)
+      } else {
+        const gapStart = previous.basis.start + previous.basis.consumed
+        const between = omittedContextGap(model.path, basis, gapStart, basis.start - gapStart, `before-${index}`)
+        if (between !== undefined) entries.push(between)
+      }
+    }
+
+    entries.push({ kind: 'hunk', key: `${model.path}:${model.oldStart ?? 'x'}:${model.newStart ?? 'x'}:${index}`, model })
+    previous = basis === undefined ? undefined : { path: model.path, basis }
+  }
+
+  if (previous !== undefined) {
+    const tailStart = previous.basis.start + previous.basis.consumed
+    const tail = omittedContextGap(
+      previous.path,
+      previous.basis,
+      tailStart,
+      diffContentLines(previous.basis.source).length - tailStart + 1,
+      'tail',
+    )
+    if (tail !== undefined) entries.push(tail)
+  }
+  return entries
 }
 
 interface RenderSegment { text: string; style: HighlightSpan['style']; marked: boolean }
@@ -99,6 +215,58 @@ function renderSegments(text: string, syntax: readonly HighlightSpan[], marks: r
     })
   }
   return result
+}
+
+function AlignedDiffRow({ row, index, labels }: { row: AlignedRow; index: number; labels: DiffBlockLabels }) {
+  const number = rowLineNumber(row)
+  const segments = renderSegments(row.text, row.syntax, row.marks)
+  const accessibleLabel = row.kind === 'add'
+    ? labels.addedLine(number, row.text)
+    : row.kind === 'del'
+      ? labels.deletedLine(number, row.text)
+      : labels.contextLine(number, row.text)
+  return (
+    <div
+      role="listitem"
+      aria-label={accessibleLabel}
+      className={clsx(css.line, css[row.kind])}
+      data-diff-row={row.kind}
+    >
+      <span className={css.gutter} aria-hidden>{number ?? ''}</span>
+      <span className={css.sign} aria-hidden>{row.kind === 'add' ? '+' : row.kind === 'del' ? '-' : ''}</span>
+      <span className={css.content} aria-hidden>
+        {segments.length === 0 ? row.text : segments.map((segment, segmentIndex) => (
+          <span
+            key={`${index}:${segmentIndex}`}
+            data-code-token=""
+            className={segment.marked ? (row.kind === 'add' ? css.wordAdd : css.wordDel) : undefined}
+            style={segment.style}
+          >
+            {segment.text}
+          </span>
+        ))}
+      </span>
+    </div>
+  )
+}
+
+function OmittedContext({ gap, labels }: { gap: OmittedContextGap; labels: DiffBlockLabels }) {
+  const [expanded, setExpanded] = useState(false)
+  if (!expanded) return (
+    <button
+      type="button"
+      className={css.fold}
+      aria-label={labels.expandContext(gap.rows.length)}
+      onClick={() => { setExpanded(true) }}
+    >
+      {`⋯ ${labels.expandContext(gap.rows.length)}`}
+    </button>
+  )
+  return (
+    <div className={css.rows} role="list" aria-label={gap.path}>
+      {gap.rows.map((row, index) => <AlignedDiffRow key={`${row.kind}:${rowLineNumber(row) ?? 'x'}:${index}`} row={row} index={index} labels={labels} />)}
+    </div>
+  )
 }
 
 function copyText(diffs: readonly DiffHunk[]): string {
@@ -159,37 +327,7 @@ function HunkCard({
         {`⋯ ${labels.expandContext(row.hidden.length)}`}
       </button>
     )
-    const number = rowLineNumber(row)
-    const segments = renderSegments(row.text, row.syntax, row.marks)
-    const accessibleLabel = row.kind === 'add'
-      ? labels.addedLine(number, row.text)
-      : row.kind === 'del'
-        ? labels.deletedLine(number, row.text)
-        : labels.contextLine(number, row.text)
-    return (
-      <div
-        key={`${row.kind}:${number ?? 'x'}:${index}`}
-        role="listitem"
-        aria-label={accessibleLabel}
-        className={clsx(css.line, css[row.kind])}
-        data-diff-row={row.kind}
-      >
-        <span className={css.gutter} aria-hidden>{number ?? ''}</span>
-        <span className={css.sign} aria-hidden>{row.kind === 'add' ? '+' : row.kind === 'del' ? '-' : ''}</span>
-        <span className={css.content} aria-hidden>
-          {segments.length === 0 ? row.text : segments.map((segment, segmentIndex) => (
-            <span
-              key={segmentIndex}
-              data-code-token=""
-              className={segment.marked ? (row.kind === 'add' ? css.wordAdd : css.wordDel) : undefined}
-              style={segment.style}
-            >
-              {segment.text}
-            </span>
-          ))}
-        </span>
-      </div>
-    )
+    return <AlignedDiffRow key={`${row.kind}:${rowLineNumber(row) ?? 'x'}:${index}`} row={row} index={index} labels={labels} />
   }
 
   return (
@@ -216,7 +354,29 @@ export function DiffBlock({
   labels: labelOverrides,
 }: DiffBlockProps) {
   const loaded = useSyncExternalStore(subscribeGrammarLoaded, grammarLoadCount, grammarLoadCount)
-  const models = useMemo(() => diffs.map(buildDiffHunkModel), [diffs, loaded])
+  // Snapshots highlight progressively: a queued snapshot renders plain text,
+  // the job jumps the queue on mount, and its completion bumps this tick so
+  // the models rebuild with colors once — only for this block's snapshots.
+  const snapshotKeys = useMemo(() => {
+    const keys = new Set<string>()
+    for (const diff of diffs) {
+      const language = diffLanguageFromPath(diff.path)
+      if (diff.oldSource !== undefined && diff.oldSource !== null) keys.add(snapshotHighlightKey(diff.oldSource, language))
+      if (diff.newSource !== undefined && diff.newSource !== null) keys.add(snapshotHighlightKey(diff.newSource, language))
+    }
+    return keys
+  }, [diffs])
+  const [snapshotTick, setSnapshotTick] = useState(0)
+  useEffect(() => {
+    prioritizeSnapshotHighlights(snapshotKeys)
+    return subscribeSnapshotHighlight(() => { setSnapshotTick(tick => tick + 1) }, snapshotKeys)
+  }, [snapshotKeys])
+  const models = useMemo(() => diffs.map(buildCachedDiffHunkModel), [diffs, loaded, snapshotTick])
+  const entries = useMemo<ReviewEntry[]>(() => variant === 'review'
+    ? reviewEntries(diffs, models)
+    : models.map((model, index) => ({
+        kind: 'hunk', key: `${model.path}:${model.oldStart ?? 'x'}:${model.newStart ?? 'x'}:${index}`, model,
+      })), [diffs, models, variant])
   const labels = { ...DEFAULT_LABELS, ...labelOverrides }
   const [copied, setCopied] = useState(false)
   const total = models.reduce((sum, model) => ({ added: sum.added + model.added, removed: sum.removed + model.removed }), { added: 0, removed: 0 })
@@ -234,7 +394,9 @@ export function DiffBlock({
     <div className={clsx(css.block, css[variant], className)} data-diff="" data-diff-block="">
       {showCopy && <button type="button" className={css.copyButton} onClick={onCopy}>{copied ? labels.copied : labels.copy}</button>}
       <div className={css.body}>
-        {models.map((model, index) => <HunkCard key={`${model.path}:${model.oldStart ?? 'x'}:${model.newStart ?? 'x'}:${index}`} model={model} maxLines={maxLines} showPath={showPath} labels={labels} />)}
+        {entries.map(entry => entry.kind === 'gap'
+          ? <OmittedContext key={entry.key} gap={entry} labels={labels} />
+          : <HunkCard key={entry.key} model={entry.model} maxLines={maxLines} showPath={showPath} labels={labels} />)}
       </div>
       {showFooter && <div className={css.footer}>{`└ +${total.added} -${total.removed} · ${files} ${files === 1 ? 'file' : 'files'}`}</div>}
     </div>
