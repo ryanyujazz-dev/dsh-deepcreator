@@ -1,6 +1,7 @@
 /** Appearance preference group registered into the General settings section. */
+import { useState } from 'react'
 import clsx from 'clsx'
-import { DiffBlock, type DiffHunk } from '@ryanyujazz/dsh-client-ui-primitives'
+import { DiffBlock, IconChevronDownOutline14, Menu, type DiffHunk } from '@ryanyujazz/dsh-client-ui-primitives'
 import type {
   PropsLocale, PropsRuntime, PropsStore,
 } from '@deepseek-ai/dsh-client-ui-slots'
@@ -86,6 +87,58 @@ function CodeThemePreview({ themeId, label }: { themeId: LightCodeTheme | DarkCo
   )
 }
 
+/** One settings selector in the shared house form: a Menu over a borderless
+ * trigger button naming the current value (same UI as the agent-preset,
+ * language, and permission rows). */
+function AppearanceSelector({
+  name, selected, options, onSelect, align = 'start',
+}: {
+  name: string
+  selected: string
+  options: readonly { id: string; label: string; disabled?: boolean }[]
+  onSelect: (id: string) => void
+  align?: 'start' | 'end'
+}) {
+  const [open, setOpen] = useState(false)
+  const selectedOption = options.find(option => option.id === selected)
+  return (
+    <Menu
+      open={open}
+      onClose={() => { setOpen(false) }}
+      items={options.map(option => (option.disabled === undefined
+        ? { id: option.id, label: option.label }
+        : { id: option.id, label: option.label, disabled: option.disabled }))}
+      selectedId={selected}
+      onSelect={(id) => {
+        onSelect(id)
+        setOpen(false)
+      }}
+      align={align}
+      portal
+      anchor={(
+        <button
+          type="button"
+          className={css.selector}
+          aria-label={name}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          onClick={() => { setOpen(v => !v) }}
+        >
+          {selectedOption?.label ?? selected}
+          <IconChevronDownOutline14 className={css.chevron} />
+        </button>
+      )}
+    />
+  )
+}
+
+/** The interface font has one real value today; the rest of the menu is a
+ * disabled placeholder until custom interface fonts ship. */
+const INTERFACE_FONT_OPTIONS: readonly { id: string; labelKey: ThemeKey; disabled?: boolean }[] = [
+  { id: 'system', labelKey: 'appearance.interfaceFont.system' },
+  { id: 'custom', labelKey: 'appearance.interfaceFont.custom', disabled: true },
+]
+
 /**
  * Render the Appearance row.
  * @param props - composed slot props.
@@ -133,45 +186,40 @@ export function AppearanceRow({
           <div className={css.settingDescription}>{t('appearance.code.description')}</div>
         </div>
         <div className={css.themeGrid}>
-          <label className={css.themeChoice}>
+          <div className={css.themeChoice}>
             <span className={css.selectLabel}>{t('appearance.code.light')}</span>
-            <select
-              className={css.select}
-              aria-label={t('appearance.code.light')}
-              value={lightCodeTheme}
-              onChange={(event) => { setLightCodeTheme(event.currentTarget.value as LightCodeTheme) }}
-            >
-              {LIGHT_CODE_THEME_OPTIONS.map(option => <option key={option.id} value={option.id}>{t(option.labelKey)}</option>)}
-            </select>
+            <AppearanceSelector
+              name={t('appearance.code.light')}
+              selected={lightCodeTheme}
+              options={LIGHT_CODE_THEME_OPTIONS.map(option => ({ id: option.id, label: t(option.labelKey) }))}
+              onSelect={(id) => { setLightCodeTheme(id as LightCodeTheme) }}
+            />
             <CodeThemePreview themeId={lightCodeTheme} label={t('appearance.code.preview.light')} />
-          </label>
-          <label className={css.themeChoice}>
+          </div>
+          <div className={css.themeChoice}>
             <span className={css.selectLabel}>{t('appearance.code.dark')}</span>
-            <select
-              className={css.select}
-              aria-label={t('appearance.code.dark')}
-              value={darkCodeTheme}
-              onChange={(event) => { setDarkCodeTheme(event.currentTarget.value as DarkCodeTheme) }}
-            >
-              {DARK_CODE_THEME_OPTIONS.map(option => <option key={option.id} value={option.id}>{t(option.labelKey)}</option>)}
-            </select>
+            <AppearanceSelector
+              name={t('appearance.code.dark')}
+              selected={darkCodeTheme}
+              options={DARK_CODE_THEME_OPTIONS.map(option => ({ id: option.id, label: t(option.labelKey) }))}
+              onSelect={(id) => { setDarkCodeTheme(id as DarkCodeTheme) }}
+            />
             <CodeThemePreview themeId={darkCodeTheme} label={t('appearance.code.preview.dark')} />
-          </label>
+          </div>
         </div>
-        <label className={css.fontChoice}>
-          <span className={css.settingText}>
+        <div className={css.fontChoice}>
+          <div className={css.settingText}>
             <span className={css.settingTitle}>{t('appearance.code.font.title')}</span>
             <span className={css.settingDescription}>{t('appearance.code.font.description')}</span>
-          </span>
-          <select
-            className={css.select}
-            aria-label={t('appearance.code.font.title')}
-            value={codeFont}
-            onChange={(event) => { setCodeFont(event.currentTarget.value as CodeFont) }}
-          >
-            {CODE_FONT_OPTIONS.map(option => <option key={option.id} value={option.id}>{t(option.labelKey)}</option>)}
-          </select>
-        </label>
+          </div>
+          <AppearanceSelector
+            name={t('appearance.code.font.title')}
+            selected={codeFont}
+            options={CODE_FONT_OPTIONS.map(option => ({ id: option.id, label: t(option.labelKey) }))}
+            onSelect={(id) => { setCodeFont(id as CodeFont) }}
+            align="end"
+          />
+        </div>
       </section>
 
       <div className={css.settingRow}>
@@ -179,7 +227,15 @@ export function AppearanceRow({
           <div className={css.settingTitle}>{t('appearance.interfaceFont.title')}</div>
           <div className={css.settingDescription}>{t('appearance.interfaceFont.description')}</div>
         </div>
-        <div className={css.singleValue}>{t('appearance.interfaceFont.system')}</div>
+        <AppearanceSelector
+          name={t('appearance.interfaceFont.title')}
+          selected="system"
+          options={INTERFACE_FONT_OPTIONS.map(option => (option.disabled === undefined
+            ? { id: option.id, label: t(option.labelKey) }
+            : { id: option.id, label: t(option.labelKey), disabled: option.disabled }))}
+          onSelect={() => {}}
+          align="end"
+        />
       </div>
 
       <div className={css.settingRow}>

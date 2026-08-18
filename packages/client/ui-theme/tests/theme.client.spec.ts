@@ -50,7 +50,8 @@ describe('ThemeRuntime', () => {
     expect(theme.getTheme().active.tokens['--dsw-font-sidebar-font-size']).toBe('15px')
     expect(theme.getTheme().active.tokens['--dsw-font-sidebar-line-height']).toBe('24px')
     expect(theme.getTheme().active.tokens['--dsw-sidebar-row-height']).toBe('32px')
-    expect(theme.getTheme().active.tokens['--dsw-font-markdown-code-block-small-font-size']).toBeUndefined()
+    expect(theme.getTheme().active.tokens['--dsw-font-markdown-code-block-small-font-size']).toBe('13px')
+    expect(theme.getTheme().active.tokens['--dsw-font-markdown-code-block-small-line-height']).toBe('20px')
     expect(host.set).toHaveBeenCalledWith('transcriptTextSize', 'large')
     expect(events).toHaveLength(1)
 
@@ -68,6 +69,8 @@ describe('ThemeRuntime', () => {
     expect(theme.getTheme().active.tokens['--dsw-font-sidebar-font-size']).toBe('13px')
     expect(theme.getTheme().active.tokens['--dsw-font-sidebar-line-height']).toBe('20px')
     expect(theme.getTheme().active.tokens['--dsw-sidebar-row-height']).toBe('28px')
+    expect(theme.getTheme().active.tokens['--dsw-font-markdown-code-block-small-font-size']).toBe('11px')
+    expect(theme.getTheme().active.tokens['--dsw-font-markdown-code-block-small-line-height']).toBe('16px')
   })
 
   it('keeps transcript prose synchronized with the matching sidebar role', () => {

@@ -1,4 +1,4 @@
-/* Permission row: title/description plus the preset selector pill. */
+/* Permission row: title/description plus the settings selector. */
 
 .row {
   display: flex;
@@ -38,7 +38,7 @@
   height: 36px;
   padding: 0 14px;
   border: none;
-  border-radius: 18px;
+  border-radius: 10px;
   background: var(--dsw-alias-bg-module-platform);
   font: inherit;
   font-size: 12px;

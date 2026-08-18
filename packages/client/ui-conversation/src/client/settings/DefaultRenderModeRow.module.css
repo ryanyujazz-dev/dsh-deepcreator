@@ -62,7 +62,6 @@
 }
 
 .segment.selected {
-  border-color: var(--dsw-alias-border-l2);
   background: var(--dsw-alias-button-elevated-fill);
   color: var(--dsw-alias-label-primary);
 }

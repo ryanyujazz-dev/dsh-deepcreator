@@ -1,7 +1,7 @@
 /**
  * Language preference row registered into the General section item slot
- * (figma 501:30011 'Setting-Cell'): title + selector pill opening the locale
- * menu. Registered by this package — the locale feature owns its own
+ * (figma 501:30011 'Setting-Cell'): title + settings selector opening the
+ * locale menu. Registered by this package — the locale feature owns its own
  * settings surface.
  */
 import { useState } from 'react'

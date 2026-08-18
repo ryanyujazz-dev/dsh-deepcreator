@@ -95,7 +95,9 @@ function mount(
   return { store, setTheme, setTranscriptTextSize, setLightCodeTheme, setDarkCodeTheme, setCodeFont }
 }
 
-const pressed = (name: RegExp): string | null =>
+// Exact strings: the code selectors' accessible names ('Light code theme')
+// must not collide with the segmented buttons' names.
+const pressed = (name: string): string | null =>
   screen.getByRole('button', { name }).getAttribute('aria-pressed')
 
 describe('AppearanceRow', () => {
@@ -103,38 +105,41 @@ describe('AppearanceRow', () => {
     mount('dark', 'large')
     expect(screen.getByText('Interface font')).toBeDefined()
     expect(screen.getByText('System font')).toBeDefined()
-    expect(pressed(/Dark/)).toBe('true')
-    expect(pressed(/Light/)).toBe('false')
-    expect(pressed(/System/)).toBe('false')
-    expect(pressed(/Large/)).toBe('true')
-    expect(pressed(/Standard/)).toBe('false')
+    expect(pressed('Dark')).toBe('true')
+    expect(pressed('Light')).toBe('false')
+    expect(pressed('System')).toBe('false')
+    expect(pressed('Large')).toBe('true')
+    expect(pressed('Standard')).toBe('false')
   })
 
   it('click drives setTheme; selection follows the store mirror, not the click echo', () => {
     const b = mount('dark')
-    fireEvent.click(screen.getByRole('button', { name: /Light/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Light' }))
     expect(b.setTheme).toHaveBeenCalledWith('light')
     // No store write yet: selection is unchanged.
-    expect(pressed(/Dark/)).toBe('true')
+    expect(pressed('Dark')).toBe('true')
     act(() => { b.store.actions.sync('light', 'standard', 'deepcreator-light', 'deepcreator-dark', 'system', 1) })
-    expect(pressed(/Light/)).toBe('true')
-    expect(pressed(/Dark/)).toBe('false')
+    expect(pressed('Light')).toBe('true')
+    expect(pressed('Dark')).toBe('false')
   })
 
   it('writes transcript size and waits for the service mirror before selecting it', () => {
     const b = mount('system', 'standard')
-    fireEvent.click(screen.getByRole('button', { name: /Large/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Large' }))
     expect(b.setTranscriptTextSize).toHaveBeenCalledWith('large')
-    expect(pressed(/Standard/)).toBe('true')
+    expect(pressed('Standard')).toBe('true')
     act(() => { b.store.actions.sync('system', 'large', 'deepcreator-light', 'deepcreator-dark', 'system', 1) })
-    expect(pressed(/Large/)).toBe('true')
+    expect(pressed('Large')).toBe('true')
   })
 
   it('keeps the light and dark selectors independent and writes the shared code font', () => {
     const b = mount()
-    fireEvent.change(screen.getByLabelText('Light code theme'), { target: { value: 'github-light' } })
-    fireEvent.change(screen.getByLabelText('Dark code theme'), { target: { value: 'one-dark' } })
-    fireEvent.change(screen.getByLabelText('Code font'), { target: { value: 'jetbrains-mono' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Light code theme' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'GitHub Light' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Dark code theme' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'One Dark' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Code font' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'JetBrains Mono' }))
     expect(b.setLightCodeTheme).toHaveBeenCalledWith('github-light')
     expect(b.setDarkCodeTheme).toHaveBeenCalledWith('one-dark')
     expect(b.setCodeFont).toHaveBeenCalledWith('jetbrains-mono')
