@@ -18,9 +18,9 @@ export type DarkCodeThemeId = Exclude<CodeThemeId, LightCodeThemeId>
 const deepcreatorLight = {
   name: 'deepcreator-light',
   type: 'light',
-  colors: { 'editor.foreground': '#0f1115', 'editor.background': '#f9fafb' },
+  colors: { 'editor.foreground': '#0f1115', 'editor.background': '#fff' },
   settings: [
-    { settings: { foreground: '#0f1115', background: '#f9fafb' } },
+    { settings: { foreground: '#0f1115', background: '#fff' } },
     { scope: ['comment', 'punctuation.definition.comment'], settings: { foreground: '#68707d', fontStyle: 'italic' } },
     { scope: ['keyword', 'storage', 'storage.type'], settings: { foreground: '#c2255c' } },
     { scope: ['string', 'string.quoted', 'string.template'], settings: { foreground: '#237b3d' } },

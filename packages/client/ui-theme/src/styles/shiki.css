@@ -28,7 +28,7 @@ body[data-ds-dark-theme] {
 }
 
 [data-code-theme='deepcreator-light'] {
-  --ds-code-background: #f9fafb;
+  --ds-code-background: #fff;
   --ds-code-foreground: #0f1115;
   --ds-active-token-color: var(--shiki-deepcreator-light);
   --ds-active-token-font-style: var(--shiki-deepcreator-light-font-style, normal);
