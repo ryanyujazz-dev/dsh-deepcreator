@@ -38,7 +38,10 @@
 }
 
 .label {
-  font-weight: 500;
+  /* Body weight, not the settled row's 500 title weight: the drafting row is
+   * live transcript accompaniment, and a heavier label reads as a larger font
+   * next to the streaming body text. */
+  font-weight: 400;
 }
 
 /* Target-path fragment: ToolRow's summary geometry (separator dot + FILL
