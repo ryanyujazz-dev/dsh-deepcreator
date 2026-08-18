@@ -46,6 +46,14 @@ async function bench() {
   } as never)
   const locale = new LocaleRuntime(ctx)
   ctx.provide('locale', locale)
+  const sessionAdminRemote = {
+    delete: vi.fn(async () => ({ ok: true, value: { ok: true, deletedPath: '/x' } })),
+  }
+  // The traced namespace object and the Cordis store entry both resolve:
+  // plugins associate `remote.session-admin` through the store, while apply
+  // reads the namespace off the mounted remote object.
+  ctx.provide('remote', { 'session-admin': sessionAdminRemote } as never)
+  ctx.provide('remote.session-admin', sessionAdminRemote as never)
   return {
     ctx, slots: ctx.get('slots') as SlotRegistry, locale, create, startSession, rename,
     insertSessionBefore, openPath, open, clear, search, renameSession, binding, fork,
@@ -62,7 +70,7 @@ function declare(slots: SlotRegistry, ...names: HoleName[]): () => void {
 
 describe('ui-workspace apply', () => {
   it('declares the services it drives', () => {
-    expect(inject).toEqual(['slots', 'sessions', 'workspaces', 'locale', 'connection'])
+    expect(inject).toEqual(['slots', 'sessions', 'workspaces', 'locale', 'connection', 'remote', 'remote.session-admin'])
   })
 
   it('registers browser and pickers for declarations arriving before or after apply', async () => {

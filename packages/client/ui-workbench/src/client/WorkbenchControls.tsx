@@ -24,7 +24,7 @@ export function WorkbenchControls({
     const items: MenuEntry[] = ordered.map(definition => ({
       id: definition.id,
       label: definition.label(),
-      icon: renderSlot('deepcreator.workbench.panel-icon', { size: 16 }, { only: definition.id }),
+      icon: renderSlot('deepcreator.workbench.panel-icon', { size: 16, visible: visibleTypeIds.includes(definition.id) }, { only: definition.id }),
       disabled: addressed && definition.disabledWhenAddressed === true,
     }))
     return (
@@ -80,7 +80,7 @@ export function WorkbenchControls({
                 else controller.activate(definition.id)
               }}
             >
-              {renderSlot('deepcreator.workbench.panel-icon', { size: ICON_TOOLBAR_GLYPH_SIZE }, { only: definition.id })}
+              {renderSlot('deepcreator.workbench.panel-icon', { size: ICON_TOOLBAR_GLYPH_SIZE, visible }, { only: definition.id })}
             </button>
           </Tooltip>
         )

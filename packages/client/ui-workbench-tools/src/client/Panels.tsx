@@ -2,8 +2,6 @@ import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useStat
 import type { FormEvent } from 'react'
 import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
-import type { ArtifactRecord } from '@ryanyujazz/dsh-artifacts/types'
-import type {} from '@ryanyujazz/dsh-artifacts/remote'
 import type {} from '@ryanyujazz/dsh-review/remote'
 import type { TerminalSessionView } from '@ryanyujazz/dsh-terminal-workbench/types'
 import type {} from '@ryanyujazz/dsh-terminal-workbench/remote'
@@ -78,62 +76,6 @@ function usePanelHeaderActions(
   contribution: WorkbenchPanelHeaderContribution,
 ) {
   useEffect(() => contribute(contribution), [contribute, contribution])
-}
-
-export function ArtifactPanel({ remote, sessionId, route, activeInstanceId, openInstance, contributeHeaderActions, renderArtifact, t }: RemoteProps) {
-  const [artifacts, setArtifacts] = useState<ArtifactRecord[]>([])
-  const [content, setContent] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  const refresh = useCallback(async () => {
-    setLoading(true)
-    const wire = await remote.artifacts.list(sessionId)
-    if (!wire.ok) throw transportError(wire)
-    if (!wire.value.ok) throw new Error(wire.value.message)
-    setArtifacts(wire.value.artifacts)
-    setError(null)
-    setLoading(false)
-  }, [remote, sessionId])
-
-  useEffect(() => { void refresh().catch(reason => { setError(reason instanceof Error ? reason.message : String(reason)); setLoading(false) }) }, [refresh])
-  useEffect(() => {
-    setContent(null)
-    if (route !== 'instance' || activeInstanceId === undefined) return
-    let live = true
-    void remote.artifacts.read(sessionId, activeInstanceId).then((wire) => {
-      if (!live) return
-      if (!wire.ok) throw transportError(wire)
-      if (!wire.value.ok) throw new Error(wire.value.message)
-      setContent(wire.value.content)
-      setError(null)
-    }).catch(reason => { if (live) setError(reason instanceof Error ? reason.message : String(reason)) })
-    return () => { live = false }
-  }, [activeInstanceId, remote, route, sessionId])
-  const headerActions = useMemo<WorkbenchPanelHeaderContribution>(() => ({
-    right: <WorkbenchPanelIconButton label={t('refresh')} onClick={() => { void refresh().catch(reason => { setError(String(reason)) }) }}><IconRefreshOutline14 /></WorkbenchPanelIconButton>,
-  }), [refresh, t])
-  usePanelHeaderActions(contributeHeaderActions, headerActions)
-
-  if (route === 'instance' && activeInstanceId !== undefined) {
-    const artifact = artifacts.find(item => item.id === activeInstanceId)
-    return (
-      <div className={css.document}>
-        {error !== null && <div className={css.error}>{error}</div>}
-        {artifact !== undefined && content !== null
-          ? <div className={css.artifactContent}>{renderArtifact({ artifactId: artifact.id, kind: artifact.kind, content, ...(artifact.mime === undefined ? {} : { mime: artifact.mime }) })}</div>
-          : error === null && <Empty title={artifact?.title ?? activeInstanceId} body={t('loading')} />}
-      </div>
-    )
-  }
-  return (
-    <div className={css.tool}>
-      {error !== null && <div className={css.error}>{error}</div>}
-      {artifacts.length === 0
-        ? <Empty title={loading ? t('loading') : t('artifact.empty.title')} body={t('artifact.empty.body')} />
-        : <div className={css.list}>{artifacts.map(artifact => <button type="button" key={artifact.id} onClick={() => { openInstance(artifact.id) }}><span><strong>{artifact.title}</strong><small>{artifact.kind} · {artifact.status}</small></span><time>{new Date(artifact.updatedAt).toLocaleString()}</time></button>)}</div>}
-    </div>
-  )
 }
 
 /** Mount a file's diff content when it is this close to the viewport. */

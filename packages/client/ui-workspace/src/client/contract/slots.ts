@@ -137,6 +137,13 @@ export type WorkspaceBrowserInjected = {
    */
   archiveSession: (sessionId: SessionId) => Promise<void>
   /**
+   * Permanently destroy a Session: its persisted log and attachments are
+   * removed from disk and the list refreshes. Rejects while the session is
+   * live (a running agent). The current selection must be cleared by the
+   * caller when it targeted the deleted session.
+   */
+  deleteSession: (sessionId: SessionId) => Promise<void>
+  /**
    * Reorder a session inside its Workspace account (DOM-insertBefore
    * semantics: omitted anchor appends to the end). The view refreshes from
    * the Host response/changed frame; failures leave the order unchanged.

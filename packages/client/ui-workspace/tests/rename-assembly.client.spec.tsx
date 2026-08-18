@@ -31,6 +31,11 @@ async function createRuntime(): Promise<SlotTestRuntime> {
       subscribe: () => () => {},
     },
   } as never)
+  const sessionAdminRemote = {
+    delete: vi.fn(async () => ({ ok: true, value: { ok: true, deletedPath: '/x' } })),
+  }
+  runtime.provide('remote', { 'session-admin': sessionAdminRemote } as never)
+  runtime.provide('remote.session-admin', sessionAdminRemote as never)
   runtime.slots.installLocale(locale)
   return runtime
 }
@@ -67,7 +72,7 @@ describe('session actions through the assembled browser', () => {
     const row = (await view.findByText('任务标题')).closest('[role="treeitem"]') as HTMLElement
     fireEvent.click(within(row).getByLabelText('会话“任务标题”的操作'))
     expect(view.getAllByRole('menuitem', { hidden: true }).map(item => item.textContent)).toEqual([
-      '置顶会话', '分叉会话', '归档会话', '在文件管理器中打开',
+      '置顶会话', '分叉会话', '归档会话', '删除会话', '在文件管理器中打开',
     ])
     fireEvent.click(view.getByRole('menuitem', { name: '置顶会话', hidden: true }))
 

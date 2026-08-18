@@ -76,6 +76,9 @@ export function WorkbenchPanelShell({
   return (
     <section className={css.shell} data-type={typeId} aria-label={accessibleLabel}>
       <header className={css.header}>
+        {supportsHome && route === 'instance' && (
+          <WorkbenchPanelIconButton label={backLabel} onClick={onShowHome}><BackIcon /></WorkbenchPanelIconButton>
+        )}
         {tabs.length === 0
           ? <div className={css.leading}><strong className={css.title}>{label}</strong>{leftActions !== undefined && <span className={css.leftActions}>{leftActions}</span>}</div>
           : <WorkbenchPanelTabs
@@ -89,9 +92,6 @@ export function WorkbenchPanelShell({
             />}
         <div className={css.headerActions}>
           {rightActions !== undefined && <span className={css.rightActions}>{rightActions}</span>}
-          {supportsHome && route === 'instance' && (
-            <WorkbenchPanelIconButton label={backLabel} onClick={onShowHome}><BackIcon /></WorkbenchPanelIconButton>
-          )}
           <WorkbenchPanelIconButton label={focused ? restoreLabel : focusLabel} onClick={focused ? onRestore : onFocus}>
             {focused ? <DeepCreatorIconPanelCollapse16 size={14} /> : <DeepCreatorIconPanelExpand16 size={14} />}
           </WorkbenchPanelIconButton>

@@ -4,6 +4,8 @@ import { TYPERT_REMOTE as ARTIFACTS_REMOTE } from '@ryanyujazz/dsh-artifacts/rem
 import type {} from '@ryanyujazz/dsh-artifacts/remote'
 import { TYPERT_REMOTE as REVIEW_REMOTE } from '@ryanyujazz/dsh-review/remote'
 import type {} from '@ryanyujazz/dsh-review/remote'
+import { TYPERT_REMOTE as SESSION_ADMIN_REMOTE } from '@ryanyujazz/dsh-session-admin/remote'
+import type {} from '@ryanyujazz/dsh-session-admin/remote'
 import { TYPERT_REMOTE as TERMINAL_REMOTE } from '@ryanyujazz/dsh-terminal-workbench/remote'
 import type {} from '@ryanyujazz/dsh-terminal-workbench/remote'
 
@@ -19,7 +21,7 @@ export const inject = ['remote']
 export async function apply(ctx: Context): Promise<() => Promise<void>> {
   const disposers: TypertDisposer[] = []
   try {
-    for (const contribution of [ARTIFACTS_REMOTE, REVIEW_REMOTE, TERMINAL_REMOTE]) {
+    for (const contribution of [ARTIFACTS_REMOTE, REVIEW_REMOTE, SESSION_ADMIN_REMOTE, TERMINAL_REMOTE]) {
       disposers.push(await ctx.remote.$mount(contribution))
     }
   } catch (error) {

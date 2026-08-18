@@ -339,11 +339,12 @@ describe('workspace browser rows', () => {
     }
   })
 
-  it('orders session actions as pin/fork/archive, then an inset divider and native open', () => {
+  it('orders session actions as pin/fork/archive/delete, then an inset divider and native open', () => {
     const onOpen = vi.fn()
     const onRename = vi.fn()
     const onFork = vi.fn()
     const onArchive = vi.fn()
+    const onSessionDelete = vi.fn()
     const onPinnedChange = vi.fn()
     const onOpenLocation = vi.fn()
     const node: SessionNode = {
@@ -352,18 +353,21 @@ describe('workspace browser rows', () => {
     }
     render(<SessionNodeItem node={node} currentId={undefined} now={0} onOpen={onOpen}
       onRename={onRename} onFork={onFork} onArchive={onArchive}
+      onSessionDelete={onSessionDelete}
       onPinnedChange={onPinnedChange} onOpenLocation={onOpenLocation}
       canOpenLocation fileManager="finder" t={t} />)
     fireEvent.click(screen.getByRole('button', { name: '会话“One”的操作' }))
     expect(onOpen).not.toHaveBeenCalled()
     expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual([
-      '置顶会话', '分叉会话', '归档会话', '在 Finder 中打开',
+      '置顶会话', '分叉会话', '归档会话', '删除会话', '在 Finder 中打开',
     ])
     expect(screen.getByRole('menuitem', { name: '置顶会话' }).querySelector('svg')
       ?.getAttribute('data-deepcreator-icon')).toBe('pin')
     expect(screen.getByRole('separator').className).toMatch(/separatorTextInset/)
     // Archive is not destructive (log and accounting slot remain): no danger styling.
     expect(screen.getByRole('menuitem', { name: '归档会话' }).className).not.toMatch(/danger/)
+    // Delete is destructive and requests the confirmation dialog.
+    expect(screen.getByRole('menuitem', { name: '删除会话' }).className).toMatch(/danger/)
     fireEvent.click(screen.getByRole('menuitem', { name: '置顶会话' }))
     expect(onPinnedChange).toHaveBeenCalledWith(node.id, true)
     fireEvent.click(screen.getByRole('button', { name: '会话“One”的操作' }))
@@ -373,6 +377,10 @@ describe('workspace browser rows', () => {
     fireEvent.click(screen.getByRole('button', { name: '会话“One”的操作' }))
     fireEvent.click(screen.getByRole('menuitem', { name: '归档会话' }))
     expect(onArchive).toHaveBeenCalledWith(node.id)
+    // Delete opens the destructive confirmation for this row.
+    fireEvent.click(screen.getByRole('button', { name: '会话“One”的操作' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '删除会话' }))
+    expect(onSessionDelete).toHaveBeenCalledWith(node.id, 'One')
     fireEvent.click(screen.getByRole('button', { name: '会话“One”的操作' }))
     fireEvent.click(screen.getByRole('menuitem', { name: '在 Finder 中打开' }))
     expect(onOpenLocation).toHaveBeenCalledWith('/projects/one')

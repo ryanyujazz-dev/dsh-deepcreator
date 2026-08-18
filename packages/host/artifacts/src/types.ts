@@ -1,36 +1,21 @@
-export type ArtifactLocator =
-  | { type: 'workspace-path'; path: string }
-  | { type: 'blob'; blobId: string }
-  | { type: 'url'; url: string }
+/**
+ * Pure wire types for the read-only artifact file reader.
+ *
+ * The panel's list is a Client-side session-event projection of the official
+ * deliverables mechanism (files the model actually wrote), so this Host
+ * surface owns only the one remote that reads file content for an open
+ * instance. No business state lives here.
+ */
 
-export interface ArtifactRecord {
-  id: string
-  sessionId: string
-  workspaceId?: string
-  kind: 'plan' | 'document' | 'code' | 'image' | 'report' | string
-  title: string
-  mime?: string
-  locator: ArtifactLocator
-  revision: string
-  status: 'creating' | 'ready' | 'failed' | 'stale'
-  createdAt: number
-  updatedAt: number
+export interface ArtifactReadOk {
+  ok: true
+  content: string
 }
 
-export interface ArtifactDeclareRequest {
-  id?: string
-  workspaceId?: string
-  kind: string
-  title: string
-  mime?: string
-  locator: ArtifactLocator
-  status?: 'creating' | 'ready' | 'failed' | 'stale'
+export interface ArtifactReadError {
+  ok: false
+  code: 'NOT_FOUND' | 'NO_WORKSPACE' | 'OUTSIDE_WORKSPACE' | 'READ_FAILED'
+  message: string
 }
 
-export type ArtifactListResult =
-  | { ok: true; artifacts: ArtifactRecord[] }
-  | { ok: false; code: 'INVALID_LOG'; message: string }
-
-export type ArtifactReadResult =
-  | { ok: true; artifact: ArtifactRecord; content: string }
-  | { ok: false; code: 'NOT_FOUND' | 'NO_WORKSPACE' | 'OUTSIDE_WORKSPACE' | 'UNSUPPORTED_LOCATOR' | 'READ_FAILED'; message: string }
+export type ArtifactReadResult = ArtifactReadOk | ArtifactReadError
