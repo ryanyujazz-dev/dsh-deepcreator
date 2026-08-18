@@ -118,7 +118,9 @@ body[data-ds-dark-theme] {
 }
 
 [data-code-theme] {
-  --dsw-diff-fold-bg: color-mix(in srgb, var(--ds-code-foreground) 5%, transparent);
+  /* Half the sticky review file header's 5% tint: the fold row reads as the
+   * step between the card surface and the header bar in both themes. */
+  --dsw-diff-fold-bg: color-mix(in srgb, var(--ds-code-foreground) 2.5%, var(--ds-code-background));
 }
 
 @media (prefers-contrast: more) {
