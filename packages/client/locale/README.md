@@ -4,6 +4,10 @@ English | [中文](README.zh.md)
 
 Locale plugin: LocaleRuntime — the `zh`/`en` preference stored as `locale.preference` in `$DSH_HOME/settings.yaml`; when that explicit Host value is absent, a fresh browser starts provisionally in the language `navigator` asks for (primary-subtag matching, with `zh` when it asks for no language this app ships). The Host read runs after plugin activation so an unavailable settings service cannot block the page; its result replaces the provisional browser value live. Remote browsers retain only a process-local selection because the settings API is loopback-only. `locale/change` fires on switches. The service also owns the ns×locale dictionary registry (typed `register(ns, {zh, en})` checked against `LocaleNamespaceMap`, `bind(ns)`→`TranslateNS<ns>`; lookup chain ns → common → zh → key), implements the slot system's `LocaleFace`, and installs itself through `ctx.slots.installLocale`, backing the framework-injected `t` standard seat (`Translate`/`TranslateNS` are ui-slots types; import them from there — this package only re-exports for dictionary owners' convenience). The [Host-backed preferences decision](../../../.agents/notes/implemented/bug-fix/2026-08-06-host-backed-web-preferences.md) owns the persistence boundary.
 
+## Fork status
+
+This fork stays despite being type-identical to the official `@deepseek-ai/dsh-client-locale` at rc.7: the official tarball ships `lib/` only and exports no dictionary values, while this workspace package's `src/locales/{zh,en}.ts` serve as the real-copy fixtures behind `makeTranslate` in eight packages' test suites (the lookup-chain provenance the official package cannot provide). Revisit only if the official package begins exporting its dictionaries.
+
 ## Model Experience
 
 None, as the locale registry serves browser UI copy; nothing here reaches a model request.
