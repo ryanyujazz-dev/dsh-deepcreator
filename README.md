@@ -66,7 +66,7 @@ Each addition follows the same boundary: one feature, one independently composed
 
 ### Installable today
 
-DeepCreator keeps the official Harness Host and Agent plugin seams open. These public packages are verified against the repository's pinned `@deepseek-ai/dsh` `0.1.0-rc.6` runtime:
+DeepCreator keeps the official Harness Host and Agent plugin seams open. These public packages are verified against the repository's pinned `@deepseek-ai/dsh` `0.1.0-rc.7` runtime:
 
 | Capability | Installable package | What it adds |
 | --- | --- | --- |
@@ -78,7 +78,7 @@ DeepCreator keeps the official Harness Host and Agent plugin seams open. These p
 Install packages into the managed profile with the version used by your Harness runtime, then add their documented rows to `$DSH_HOME/profiles/deepcreator/cordis.patch.yml`:
 
 ```sh
-pnpm --filter @ryanyujazz/dsh-deepcreator-desktop exec dsh plugin --profile deepcreator add @deepseek-ai/dsh-mcp-client@0.1.0-rc.6
+pnpm --filter @ryanyujazz/dsh-deepcreator-desktop exec dsh plugin --profile deepcreator add @deepseek-ai/dsh-mcp-client@0.1.0-rc.7
 pnpm --filter @ryanyujazz/dsh-deepcreator-desktop exec dsh --profile deepcreator --dump-config
 ```
 
@@ -151,7 +151,7 @@ Tests resolve Harness modules from the pinned npm packages, so the repository do
 
 ### Compatibility and release scope
 
-The current compatibility declaration targets DeepSeek Harness `0.1.0-rc.6` at Git SHA `47f943859bef60e4160492346772ded9b24f765a`.
+The current compatibility declaration targets DeepSeek Harness `0.1.0-rc.7` at Git SHA `99f6f02fecdb7dff40c3fbc9470f5907c29f74ca`.
 
 > [!IMPORTANT]
 > DeepCreator currently ships as a **development runtime**. Signing, notarization, installers, auto-update, tray integration, and native credential storage are intentionally outside the initial desktop release.

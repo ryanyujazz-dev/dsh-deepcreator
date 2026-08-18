@@ -1,7 +1,7 @@
 /** DeepCreator's explicitly supported DeepSeek Harness client baseline. */
 export const SUPPORTED_HARNESS = {
-  version: '0.1.0-rc.6',
-  gitSha: '47f943859bef60e4160492346772ded9b24f765a',
+  version: '0.1.0-rc.7',
+  gitSha: '99f6f02fecdb7dff40c3fbc9470f5907c29f74ca',
 } as const
 
 export type {

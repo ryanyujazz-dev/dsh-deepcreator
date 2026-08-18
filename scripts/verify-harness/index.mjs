@@ -17,12 +17,12 @@ if (installedDsh.version !== compatibility.harnessVersion) {
 }
 
 const workspaceConfig = readFileSync(join(root, 'pnpm-workspace.yaml'), 'utf8')
-for (const patchName of ['@deepseek-ai/dsh-tool-fs@0.1.0-rc.6', '@deepseek-ai/dsh-tools@0.1.0-rc.6']) {
+for (const patchName of ['@deepseek-ai/dsh-tool-fs@0.1.0-rc.7', '@deepseek-ai/dsh-tools@0.1.0-rc.7']) {
   if (!workspaceConfig.includes(patchName)) failures.push(`pnpm workspace omits required diff metadata patch ${patchName}`)
 }
 for (const patchFile of [
-  'patches/@deepseek-ai__dsh-tool-fs@0.1.0-rc.6.patch',
-  'patches/@deepseek-ai__dsh-tools@0.1.0-rc.6.patch',
+  'patches/@deepseek-ai__dsh-tool-fs@0.1.0-rc.7.patch',
+  'patches/@deepseek-ai__dsh-tools@0.1.0-rc.7.patch',
 ]) {
   const absolute = join(root, patchFile)
   if (!existsSync(absolute)) failures.push(`required diff metadata patch is missing: ${patchFile}`)
