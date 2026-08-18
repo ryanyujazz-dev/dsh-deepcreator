@@ -8,12 +8,15 @@
 .reviewMissed code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--ds-font-family-code); font-style: normal; }
 .reviewBulkToggle.reviewBulkToggle > svg { width: 16px; height: 16px; }
 .fileList { min-width: 0; }
-.reviewFile { min-width: 0; content-visibility: auto; contain-intrinsic-size: auto 36px; }
+.reviewFile { position: relative; min-width: 0; content-visibility: auto; contain-intrinsic-size: auto 36px; }
 .reviewFileContentCollapsed { display: none; }
 .reviewFileSkeleton { box-sizing: border-box; display: grid; place-items: center; border-bottom: 1px solid var(--dsw-alias-border-l1); color: var(--dsw-alias-label-tertiary); font-size: 10px; }
 .reviewFile + .reviewFile { border-top: 1px solid var(--dsw-alias-border-l1); }
 .reviewFileHeader { position: sticky; z-index: 3; top: 0; width: 100%; min-height: 36px; box-sizing: border-box; display: flex; align-items: center; gap: 5px; border: 0; border-bottom: 1px solid var(--dsw-alias-border-l1); padding: 0 10px; color: var(--dsw-alias-label-secondary); background: color-mix(in srgb, var(--ds-code-foreground, var(--dsw-alias-label-primary)) 5%, var(--ds-code-background, var(--dsw-alias-bg-base))); text-align: left; cursor: pointer; font-size: 11px; }
-.reviewFileHeader:hover { background: var(--dsw-alias-fill-hover); }
+.reviewFileHeader:hover { background: color-mix(in srgb, var(--ds-code-foreground, var(--dsw-alias-label-primary)) 8%, var(--ds-code-background, var(--dsw-alias-bg-base))); }
+.reviewFileHeaderRefold { padding-right: 44px; }
+.reviewFileRefold { position: absolute; z-index: 4; top: 0; right: 6px; width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 7px; color: var(--dsw-alias-label-tertiary); background: transparent; cursor: pointer; }
+.reviewFileRefold:hover { color: var(--dsw-alias-label-primary); background: color-mix(in srgb, var(--ds-code-foreground, var(--dsw-alias-label-primary)) 8%, transparent); }
 .reviewFileHeader:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: -2px; }
 .reviewFileHeader svg { flex: none; transition: transform 120ms ease; }
 .reviewFileChevronCollapsed { transform: rotate(-90deg); }

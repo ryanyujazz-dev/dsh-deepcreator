@@ -103,7 +103,7 @@ function props(remote = remoteMock()): ComponentProps<typeof ReviewPanel> & { re
 }
 
 describe('Review Panel file stream', () => {
-  it('warms every file in the background; opening expands all and never refetches warmed files', async () => {
+  it('warms every file in the background; opening expands all and never refetches warmed files', { timeout: 15000 }, async () => {
     const input = props()
     const view = render(<ReviewPanel {...input} />)
 
@@ -112,6 +112,14 @@ describe('Review Panel file stream', () => {
     expect(input.remote.review.checks).not.toHaveBeenCalled()
     const first = view.getByRole('button', { name: /src\/a\.ts/ })
     const second = view.getByRole('button', { name: /src\/b\.ts/ })
+
+    // The status bar carries the overall diff totals once the warms are ready
+    // (a.ts: +1 -1, b.ts: +1 -1 across the staged layer's single files).
+    await waitFor(() => {
+      const status = view.container.querySelector('div[class*="reviewStatus"]')
+      expect(status?.textContent).toContain('+2')
+      expect(status?.textContent).toContain('-2')
+    }, { timeout: 5000 })
 
     // Opening the panel expands every file; both headers carry prefetched counts.
     expect(first.getAttribute('aria-expanded')).toBe('true')

@@ -195,6 +195,24 @@ describe('DiffBlock height cap', () => {
     expect(bodyRows(container)).toHaveLength(20)
   })
 
+  it('reports expanded folds and re-folds every row on a reset signal', () => {
+    const stable = Array.from({ length: 20 }, (_value, index) => `stable ${index + 1}`).join('\n')
+    const expandedFolds = vi.fn()
+    const { rerender } = render(
+      <DiffBlock diffs={[{ path: 'stable.ts', oldText: stable, newText: stable }]} maxLines={16} onFoldStateChange={expandedFolds} />,
+    )
+    expect(expandedFolds).toHaveBeenLastCalledWith(0)
+    fireEvent.click(screen.getByRole('button', { name: '展开 14 行' }))
+    expect(expandedFolds).toHaveBeenLastCalledWith(1)
+    expect(screen.queryByRole('button', { name: '展开 14 行' })).toBeNull()
+
+    rerender(
+      <DiffBlock diffs={[{ path: 'stable.ts', oldText: stable, newText: stable }]} maxLines={16} foldResetSignal={1} onFoldStateChange={expandedFolds} />,
+    )
+    expect(screen.getByRole('button', { name: '展开 14 行' })).toBeTruthy()
+    expect(expandedFolds).toHaveBeenLastCalledWith(0)
+  })
+
   it('reconstructs Review head, inter-hunk, and tail gaps as local FoldRows', () => {
     const oldLines = Array.from({ length: 30 }, (_value, index) => `line ${index + 1}`)
     const newLines = [...oldLines]

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import clsx from 'clsx'
 import { writeClipboard } from './clipboard.ts'
 import {
@@ -34,6 +34,10 @@ export interface DiffBlockProps {
   showCopy?: boolean | undefined
   variant?: 'conversation' | 'review' | 'preview' | undefined
   labels?: Partial<DiffBlockLabels> | undefined
+  /** Increment to re-fold every expanded fold row and the line cap (parent-driven reset). */
+  foldResetSignal?: number | undefined
+  /** Live count of this block's expanded folds (context folds, gaps, and the cap); host UI shows a re-fold control from it. */
+  onFoldStateChange?: ((expandedFolds: number) => void) | undefined
 }
 
 const DEFAULT_LABELS: DiffBlockLabels = {
@@ -250,8 +254,20 @@ function AlignedDiffRow({ row, index, labels }: { row: AlignedRow; index: number
   )
 }
 
-function OmittedContext({ gap, labels }: { gap: OmittedContextGap; labels: DiffBlockLabels }) {
+function OmittedContext({ gap, labels, resetSignal, onStateChange }: {
+  gap: OmittedContextGap
+  labels: DiffBlockLabels
+  resetSignal: number
+  onStateChange: (count: number) => void
+}) {
   const [expanded, setExpanded] = useState(false)
+  const lastReset = useRef(resetSignal)
+  useEffect(() => {
+    if (resetSignal === lastReset.current) return
+    lastReset.current = resetSignal
+    setExpanded(false)
+  }, [resetSignal])
+  useEffect(() => { onStateChange(expanded ? 1 : 0) }, [expanded, onStateChange])
   if (!expanded) return (
     <button
       type="button"
@@ -277,15 +293,28 @@ function copyText(diffs: readonly DiffHunk[]): string {
 }
 
 function HunkCard({
-  model, maxLines, showPath, labels,
+  model, maxLines, showPath, labels, resetSignal, onStateChange,
 }: {
   model: ReturnType<typeof buildDiffHunkModel>
   maxLines: number
   showPath: boolean
   labels: DiffBlockLabels
+  resetSignal: number
+  onStateChange: (count: number) => void
 }) {
   const [expandedLimit, setExpandedLimit] = useState(false)
   const [expandedContext, setExpandedContext] = useState<ReadonlySet<string>>(new Set())
+  const lastReset = useRef(resetSignal)
+  useEffect(() => {
+    if (resetSignal === lastReset.current) return
+    lastReset.current = resetSignal
+    setExpandedLimit(false)
+    setExpandedContext(new Set())
+  }, [resetSignal])
+  useEffect(() => {
+    // A context-fold click also lifts the cap (one gesture); count it once.
+    onStateChange(Math.max(expandedContext.size, expandedLimit ? 1 : 0))
+  }, [expandedContext, expandedLimit, onStateChange])
   const folded = foldedRows(model.rows, expandedContext)
   const capped = folded.length > maxLines && !expandedLimit
   const availableRows = Math.max(0, maxLines - 1)
@@ -352,6 +381,8 @@ export function DiffBlock({
   variant = 'conversation',
   showCopy = variant !== 'preview',
   labels: labelOverrides,
+  foldResetSignal = 0,
+  onFoldStateChange,
 }: DiffBlockProps) {
   const loaded = useSyncExternalStore(subscribeGrammarLoaded, grammarLoadCount, grammarLoadCount)
   // Snapshots highlight progressively: a queued snapshot renders plain text,
@@ -379,6 +410,32 @@ export function DiffBlock({
       })), [diffs, models, variant])
   const labels = { ...DEFAULT_LABELS, ...labelOverrides }
   const [copied, setCopied] = useState(false)
+  // Per-child fold counts, aggregated into one parent-visible number. Reporters
+  // are stable per entry key so the children's report effects never re-fire on
+  // identity; keys pruned when their entries leave the window.
+  const foldCounts = useRef(new Map<string, number>())
+  const foldReporters = useRef(new Map<string, (count: number) => void>())
+  const reportTotal = useCallback(() => {
+    if (onFoldStateChange === undefined) return
+    let sum = 0
+    for (const count of foldCounts.current.values()) sum += count
+    onFoldStateChange(sum)
+  }, [onFoldStateChange])
+  const reporterFor = useCallback((key: string): (count: number) => void => {
+    let reporter = foldReporters.current.get(key)
+    if (reporter === undefined) {
+      reporter = (count: number) => {
+        foldCounts.current.set(key, count)
+        reportTotal()
+      }
+      foldReporters.current.set(key, reporter)
+    }
+    return reporter
+  }, [reportTotal])
+  const liveKeys = new Set(entries.map(entry => entry.key))
+  for (const key of foldCounts.current.keys()) {
+    if (!liveKeys.has(key)) { foldCounts.current.delete(key); foldReporters.current.delete(key) }
+  }
   const total = models.reduce((sum, model) => ({ added: sum.added + model.added, removed: sum.removed + model.removed }), { added: 0, removed: 0 })
   const files = new Set(models.map(model => model.path)).size
   const onCopy = useCallback(() => {
@@ -395,8 +452,8 @@ export function DiffBlock({
       {showCopy && <button type="button" className={css.copyButton} onClick={onCopy}>{copied ? labels.copied : labels.copy}</button>}
       <div className={css.body}>
         {entries.map(entry => entry.kind === 'gap'
-          ? <OmittedContext key={entry.key} gap={entry} labels={labels} />
-          : <HunkCard key={entry.key} model={entry.model} maxLines={maxLines} showPath={showPath} labels={labels} />)}
+          ? <OmittedContext key={entry.key} gap={entry} labels={labels} resetSignal={foldResetSignal} onStateChange={reporterFor(entry.key)} />
+          : <HunkCard key={entry.key} model={entry.model} maxLines={maxLines} showPath={showPath} labels={labels} resetSignal={foldResetSignal} onStateChange={reporterFor(entry.key)} />)}
       </div>
       {showFooter && <div className={css.footer}>{`└ +${total.added} -${total.removed} · ${files} ${files === 1 ? 'file' : 'files'}`}</div>}
     </div>

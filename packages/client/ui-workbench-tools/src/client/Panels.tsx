@@ -158,6 +158,32 @@ const ReviewFileRow = memo(function ReviewFileRow({
 }) {
   const file = entry.status
   const ready = entry.cache.kind === 'ready' ? entry.cache : null
+  // Parent-driven fold control: DiffBlocks report their expanded-fold counts,
+  // the header grows a re-fold button once any fold in this file is open, and
+  // one click re-folds every hunk and gap in the file.
+  const [foldSignal, setFoldSignal] = useState(0)
+  const [expandedFolds, setExpandedFolds] = useState(0)
+  const foldCounts = useRef(new Map<string, number>())
+  const onFileFoldState = useCallback((key: string, count: number) => {
+    foldCounts.current.set(key, count)
+    let sum = 0
+    for (const value of foldCounts.current.values()) sum += value
+    setExpandedFolds(sum)
+  }, [])
+  const foldRefold = useCallback(() => {
+    setFoldSignal(signal => signal + 1)
+    foldCounts.current.clear()
+    setExpandedFolds(0)
+  }, [])
+  const foldReporters = useRef(new Map<string, (count: number) => void>())
+  const foldReporterFor = useCallback((key: string): (count: number) => void => {
+    let reporter = foldReporters.current.get(key)
+    if (reporter === undefined) {
+      reporter = (count: number) => { onFileFoldState(key, count) }
+      foldReporters.current.set(key, reporter)
+    }
+    return reporter
+  }, [onFileFoldState])
   const pending = entry.cache.kind === 'loading' || entry.cache.kind === 'empty'
   const failed = entry.cache.kind === 'error' ? entry.cache.message : null
   const oldPath = ready?.raw.oldPath ?? file.oldPath
@@ -208,7 +234,7 @@ const ReviewFileRow = memo(function ReviewFileRow({
     <article ref={anchorRef} className={css.reviewFile} data-review-path={file.path}>
       <button
         type="button"
-        className={css.reviewFileHeader}
+        className={`${css.reviewFileHeader}${expanded && expandedFolds > 0 ? ` ${css.reviewFileHeaderRefold}` : ''}`}
         aria-expanded={expanded}
         onClick={onHeaderClick}
       >
@@ -219,6 +245,17 @@ const ReviewFileRow = memo(function ReviewFileRow({
           ? <span className={css.reviewFileLoading}>{t('loading')}</span>
           : ready !== null && <span className={css.reviewCounts}><b>{`+${ready.added}`}</b><i>{`-${ready.removed}`}</i></span>}
       </button>
+      {bodyMounted && expanded && expandedFolds > 0 && (
+        <button
+          type="button"
+          className={css.reviewFileRefold}
+          aria-label={t('review.refold')}
+          title={t('review.refold')}
+          onClick={foldRefold}
+        >
+          <IconUnfoldLessOutline16 size={14} />
+        </button>
+      )}
       {expanded && skeletonMounted && !bodyMounted && (
         <div className={css.reviewFileSkeleton} style={{ height: skeletonHeight }} aria-hidden>
           {t('loading')}
@@ -234,7 +271,15 @@ const ReviewFileRow = memo(function ReviewFileRow({
               {layer.files.map(parsed => (
                 parsed.binary
                   ? <div key={parsed.key} className={css.binary}>{t('review.binary')}</div>
-                  : <DiffBlock key={parsed.key} diffs={parsed.hunks} showPath={false} showFooter={false} variant="review" />
+                  : <DiffBlock
+                    key={parsed.key}
+                    diffs={parsed.hunks}
+                    showPath={false}
+                    showFooter={false}
+                    variant="review"
+                    foldResetSignal={foldSignal}
+                    onFoldStateChange={foldReporterFor(parsed.key)}
+                  />
               ))}
             </section>
           ))}
@@ -364,13 +409,26 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
   }), [anyExpanded, cache.status, controller, t])
   usePanelHeaderActions(contributeHeaderActions, headerActions)
 
+  const reviewTotals = (() => {
+    let added = 0
+    let removed = 0
+    for (const entry of Object.values(cache.entries)) {
+      if (entry.cache.kind === 'ready') { added += entry.cache.added; removed += entry.cache.removed }
+    }
+    return { added, removed }
+  })()
+
   return (
     <div className={css.review}>
       {cache.error !== null && <div className={css.error}>{cache.error}</div>}
       <div className={css.reviewBody}>
         <div className={css.reviewStatus}>
           <strong>{cache.status?.branch || t('review.title')} → {t('review.title')}</strong>
-          <span>{cache.checks === null ? '—' : cache.checks.clean ? t('review.checks.clean') : t('review.checks.failed')}</span>
+          <span>{cache.checks !== null && !cache.checks.clean
+            ? t('review.checks.failed')
+            : reviewTotals.added > 0 || reviewTotals.removed > 0
+              ? <span className={css.reviewCounts}><b>{`+${reviewTotals.added}`}</b><i>{`-${reviewTotals.removed}`}</i></span>
+              : '—'}</span>
         </div>
         {missedPath !== null && (
           <div className={css.reviewMissed} role="status">{t('review.missedFile')}<code>{missedPath}</code></div>
