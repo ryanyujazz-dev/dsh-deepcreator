@@ -44,6 +44,7 @@ const OWNED_DEPENDENCIES = new Set([
   '@ryanyujazz/dsh-client-ui-workspace',
   '@ryanyujazz/dsh-artifacts',
   '@ryanyujazz/dsh-review',
+  '@ryanyujazz/dsh-skills',
   '@ryanyujazz/dsh-terminal-workbench',
 ])
 const LEGACY_ROW_IDS = new Set(['execflow-conversation', 'execflow-tool'])
