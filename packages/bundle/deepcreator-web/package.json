@@ -34,9 +34,11 @@
     "@ryanyujazz/dsh-client-ui-user-questions": "workspace:^",
     "@ryanyujazz/dsh-client-ui-workbench": "workspace:^",
     "@ryanyujazz/dsh-client-ui-workbench-activity": "workspace:^",
+    "@ryanyujazz/dsh-client-ui-workbench-artifact": "workspace:^",
     "@ryanyujazz/dsh-client-ui-workbench-tools": "workspace:^",
     "@ryanyujazz/dsh-client-workbench-remotes": "workspace:^",
     "@ryanyujazz/dsh-review": "workspace:^",
+    "@ryanyujazz/dsh-session-admin": "workspace:^",
     "@ryanyujazz/dsh-skills": "workspace:^",
     "@ryanyujazz/dsh-terminal-workbench": "workspace:^",
     "@ryanyujazz/dsh-client-ui-workspace": "workspace:^"

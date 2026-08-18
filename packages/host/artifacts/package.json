@@ -1,6 +1,6 @@
 {
   "name": "@ryanyujazz/dsh-artifacts",
-  "description": "Event-sourced Artifact Registry for the DeepCreator Workbench",
+  "description": "Read-only workspace file reader for the DeepCreator Workbench Artifact panel",
   "version": "0.1.0",
   "type": "module",
   "main": "lib/index.js",

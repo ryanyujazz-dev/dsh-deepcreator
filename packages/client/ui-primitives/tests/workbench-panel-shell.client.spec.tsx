@@ -51,7 +51,7 @@ function renderShell(tabLabels?: Record<string, string>, titleSuffix?: string) {
 }
 
 describe('shared Workbench PanelShell', () => {
-  it('places the tab plus left and every other action right', async () => {
+  it('places back, tabs and the tab plus left and every other action right', async () => {
     const { view } = renderShell()
     const create = await view.findByRole('button', { name: '新建' })
     const refresh = await view.findByRole('button', { name: '刷新' })
@@ -60,12 +60,12 @@ describe('shared Workbench PanelShell', () => {
     const tablist = view.getByRole('tablist')
     const back = view.getByRole('button', { name: '返回终端' })
 
+    expect(back.compareDocumentPosition(firstTab) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(firstTab.compareDocumentPosition(latestTab) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(latestTab.compareDocumentPosition(create) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(within(tablist).queryByRole('button', { name: '新建' })).toBeNull()
     expect(create.compareDocumentPosition(refresh) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(view.queryByText('终端')).toBeNull()
-    expect(refresh.compareDocumentPosition(back) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(view.getByText('Panel content')).toBeTruthy()
   })
 

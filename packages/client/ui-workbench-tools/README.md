@@ -1,8 +1,8 @@
 # Workbench tool providers
 
-Registers Artifact, Review, Terminal and user-facing Preview panel types; Preview retains the stable internal `browser` type id. Browser Web is usable for sandboxed loopback HTTP(S) previews. Artifact, Review and Terminal render explicit unavailable states until their Host Remote packages are composed; they never invent business data or imply unsupported diff mutations.
+Registers Review, Terminal and user-facing Preview panel types; Preview retains the stable internal `browser` type id. Browser Web is usable for sandboxed loopback HTTP(S) previews. Review and Terminal render explicit unavailable states until their Host Remote packages are composed; they never invent business data or imply unsupported diff mutations. The artifact panel type moved to `@ryanyujazz/dsh-client-ui-workbench-artifact`, which owns the `artifact` type id and its session-event projection.
 
-Provider views render Body content only. Refresh, Terminal control and create-tab actions are contributed to the public Workbench Panel Header; Artifact metadata, Review state and Preview URL entry are content, never a second subtitle toolbar.
+Provider views render Body content only. Refresh, Terminal control and create-tab actions are contributed to the public Workbench Panel Header; Review state and Preview URL entry are content, never a second subtitle toolbar.
 
 Review is one vertically scrolling, expandable file list rather than a file-navigation/Diff split view. Each header carries the rename path and exact counts, sticks to the top of that one scroller, and is naturally pushed away by the next file header. Expanded staged and working-tree layers stay explicit, contextual hunks use the shared syntax-highlighted Diff primitive, binary changes use an explicit non-code state, and Review remains read-only.
 

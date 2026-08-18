@@ -13,7 +13,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
   Button, IconCloseFill14, IconPersonalizationOutline16,
-  IconProjectAddOutline16, IconSearchOutline16, Menu, Modal, SIDEBAR_ICON_SIZE, Tooltip,
+  IconProjectAddOutline16, IconSearchOutline16, Menu, Modal, RiskConfirmation,
+  SIDEBAR_ICON_SIZE, Tooltip,
 } from '@ryanyujazz/dsh-client-ui-primitives'
 import type {
   SessionId, SessionListState, SessionSearchResultItem, WorkspaceId, WorkspaceView,
@@ -250,6 +251,8 @@ type SessionTreeProps = Pick<
   onSessionRename: (sessionId: SessionNode['id'], currentTitle: string) => void
   /** Archive a session (row menu action; the row disappears on the state echo). */
   onSessionArchive: (sessionId: SessionNode['id']) => void
+  /** Open the destructive delete-confirmation dialog for a session. */
+  onSessionDelete: (sessionId: SessionNode['id'], title: string) => void
   /** Session order behavior: fixed after edits, or additionally promoted by user activity. */
   orderBy: SessionOrderBy
 }
@@ -257,7 +260,7 @@ type SessionTreeProps = Pick<
 /** The scrolling session tree; unmounting drops the sessions subscription and expand-all state. */
 function SessionTree({
   useSessions, startSession, open, forkSession, workspaces, archivedSessionIds,
-  onRenameRequest, onDeleteRequest, onSessionRename, onSessionArchive,
+  onRenameRequest, onDeleteRequest, onSessionRename, onSessionArchive, onSessionDelete,
   pinnedSessionIds, setSessionPinned, openWorkspaceLocation, canOpenPath, fileManager,
   insertWorkspaceBefore, insertSessionBefore, orderBy,
   groupExpansion, setGroupExpanded,
@@ -527,6 +530,7 @@ function SessionTree({
                     onRename={onSessionRename}
                     onFork={forkSession}
                     onArchive={onSessionArchive}
+                    onSessionDelete={onSessionDelete}
                     onPinnedChange={setSessionPinned}
                     onOpenLocation={openWorkspaceLocation}
                     canOpenLocation={canOpenPath}
@@ -559,7 +563,7 @@ function SessionTree({
 
 /** The flat "In one list" body: every session is one draggable top-level row. */
 function FlatList({
-  useSessions, open, forkSession, onSessionRename, onSessionArchive, archivedSessionIds,
+  useSessions, open, forkSession, onSessionRename, onSessionArchive, onSessionDelete, archivedSessionIds,
   pinnedSessionIds, setSessionPinned, openWorkspaceLocation, canOpenPath, fileManager,
   orderBy, sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder, t,
 }: Pick<
@@ -569,6 +573,7 @@ function FlatList({
   | 'forkSession'
   | 'onSessionRename'
   | 'onSessionArchive'
+  | 'onSessionDelete'
   | 'archivedSessionIds'
   | 'pinnedSessionIds'
   | 'setSessionPinned'
@@ -653,6 +658,7 @@ function FlatList({
               onRename={onSessionRename}
               onFork={forkSession}
               onArchive={onSessionArchive}
+              onSessionDelete={onSessionDelete}
               onPinnedChange={setSessionPinned}
               onOpenLocation={openWorkspaceLocation}
               canOpenLocation={canOpenPath}
@@ -694,6 +700,7 @@ function PinnedSessions({
   forkSession,
   onSessionRename,
   onSessionArchive,
+  onSessionDelete,
   workspaces,
   archivedSessionIds,
   pinnedSessionIds,
@@ -710,6 +717,7 @@ function PinnedSessions({
   | 'forkSession'
   | 'onSessionRename'
   | 'onSessionArchive'
+  | 'onSessionDelete'
   | 'workspaces'
   | 'archivedSessionIds'
   | 'pinnedSessionIds'
@@ -746,6 +754,7 @@ function PinnedSessions({
             onRename={onSessionRename}
             onFork={forkSession}
             onArchive={onSessionArchive}
+            onSessionDelete={onSessionDelete}
             pinned
             onPinnedChange={setSessionPinned}
             onOpenLocation={openWorkspaceLocation}
@@ -851,6 +860,7 @@ export function WorkspaceBrowser({
   deleteWorkspace,
   insertWorkspaceBefore,
   archiveSession,
+  deleteSession,
   insertSessionBefore,
   createWorkspace,
   searchSessions,
@@ -1042,6 +1052,42 @@ export function WorkspaceBrowser({
     })
   }
 
+  // Session delete keeps its own confirmation (destructive, irreversible) and
+  // stays separate from the row so a successful removal can unmount that row
+  // without tearing down the in-flight dialog state.
+  const [deleteSessionTarget, setDeleteSessionTarget] = useState<{ sessionId: string; title: string } | null>(null)
+  const [sessionDeleting, setSessionDeleting] = useState(false)
+  const [sessionDeleteAcknowledged, setSessionDeleteAcknowledged] = useState(false)
+  const [sessionDeleteError, setSessionDeleteError] = useState<string | null>(null)
+  const closeSessionDelete = () => {
+    if (sessionDeleting) return
+    setDeleteSessionTarget(null)
+    setSessionDeleteError(null)
+    setSessionDeleteAcknowledged(false)
+  }
+  const confirmSessionDelete = () => {
+    if (sessionDeleting || deleteSessionTarget === null) return
+    setSessionDeleting(true)
+    setSessionDeleteError(null)
+    const target = deleteSessionTarget
+    deleteSession(target.sessionId as SessionId).then(() => {
+      // Keep the dialog pending until the committed list projection drops the
+      // deleted id (the Host re-lists inside deleteSession).
+      setDeleteSessionTarget(null)
+      setSessionDeleting(false)
+      setSessionDeleteAcknowledged(false)
+      actions.setSessionPinned(target.sessionId, false)
+    }).catch((reason: unknown) => {
+      setSessionDeleting(false)
+      setSessionDeleteError(reason instanceof Error ? reason.message : String(reason))
+    })
+  }
+  const onSessionDelete = (sessionId: SessionNode['id'], title: string) => {
+    setDeleteSessionTarget({ sessionId: String(sessionId), title })
+    setSessionDeleteError(null)
+    setSessionDeleteAcknowledged(false)
+  }
+
   // Delete dialog is separate from the row so a successful removal can
   // unmount that row without tearing down the in-flight confirmation state.
   const [deleteTarget, setDeleteTarget] = useState<{ workspaceId: WorkspaceId; title: string } | null>(null)
@@ -1086,6 +1132,7 @@ export function WorkspaceBrowser({
           forkSession={forkSession}
           onSessionRename={onSessionRename}
           onSessionArchive={onSessionArchive}
+          onSessionDelete={onSessionDelete}
           workspaces={workspaces}
           archivedSessionIds={archivedSessionIds}
           pinnedSessionIds={pinnedSessionIds}
@@ -1248,6 +1295,7 @@ export function WorkspaceBrowser({
               <FlatList
                 useSessions={useSessions} open={open} forkSession={forkSession}
                 onSessionRename={onSessionRename} onSessionArchive={onSessionArchive}
+                onSessionDelete={onSessionDelete}
                 archivedSessionIds={archivedSessionIds}
                 pinnedSessionIds={pinnedSessionIds}
                 setSessionPinned={actions.setSessionPinned}
@@ -1267,6 +1315,7 @@ export function WorkspaceBrowser({
                 useSessions={useSessions}
                 onSessionRename={onSessionRename}
                 onSessionArchive={onSessionArchive}
+                onSessionDelete={onSessionDelete}
                 forkSession={forkSession}
                 workspaces={workspaces}
                 groupExpansion={groupExpansion}
@@ -1391,6 +1440,23 @@ export function WorkspaceBrowser({
         {deleting && <div className={css.deleteStatus} role="status">{t('delete.pending')}</div>}
         {deleteError !== null && <div className={css.renameError} role="alert">{deleteError}</div>}
       </Modal>
+      <RiskConfirmation
+        open={deleteSessionTarget !== null}
+        title={t('deleteSession.title')}
+        description={sessionDeleteError !== null
+          ? sessionDeleteError
+          : deleteSessionTarget === null
+            ? ''
+            : t('deleteSession.desc', { name: deleteSessionTarget.title })}
+        acknowledgeLabel={t('deleteSession.acknowledge')}
+        cancelLabel={t('cancel')}
+        confirmLabel={t('menu.deleteSession')}
+        acknowledged={sessionDeleteAcknowledged}
+        disabled={sessionDeleting}
+        onAcknowledgedChange={setSessionDeleteAcknowledged}
+        onCancel={closeSessionDelete}
+        onConfirm={confirmSessionDelete}
+      />
       </div>
     </>
   )

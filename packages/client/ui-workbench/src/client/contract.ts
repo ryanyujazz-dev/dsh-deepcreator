@@ -102,13 +102,18 @@ export interface WorkbenchPanelOwnerProps {
   visible?: boolean | undefined
 }
 
-export interface WorkbenchPanelIconOwnerProps { size: number }
+export interface WorkbenchPanelIconOwnerProps {
+  size: number
+  /** Whether the panel group is currently visible; lets icons show read state. */
+  visible: boolean
+}
 
 export interface ArtifactRendererOwnerProps {
   artifactId: string
-  kind: string
-  mime?: string
   content: string
+  /** Kind/mime are optional: the official produced-files fact carries no metadata. */
+  kind?: string
+  mime?: string
 }
 
 export type WorkbenchStore = ReturnType<typeof createWorkbenchStore>

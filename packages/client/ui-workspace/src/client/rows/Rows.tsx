@@ -360,7 +360,7 @@ export function SearchResultItem({ result, currentId, onOpen, t }: {
  * @returns the session row.
  */
 export function SessionNodeItem({
-  node, currentId, now, onOpen, onRename: _onRename, onFork, onArchive,
+  node, currentId, now, onOpen, onRename: _onRename, onFork, onArchive, onSessionDelete,
   onPinnedChange, pinned = false, onOpenLocation, canOpenLocation = false,
   fileManager = 'generic', drag, flat = false, t,
 }: {
@@ -374,6 +374,8 @@ export function SessionNodeItem({
   onFork: (id: SessionNode['id']) => void
   /** Archive this session (row menu action; commits without a dialog). */
   onArchive: (id: SessionNode['id']) => void
+  /** Open the destructive delete-confirmation dialog for this session. */
+  onSessionDelete: (id: SessionNode['id'], title: string) => void
   /** Add/remove this Session from the independent pinned region. */
   onPinnedChange?: ((id: SessionNode['id'], pinned: boolean) => void) | undefined
   /** Whether this row is currently rendered from the pinned preference. */
@@ -410,6 +412,7 @@ export function SessionNodeItem({
     { id: 'fork', label: t('menu.fork'), icon: <IconBranchOutline16 /> },
     // 20-native glyph in the menu's 16px icon slot (Menu.module.css .itemIcon).
     { id: 'archive', label: t('menu.archiveSession'), icon: <IconArchiveOutline20 size={16} /> },
+    { id: 'delete', label: t('menu.deleteSession'), icon: <IconTrashOutline16 />, danger: true },
     { type: 'separator', id: 'native-location-separator', inset: 'text' },
     {
       id: 'open-location',
@@ -479,6 +482,7 @@ export function SessionNodeItem({
               if (id === 'pin') onPinnedChange?.(node.id, !pinned)
               if (id === 'fork') onFork(node.id)
               if (id === 'archive') onArchive(node.id)
+              if (id === 'delete') onSessionDelete(node.id, title)
               if (id === 'open-location' && row.cwd !== undefined) onOpenLocation?.(row.cwd)
             }}
             portal

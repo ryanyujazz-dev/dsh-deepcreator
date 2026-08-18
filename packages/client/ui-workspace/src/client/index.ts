@@ -11,8 +11,11 @@
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-api-remotes/client'
-// Type-only: pulls the locale plugin's Context merge (ctx.locale).
+import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
+// Type-only: pulls the locale plugin's Context merge (ctx.locale) and the
+// `session-admin` remote namespace merge (TypertRemoteNamespaceMap).
 import type {} from '@ryanyujazz/dsh-client-locale/client'
+import type {} from '@ryanyujazz/dsh-session-admin/remote'
 import type { WorkspaceBrowserInjected, WorkspacePickerInjected } from './contract/slots.ts'
 import { createWorkspaceViewStore } from './stores.ts'
 import { WorkspaceBrowser } from './WorkspaceBrowser.tsx'
@@ -44,7 +47,7 @@ const NS = 'workspace'
  * provides a waitable service. apply therefore depends on each slot
  * declaration through `slots.inject()` instead of assuming order.
  */
-export const inject = ['slots', 'sessions', 'workspaces', 'locale', 'connection']
+export const inject = ['slots', 'sessions', 'workspaces', 'locale', 'connection', 'remote', 'remote.session-admin']
 
 /**
  * Register the browser and picker once their slot declarations are on the
@@ -77,6 +80,9 @@ export function apply(ctx: ClientContext): void {
   const fileManager = connection.isLoopback
     ? nativeFileManagerFromUserAgent(typeof navigator === 'undefined' ? '' : navigator.userAgent)
     : 'generic'
+  // Cordis returns a fresh traced Proxy for every associated namespace read.
+  // Capture this namespace once so renders never re-read the association.
+  const sessionAdmin = (ctx.get('remote') as TypertClientRemote)['session-admin']
   const browserInjected = (): WorkspaceBrowserInjected => ({
     // Explicit group actions keep their target; unscoped New Session inherits
     // the current Session Workspace before the recent-Workspace fallback.
@@ -111,6 +117,17 @@ export function apply(ctx: ClientContext): void {
       await ctx.workspaces.insertBefore(workspaceId, beforeWorkspaceId)
     },
     archiveSession: async (sessionId) => { await ctx.workspaces.archiveSession(sessionId) },
+    deleteSession: async (sessionId) => {
+      const wire = await sessionAdmin.delete(sessionId)
+      if (!wire.ok) throw new Error(wire.error.message)
+      if (!wire.value.ok) throw new Error(wire.value.message)
+      // The Host removed the persisted log; re-list so the row disappears.
+      // The official ISessions face exposes no list refresh; the runtime's
+      // SessionRuntime carries the manager that does (private by type, stable
+      // by construction — the same object provides both faces).
+      const sessions = ctx.sessions as unknown as { manager: { refreshList(): Promise<void> } }
+      await sessions.manager.refreshList()
+    },
     insertSessionBefore: async (workspaceId, sessionId, beforeSessionId) => {
       await ctx.workspaces.insertSessionBefore(workspaceId, sessionId, beforeSessionId)
     },

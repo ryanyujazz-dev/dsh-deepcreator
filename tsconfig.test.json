@@ -36,6 +36,8 @@
       "@ryanyujazz/dsh-client-ui-workbench/*": ["./packages/client/ui-workbench/src/*"],
       "@ryanyujazz/dsh-client-ui-workbench-activity": ["./packages/client/ui-workbench-activity/src/index.ts"],
       "@ryanyujazz/dsh-client-ui-workbench-activity/*": ["./packages/client/ui-workbench-activity/src/*"],
+      "@ryanyujazz/dsh-client-ui-workbench-artifact": ["./packages/client/ui-workbench-artifact/src/index.ts"],
+      "@ryanyujazz/dsh-client-ui-workbench-artifact/*": ["./packages/client/ui-workbench-artifact/src/*"],
       "@ryanyujazz/dsh-client-ui-workbench-tools": ["./packages/client/ui-workbench-tools/src/index.ts"],
       "@ryanyujazz/dsh-client-ui-workbench-tools/*": ["./packages/client/ui-workbench-tools/src/*"],
       "@ryanyujazz/dsh-client-workbench-remotes": ["./packages/client/workbench-remotes/src/index.ts"],

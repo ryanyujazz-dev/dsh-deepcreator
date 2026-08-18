@@ -1,8 +1,8 @@
 # Workbench 工具面板
 
-注册「产物」「审查」「终端」与「预览」四种面板；预览面板内部仍使用稳定的 `browser` type id。Browser Web 只允许 sandboxed loopback HTTP(S) 预览；Artifact、Review 与 Terminal 只读取已组合的 Host Remote，不伪造业务状态，也不暗示不存在的 Diff 变更能力。
+注册「审查」「终端」与「预览」三种面板；预览面板内部仍使用稳定的 `browser` type id。Browser Web 只允许 sandboxed loopback HTTP(S) 预览；Review 与 Terminal 只读取已组合的 Host Remote，不伪造业务状态，也不暗示不存在的 Diff 变更能力。产物面板类型已迁移到 `@ryanyujazz/dsh-client-ui-workbench-artifact`，由其持有 `artifact` type id 与会话事件投影。
 
-Provider 视图只渲染 Body 内容。刷新、Terminal 控制和新建 Tab 操作都贡献到公共 Workbench Panel Header；Artifact 元信息、Review 状态与 Preview URL 输入属于内容，不得形成第二层副标题工具栏。
+Provider 视图只渲染 Body 内容。刷新、Terminal 控制和新建 Tab 操作都贡献到公共 Workbench Panel Header；Review 状态与 Preview URL 输入属于内容，不得形成第二层副标题工具栏。
 
 Review 内容区是单一纵向滚动、可折叠的文件列表，不再使用文件导航／Diff 左右分栏。首个文件初始展开；其余文件只有在用户展开时才读取 Diff，已读取结果在面板生命周期内保留。每个文件 Header 包含 rename 路径与准确计数，在同一个滚动容器顶部吸附，并由到达顶部的下一个文件 Header 自然顶替。展开内容继续明确区分 staged 与 working-tree，多个上下文 hunk 复用带语法高亮的公共 Diff 原语；二进制变更使用明确的非代码状态。Review 始终只读。
 

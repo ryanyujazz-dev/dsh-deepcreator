@@ -298,7 +298,7 @@ export function WorkbenchRoot({
                     onRestore={() => { actions.restoreFocus() }}
                     renderPanel={(owner) => renderSlot('deepcreator.workbench.panel', owner, { only: group.typeId })}
                     renderArtifact={(artifact) => renderSlot('deepcreator.workbench.artifact.renderer', artifact, {
-                      only: artifact.kind,
+                      ...(artifact.kind === undefined ? {} : { only: artifact.kind }),
                       fallback: <pre>{artifact.content}</pre>,
                     })}
                   />

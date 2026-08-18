@@ -1,0 +1,14 @@
+.panel { display: flex; min-height: 100%; flex-direction: column; }
+.error { padding: 6px 10px; color: var(--dsw-alias-label-error); background: var(--dsw-alias-fill-error); font-size: 11px; line-height: 16px; }
+.content { min-height: 0; flex: 1; overflow: auto; }
+.content > pre { box-sizing: border-box; min-height: 100%; margin: 0; padding: 16px; white-space: pre-wrap; color: var(--dsw-alias-label-primary); font: 12px/1.65 var(--dsw-font-mono); }
+.list { min-height: 0; overflow: auto; padding: 6px; }
+.list > button { width: 100%; min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 0; border-radius: 8px; padding: 8px 10px; color: var(--dsw-alias-label-primary); background: transparent; text-align: left; cursor: pointer; }
+.list > button:hover { background: var(--dsw-alias-fill-hover); }
+.list > button:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: -2px; }
+.list .copy { min-width: 0; display: grid; gap: 3px; }
+.list strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 500; }
+.list .meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dsw-alias-label-tertiary); font-size: 10px; line-height: 14px; }
+.list time { flex: none; color: var(--dsw-alias-label-tertiary); font-size: 10px; line-height: 14px; }
+.empty { min-height: 100%; display: grid; place-content: center; gap: 5px; padding: 24px; box-sizing: border-box; color: var(--dsw-alias-label-tertiary); text-align: center; font-size: 12px; line-height: 18px; }
+.empty strong { color: var(--dsw-alias-label-secondary); font-size: 13px; font-weight: 500; }
