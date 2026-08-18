@@ -94,11 +94,22 @@ for (const required of [
   if (!bundlePatch.includes(required)) failures.push(`deepcreator-web omits ${required}`)
 }
 
-const sourceFiles = readdirSync(clientRoot, { recursive: true, withFileTypes: true })
-for (const file of sourceFiles) {
-  if (!file.isFile() || !/\.(?:ts|tsx|css|md)$/.test(file.name)) continue
-  const path = join(file.parentPath, file.name)
-  if (path.includes('/node_modules/') || path.includes('/lib/')) continue
+// Manual recursion: pnpm materializes circular peer links (ui-conversation ↔
+// ui-workbench) as alternating nested node_modules chains whose far end is a
+// dead symlink; recursive readdir follows them and crashes (ENOENT or
+// ENAMETOOLONG) before any post-hoc path filter can run. Skipping these
+// directories on entry — and never following symlinked directories — keeps
+// the walk on real source trees only.
+const collectSourceFiles = (dir, out) => {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === 'node_modules' || entry.name === 'lib') continue
+    const path = join(dir, entry.name)
+    if (entry.isDirectory()) collectSourceFiles(path, out)
+    else if (entry.isFile() && /\.(?:ts|tsx|css|md)$/.test(entry.name)) out.push(path)
+  }
+  return out
+}
+for (const path of collectSourceFiles(clientRoot, [])) {
   const source = readFileSync(path, 'utf8')
   if (source.includes('settings.general.preferences.item')) {
     failures.push(`${path} still uses the removed official preferences slot`)
