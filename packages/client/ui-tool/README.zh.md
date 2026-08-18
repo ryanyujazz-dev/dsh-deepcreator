@@ -12,7 +12,7 @@ Client 工具展示插件。`ui-conversation` 通过 `conversation.chat.node` �
 
 每个 root 和 child 包装层都保留 `data-chat-anchor-key="call:<id>"` 与 `data-chat-call-id` DOM 约定，供分页和 selection 使用。
 
-旧 `conversation.details.tool` 注册现在仅作为惰性兼容代码保留：Workbench 成为根详情区唯一 occupant 后，`ui-conversation` 不再声明该子 seat。工具审查后续必须作为 keyed Workbench Inspector Provider 重做。聊天行 renderer 仍复用 `terminal`、`read`、`diff`、`search` 和 `web` 的纯 card model。
+旧 `conversation.details.tool` 注册连同其 `ToolDetails` renderer 已随 `ui-conversation` 退役的 DetailsPanel 一并移除；该 slot 已从契约中删除。工具审查后续必须作为 keyed Workbench Inspector Provider 重做。聊天行 renderer 仍复用 `terminal`、`read`、`diff`、`search` 和 `web` 的纯 card model。
 
 通用行把已知工具名称归类为 search、read、shell、write、edit、code 或 generic 变体。运行中、成功、失败和中断状态只来自冻结的 call/result slice。Write／Edit 结果会保留官方可选的 `oldStart`／`newStart` 元数据；展开卡片使用 ui-primitives 的公共行级／词级 Diff 模型、真实 Shiki 语法 token、单行号 gutter、软换行和独立 hunk 卡片。没有起始行元数据的历史结果仍可渲染，只是行号留空。只有用户调用 Host 打开文件回调时，文件路径才相对会话 `cwd` 解析；展示代码不读取会话服务。
 

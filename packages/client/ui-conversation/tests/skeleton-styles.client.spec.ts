@@ -5,7 +5,6 @@ import { describe, expect, it } from 'vitest'
 const css = readFileSync(fileURLToPath(new URL('../src/client/skeleton/ConversationRoot.module.css', import.meta.url)), 'utf8')
 const inputCss = readFileSync(fileURLToPath(new URL('../src/client/skeleton/InputBar.module.css', import.meta.url)), 'utf8')
 const heroCss = readFileSync(fileURLToPath(new URL('../src/client/skeleton/HeroShell.module.css', import.meta.url)), 'utf8')
-const detailsCss = readFileSync(fileURLToPath(new URL('../src/client/skeleton/DetailsPanel.module.css', import.meta.url)), 'utf8')
 
 /** Extract one CSS rule as normalized property/value pairs. */
 function declarations(selector: string): Map<string, string> | undefined {
@@ -76,8 +75,6 @@ describe('ConversationRoot.module.css', () => {
       .toBe('drag')
     expect(css).toMatch(/\[data-native-window-chrome='macos'\] \.header :is\([\s\S]*?button,[\s\S]*?\)\s*\{[\s\S]*?-webkit-app-region: no-drag;/)
     expect(css).toMatch(/\.root\[data-phase='hero'\]::before,[\s\S]*?\.root\[data-phase='settling'\]::before[\s\S]*?height: 48px;[\s\S]*?-webkit-app-region: drag;/)
-    expect(detailsCss).toMatch(/\[data-native-window-chrome='macos'\] \.header\s*\{[\s\S]*?-webkit-app-region: drag;/)
-    expect(detailsCss).toMatch(/\[data-native-window-chrome='macos'\] \.close\s*\{[\s\S]*?-webkit-app-region: no-drag;/)
   })
 
   it('keeps both view-segment labels on the header text-size role', () => {

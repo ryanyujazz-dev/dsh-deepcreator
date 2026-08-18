@@ -1,8 +1,7 @@
-/** Register the Tool call tree, details renderer, and built-in atomic views. */
+/** Register the Tool call tree and built-in atomic views. */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@ryanyujazz/dsh-client-ui-conversation/client'
 import { ToolCallTree } from './tool/ToolCallTree.tsx'
-import { ToolDetails } from './tool/ToolDetails.tsx'
 import { CONVERSATION_NS as NS } from './locale.ts'
 import { askQuestionToolview } from './tool/toolviews/ask-question-row.tsx'
 import { bashToolviewSample } from './tool/toolviews/bash-sample.tsx'
@@ -28,11 +27,6 @@ export function apply(ctx: ClientContext): void {
       'tool.call.toolview': { kind: 'keyed', scope: 'session' },
     },
   }, ToolCallTree))
-
-  ctx.slots.inject('conversation.details.tool', () => ctx.slots.register({
-    name: 'conversation.details.tool',
-    locale: NS,
-  }, ToolDetails))
 
   ctx.plugin(bashToolviewSample)
   ctx.plugin(readToolview)

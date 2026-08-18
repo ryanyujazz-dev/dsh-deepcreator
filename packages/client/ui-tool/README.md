@@ -12,7 +12,7 @@ Business UI packages register only their wire Tool names and atomic views. They 
 
 Each root and child wrapper preserves the `data-chat-anchor-key="call:<id>"` and `data-chat-call-id` DOM contract used for paging and selection.
 
-The former `conversation.details.tool` registration is retained only as inert compatibility code: `ui-conversation` no longer declares that child seat after the Workbench became the sole root-details occupant. Tool inspection must be reintroduced later as a keyed Workbench Inspector Provider. Chat-row renderers continue to share pure card models for `terminal`, `read`, `diff`, `search`, and `web` render intents.
+The former `conversation.details.tool` registration and its `ToolDetails` renderer are removed together with `ui-conversation`'s retired DetailsPanel; the slot is gone from the contract. Tool inspection must be reintroduced later as a keyed Workbench Inspector Provider. Chat-row renderers continue to share pure card models for `terminal`, `read`, `diff`, `search`, and `web` render intents.
 
 Generic rows classify known Tool names into search, read, shell, write, edit, code, or generic variants. Running, successful, failed, and interrupted lifecycle states come only from the frozen call/result slice. Write/Edit results preserve the optional official `oldStart`/`newStart` metadata, and their expanded cards use ui-primitives' shared line/word Diff model, real Shiki syntax tokens, single-number gutters, soft wrapping, and independent hunk cards. Historical results without start metadata remain renderable with blank line numbers. File paths resolve against the session `cwd` only when the user invokes the Host open-file callback; presentation code does not read Session services.
 

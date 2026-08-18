@@ -7,7 +7,7 @@ import type {
 } from '@deepseek-ai/dsh-client-ui-slots'
 import type {
   CommandNode, CompactionSummaryNode, ConversationSnapshot, ConversationTurnDataMap,
-  ObservableSnapshot, PendingInteraction, PendingWait, SessionId, ToolCallBlock,
+  ObservableSnapshot, PendingInteraction, PendingWait, SessionId,
   TurnLocation, WorkspaceId,
 } from '@deepseek-ai/dsh-client-runtime/client'
 import type { MarkdownFileMentions } from '@ryanyujazz/dsh-client-ui-primitives'
@@ -138,17 +138,6 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
       scope: 'session'
       owner: ChatRenderOwnerProps
     }
-    /**
-     * The body of the details panel for the tool call the user selected —
-     * one occupant, so taking it means rendering every tool's output, not just
-     * the ones you know. The owner passes a frozen `block` whose two lifecycle
-     * forms must both be handled: branch on `'kind' in block` (a settled
-     * `ToolResultNode` has it, a still-running call does not), and treat
-     * `cwd` as display-only, for shortening workspace-rooted paths.
-     * A per-tool renderer belongs in the keyed `tool.call.toolview` seat
-     * instead; this one is the whole panel.
-     */
-    'conversation.details.tool': { kind: 'single'; scope: 'session'; owner: DetailsToolOwnerProps }
     /**
      * The composer takeover chain: entries are selector-routed replacements
      * of the default InputBar. Declared by this package's 'conversation'
@@ -415,30 +404,6 @@ export interface ChatNodeOwnerProps {
 /** Full props of one registered keyed Chat business renderer. */
 export type ChatNodeViewProps<Kind extends ChatNodeKind = ChatNodeKind> =
   PropsRuntime<'conversation.chat.node', Kind> & PropsLocale<'conversation'>
-
-/** Owner currency of the details panel's Tool output renderer. */
-export interface DetailsToolOwnerProps {
-  /** Frozen selected call slice. */
-  block: ToolCallBlock
-  /** Session workspace root for card cwd and relative-path display. */
-  cwd?: string | undefined
-}
-
-/**
- * @deprecated Compatibility face for the inert legacy DetailsPanel presenter.
- * ui-conversation no longer registers that presenter in the root `details`
- * seat; ui-workbench is the sole runtime occupant.
- */
-export interface DetailsInjected {
-  closeDetails: () => void
-}
-
-/**
- * @deprecated Props retained only for isolated legacy presenter/tests. This
- * type does not imply a runtime `details` registration.
- */
-export type DetailsSlotProps = PropsRuntime<'details'> & PropsRenderSlots<'conversation.details.tool'>
-  & PropsStore<ChatStore> & DetailsInjected & PropsLocale<'conversation'>
 
 /**
  * Owner share of the per-command row slot: the frozen {@link CommandNode}

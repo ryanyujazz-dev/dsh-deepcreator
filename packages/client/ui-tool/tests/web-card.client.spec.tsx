@@ -24,9 +24,8 @@ import { IconGlobeOutline14 } from '@ryanyujazz/dsh-client-ui-primitives'
 import { webCardModel } from '../src/client/tool/models/web-card-model.ts'
 import { createChatStore } from '@ryanyujazz/dsh-client-ui-conversation/src/client/stores.ts'
 import { GenericToolCard } from '../src/client/tool/toolviews/GenericToolCard.tsx'
-import { DetailsPanel } from '@ryanyujazz/dsh-client-ui-conversation/src/client/skeleton/DetailsPanel.tsx'
 import { WebRow, webToolview } from '../src/client/tool/toolviews/web-row.tsx'
-import { renderToolDetails, SessionProviderStub, toolChatSnapshot } from './tool-details-render.client.tsx'
+import { toolChatSnapshot } from './tool-details-render.client.tsx'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@ryanyujazz/dsh-client-locale/src/locales/zh.ts'
 import { zh } from '@ryanyujazz/dsh-client-ui-conversation/src/client/locales.ts'
@@ -35,7 +34,7 @@ afterEach(cleanup)
 
 const SID = 's1' as SessionId
 
-/** Locale seat for the card render sites (GenericToolCard, DetailsPanel), as the sibling suites build it. */
+/** Locale seat for the card render sites (GenericToolCard), as the sibling suites build it. */
 const t = makeTranslate(zh, commonZh)
 
 const SEARCH_ARGS = '{"query":"deepseek harness"}'
@@ -203,86 +202,6 @@ describe('chat row web body', () => {
       call: { name: 'echo', argsRaw: '{}' }, callView: null, resultView: null,
     }), 'echo')} t={t} />)
     expect(view.container.querySelector('[data-web]')).toBeNull()
-  })
-})
-
-describe('DetailsPanel web Output section', () => {
-  function mount(snapshot: ConversationSnapshot, selection: SelectionTarget | null) {
-    localStorage.clear()
-    const chat = createChatStore().create()
-    if (selection !== null) chat.actions.select(selection)
-    const sessions = createSnapshotStore<SessionListState>({
-      ids: [], byId: {}, current: undefined, phase: 'ready',
-      subagentsByParent: {}, jobsBySession: {}, currentAddress: undefined,
-    })
-    const workspaces = createSnapshotStore<WorkspaceListState>({
-      items: [], archivedSessionIds: [], state: 'idle', phase: 'ready', error: null,
-      baselinesReady: true, recentWorkspaceId: undefined,
-    })
-    return render(
-      <DetailsPanel
-        SessionProvider={SessionProviderStub}
-        renderSlot={renderToolDetails(t)}
-        sessionId={SID}
-        useSession={bindSnapshotSelector({ getSnapshot: () => snapshot, subscribe: () => () => {} })}
-        useSessions={bindSnapshotSelector(sessions)}
-        useWorkspaces={bindSnapshotSelector(workspaces)}
-        useInput={(() => { throw new Error('unused') })}
-        inputActions={{
-          setDraft: () => {},
-          addImages: () => true,
-          removeImage: () => {},
-          pruneImages: () => {},
-          submit: () => {},
-        }}
-        useProjection={(() => undefined)}
-        useStore={bindSnapshotSelector(chat)}
-        actions={chat.actions}
-        closeDetails={vi.fn()}
-        t={t}
-      />,
-    )
-  }
-
-  function snapshot(over: Partial<ConversationSnapshot> = {}): ConversationSnapshot {
-    const nodes = over.nodes ?? []
-    const runningCalls = over.runningCalls ?? []
-    return {
-      sessionId: SID, views: EMPTY_CONVERSATION_VIEWS,
-      chat: over.chat ?? toolChatSnapshot(nodes, runningCalls),
-      nodes: [], turnTimings: new Map(), turnEnds: new Map(), partial: null, runningCalls: [],
-      pending: [], queue: [], running: false, composerPhase: 'active', removed: false,
-      openState: 'open', openError: null, hasMore: false, loadingOlder: false,
-      promptError: null, blank: false, subagent: null, lastAgentError: null, ...over,
-    }
-  }
-
-  it('renders the search card at full source allowance', () => {
-    const view = mount(snapshot({ nodes: [settledSearch()] }), { turnSeq: 10, callId: 'c1', toolName: 'web_search' })
-    expect(view.getByText('Titled')).toBeTruthy()
-    expect(view.getByText('excerpt')).toBeTruthy()
-    // The Input JSON section survives beside it.
-    expect(view.getByText(/"query"/)).toBeTruthy()
-  })
-
-  it('renders the fetch card and keeps the fetched body below it', () => {
-    const view = mount(snapshot({ nodes: [settledFetch()] }), { turnSeq: 11, callId: 'c2', toolName: 'web_fetch' })
-    const card = view.container.querySelector('[data-web="fetch"]')
-    expect(card?.querySelector('a')?.getAttribute('href')).toBe('https://example.com/page')
-    expect(view.getByText('HTTP 200')).toBeTruthy()
-    // The card is a summary (URL + status only); the panel is the single-call
-    // reading surface, so the fetched body still renders below the card.
-    const output = view.getByText('输出').closest('section')
-    expect(output?.querySelector('pre')?.textContent).toContain('fetch body')
-  })
-
-  it('a non-web result keeps the flattened pre form', () => {
-    const view = mount(snapshot({
-      nodes: [settledSearch({ callView: null, resultView: null })],
-    }), { turnSeq: 10, callId: 'c1', toolName: 'web_search' })
-    expect(view.container.querySelector('[data-web]')).toBeNull()
-    const output = view.getByText('输出').closest('section')
-    expect(output?.querySelector('pre')?.textContent).toContain('search text')
   })
 })
 

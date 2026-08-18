@@ -56,14 +56,13 @@ const bashResult = (seq: number, callId: string, over?: Partial<ToolResultNode>)
 })
 
 /** Test-owned AppFrame role: declares and renders the resident conversation area. */
-type AppRootProps = PropsRenderSlots<'conversation' | 'details'>
+type AppRootProps = PropsRenderSlots<'conversation'>
 function AppRoot({ renderSlot }: AppRootProps) {
   return <>{renderSlot('conversation', {})}</>
 }
 
 const LAYOUT_CHILDREN = {
   'conversation': { kind: 'single', scope: 'session-maybe' },
-  'details': { kind: 'single', scope: 'session' },
 } as const
 
 async function bench(nodes: ToolResultNode[]) {
@@ -72,7 +71,6 @@ async function bench(nodes: ToolResultNode[]) {
   // ui-theme's Appearance row binds a durable scope through these two.
   runtime.provide('remote', { $on: () => () => {} })
   runtime.provide('settingsScope', { bind: () => stubSettingsScope().scope } as never)
-  runtime.provide('layout', { openDetails: vi.fn(), closeDetails: vi.fn() })
   const locale = new LocaleRuntime(runtime.ctx)
   runtime.provide('locale', locale)
   runtime.slots.installLocale(locale)
