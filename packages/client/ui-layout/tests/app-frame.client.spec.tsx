@@ -177,14 +177,14 @@ describe('AppFrame', () => {
     const { frame, instance, rerenderFrame } = mountFrame()
     expect(tracks(frame)).toEqual([280, 0])
 
-    act(() => { instance.actions.openDetails() })
+    act(() => { instance.actions.setDetails(520) })
     expect(tracks(frame)).toEqual([280, 520])
 
     selectedSession.current = 's-next' as SessionId
     act(() => { rerenderFrame() })
     expect(tracks(frame)).toEqual([280, 520])
 
-    act(() => { instance.actions.openDetails() })
+    act(() => { instance.actions.setDetails(520) })
     selectedSession.current = 's-blank' as SessionId
     selectedSessionBlank.current = true
     act(() => { rerenderFrame() })
@@ -229,7 +229,7 @@ describe('AppFrame', () => {
 
   it('details drag widens leftward (negative dx grows the panel)', () => {
     const { frame, instance } = mountFrame()
-    act(() => { instance.actions.openDetails() })
+    act(() => { instance.actions.setDetails(520) })
     const handles = frame.querySelectorAll('[class*="handle"]')
     drag(handles[1]!, 1560, 1500)
     expect(tracks(frame)[1]).toBe(580)
@@ -289,12 +289,14 @@ describe('AppFrame', () => {
   it('drag handles disappear for collapsed columns', () => {
     const { frame, instance } = mountFrame()
     expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(1)
-    act(() => { instance.actions.openDetails() })
+    act(() => { instance.actions.setDetails(520) })
     expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(2)
-    act(() => { instance.actions.closeDetails() })
-    expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(1)
+    // Width writes clamp to DETAILS_MIN, so the details handle only leaves
+    // with its occupant (details session unbound), never by a width write.
+    act(() => { instance.actions.setDetails(0) })
+    expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(2)
     act(() => { instance.actions.toggleSidebar() })
-    expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(0)
+    expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(1)
   })
 })
 

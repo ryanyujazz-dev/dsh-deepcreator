@@ -9,7 +9,7 @@
  */
 import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-runtime/client'
 import {
-  clampWidth, DETAILS_DEFAULT, DETAILS_MAX, DETAILS_MIN,
+  clampWidth, DETAILS_MAX, DETAILS_MIN,
   SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN,
 } from './columns.ts'
 
@@ -37,8 +37,6 @@ type LayoutActions = {
   setDetails: (draft: LayoutState, px: number) => void
   toggleSidebar: (draft: LayoutState) => void
   setNarrow: (draft: LayoutState, narrow: boolean) => void
-  openDetails: (draft: LayoutState) => void
-  closeDetails: (draft: LayoutState) => void
   setDetailsFocused: (draft: LayoutState, focused: boolean) => void
 }
 
@@ -77,8 +75,6 @@ export function createLayoutStore(): EngineStoreHandle<LayoutState, LayoutAction
         d.narrow = narrow
         d.narrowExpanded = false
       },
-      openDetails: (d) => { if (d.details === 0) d.details = DETAILS_DEFAULT },
-      closeDetails: (d) => { d.details = 0; d.detailsFocused = false },
       setDetailsFocused: (d, focused: boolean) => { d.detailsFocused = focused },
     },
   })

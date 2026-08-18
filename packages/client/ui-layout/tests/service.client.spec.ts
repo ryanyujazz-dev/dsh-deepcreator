@@ -14,8 +14,6 @@ function fakePanels(): PanelActions {
     setDetails: vi.fn(),
     toggleSidebar: vi.fn(),
     setNarrow: vi.fn(),
-    openDetails: vi.fn(),
-    closeDetails: vi.fn(),
     setDetailsFocused: vi.fn(),
   }
 }
@@ -27,14 +25,10 @@ describe('LayoutController', () => {
     service.attachPanels(panels)
 
     service.toggleSidebar()
-    service.openDetails()
-    service.closeDetails()
     service.setWorkbenchWidth(640)
     service.setWorkbenchFocused(true)
 
     expect(panels.toggleSidebar).toHaveBeenCalledTimes(1)
-    expect(panels.openDetails).toHaveBeenCalledTimes(1)
-    expect(panels.closeDetails).toHaveBeenCalledTimes(1)
     expect(panels.setSidebar).not.toHaveBeenCalled()
     expect(panels.setDetails).toHaveBeenCalledWith(640)
     expect(panels.setDetailsFocused).toHaveBeenCalledWith(true)
@@ -43,8 +37,6 @@ describe('LayoutController', () => {
   it('fails loud before the root entry wired its actions', () => {
     const service = new LayoutController()
     expect(() => { service.toggleSidebar() }).toThrow(/panel actions not wired/)
-    expect(() => { service.openDetails() }).toThrow(/panel actions not wired/)
-    expect(() => { service.closeDetails() }).toThrow(/panel actions not wired/)
   })
 
   it('re-attach overwrites the stale action set (entry re-register)', () => {

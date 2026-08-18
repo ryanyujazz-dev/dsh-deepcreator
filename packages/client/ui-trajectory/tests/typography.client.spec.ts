@@ -10,9 +10,6 @@ const readCss = (name: string): string => readFileSync(
 
 const viewCss = readCss('views.module.css')
 const contentCss = [
-  readCss('TrajectoryCell.module.css'),
-  readCss('TrajectoryGroupHeader.module.css'),
-  readCss('TrajectoryTurnHeader.module.css'),
   readCss('TrajectoryTable.module.css'),
   readCss('TrajectoryTimeline.module.css'),
 ].join('\n')

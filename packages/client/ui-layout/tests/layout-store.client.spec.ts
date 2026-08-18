@@ -74,21 +74,9 @@ describe('createLayoutStore', () => {
     expect(store.getSnapshot().narrowExpanded).toBe(false)
   })
 
-  it('openDetails uses the contract default, preserves an open width, and closeDetails zeroes', () => {
-    const { store, actions } = createLayoutStore().create()
-    actions.openDetails()
-    expect(store.getSnapshot().details).toBe(DETAILS_DEFAULT)
-    actions.setDetails(500)
-    actions.openDetails()
-    expect(store.getSnapshot().details).toBe(500)
-    actions.closeDetails()
-    expect(store.getSnapshot().details).toBe(0)
-  })
-
   it('does not persist panel geometry', () => {
     const first = createLayoutStore().create()
     first.actions.setSidebar(400)
-    first.actions.openDetails()
     first.actions.setDetails(500)
     expect(localStorage.getItem(PERSIST_KEY)).toBeNull()
 
