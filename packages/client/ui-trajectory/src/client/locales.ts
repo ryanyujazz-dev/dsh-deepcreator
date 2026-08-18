@@ -7,6 +7,7 @@ export const NS = 'trajectory'
 export type TrajectoryKey =
   | 'view.trajectory'
   | 'toolbar.aria'
+  | 'toolbar.duration'
   | 'toolbar.useActualDuration'
   | 'toolbar.useEqualWidth'
   | 'toolbar.actualTime'
@@ -30,6 +31,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 export const zh: Record<TrajectoryKey, string> = {
   'view.trajectory': '轨迹',
   'toolbar.aria': '轨迹工具栏',
+  'toolbar.duration': 'Duration',
   'toolbar.useActualDuration': 'Use actual duration',
   'toolbar.useEqualWidth': 'Use equal-width operations',
   'toolbar.actualTime': '实际时间',
@@ -47,6 +49,7 @@ export const zh: Record<TrajectoryKey, string> = {
 export const en: Record<TrajectoryKey, string> = {
   'view.trajectory': 'Trajectory',
   'toolbar.aria': 'Trajectory toolbar',
+  'toolbar.duration': 'Duration',
   'toolbar.useActualDuration': 'Use actual duration',
   'toolbar.useEqualWidth': 'Use equal-width operations',
   'toolbar.actualTime': 'Actual time',

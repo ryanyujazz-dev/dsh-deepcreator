@@ -69,6 +69,8 @@ export interface TrajectoryViewInjected {
   hooks: {
     duration: SnapshotStore<boolean>
   }
+  /** Write the browser-wide duration projection preference. */
+  setDuration: (value: boolean) => void
   loadOlder: () => Promise<boolean>
 }
 
@@ -117,7 +119,7 @@ function addUsage(
 }
 
 export function TrajectoryView({
-  useSession, useDuration, loadOlder,
+  useSession, useDuration, setDuration, loadOlder,
   inspect, onInspectDone, t,
 }: ConvViewProps & InjectFace<TrajectoryViewInjected> & PropsLocale<'trajectory'>) {
   const [collapsedTurns, setCollapsedTurns] = useState<ReadonlySet<number>>(EMPTY_TURN_IDS)
@@ -448,6 +450,8 @@ export function TrajectoryView({
   return (
     <div className={css.root} data-conversation-composer-overlay="">
       <TrajectoryToolbar
+        actualDuration={actualDuration}
+        onActualDurationChange={setDuration}
         actualTime={actualTime}
         onActualTimeChange={(nextActualTime) => {
           setActualTime(nextActualTime)

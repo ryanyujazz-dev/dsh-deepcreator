@@ -258,6 +258,7 @@ function mount(slots: SlotRegistry, nodes: ConversationSnapshot['nodes'] = NODES
         return {
           loadOlder: trajectory.loadOlder,
           useDuration: bindSnapshotSelector(trajectory.hooks.duration),
+          setDuration: trajectory.setDuration,
           t: (key: TrajectoryKey) => zh[key],
         }
       })()
@@ -347,6 +348,30 @@ describe('plugin registration', () => {
 
     expect(second.hooks.duration).toBe(first.hooks.duration)
     expect(second.hooks.duration.getSnapshot()).toBe(false)
+  })
+
+  it('the toolbar Duration toggle writes the shared preference and presses', async () => {
+    const b = await bench()
+    const view = mount(b.slots)
+    fireEvent.click(screen.getByRole('tab', { name: 'Trajectory' }))
+    const toggle = view.container.querySelector(
+      'button[aria-label="Use actual duration"]',
+    ) as HTMLButtonElement | null
+    expect(toggle).not.toBeNull()
+    expect(toggle.getAttribute('aria-pressed')).toBe('false')
+
+    fireEvent.click(toggle!)
+    expect(toggle.getAttribute('aria-pressed')).toBe('true')
+
+    const entry = b.slots.entries('conversation.view')
+      .find(candidate => candidate.options.id === 'trajectory')
+    const injectEntry = entry!.inject as unknown as (
+      sessionId: SessionId,
+    ) => TrajectoryViewInjected
+    expect(injectEntry(SID).hooks.duration.getSnapshot()).toBe(true)
+
+    fireEvent.click(toggle!)
+    expect(injectEntry(SID).hooks.duration.getSnapshot()).toBe(false)
   })
 
   it('reports whether loading older history changed the Trajectory snapshot', async () => {

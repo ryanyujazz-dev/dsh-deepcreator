@@ -6,6 +6,10 @@ import type { NS } from './locales.ts'
 import css from './TrajectoryToolbar.module.css'
 
 export interface TrajectoryToolbarProps {
+  /** Whether the timeline projects recorded durations instead of equal widths. */
+  actualDuration: boolean
+  /** Select recorded-duration projection or equal-width operations. */
+  onActualDurationChange: (actualDuration: boolean) => void
   /** Whether recorded timing retains idle gaps between operations. */
   actualTime: boolean
   /** Select complete wall-clock timing or idle-compressed timing. */
@@ -32,6 +36,8 @@ export interface TrajectoryToolbarProps {
  * @returns the toolbar element.
  */
 export function TrajectoryToolbar({
+  actualDuration,
+  onActualDurationChange,
   actualTime,
   onActualTimeChange,
   allTurnsCollapsed,
@@ -46,6 +52,20 @@ export function TrajectoryToolbar({
     <div className={css.root} role="toolbar" aria-label={t('toolbar.aria')}>
       <div className={css.inner}>
         <div className={css.actions}>
+          <button
+            type="button"
+            className={css.action}
+            aria-label={t('toolbar.useActualDuration')}
+            aria-pressed={actualDuration}
+            title={actualDuration ? t('toolbar.useEqualWidth') : t('toolbar.useActualDuration')}
+            onClick={() => { onActualDurationChange(!actualDuration) }}
+          >
+            <svg className={css.toggleIcon} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <circle cx="8" cy="8" r="5.25" />
+              <path d="M8 4.75V8l2.25 1.5" />
+            </svg>
+            {t('toolbar.duration')}
+          </button>
           <button
             type="button"
             className={css.control}
