@@ -34,7 +34,7 @@ export function apply(ctx: ClientContext): void {
   const panel = (props: WorkbenchPanelProps & PropsLocale<'workbench-artifact'>): ReactNode =>
     createElement(ArtifactPanel, { ...props, artifacts })
   const definition: PanelTypeDefinition = {
-    id: 'artifact', label: () => t('type'), scope: 'session', order: 2, supportsHome: true, supportsCreate: false,
+    id: 'artifact', label: () => t('type'), scope: 'session', order: 3, supportsHome: true, supportsCreate: false,
     supportsMultipleInstances: true, minWidth: 150, minHeight: 260, preferredWidth: 520, initialWidthRatio: 1 / 3, closePolicy: 'detach',
   }
   ctx.effect(() => {

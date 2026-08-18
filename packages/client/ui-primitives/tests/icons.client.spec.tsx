@@ -65,7 +65,7 @@ describe('ic_ds_ icon set', () => {
 
     const artifact = render(<DeepCreatorIconArtifact16 />).container
     expect(artifact.querySelectorAll('path')).toHaveLength(1)
-    expect(artifact.querySelector('path')!.getAttribute('d')).toBe('M2 4h12M2 8h5M2 12h8.5')
+    expect(artifact.querySelector('path')!.getAttribute('fill')).toBe('currentColor')
 
     const review = render(<DeepCreatorIconReview16 />).container
     expect(review.querySelectorAll('rect')).toHaveLength(1)

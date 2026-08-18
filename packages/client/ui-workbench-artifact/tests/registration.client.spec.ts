@@ -51,7 +51,7 @@ describe('ui-workbench-artifact registration', () => {
     // Provider surface: type 'artifact' keeps the persisted field values.
     expect(typeDefinitions).toHaveLength(1)
     expect(typeDefinitions[0]).toMatchObject({
-      id: 'artifact', order: 2, scope: 'session', closePolicy: 'detach',
+      id: 'artifact', order: 3, scope: 'session', closePolicy: 'detach',
       supportsHome: true, supportsMultipleInstances: true,
     })
     expect(injectedSlots).toEqual(['deepcreator.workbench.panel', 'deepcreator.workbench.panel-icon'])
