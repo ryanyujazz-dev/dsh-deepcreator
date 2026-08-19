@@ -6,6 +6,8 @@
 
 实例内容经挂载的 `artifacts` remote 命名空间按活动路径键控读取:仅当活动路径变化或用户手动刷新时重读。路径缺失或逃逸时展示 reader 的错误码;不存在墓碑状态,因为官方事实从不撤回。
 
+内容渲染走 `deepcreator.workbench.artifact.renderer` 槽(由 `ui-workbench` 声明,面板经 `renderArtifact` owner prop 消费)。本包注册 `code` 渲染器:扩展名能映射到已注册文法的路径(含 markdown——散文产物也是文件)用共享 `CodeSurface` 渲染(行号 gutter、Shiki token 走 `data-code-theme` 配色链、按面板宽度软换行、不自涂底色);其余类型保持面板内置的纯 `<pre>` 回退原样。
+
 类型入口图标在会话出现用户尚未查看的新产物时于右上角显示蓝点:已见水位仅在面板组可见时推进(隐藏的组保持 mounted,因此隐藏面板时蓝点持续,直到打开)。
 
 截断窗口语义:当一轮的 `turn/start` 位于未加载的旧页时,该轮在旧页加载前不可见——与其他会话投影语义一致;无 start 的更新事件是惰性的。

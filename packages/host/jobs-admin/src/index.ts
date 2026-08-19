@@ -1,16 +1,21 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { inspectApiRemoteSession } from '@deepseek-ai/dsh-api-remotes'
-// Type-only: pulls the `agents`/`jobs` Context merges into this program.
+// Type-only: pulls the `agents`/`jobs`/`subagents` Context merges into this program.
 import type {} from '@deepseek-ai/dsh-agent'
+import type {} from '@deepseek-ai/dsh-subagent'
 import type { SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session'
 import type { JobId } from '@deepseek-ai/dsh-jobs'
 import type {} from '@deepseek-ai/dsh-jobs'
-import type { SubagentEventsResult, SubagentQueuedItem, SubagentWireEvent, JobStopResult } from './types.ts'
+import type {
+  SubagentEventsResult, SubagentOverviewChild, SubagentOverviewResult, SubagentQueuedItem,
+  SubagentWireEvent, JobStopResult,
+} from './types.ts'
 export type {
   JobStopError, JobStopOk, JobStopResult,
   SubagentEventsError, SubagentEventsOk, SubagentEventsResult, SubagentQueuedItem, SubagentWireEvent,
+  SubagentOverviewError, SubagentOverviewOk, SubagentOverviewResult,
 } from './types.ts'
 
 /** Official session ids are `session-<uuid>`; reject anything else before touching the registries. */
@@ -40,8 +45,8 @@ const WINDOW_EVENTS = 1200
  * assembly on the client.
  */
 export class JobsAdmin extends TypertRemoteService {
-  /** Required services: the official agent, job, and session registries. */
-  static inject = ['agents', 'jobs', 'sessions']
+  /** Required services: the official agent, job, subagent, and session registries. */
+  static inject = ['agents', 'jobs', 'subagents', 'sessions']
 
   constructor(ctx: Context) { super(ctx, 'jobs-admin') }
 
@@ -128,6 +133,56 @@ export class JobsAdmin extends TypertRemoteService {
     // Session.append validates every payload as lossless JSON, so the closed
     // wire projection is exact (see SubagentWireEvent).
     return { ok: true, events: [...slice] as SubagentWireEvent[], totalSeq, queue }
+  }
+
+  /**
+   * Recency projection for the Activity panel's home grouping. The official
+   * subagent runtime enumerates the parent's durable direct children (the same
+   * corpus the client catalog reads); this adds the two facts that corpus does
+   * not carry — each live child's latest logged event time, and the parent's
+   * latest user-authored surface message as the current participation
+   * cohort's boundary. Cold children keep their catalog row but carry no
+   * activity time (they cannot have participated since any live turn).
+   */
+  @Remote('subagentOverview')
+  async subagentOverview(parentSessionId: string): Promise<SubagentOverviewResult> {
+    if (!SESSION_ID_PATTERN.test(parentSessionId)) {
+      return { ok: false, code: 'INVALID_SESSION', message: `Session id ${parentSessionId} is not a valid session id.` }
+    }
+    const parent = this.ctx.sessions.get(parentSessionId as SessionId)
+    if (parent === undefined) {
+      return { ok: false, code: 'PARENT_GONE', message: `Session ${parentSessionId} is not live on this host.` }
+    }
+    let entries: Awaited<ReturnType<typeof this.ctx.subagents.listChildren>>
+    try {
+      entries = await this.ctx.subagents.listChildren(parentSessionId as SessionId)
+    } catch (error) {
+      return { ok: false, code: 'READ_FAILED', message: `Subagent enumeration failed: ${error instanceof Error ? error.message : String(error)}` }
+    }
+    const children: SubagentOverviewChild[] = []
+    for (const entry of entries) {
+      if (entry.kind !== 'child') continue
+      const live = this.ctx.sessions.get(entry.id)
+      const lastEvent = live?.events[live.events.length - 1]
+      children.push({
+        id: entry.id,
+        running: entry.activity === 'running',
+        ...(lastEvent === undefined ? {} : { lastActiveAt: lastEvent.time }),
+      })
+    }
+    // Cohort boundary: the parent's latest user-authored message. Context and
+    // system injections are user/message events too; only source.kind === 'user'
+    // marks what the human actually sent this turn.
+    let turnStartedAt: number | undefined
+    for (let index = parent.events.length - 1; index >= 0; index -= 1) {
+      const event = parent.events[index]!
+      if (event.type !== 'user/message') continue
+      const source = (event.data as { source?: { kind?: unknown } } | null)?.source
+      if (source?.kind !== 'user') continue
+      turnStartedAt = event.time
+      break
+    }
+    return { ok: true, children, ...(turnStartedAt === undefined ? {} : { turnStartedAt }) }
   }
 }
 

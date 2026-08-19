@@ -24,11 +24,11 @@
 .tab {
   display: flex;
   align-items: center;
-  /* Hug the label: content-sized up to the 160px truncation cap, floored by
-   * the 56px click target, so short tabs carry no dead space between the
-   * label and the close glyph. */
+  /* Hug the label: content-sized with no cap, floored by the 56px click
+   * target. When the strip runs out of room the pills compress (flex-shrink
+   * against flex-basis auto) and a clipped label trades its ellipsis for the
+   * right-edge fade below — short labels never fade. */
   flex: 0 1 auto;
-  max-width: 160px;
   min-width: 56px;
   /* 26px tall with a 6px radius inside the 32px panel Header: the 3px
    * centering plus the shell's 1px border seats this 6px corner exactly on
@@ -74,6 +74,15 @@
    * (centering is invariant), so lift explicitly. */
   position: relative;
   top: -1px;
+}
+
+/* A clipped label fades out at its right edge instead of drawing an
+ * ellipsis — the same trailing-fade vocabulary the sidebar rows use for
+ * overflow, and theme-free (a mask needs no background token). */
+.tab[data-truncated] .tabLabel span {
+  text-overflow: clip;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 16px), transparent 100%);
+  mask-image: linear-gradient(to right, #000 calc(100% - 16px), transparent 100%);
 }
 
 .tabClose {

@@ -64,6 +64,8 @@ export interface WorkbenchService {
   registerType(definition: PanelTypeDefinition): () => void
   /** Registered panel-type definitions (availability checks by id). */
   types: { list(): readonly PanelTypeDefinition[] }
+  /** Types currently visible in the live topology (controller-published). */
+  visibility: { list(): readonly string[] }
   present(request: WorkbenchPresentRequest): void
   activate(typeId: string, instanceId?: string): void
   /** Present the type as a user action and focus `target` inside its panel. */

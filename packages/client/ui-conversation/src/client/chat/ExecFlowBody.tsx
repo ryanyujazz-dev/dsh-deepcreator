@@ -148,6 +148,12 @@ export interface ExecFlowBodyEmbedProps {
   embedNodeSeat?: { readonly dispatch: EmbedNodeDispatch } | undefined
   /** True in the embed: the classic form is fixed, so the Thinking chip never shows. */
   lockThinkForm?: boolean | undefined
+  /**
+   * Full bottom padding (px) for the scroll container, replacing the base
+   * 16px: the embed's floating queue card reserves this safe area so the flow
+   * can scroll its tail clear of the card.
+   */
+  scrollPaddingBottom?: number | undefined
 }
 
 /**
@@ -157,7 +163,7 @@ export interface ExecFlowBodyEmbedProps {
  */
 export function ExecFlowBody({
   useSession, useSessions, useStore, sessionId, openFile, revealChange, loadOlder, loadImage, inspectCall, chatScroll, forkAt,
-  fileMentions, selectRenderMode, renderSlot, t, actions, thinkForm, siblingId, embedNodeSeat, lockThinkForm,
+  fileMentions, selectRenderMode, renderSlot, t, actions, thinkForm, siblingId, embedNodeSeat, lockThinkForm, scrollPaddingBottom,
 }: ExecFlowBodyProps) {
   const order = useSession(s => s.chat.order)
   const nodeStore = useSession(s => s.chat.nodes)
@@ -528,7 +534,7 @@ export function ExecFlowBody({
 
   return (
     <div className={css.root}>
-      <div ref={listRef} className={css.scroll}>
+      <div ref={listRef} className={css.scroll} style={scrollPaddingBottom === undefined ? undefined : { paddingBottom: `${scrollPaddingBottom}px` }}>
         <div ref={columnRef} className={css.column} data-chat-flow="">
           {openState === 'loading' && <div className={css.hint}>{t('chat.loadingHistory')}</div>}
           {openState === 'error' && openError !== null && (

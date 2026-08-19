@@ -34,6 +34,8 @@ export class ConversationEmbedEngine {
   private cache: ConversationSnapshot | undefined
   private running = false
   private appended = 0
+  /** Highest seq folded so far; every incoming batch is filtered past it. */
+  private lastSeq = -1
 
   constructor(
     events: ConversationEventRegistry,
@@ -54,19 +56,24 @@ export class ConversationEmbedEngine {
   }
 
   /**
-   * Fold one event batch. The FIRST batch replaces the window; later batches
-   * append event by event (the panel polls contiguously — a non-continuing
-   * batch after a host restart simply lands as a fresh first window next
-   * mount, because the tab remounts with a fresh engine).
+   * Fold one event batch, deduplicated by seq. The panel serves a full
+   * trailing window on every mount (a tab switch or a running transition
+   * re-runs its poll effect), but this engine is cached per child for the app
+   * lifetime and owns the folded log — a repeated window degrades to its own
+   * delta, so remounts neither duplicate nodes nor lose the persisted view.
+   * The first batch on a fresh engine replaces the window; later batches
+   * append event by event.
    */
   push(events: readonly EmbedSessionEvent[]): void {
-    if (events.length === 0) return
+    const fresh = events.filter(event => event.seq > this.lastSeq)
+    if (fresh.length === 0) return
     if (this.appended === 0) {
-      this.assembler.replaceWindow(events.map(event => ({ event, view: undefined })), false)
+      this.assembler.replaceWindow(fresh.map(event => ({ event, view: undefined })), false)
     } else {
-      for (const event of events) this.assembler.append({ event, view: undefined })
+      for (const event of fresh) this.assembler.append({ event, view: undefined })
     }
-    this.appended += events.length
+    this.appended += fresh.length
+    this.lastSeq = fresh[fresh.length - 1]!.seq
     this.assembler.flush()
     this.cache = undefined
     this.notify()

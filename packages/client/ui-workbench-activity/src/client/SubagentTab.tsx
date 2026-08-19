@@ -53,6 +53,8 @@ export interface SubagentTabProps {
   visible: boolean
   subagentEvents: ActivityInjected['subagentEvents']
   openInConversation: ActivityInjected['openInConversation']
+  /** Workbench route back to the panel's home (used after the conversation-area jump). */
+  showHome(): void
   /** Embed-slot dispatch supplied by the panel entry's children declaration. */
   renderEmbed: (owner: {
     parentSessionId: SessionId
@@ -72,10 +74,13 @@ interface Window {
 
 export function SubagentTab({
   parentSessionId, childId, label, mode, activity, listed, useSessions, visible,
-  subagentEvents, openInConversation, renderEmbed, t,
+  subagentEvents, openInConversation, showHome, renderEmbed, t,
 }: SubagentTabProps) {
   const summary = useSessions(snapshot => snapshot.byId[childId])
-  const running = activity === 'running' || (activity === undefined && summary?.running === true)
+  // Union of the two live facts: the catalog's activity bit and the session
+  // summary's running flag. Either alone can lag the other at a turn edge.
+  const catalogRunning = activity === 'running' || summary?.running === true
+  const [flowing, setFlowing] = useState(false)
   const [frame, setFrame] = useState<Window | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -90,7 +95,7 @@ export function SubagentTab({
     /** Adaptive backoff: fast while deltas land, relaxing when quiet. */
     let delay = FAST_POLL_MS
     const schedule = (hadEvents: boolean): void => {
-      if (!running) return
+      if (!catalogRunning) return
       delay = hadEvents ? FAST_POLL_MS : Math.min(delay * 2, IDLE_POLL_CEILING_MS)
       timer = window.setTimeout(pull, delay)
     }
@@ -107,6 +112,9 @@ export function SubagentTab({
             queue: result.queue,
             totalSeq: result.totalSeq,
           }))
+          // Only a DELTA proves live production: the initial window always
+          // carries history, so it must not light the drafting indicator.
+          setFlowing(!initial && delta.length > 0)
           schedule(delta.length > 0)
         } else {
           setError(t('events.error', { code: result.code }))
@@ -122,7 +130,12 @@ export function SubagentTab({
       cancelled = true
       if (timer !== undefined) clearTimeout(timer)
     }
-  }, [childId, parentSessionId, running, subagentEvents, t, visible])
+  }, [childId, parentSessionId, catalogRunning, subagentEvents, t, visible])
+
+  // The turn-level drafting indicator must not wait for the catalog bit: a
+  // child that is visibly producing events is "running" to the reader even
+  // while both activity flags still say idle (the spawn/delivery window).
+  const running = catalogRunning || flowing
 
   return (
     <div className={css.tabRoot}>
@@ -145,7 +158,12 @@ export function SubagentTab({
           className={css.openButton}
           disabled={!listed}
           title={listed ? undefined : t('subagent.gone')}
-          onClick={() => { openInConversation({ parentSessionId, childSessionId: childId, mode: mode ?? 'one-shot' }) }}
+          onClick={() => {
+            // Home first, while the PARENT's workbench instance still owns
+            // the action; the jump then re-scopes the session.
+            showHome()
+            openInConversation({ parentSessionId, childSessionId: childId, mode: mode ?? 'one-shot' })
+          }}
         >
           {t('subagent.open')}
         </button>

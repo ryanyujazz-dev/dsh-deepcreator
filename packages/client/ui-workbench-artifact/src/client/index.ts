@@ -9,6 +9,7 @@ import type { PanelTypeDefinition, WorkbenchPanelProps } from '@ryanyujazz/dsh-c
 import type {} from '@ryanyujazz/dsh-client-ui-workbench/client'
 import { ArtifactIcon } from './ArtifactIcon.tsx'
 import { ArtifactPanel } from './ArtifactPanel.tsx'
+import { ArtifactCodeRenderer } from './ArtifactCodeRenderer.tsx'
 import { registerArtifactNodeDefinition } from './artifact-node-definition.ts'
 import { registerArtifactsConversationView } from './artifacts-snapshot-builder.ts'
 import { en, NS, zh, type ArtifactKey } from './locales.ts'
@@ -43,6 +44,7 @@ export function apply(ctx: ClientContext): void {
       disposers.push(ctx.workbench.registerType(definition))
       disposers.push(ctx.slots.inject('deepcreator.workbench.panel', () => ctx.slots.register({ name: 'deepcreator.workbench.panel', id: 'artifact', locale: NS }, panel)))
       disposers.push(ctx.slots.inject('deepcreator.workbench.panel-icon', () => ctx.slots.register({ name: 'deepcreator.workbench.panel-icon', id: 'artifact' }, ArtifactIcon)))
+      disposers.push(ctx.slots.inject('deepcreator.workbench.artifact.renderer', () => ctx.slots.register({ name: 'deepcreator.workbench.artifact.renderer', id: 'code' }, ArtifactCodeRenderer)))
       disposers.push(registerArtifactNodeDefinition(ctx))
       disposers.push(registerArtifactsConversationView(ctx))
       disposers.push(ctx.locale.register(NS, { zh, en }))

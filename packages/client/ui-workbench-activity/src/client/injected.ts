@@ -1,5 +1,5 @@
 import type { SessionId, SubagentAddress } from '@deepseek-ai/dsh-client-runtime/client'
-import type { JobStopResult, SubagentEventsResult } from '@ryanyujazz/dsh-jobs-admin'
+import type { JobStopResult, SubagentEventsResult, SubagentOverviewResult } from '@ryanyujazz/dsh-jobs-admin'
 
 /**
  * Business actions supplied by the slot registration (assembly-owned; React
@@ -17,6 +17,13 @@ export interface ActivityInjected {
     childSessionId: SessionId,
     afterSeq?: number,
   ): Promise<SubagentEventsResult>
+  /**
+   * Read the parent's recency projection (host remote): per-child
+   * last-active time plus the current participation cohort's boundary.
+   */
+  subagentOverview(parentSessionId: SessionId): Promise<SubagentOverviewResult>
   /** Show the child session in the conversation area (official navigation). */
   openInConversation(address: SubagentAddress): void
+  /** Leave an addressed child and select its parent as current (official breadcrumb path). */
+  closeFromConversation(parentSessionId: SessionId): void
 }

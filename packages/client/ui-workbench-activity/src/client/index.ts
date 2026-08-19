@@ -49,8 +49,28 @@ export function apply(ctx: ClientContext): void {
           const wire = await jobsAdmin.subagentEvents(parentSessionId, childSessionId, afterSeq)
           return wire.ok ? wire.value : { ok: false, code: 'READ_FAILED', message: wire.error.message }
         },
+        subagentOverview: async parentSessionId => {
+          const wire = await jobsAdmin.subagentOverview(parentSessionId)
+          return wire.ok ? wire.value : { ok: false, code: 'READ_FAILED', message: wire.error.message }
+        },
         openInConversation: address => { ctx.sessions.openSubagent(address) },
+        closeFromConversation: parentSessionId => { ctx.sessions.open(parentSessionId) },
       })
+      // Addressed-child continuity: opening a subagent in the conversation
+      // area re-scopes the current session to the child, whose own Workbench
+      // topology starts empty. On every jump (idle→addressed transition)
+      // present the Activity panel at its home route so the panel the user
+      // jumped from stays at hand — content anchors to the parent's home
+      // either way. Per-transition only: hiding the panel while reading the
+      // child stays hidden until the next jump.
+      let wasAddressed = false
+      const syncAddressJump = (): void => {
+        const addressed = ctx.sessions.list.getSnapshot().currentAddress !== undefined
+        if (addressed && !wasAddressed) ctx.workbench.activate('activity')
+        wasAddressed = addressed
+      }
+      syncAddressJump()
+      disposers.push(ctx.sessions.list.subscribe(syncAddressJump))
       disposers.push(ctx.slots.inject('deepcreator.workbench.panel', () => ctx.slots.register({
         name: 'deepcreator.workbench.panel', id: 'activity', locale: NS, inject: injected,
         children: { 'deepcreator.conversation.embed': { kind: 'single', scope: 'root' } },

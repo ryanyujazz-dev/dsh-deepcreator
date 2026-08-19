@@ -1,9 +1,8 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { JobView, SessionId, SessionSummary, SubagentCatalogSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
-import type { SubagentTailResult } from '@ryanyujazz/dsh-jobs-admin'
-import { ActivityPanel, formatDuration, isLive, subagentRows } from '../src/client/ActivityPanel.tsx'
+import type { JobView, SessionId, SessionSummary, SubagentAddress, SubagentCatalogSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
+import { ActivityPanel, formatDuration, groupSubagents, isLive, subagentRows, type SubagentRow } from '../src/client/ActivityPanel.tsx'
 import type { ActivityInjected } from '../src/client/injected.ts'
 import { formatTokens, tokenTotal } from '../src/client/SubagentTab.tsx'
 import type { ActivityKey } from '../src/client/locales.ts'
@@ -16,6 +15,7 @@ const t = (key: ActivityKey | string, values?: Record<string, unknown>): string 
 
 interface ListState {
   byId: Record<string, SessionSummary>
+  currentAddress: SubagentAddress | undefined
   jobsBySession: Record<string, readonly JobView[]>
   subagentsByParent: Record<string, SubagentCatalogSnapshot>
 }
@@ -50,8 +50,10 @@ function panelProps(state: ListState, injected: Partial<ActivityInjected> = {}, 
     visible: true,
     stopJob: vi.fn(async () => ({ ok: true as const })),
     subagentEvents: vi.fn(async () => ({ ok: true as const, events: [], totalSeq: -1, queue: [] })),
+    subagentOverview: vi.fn(async () => ({ ok: true as const, children: [] })),
     renderSlot: Object.assign((key: string, owner: unknown) => ({ key, owner }), { subscribe: () => () => {}, version: () => 0 }),
     openInConversation: vi.fn(),
+    closeFromConversation: vi.fn(),
     t,
     ...injected,
   }
@@ -82,15 +84,48 @@ describe('activity helpers', () => {
       { kind: 'child', id: 'session-child-1' as SessionId, activity: 'running', hasChildren: false, mode: 'one-shot', label: undefined as unknown as string },
       { kind: 'diagnostic', id: 'session-broken' as SessionId, reason: 'corrupt' },
     ]), byId)
-    expect(rows.map(row => row.id)).toEqual(['session-child-1', 'session-child-2'])
-    expect(rows[0]?.label).toBe('session-child-1')
-    expect(rows[1]?.label).toBe('委派二')
+    // Catalog order; ordering belongs to the cohort grouping.
+    expect(rows.map(row => row.id)).toEqual(['session-child-2', 'session-child-1'])
+    expect(rows[0]?.label).toBe('委派二')
+    expect(rows[1]?.label).toBe('session-child-1')
   })
 
   it('sums token buckets compactly', () => {
     const usage = { uncachedInputTokens: 700, outputTokens: 300, cacheReadTokens: 900, cacheWriteTokens: 0 } as never
     expect(tokenTotal(usage)).toBe(1900)
     expect(formatTokens(1900)).toBe('1.9K')
+  })
+})
+
+describe('groupSubagents cohort split', () => {
+  const rows: SubagentRow[] = [
+    { id: 'session-old' as SessionId, label: '旧代理', mode: 'continuable', activity: 'inactive' },
+    { id: 'session-now' as SessionId, label: '本轮代理', mode: 'one-shot', activity: 'inactive' },
+    { id: 'session-revived' as SessionId, label: '复用代理', mode: 'continuable', activity: 'inactive' },
+    { id: 'session-live' as SessionId, label: '运行代理', mode: 'one-shot', activity: 'running' },
+  ]
+
+  it('keeps this-turn children on top, most recently active first', () => {
+    const cohort = groupSubagents(rows, {
+      ok: true,
+      turnStartedAt: 1_000,
+      children: [
+        { id: 'session-old', running: false, lastActiveAt: 500 },
+        { id: 'session-now', running: false, lastActiveAt: 1_200 },
+        { id: 'session-revived', running: false, lastActiveAt: 1_500 },
+        { id: 'session-live', running: true, lastActiveAt: 1_400 },
+      ],
+    })
+    // Running first, then recency: the re-invoked continuable child sits above
+    // the newer one-off because its latest activity is fresher.
+    expect(cohort.turn.map(row => row.id)).toEqual(['session-live', 'session-revived', 'session-now'])
+    expect(cohort.earlier.map(row => row.id)).toEqual(['session-old'])
+  })
+
+  it('collapses to one flat list without an overview (running first)', () => {
+    const cohort = groupSubagents(rows, undefined)
+    expect(cohort.turn).toEqual([])
+    expect(cohort.earlier.map(row => row.id)).toEqual(['session-live', 'session-old', 'session-now', 'session-revived'])
   })
 })
 
@@ -101,6 +136,7 @@ describe('ActivityPanel home route', () => {
   it('renders running and finished sections with official ordering', () => {
     const state: ListState = {
       byId: {},
+      currentAddress: undefined,
       jobsBySession: { [SESSION]: [
         job({ id: 'bash-1', status: 'completed', startedAt: 1_000, finishedAt: 9_000 }),
         job({ id: 'bash-2', status: 'running', startedAt: 5_000 }),
@@ -118,6 +154,7 @@ describe('ActivityPanel home route', () => {
   it('ticks the live duration every second', () => {
     const state: ListState = {
       byId: {},
+      currentAddress: undefined,
       jobsBySession: { [SESSION]: [job({ id: 'bash-1', status: 'running', startedAt: Date.now() - 500 })] },
       subagentsByParent: { [SESSION]: catalog([]) },
     }
@@ -130,6 +167,7 @@ describe('ActivityPanel home route', () => {
   it('stops a live job optimistically and reverts on failure', async () => {
     const state: ListState = {
       byId: {},
+      currentAddress: undefined,
       jobsBySession: { [SESSION]: [job({ id: 'bash-1', status: 'running', startedAt: Date.now() })] },
       subagentsByParent: { [SESSION]: catalog([]) },
     }
@@ -145,6 +183,7 @@ describe('ActivityPanel home route', () => {
   it('lists subagents and opens a tab on click', () => {
     const state: ListState = {
       byId: {},
+      currentAddress: undefined,
       jobsBySession: { [SESSION]: [] },
       subagentsByParent: { [SESSION]: catalog([
         { kind: 'child', id: 'session-child-1' as SessionId, activity: 'running', hasChildren: false, mode: 'continuable', label: '调研子代理' },
@@ -156,8 +195,52 @@ describe('ActivityPanel home route', () => {
     expect(props.openInstance).toHaveBeenCalledExactlyOnceWith('session-child-1')
   })
 
+  it('anchors to the parent while a subagent is opened in the conversation area', async () => {
+    const state: ListState = {
+      byId: {},
+      currentAddress: { parentSessionId: SESSION, childSessionId: 'session-child-1' as SessionId, mode: 'continuable' },
+      // The panel's own scope follows the child; the PARENT's catalog must show.
+      jobsBySession: { 'session-child-1': [] },
+      subagentsByParent: {
+        'session-child-1': catalog([]),
+        [SESSION]: catalog([
+          { kind: 'child', id: 'session-child-1' as SessionId, activity: 'inactive', hasChildren: false, mode: 'continuable', label: '调研子代理' },
+        ]),
+      },
+    }
+    const props = panelProps(state)
+    const view = render(<ActivityPanel {...props} />)
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    expect(view.container.textContent).toContain('调研子代理')
+    // The addressed child's meta becomes the return control.
+    fireEvent.click(screen.getByRole('button', { name: 'subagent.closeConversation' }))
+    expect(props.closeFromConversation).toHaveBeenCalledExactlyOnceWith(SESSION)
+  })
+
+  it('renders the turn cohort above the earlier group', async () => {
+    const state: ListState = {
+      byId: {},
+      currentAddress: undefined,
+      jobsBySession: { [SESSION]: [] },
+      subagentsByParent: { [SESSION]: catalog([
+        { kind: 'child', id: 'session-old' as SessionId, activity: 'inactive', hasChildren: false, mode: 'continuable', label: '旧代理' },
+        { kind: 'child', id: 'session-now' as SessionId, activity: 'inactive', hasChildren: false, mode: 'one-shot', label: '本轮代理' },
+      ]) },
+    }
+    const subagentOverview = vi.fn(async () => ({ ok: true as const, turnStartedAt: 1_000, children: [
+      { id: 'session-old', running: false, lastActiveAt: 500 },
+      { id: 'session-now', running: false, lastActiveAt: 1_200 },
+    ] }))
+    const view = render(<ActivityPanel {...panelProps(state, { subagentOverview })} />)
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    const text = view.container.textContent ?? ''
+    expect(text).toContain('subagent.turn')
+    expect(text).toContain('subagent.earlier')
+    expect(text.indexOf('本轮代理')).toBeLessThan(text.indexOf('旧代理'))
+  })
+
   it('shows the empty state when nothing runs', () => {
-    const state: ListState = { byId: {}, jobsBySession: { [SESSION]: [] }, subagentsByParent: { [SESSION]: catalog([]) } }
+    const state: ListState = { byId: {}, currentAddress: undefined, jobsBySession: { [SESSION]: [] }, subagentsByParent: { [SESSION]: catalog([]) } }
     const view = render(<ActivityPanel {...panelProps(state)} />)
     expect(view.container.textContent).toContain('empty.title')
   })
@@ -175,6 +258,7 @@ describe('ActivityPanel instance route', () => {
 
   const state = () => ({
     byId: {},
+    currentAddress: undefined,
     jobsBySession: { [SESSION]: [] },
     subagentsByParent: { [SESSION]: catalog([
       { kind: 'child', id: childId as SessionId, activity: 'running', hasChildren: false, mode: 'continuable', label: '调研子代理' },
@@ -213,6 +297,8 @@ describe('ActivityPanel instance route', () => {
     expect(props.openInConversation).toHaveBeenCalledExactlyOnceWith({
       parentSessionId: SESSION, childSessionId: childId, mode: 'continuable',
     })
+    // The jump hands the panel back to its home route.
+    expect(props.showHome).toHaveBeenCalledOnce()
   })
 
   it('polls deltas while running and stops once idle', async () => {

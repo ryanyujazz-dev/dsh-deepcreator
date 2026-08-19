@@ -17,6 +17,7 @@ describe('ui-workbench-artifact registration', () => {
     })
     const panels = new Map<string, (props: unknown) => ReactElement>()
     const icons = new Map<string, (props: unknown) => ReactElement>()
+    const renderers = new Map<string, (props: unknown) => ReactElement>()
     const typeDefinitions: Array<Record<string, unknown>> = []
     const nodeDefinitions: Array<{ kind?: string; target?: string }> = []
     const viewDefinitions: Array<{ target?: string }> = []
@@ -38,6 +39,7 @@ describe('ui-workbench-artifact registration', () => {
         register: (entry: { name: string; id?: string }, component: (props: unknown) => ReactElement) => {
           if (entry.name === 'deepcreator.workbench.panel' && entry.id !== undefined) panels.set(entry.id, component)
           if (entry.name === 'deepcreator.workbench.panel-icon' && entry.id !== undefined) icons.set(entry.id, component)
+          if (entry.name === 'deepcreator.workbench.artifact.renderer' && entry.id !== undefined) renderers.set(entry.id, component)
           return dispose(`slot:${entry.name}:${entry.id ?? ''}`)
         },
       },
@@ -54,9 +56,10 @@ describe('ui-workbench-artifact registration', () => {
       id: 'artifact', order: 3, scope: 'session', closePolicy: 'detach',
       supportsHome: true, supportsMultipleInstances: true,
     })
-    expect(injectedSlots).toEqual(['deepcreator.workbench.panel', 'deepcreator.workbench.panel-icon'])
+    expect(injectedSlots).toEqual(['deepcreator.workbench.panel', 'deepcreator.workbench.panel-icon', 'deepcreator.workbench.artifact.renderer'])
     expect(panels.has('artifact')).toBe(true)
     expect(icons.has('artifact')).toBe(true)
+    expect(renderers.has('code')).toBe(true)
     expect(nodeDefinitions[0]).toMatchObject({ kind: 'workbench-artifact', target: 'artifacts' })
     expect(viewDefinitions[0]).toMatchObject({ target: 'artifacts' })
     expect(localeNamespaces).toEqual(['workbench-artifact'])
@@ -73,6 +76,7 @@ describe('ui-workbench-artifact registration', () => {
     teardown!()
     expect(disposed).toEqual([
       'locale:workbench-artifact', 'view', 'node',
+      'inject:deepcreator.workbench.artifact.renderer',
       'inject:deepcreator.workbench.panel-icon',
       'inject:deepcreator.workbench.panel',
       'type:artifact',

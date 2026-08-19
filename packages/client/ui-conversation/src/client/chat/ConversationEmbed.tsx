@@ -7,7 +7,7 @@
 // flow tail — the conversation area's QueueDock visuals minus every mutation
 // action; intervention belongs to the conversation area via the panel's jump.
 
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useSyncExternalStore } from 'react'
 import type { ConversationEventInput, ConversationSnapshot, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { PropsLocale, PropsRenderSlots, PropsRuntime, SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
@@ -115,6 +115,30 @@ export function ConversationEmbed({
   }, [renderSlot])
   const seat = useMemo<{ dispatch: EmbedNodeDispatch }>(() => ({ dispatch }), [dispatch])
 
+  // Safe area: the flow's scroll floor must clear the floating queue card, so
+  // the card's live height (it grows with the pending list) feeds the body's
+  // bottom padding — the tail can scroll fully out from under the card.
+  const floatRef = useRef<HTMLDivElement | null>(null)
+  const hasQueue = queue.length > 0
+  const [scrollPaddingBottom, setScrollPaddingBottom] = useState<number | undefined>(undefined)
+  useLayoutEffect(() => {
+    const el = floatRef.current
+    if (el === null) {
+      setScrollPaddingBottom(undefined)
+      return
+    }
+    const measure = () => {
+      // 14px floats the card off the floor; 16px preserves the flow's base
+      // bottom padding (the inline value replaces the CSS shorthand's).
+      setScrollPaddingBottom(el.offsetHeight + 14 + 16)
+    }
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => { observer.disconnect() }
+  }, [hasQueue])
+
   return (
     <div className={embedCss.root}>
       <ExecFlowBody
@@ -143,10 +167,11 @@ export function ConversationEmbed({
         siblingId="classic"
         embedNodeSeat={seat}
         lockThinkForm
+        scrollPaddingBottom={scrollPaddingBottom}
       />
       {queue.length > 0 && (
-        <div className={embedCss.queueFloat}>
-          <div className={queueCss.panel}>
+        <div className={embedCss.queueFloat} ref={floatRef}>
+          <div className={embedCss.queueCard}>
             {queue.length > 1 && (
               <div className={queueCss.header}>
                 <span className={queueCss.lead} aria-hidden><IconQueueOutline14 /></span>

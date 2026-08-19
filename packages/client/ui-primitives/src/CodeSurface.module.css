@@ -1,0 +1,38 @@
+/* CodeSurface: DiffBlock's aligned row grid (gutter + content, no sign
+   column) at panel scale — transparent over the shell surface, soft-wrapping
+   to the panel width. Continuation lines never repeat the number (one grid
+   row per source line; wrapped ink simply grows the row). */
+
+.surface {
+  min-height: 100%;
+  box-sizing: border-box;
+  padding: 8px 0 24px;
+  color: var(--ds-code-foreground, var(--dsw-alias-label-primary));
+  font: var(--dsw-font-markdown-code-block-small, 12px/1.65 var(--dsw-font-mono));
+  font-family: var(--dsw-font-mono);
+}
+
+.line {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  min-height: 22px;
+}
+
+.gutter {
+  box-sizing: border-box;
+  padding-right: 12px;
+  color: var(--dsw-alias-label-tertiary);
+  text-align: right;
+  user-select: none;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.content {
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 1px 16px 1px 4px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  tab-size: 2;
+}

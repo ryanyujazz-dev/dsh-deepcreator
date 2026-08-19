@@ -13,7 +13,15 @@ interface JobEntry {
 
 interface LiveSession {
   parentSession?: string
-  events: Array<{ seq: number; type: string }>
+  events: Array<{ seq: number; time?: number; type: string; data?: unknown }>
+}
+
+interface CatalogChild {
+  kind: 'child'
+  id: string
+  activity: string
+  mode: string
+  label: string
 }
 
 interface AdminUnderTest {
@@ -27,8 +35,10 @@ function makeAdmin(options: {
   agentLive?: boolean
   liveSessions?: Record<string, LiveSession>
   childInbox?: { nextStep: Array<{ id: string }>; nextTurn: Array<{ id: string }> }
+  catalogChildren?: CatalogChild[]
+  catalogThrows?: Error
 } = {}): AdminUnderTest {
-  const { jobs = [], agentLive = true, liveSessions = {}, childInbox } = options
+  const { jobs = [], agentLive = true, liveSessions = {}, childInbox, catalogChildren = [], catalogThrows } = options
   const ctx = new Context()
   ;(ctx as unknown as { agents: unknown }).agents = {
     get: (id: string) => {
@@ -46,6 +56,12 @@ function makeAdmin(options: {
     get: (id: string) => {
       const entry = liveSessions[id]
       return entry === undefined ? undefined : { header: { parentSession: entry.parentSession }, events: entry.events }
+    },
+  }
+  ;(ctx as unknown as { subagents: unknown }).subagents = {
+    listChildren: async () => {
+      if (catalogThrows !== undefined) throw catalogThrows
+      return catalogChildren
     },
   }
   return { admin: new JobsAdmin(ctx), kill }
@@ -163,5 +179,63 @@ describe('JobsAdmin.subagentEvents', () => {
     const { admin } = makeAdmin()
     const result: SubagentEventsResult = await admin.subagentEvents(SESSION, CHILD)
     expect(result).toMatchObject({ ok: false, code: 'NOT_FOUND' })
+  })
+})
+
+describe('JobsAdmin.subagentOverview', () => {
+  const T0 = 1_700_000_000_000
+
+  /** Parent log carrying one user turn, one context injection, then a newer user turn. */
+  const parentLog = [
+    { seq: 0, time: T0, type: 'user/message', data: { source: { kind: 'user' } } },
+    { seq: 1, time: T0 + 10, type: 'user/message', data: { source: { kind: 'context' } } },
+    { seq: 2, time: T0 + 20, type: 'assistant/message', data: {} },
+    { seq: 3, time: T0 + 30, type: 'user/message', data: { source: { kind: 'user' } } },
+  ]
+
+  it('serves per-child recency plus the latest user-authored turn boundary', async () => {
+    const { admin } = makeAdmin({
+      liveSessions: {
+        [SESSION]: { events: parentLog },
+        [CHILD]: { events: [{ seq: 0, time: T0 + 40, type: 'turn/start' }] },
+      },
+      catalogChildren: [{ kind: 'child', id: CHILD, activity: 'running', mode: 'continuable', label: 'writer' }],
+    })
+    await expect(admin.subagentOverview(SESSION)).resolves.toEqual({
+      ok: true,
+      turnStartedAt: T0 + 30,
+      children: [{ id: CHILD, running: true, lastActiveAt: T0 + 40 }],
+    })
+  })
+
+  it('keeps cold catalog children without a lastActiveAt', async () => {
+    const { admin } = makeAdmin({
+      liveSessions: { [SESSION]: { events: parentLog } },
+      catalogChildren: [{ kind: 'child', id: CHILD, activity: 'inactive', mode: 'one-shot', label: 'gone' }],
+    })
+    const result = await admin.subagentOverview(SESSION)
+    expect(result).toEqual({ ok: true, turnStartedAt: T0 + 30, children: [{ id: CHILD, running: false }] })
+  })
+
+  it('omits turnStartedAt when the parent log has no user-authored message', async () => {
+    const { admin } = makeAdmin({
+      liveSessions: { [SESSION]: { events: [{ seq: 0, time: T0, type: 'assistant/message', data: {} }] } },
+    })
+    const result = await admin.subagentOverview(SESSION)
+    expect(result).toEqual({ ok: true, children: [] })
+  })
+
+  it('folds a failing enumeration into READ_FAILED', async () => {
+    const { admin } = makeAdmin({
+      liveSessions: { [SESSION]: { events: parentLog } },
+      catalogThrows: new Error('registry down'),
+    })
+    await expect(admin.subagentOverview(SESSION)).resolves.toMatchObject({ ok: false, code: 'READ_FAILED' })
+  })
+
+  it('fences ids and missing parents before enumeration', async () => {
+    const { admin } = makeAdmin()
+    await expect(admin.subagentOverview('nope')).resolves.toMatchObject({ ok: false, code: 'INVALID_SESSION' })
+    await expect(admin.subagentOverview(SESSION)).resolves.toMatchObject({ ok: false, code: 'PARENT_GONE' })
   })
 })

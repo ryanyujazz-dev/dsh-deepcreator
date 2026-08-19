@@ -65,7 +65,12 @@ describe('Workbench PanelShell geometry', () => {
     // Tabs hug their label instead of resting at a fixed width; the close
     // glyph keeps a 7px optical inset instead of touching the pill edge.
     expect(tabs).toContain('flex: 0 1 auto')
-    expect(tabs).toContain('max-width: 160px')
+    // No fixed cap: a pill sizes to its label and only compresses when the
+    // strip runs out of room, where the clipped label fades at its right
+    // edge (mask) instead of drawing an ellipsis.
+    expect(tabs).not.toContain('max-width')
+    expect(tabs).toContain('min-width: 56px')
+    expect(tabs).toContain('mask-image: linear-gradient(to right, #000 calc(100% - 16px), transparent 100%)')
     expect(tabs).toContain('margin-right: 4px')
     // Label ink sits ~1px below the em-box center; lift it optically onto
     // the close glyph's centerline (line-height cannot shift it).
