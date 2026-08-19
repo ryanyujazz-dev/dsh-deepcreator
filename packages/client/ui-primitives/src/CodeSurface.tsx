@@ -21,6 +21,8 @@ export interface CodeSurfaceProps {
   content: string
   /** Grammar hint (a file-extension-derived language id); unknown or absent renders plain monospace. */
   lang?: string | undefined
+  /** Layout density: `document` adds the editor-style gutter divider used for markdown artifacts. */
+  variant?: 'panel' | 'document' | undefined
 }
 
 /**
@@ -39,7 +41,7 @@ function renderSpans(spans: readonly HighlightSpan[]) {
  * @param props - see {@link CodeSurfaceProps}.
  * @returns the surface element.
  */
-export function CodeSurface({ content, lang }: CodeSurfaceProps) {
+export function CodeSurface({ content, lang, variant = 'panel' }: CodeSurfaceProps) {
   // Tokenize the whole file in one call so grammar context (multi-line
   // strings, fenced blocks) survives across lines; a trailing newline's
   // phantom row is dropped so the row count matches the editor's line count.
@@ -52,9 +54,10 @@ export function CodeSurface({ content, lang }: CodeSurfaceProps) {
   // plain text while its language's grammar imported picks up highlighting.
   const loaded = useSyncExternalStore(subscribeGrammarLoaded, grammarLoadCount, grammarLoadCount)
   const highlighted = useMemo(() => highlightLines(raw, lang), [raw, lang, loaded])
+  const className = variant === 'document' ? `${css.surface} ${css.document}` : css.surface
 
   return (
-    <div className={css.surface} data-code-surface="">
+    <div className={className} data-code-surface="" data-code-surface-variant={variant}>
       {lines.map((text, index) => (
         <div key={index} className={css.line}>
           <span className={css.gutter} aria-hidden>{index + 1}</span>

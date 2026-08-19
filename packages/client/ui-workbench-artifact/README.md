@@ -25,8 +25,10 @@ slot (declared by `ui-workbench`, consumed through the panel's
 path whose extension maps to a registered grammar (markdown included — a
 prose artifact is still a file) renders through the shared `CodeSurface`
 (line-numbered gutter, Shiki tokens over the `data-code-theme` chain, soft
-wrap to the panel width, no painted background); anything else keeps the
-panel's built-in plain `<pre>` fallback verbatim.
+wrap to the panel width, no painted background). Markdown and MDX use the
+`document` surface variant: no outer margin, a numbered gutter with a vertical
+divider, and content padding only inside the text column. Anything else keeps
+the panel's built-in plain `<pre>` fallback verbatim.
 
 The type entry icon carries a blue dot while the session has produced files
 the user has not looked at yet: the dot advances the per-session seen

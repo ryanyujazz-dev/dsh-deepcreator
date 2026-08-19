@@ -14,9 +14,18 @@ describe('ArtifactCodeRenderer', () => {
     const { container } = render(
       <ArtifactCodeRenderer artifactId="docs/report.md" content={'# 标题\n正文'} />,
     )
-    expect(container.querySelector('[data-code-surface]')).not.toBeNull()
+    const surface = container.querySelector('[data-code-surface]')
+    expect(surface).not.toBeNull()
+    expect(surface?.getAttribute('data-code-surface-variant')).toBe('document')
     const gutters = [...container.querySelectorAll('[class*="_gutter_"]')]
     expect(gutters.map(cell => cell.textContent)).toEqual(['1', '2'])
+  })
+
+  it('keeps non-markdown code paths on the default panel surface', () => {
+    const { container } = render(
+      <ArtifactCodeRenderer artifactId="src/index.ts" content={'const ok = true'} />,
+    )
+    expect(container.querySelector('[data-code-surface]')?.getAttribute('data-code-surface-variant')).toBe('panel')
   })
 
   it('keeps the plain pre fallback for unknown extensions', () => {

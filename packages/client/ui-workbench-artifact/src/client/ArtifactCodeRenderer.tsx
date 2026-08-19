@@ -8,8 +8,12 @@ import type { ReactNode } from 'react'
 import { CodeSurface, diffLanguageFromPath } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { ArtifactRendererProps } from '@ryanyujazz/dsh-client-ui-workbench/client'
 
+function isMarkdownLanguage(lang: string): boolean {
+  return lang === 'markdown' || lang === 'mdx'
+}
+
 export function ArtifactCodeRenderer({ artifactId, content }: ArtifactRendererProps): ReactNode {
   const lang = diffLanguageFromPath(artifactId)
   if (lang === undefined) return <pre>{content}</pre>
-  return <CodeSurface content={content} lang={lang} />
+  return <CodeSurface content={content} lang={lang} variant={isMarkdownLanguage(lang) ? 'document' : 'panel'} />
 }

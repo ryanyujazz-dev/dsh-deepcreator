@@ -4,12 +4,29 @@
    row per source line; wrapped ink simply grows the row). */
 
 .surface {
+  position: relative;
   min-height: 100%;
   box-sizing: border-box;
+  margin: 0;
   padding: 8px 0 24px;
   color: var(--ds-code-foreground, var(--dsw-alias-label-primary));
   font: var(--dsw-font-markdown-code-block-small, 12px/1.65 var(--dsw-font-mono));
   font-family: var(--dsw-font-mono);
+}
+
+.document {
+  padding: 8px 0 24px;
+}
+
+.document::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 48px;
+  width: 1px;
+  background: color-mix(in srgb, var(--dsw-alias-label-primary) 8%, transparent);
+  pointer-events: none;
 }
 
 .line {
@@ -35,4 +52,8 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   tab-size: 2;
+}
+
+.document .content {
+  padding-left: 24px;
 }

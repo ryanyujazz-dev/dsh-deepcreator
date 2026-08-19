@@ -44,4 +44,9 @@ describe('CodeSurface', () => {
     expect(container.querySelector('[data-code-token]')).toBeNull()
     expect(rows(container).map(row => row.textContent)).toEqual(['1hello', '2world'])
   })
+
+  it('marks the document variant for editor-style markdown artifact layout', () => {
+    const { container } = render(<CodeSurface content={'# title'} lang="markdown" variant="document" />)
+    expect(container.querySelector('[data-code-surface]')?.getAttribute('data-code-surface-variant')).toBe('document')
+  })
 })

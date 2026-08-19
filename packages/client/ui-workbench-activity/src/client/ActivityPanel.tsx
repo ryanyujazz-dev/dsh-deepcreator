@@ -143,7 +143,7 @@ export function groupSubagents(
 }
 
 export function ActivityPanel(props: Props) {
-  const { sessionId, useSessions, route, tabs, activeInstanceId, openInstance } = props
+  const { sessionId, useSessions, route, activeInstanceId, openInstance } = props
   const address = useSessions((snapshot: SessionsListState) => snapshot.currentAddress)
   // Anchor to the conversation's home session: while an addressed subagent is
   // current, the Activity panel keeps showing the PARENT's catalog and jobs.
@@ -206,7 +206,6 @@ export function ActivityPanel(props: Props) {
     cohort={cohort}
     subagentCount={subagents.length}
     addressedId={address?.childSessionId}
-    openTabs={tabs}
     openInstance={openInstance}
     closeFromConversation={props.closeFromConversation}
     stopJob={props.stopJob}
@@ -220,7 +219,6 @@ interface TasksPageProps {
   cohort: SubagentCohort
   subagentCount: number
   addressedId: SessionId | undefined
-  openTabs: readonly string[]
   openInstance(instanceId: string): void
   closeFromConversation: ActivityInjected['closeFromConversation']
   stopJob: ActivityInjected['stopJob']
@@ -228,7 +226,7 @@ interface TasksPageProps {
 }
 
 function TasksPage({
-  sessionId, jobs, cohort, subagentCount, addressedId, openTabs, openInstance, closeFromConversation, stopJob, t,
+  sessionId, jobs, cohort, subagentCount, addressedId, openInstance, closeFromConversation, stopJob, t,
 }: TasksPageProps) {
   const rows = useMemo(() => ordered(jobs), [jobs])
   const live = rows.filter(isLive)
@@ -284,7 +282,6 @@ function TasksPage({
                   row={row}
                   parentSessionId={sessionId}
                   addressed={addressedId === row.id}
-                  open={openTabs.includes(row.id)}
                   openInstance={openInstance}
                   closeFromConversation={closeFromConversation}
                   t={t}
@@ -299,7 +296,6 @@ function TasksPage({
                       row={row}
                       parentSessionId={sessionId}
                       addressed={addressedId === row.id}
-                      open={openTabs.includes(row.id)}
                       openInstance={openInstance}
                       closeFromConversation={closeFromConversation}
                       t={t}
@@ -335,14 +331,18 @@ interface SubagentCardProps {
   row: SubagentRow
   parentSessionId: SessionId
   addressed: boolean
-  open: boolean
   openInstance(instanceId: string): void
   closeFromConversation: ActivityInjected['closeFromConversation']
   t: T
 }
 
-/** One subagent row: opens its tab; the addressed child's meta becomes the return control. */
-function SubagentCard({ row, parentSessionId, addressed, open, openInstance, closeFromConversation, t }: SubagentCardProps) {
+/**
+ * One subagent row: opens its tab; the addressed child's meta becomes the
+ * return control. Open tabs are NOT highlighted here — a subagent tab stays
+ * open for the child's whole lifetime, so an open-tab fill would read as a
+ * stuck highlight; the tab strip already shows what is open.
+ */
+function SubagentCard({ row, parentSessionId, addressed, openInstance, closeFromConversation, t }: SubagentCardProps) {
   const onOpen = (): void => { openInstance(row.id) }
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
     if (event.target !== event.currentTarget) return
@@ -355,7 +355,6 @@ function SubagentCard({ row, parentSessionId, addressed, open, openInstance, clo
       role="button"
       tabIndex={0}
       className={css.subagentRow}
-      data-open={open || undefined}
       data-active={row.activity === 'running' || undefined}
       data-addressed={addressed || undefined}
       onClick={onOpen}

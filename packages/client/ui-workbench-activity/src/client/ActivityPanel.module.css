@@ -26,12 +26,13 @@
 .stop:disabled { color: var(--dsw-alias-label-caption); cursor: default; }
 
 /* Content-card rule: background fills, never a border. Resting fill-l1,
-   hover lifts, an open tab takes the active fill, and the child opened in
-   the conversation area reads as dimmed (its control lives in the meta). */
+   hover lifts. An open tab does NOT paint the card — subagent tabs persist
+   for the child's whole lifetime, so an open-tab fill would read as a stuck
+   highlight; the tab strip owns that signal. The child opened in the
+   conversation area reads as dimmed (its control lives in the meta). */
 .subagentRow { display: flex; width: 100%; min-height: 32px; align-items: center; gap: 8px; padding: 6px 8px; border: none; border-radius: 8px; background: var(--dsw-alias-fill-l1); color: var(--dsw-alias-label-primary); cursor: pointer; text-align: left; }
 .subagentRow .stateDot { margin-top: 0; }
 .subagentRow:hover { background: var(--dsw-alias-interactive-bg-hover); }
-.subagentRow[data-open] { background: var(--dsw-alias-interactive-bg-active); }
 .subagentRow:focus-visible { outline: 1px solid var(--dsw-alias-state-business-primary); outline-offset: -1px; }
 .subagentRow[data-addressed] .subagentLabel { color: var(--dsw-alias-label-tertiary); }
 .subagentLabel { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; line-height: 18px; }
