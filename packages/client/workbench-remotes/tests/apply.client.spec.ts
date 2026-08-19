@@ -3,19 +3,20 @@ import { describe, expect, it, vi } from 'vitest'
 import { apply } from '../src/client/index.ts'
 
 describe('Workbench Remote BFF', () => {
-  it('mounts four generated contributions and disposes them in reverse order', async () => {
+  it('mounts five generated contributions and disposes them in reverse order', async () => {
     const order: string[] = []
     const mount = vi.fn(async (contribution: { package: string }) => {
       order.push(`mount:${contribution.package}`)
       return async () => { order.push(`dispose:${contribution.package}`) }
     })
     const dispose = await apply({ remote: { $mount: mount } } as unknown as Context)
-    expect(mount).toHaveBeenCalledTimes(4)
+    expect(mount).toHaveBeenCalledTimes(5)
     await dispose()
-    expect(order.slice(4)).toEqual([
+    expect(order.slice(5)).toEqual([
       'dispose:@ryanyujazz/dsh-terminal-workbench',
       'dispose:@ryanyujazz/dsh-session-admin',
       'dispose:@ryanyujazz/dsh-review',
+      'dispose:@ryanyujazz/dsh-jobs-admin',
       'dispose:@ryanyujazz/dsh-artifacts',
     ])
   })

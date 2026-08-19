@@ -1,7 +1,7 @@
 /** Root/subcall Tool composition with one keyed atomic dispatch path. */
 import { memo, useMemo, type ReactNode } from 'react'
 import type { ToolCallBlock } from '@deepseek-ai/dsh-client-runtime/client'
-import type { ToolCallOwnerProps, ToolTreeProps } from '../contract/slots.ts'
+import type { EmbedToolTreeProps, ToolCallOwnerProps, ToolTreeProps, ToolviewSeat } from '../contract/slots.ts'
 import { GenericToolCard } from './toolviews/GenericToolCard.tsx'
 import css from './ToolCallTree.module.css'
 
@@ -12,12 +12,13 @@ function callName(node: ToolCallBlock): string {
 
 /** One atomic call dispatched through the Tool-owned keyed slot. */
 const ToolCall = memo(function ToolCall({
-  renderSlot, callId, toolName, block, openFile, revealChange, selected, cwd, inspectCall, thinkMode, t, children,
+  renderSlot, toolviewSeat, callId, toolName, block, openFile, revealChange, selected, cwd, inspectCall, thinkMode, t, children,
 }: Pick<ToolTreeProps, 'renderSlot' | 'openFile' | 'revealChange' | 'cwd' | 'inspectCall' | 'thinkMode' | 't'> & {
   callId: string
   toolName: string
   block: ToolCallBlock
   selected: boolean
+  toolviewSeat: ToolviewSeat
   children?: ReactNode
 }) {
   const owner: ToolCallOwnerProps = useMemo(() => ({
@@ -40,7 +41,9 @@ const ToolCall = memo(function ToolCall({
       data-selected={selected || undefined}
       data-execflow={thinkMode !== undefined || undefined}
     >
-      {renderSlot('tool.call.toolview', owner, {
+      {/* Seat seam: the embed adapter supplies its binding under the shared
+          prop type, so the seat key adapts with it (identical shapes). */}
+      {renderSlot(toolviewSeat as 'tool.call.toolview', owner, {
         entryKey: toolName,
         fallback: <GenericToolCard {...owner} t={t} />,
       })}
@@ -50,13 +53,15 @@ const ToolCall = memo(function ToolCall({
 })
 
 const ToolCallBranch = memo(function ToolCallBranch({
-  renderSlot, block, selectedCallId, cwd, openFile, revealChange, inspectCall, thinkMode, t,
+  renderSlot, toolviewSeat, block, selectedCallId, cwd, openFile, revealChange, inspectCall, thinkMode, t,
 }: Pick<ToolTreeProps, 'renderSlot' | 'selectedCallId' | 'cwd' | 'openFile' | 'revealChange' | 'inspectCall' | 'thinkMode' | 't'> & {
   block: ToolCallBlock
+  toolviewSeat: ToolviewSeat
 }) {
   return (
     <ToolCall
       renderSlot={renderSlot}
+      toolviewSeat={toolviewSeat}
       callId={block.callId}
       toolName={callName(block)}
       block={block}
@@ -74,6 +79,7 @@ const ToolCallBranch = memo(function ToolCallBranch({
             <ToolCallBranch
               key={child.callId}
               renderSlot={renderSlot}
+              toolviewSeat={toolviewSeat}
               block={child}
               selectedCallId={selectedCallId}
               cwd={cwd}
@@ -97,12 +103,13 @@ const ToolCallBranch = memo(function ToolCallBranch({
  * @returns the Tool call tree.
  */
 export function ToolCallTree({
-  renderSlot, node, selectedCallId, cwd, openFile, revealChange, inspectCall, thinkMode, t,
+  renderSlot, toolviewSeat, node, selectedCallId, cwd, openFile, revealChange, inspectCall, thinkMode, t,
 }: ToolTreeProps) {
   const block = node.data.root
   return (
     <ToolCallBranch
       renderSlot={renderSlot}
+      toolviewSeat={toolviewSeat ?? 'tool.call.toolview'}
       block={block}
       selectedCallId={selectedCallId}
       cwd={cwd}
@@ -111,6 +118,22 @@ export function ToolCallTree({
       inspectCall={inspectCall}
       thinkMode={thinkMode}
       t={t}
+    />
+  )
+}
+
+/**
+ * Embed mirror adapter: the same tree dispatched through the Activity embed's
+ * toolview seat. Both seats share identical owner and options shapes — only
+ * the authorization key differs — so the props adapt to the shared type once,
+ * at this seam.
+ */
+export function EmbedToolCallTree(props: EmbedToolTreeProps) {
+  const shared = props as unknown as ToolTreeProps
+  return (
+    <ToolCallTree
+      {...shared}
+      toolviewSeat="deepcreator.conversation.embed.toolview"
     />
   )
 }

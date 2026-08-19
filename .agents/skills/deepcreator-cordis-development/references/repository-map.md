@@ -33,6 +33,8 @@
 - Default render mode: `classic`
 - Preferences child Slot: `deepcreator.settings.preferences.item`
 - Review panel type id (the change-reveal handoff target): `review`
+- Activity panel type id (job stop + subagent tabs): `activity`; its Host remote namespace: `jobs-admin` (`stop`, `subagentEvents`)
+- Embedded child flow Slots: `deepcreator.conversation.embed` + mirror seats `deepcreator.conversation.embed.node` / `deepcreator.conversation.embed.toolview`
 - Official shared Slots retain their official names; inspect the owning `contract/slots.ts` before registration.
 
 ## Registration checklist

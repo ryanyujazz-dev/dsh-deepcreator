@@ -1,0 +1,15 @@
+/* ConversationEmbed: the classic-mode flow fills the tab body; the pending
+   queue card floats above the flow tail (QueueDock panel visuals, read-only). */
+
+.root { position: relative; display: flex; min-height: 0; height: 100%; flex-direction: column; }
+.root > :global(.frame), .root > div:first-child { flex: 1 1 auto; min-height: 0; }
+
+.queueFloat {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  z-index: 5;
+  max-width: calc(100% - 24px);
+  pointer-events: none;
+}

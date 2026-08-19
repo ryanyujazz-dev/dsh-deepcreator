@@ -328,8 +328,10 @@ describe('fileMutationToolview registration', () => {
       slots: {
         inject: (_name: string, callback: () => Iterable<() => void>) => {
           const active = [...callback()]
-          disposeInjection = () => { for (const dispose of active.reverse()) dispose() }
-          return disposeInjection
+          // Two seats each register their own transaction; dispose both.
+          const previous = disposeInjection
+          disposeInjection = () => { previous(); for (const dispose of active.reverse()) dispose() }
+          return () => { for (const dispose of active.reverse()) dispose() }
         },
         register: ({ key, locale }: { name: string; key: string; locale?: string }) => {
           const entry = { key, locale, disposed: false }
@@ -341,9 +343,10 @@ describe('fileMutationToolview registration', () => {
       },
     }
     fileMutationToolview.apply(ctx as never)
-    expect(registered.map(r => r.key).sort()).toEqual(['edit', 'write'])
+    // Both dispatch seats (chat flow + Activity embed) carry the same keys.
+    expect(registered.map(r => r.key).sort()).toEqual(['edit', 'edit', 'write', 'write'])
     // Both keys claim the conversation locale seat ToolRow's body copy needs.
-    expect(registered.map(r => r.locale)).toEqual(['conversation', 'conversation'])
+    expect(registered.map(r => r.locale)).toEqual(['conversation', 'conversation', 'conversation', 'conversation'])
     expect(fileMutationToolview.inject).toEqual(['slots'])
     // Disposal removes each contribution (packages/AGENTS.md registry contract).
     disposeInjection()

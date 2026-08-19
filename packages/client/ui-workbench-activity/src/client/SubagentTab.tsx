@@ -1,0 +1,157 @@
+// SubagentTab: the Activity panel's instance route for one subagent child —
+// the embedded classic-mode execution flow (through the official assembler,
+// via the conversation embed slot) plus the official jump into the
+// conversation area. Closing the tab is view-only: the child keeps running.
+
+import { useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
+import type { SessionId, SessionProjectionMap, SessionSummary } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
+// Type-only: merges the tokenUsage key into SessionProjectionMap.
+import type {} from '@deepseek-ai/dsh-token-meter/client'
+import { StateDot } from '@ryanyujazz/dsh-client-ui-primitives'
+import type { ActivityInjected } from './injected.ts'
+import type { ActivityKey } from './locales.ts'
+import css from './ActivityPanel.module.css'
+
+type T = (key: ActivityKey, values?: Record<string, unknown>) => string
+/**
+ * Near-live streaming cadence while a child runs: the wire carries token
+ * `assistant/chunk` deltas, so a sub-second poll renders the flow growing
+ * continuously (typing feel) instead of 2.5s bursts. Idle children fetch
+ * once and stop.
+ */
+const POLL_INTERVAL_MS = 350
+
+/** Compact token count: 517 / 12.2K / 517K / 1.2M (one decimal under three digits). */
+export function formatTokens(n: number): string {
+  const scaled = (v: number): string =>
+    v >= 100 ? String(Math.round(v)) : String(Math.round(v * 10) / 10)
+  if (n < 1_000) return String(n)
+  if (n < 1_000_000) return `${scaled(n / 1_000)}K`
+  return `${scaled(n / 1_000_000)}M`
+}
+
+/** Sum the four disjoint durable provider-usage buckets. */
+export function tokenTotal(usage: SessionProjectionMap['tokenUsage'] | undefined): number | undefined {
+  return usage === undefined
+    ? undefined
+    : usage.uncachedInputTokens + usage.outputTokens + usage.cacheReadTokens + usage.cacheWriteTokens
+}
+
+export interface SubagentTabProps {
+  parentSessionId: SessionId
+  childId: SessionId
+  label: string | undefined
+  mode: 'one-shot' | 'continuable' | undefined
+  activity: 'running' | 'inactive' | undefined
+  /** False when the child left the catalog (tab kept until closed). */
+  listed: boolean
+  useSessions: SnapshotSelectorHook<{ byId: Record<SessionId, SessionSummary> }>
+  visible: boolean
+  subagentEvents: ActivityInjected['subagentEvents']
+  openInConversation: ActivityInjected['openInConversation']
+  /** Embed-slot dispatch supplied by the panel entry's children declaration. */
+  renderEmbed: (owner: {
+    parentSessionId: SessionId
+    childSessionId: SessionId
+    events: readonly unknown[]
+    queue: readonly { id: string; placement: 'queued' | 'steering'; message: unknown }[]
+    running: boolean
+  }) => ReactNode
+  t: T
+}
+
+interface Window {
+  events: unknown[]
+  queue: { id: string; placement: 'queued' | 'steering'; message: unknown }[]
+  totalSeq: number
+}
+
+export function SubagentTab({
+  parentSessionId, childId, label, mode, activity, listed, useSessions, visible,
+  subagentEvents, openInConversation, renderEmbed, t,
+}: SubagentTabProps) {
+  const summary = useSessions(snapshot => snapshot.byId[childId])
+  const running = activity === 'running' || (activity === undefined && summary?.running === true)
+  const [frame, setFrame] = useState<Window | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  // Pull the raw event window: a full slice first, then `afterSeq` deltas on
+  // a slow cadence while the child runs and the group is actually rendered
+  // (contract: hidden groups stay mounted, so polling gates on `visible`).
+  useEffect(() => {
+    if (!visible) return
+    let cancelled = false
+    let timer: number | undefined
+    let cursor: number | undefined
+    const pull = (): void => {
+      const initial = cursor === undefined
+      void subagentEvents(parentSessionId, childId, cursor).then(result => {
+        if (cancelled) return
+        if (result.ok) {
+          setError(null)
+          const delta = result.events
+          cursor = result.totalSeq
+          setFrame(previous => ({
+            events: initial ? [...delta] : [...(previous?.events ?? []), ...delta],
+            queue: result.queue,
+            totalSeq: result.totalSeq,
+          }))
+          if (running) timer = window.setTimeout(pull, POLL_INTERVAL_MS)
+        } else {
+          setError(t('events.error', { code: result.code }))
+          if (running) timer = window.setTimeout(pull, POLL_INTERVAL_MS)
+        }
+      }).catch(() => {
+        if (cancelled || !running) return
+        timer = window.setTimeout(pull, POLL_INTERVAL_MS)
+      })
+    }
+    pull()
+    return () => {
+      cancelled = true
+      if (timer !== undefined) clearTimeout(timer)
+    }
+  }, [childId, parentSessionId, running, subagentEvents, t, visible])
+
+  return (
+    <div className={css.tabRoot}>
+      <header className={css.tabHeader}>
+        <StateDot className={css.stateDot} state={running ? 'ongoing' : 'done'} />
+        <div className={css.tabCopy}>
+          <strong title={label ?? childId}>{label ?? childId}</strong>
+          <span>
+            {mode === undefined
+              ? ''
+              : `${mode === 'continuable' ? t('subagent.mode.continuable') : t('subagent.mode.one-shot')} · `}
+            {running ? t('subagent.running') : t('subagent.idle')}
+            {summary?.projectionValues?.tokenUsage !== undefined
+              ? ` · ${formatTokens(tokenTotal(summary.projectionValues.tokenUsage) ?? 0)} tokens`
+              : ''}
+          </span>
+        </div>
+        <button
+          type="button"
+          className={css.openButton}
+          disabled={!listed}
+          title={listed ? undefined : t('subagent.gone')}
+          onClick={() => { openInConversation({ parentSessionId, childSessionId: childId, mode: mode ?? 'one-shot' }) }}
+        >
+          {t('subagent.open')}
+        </button>
+      </header>
+      {!listed && <div className={css.notice}>{t('subagent.gone')}</div>}
+      {error !== null && <div className={css.notice} role="alert">{error}</div>}
+      <div className={css.embedBody}>
+        {renderEmbed({
+          parentSessionId,
+          childSessionId: childId,
+          events: frame?.events ?? [],
+          queue: frame?.queue ?? [],
+          running,
+        })}
+      </div>
+    </div>
+  )
+}

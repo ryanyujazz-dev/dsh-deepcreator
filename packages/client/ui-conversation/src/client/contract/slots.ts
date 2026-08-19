@@ -85,6 +85,35 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * conversation snapshot through the standard kit.
      */
     'conversation.view': { kind: 'list'; scope: 'session'; owner: ConvViewOwnerProps }
+    /**
+     * DeepCreator's embeddable child execution flow (Activity panel subagent
+     * tabs). Root scope: the owner share carries the child identity plus the
+     * polled raw event window and pending-queue rows; the entry assembles the
+     * official snapshot through its inject and renders the fixed classic-mode
+     * body. Declared by this package's embed entry.
+     */
+    'deepcreator.conversation.embed': {
+      kind: 'single'
+      scope: 'root'
+      owner: ConversationEmbedOwnerProps
+    }
+    /**
+     * Mirror of the chat node seat for the embed flow. Entries are the SAME
+     * renderer components (double-registered by their owning packages), so the
+     * seat keeps the session-scope prop shape those components require; the
+     * standard kit members are inert here because every renderer reads node
+     * data from the owner share and turn data from this seat's occurrence
+     * Hook, which carries the CHILD's own snapshot hook (the standard kit
+     * follows the CURRENT session).
+     */
+    'deepcreator.conversation.embed.node': {
+      kind: 'keyed'
+      scope: 'session'
+      owner: ChatNodeOwnerProps
+      keyProps: { [Kind in ChatNodeKind]: { node: ChatNode<Kind> } }
+      hookContext: EmbedNodeOccurrence
+      inject: EmbedNodeTurnDataInjected
+    }
     /** Final business node renderer, dispatched by `ChatConversationViewNode.kind`. */
     'conversation.chat.node': {
       kind: 'keyed'
@@ -358,6 +387,60 @@ export type ThinkMode = 'inline' | 'compact'
 export interface ChatNodeTurnDataInjected {
   hooks: {
     turnData: SlotHookFactory<'conversation.chat.node', UseChatNodeTurnData>
+  }
+}
+
+/** Raw child event as it crosses the embed wire (closed lossless-JSON projection). */
+export type ConversationEmbedEvent = unknown
+
+/** One still-pending child inbox occurrence riding the embed owner share. */
+export interface ConversationEmbedQueuedItem {
+  id: string
+  placement: 'queued' | 'steering'
+  /** The pending UserMessage as raw JSON; the card derives its preview text. */
+  message: unknown
+}
+
+/** Owner share of the embeddable child execution flow. */
+export interface ConversationEmbedOwnerProps {
+  parentSessionId: SessionId
+  childSessionId: SessionId
+  /** Polled raw event window (initial full slice, then contiguous deltas). */
+  events: readonly ConversationEmbedEvent[]
+  /** Live child's pending inbox (FIFO, steering first); read-only display. */
+  queue: readonly ConversationEmbedQueuedItem[]
+  /** Catalog activity bit — the one live fact the durable log cannot express. */
+  running: boolean
+}
+
+/**
+ * Occurrence context of the embed node seat: the node key plus the child's
+ * own snapshot hook. The standard kit cannot serve a non-current session, so
+ * the seat's declaration-level Hook factory reads the child hook from here.
+ */
+export interface EmbedNodeOccurrence {
+  nodeKey: string
+  useSession: SnapshotSelectorHook<ConversationSnapshot>
+}
+
+/** renderSlot share narrowed to the embed node seat (mirror of ChatNodeRenderSlot). */
+export type EmbedNodeRenderSlot = NonNullable<PropsRenderSlots<'deepcreator.conversation.embed.node'>['renderSlot']>
+
+/**
+ * Embed node dispatch, structurally typed for callers: the seat's generic
+ * authorization signature cannot be re-targeted from the chat seat's call
+ * sites, so the embed adapts its binding to this shape once (see
+ * ConversationEmbed) and the bodies consume the plain function.
+ */
+export type EmbedNodeDispatch = (
+  owner: ChatNodeOwnerProps & { node: ChatNode },
+  opts: { entryKey: string; hookContext: EmbedNodeOccurrence; fallback: null },
+) => ReactNode
+
+/** The embed node seat's declaration inject: the turn-data Hook over the child snapshot. */
+export interface EmbedNodeTurnDataInjected {
+  hooks: {
+    turnData: SlotHookFactory<'deepcreator.conversation.embed.node', UseChatNodeTurnData>
   }
 }
 

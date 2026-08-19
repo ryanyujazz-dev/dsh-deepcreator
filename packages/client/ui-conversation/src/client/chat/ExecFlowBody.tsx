@@ -20,7 +20,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type {  } from '@deepseek-ai/dsh-client-runtime/client'
 import { IconChevronDownOutline14 } from '@ryanyujazz/dsh-client-ui-primitives'
-import type { ChatRenderSlotProps, ThinkMode } from '../contract/slots.ts'
+import type { ChatRenderSlotProps, EmbedNodeDispatch, ThinkMode } from '../contract/slots.ts'
 import { PendingSteeringBubble } from './MessageItem.tsx'
 import { ChatNodeSeat } from './ChatNodeSeat.tsx'
 import { ExecutionSlot, type SlotDrafting, type SlotMember } from './ExecutionSlot.tsx'
@@ -140,7 +140,15 @@ export interface ExecFlowBodyInjected {
 }
 
 /** Full props of the execflow mode body. */
-export type ExecFlowBodyProps = ChatRenderSlotProps & ExecFlowBodyInjected
+export type ExecFlowBodyProps = ChatRenderSlotProps & ExecFlowBodyInjected & ExecFlowBodyEmbedProps
+
+/** Embed extras: mirror-seat dispatch and the fixed-classic presentation lock. */
+export interface ExecFlowBodyEmbedProps {
+  /** When present, node dispatch crosses the Activity embed's mirror seat. */
+  embedNodeSeat?: { readonly dispatch: EmbedNodeDispatch } | undefined
+  /** True in the embed: the classic form is fixed, so the Thinking chip never shows. */
+  lockThinkForm?: boolean | undefined
+}
 
 /**
  * The classic/think render-mode body: pure component over the composed
@@ -149,7 +157,7 @@ export type ExecFlowBodyProps = ChatRenderSlotProps & ExecFlowBodyInjected
  */
 export function ExecFlowBody({
   useSession, useSessions, useStore, sessionId, openFile, revealChange, loadOlder, loadImage, inspectCall, chatScroll, forkAt,
-  fileMentions, selectRenderMode, renderSlot, t, actions, thinkForm, siblingId,
+  fileMentions, selectRenderMode, renderSlot, t, actions, thinkForm, siblingId, embedNodeSeat, lockThinkForm,
 }: ExecFlowBodyProps) {
   const order = useSession(s => s.chat.order)
   const nodeStore = useSession(s => s.chat.nodes)
@@ -316,9 +324,10 @@ export function ExecFlowBody({
       loadImage={loadImage}
       fileMentions={fileMentions}
       renderSlot={renderSlot}
+      embedRender={embedNodeSeat === undefined ? undefined : { dispatch: embedNodeSeat.dispatch }}
       t={t}
     />
-  ), [useSession, thinkForm, selectedCallId, cwd, openFile, revealChange, inspectCall, forkAt, loadImage, fileMentions, renderSlot, t])
+  ), [useSession, thinkForm, selectedCallId, cwd, openFile, revealChange, inspectCall, forkAt, loadImage, fileMentions, renderSlot, embedNodeSeat, t])
 
   const listRef = useRef<HTMLDivElement | null>(null)
   const columnRef = useRef<HTMLDivElement | null>(null)
@@ -549,6 +558,7 @@ export function ExecFlowBody({
               loadImage={loadImage}
               fileMentions={fileMentions}
               renderSlot={renderSlot}
+              embedRender={embedNodeSeat === undefined ? undefined : { dispatch: embedNodeSeat.dispatch }}
               t={t}
             />
           ) : (
@@ -582,7 +592,7 @@ export function ExecFlowBody({
               t={t}
               thinkForm={thinkForm}
               onToggleThinkMode={() => { selectRenderMode(sessionId, siblingId, actions.setRenderMode) }}
-              showThinkSwitch={partial !== null && partial.blocks.some(block => block.kind === 'reasoning')}
+              showThinkSwitch={!lockThinkForm && partial !== null && partial.blocks.some(block => block.kind === 'reasoning')}
             />
           )}
           {pendingSteering.map(item => (

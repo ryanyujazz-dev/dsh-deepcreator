@@ -50,6 +50,9 @@
     - id: deepcreator-session-admin
       name: '@ryanyujazz/dsh-session-admin'
 
+    - id: deepcreator-jobs-admin
+      name: '@ryanyujazz/dsh-jobs-admin'
+
     - id: deepcreator-review
       name: '@ryanyujazz/dsh-review'
 

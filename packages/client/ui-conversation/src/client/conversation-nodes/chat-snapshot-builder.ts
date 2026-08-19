@@ -8,6 +8,15 @@ import type {
 import type { ChatNode } from '../contract/chat-nodes.ts'
 import { isRunningTool } from '../contract/chat-nodes.ts'
 
+// This package registers the `chat` view builder, so it owns the target's
+// snapshot-map key typing (the trajectory pattern for merge-extensible views).
+declare module '@deepseek-ai/dsh-client-runtime/client' {
+  interface ConversationViewSnapshotMap {
+    /** The chat flow's keyed node snapshot (order/nodes/timeline/legacy). */
+    chat: ChatSnapshot
+  }
+}
+
 const EMPTY_KEYS: readonly string[] = []
 const EMPTY_TURNS: readonly number[] = []
 const EMPTY_LIST: readonly never[] = []
