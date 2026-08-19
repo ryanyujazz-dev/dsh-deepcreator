@@ -13,6 +13,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { IconBrowseOutline16, IconGlobeOutline14 } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ToolCallViewProps } from '../../contract/slots.ts'
+import { TOOLVIEW_SEATS } from '../../contract/slots.ts'
 import { webCardModel } from '../models/web-card-model.ts'
 import { toolRowModel } from '../models/tool-call-model.ts'
 import { ToolRow } from '../components/ToolRow.tsx'
@@ -68,9 +69,11 @@ export const webToolview = {
    * @param ctx - registrant context (disposal rides ctx.effect inside slots.register).
    */
   apply(ctx: Context): void {
-    ctx.slots.inject('tool.call.toolview', function* () {
-      yield ctx.slots.register({ name: 'tool.call.toolview', key: 'web_search', locale: NS }, WebRow)
-      yield ctx.slots.register({ name: 'tool.call.toolview', key: 'web_fetch', locale: NS }, WebRow)
-    })
+    for (const seat of TOOLVIEW_SEATS) {
+      ctx.slots.inject(seat, function* () {
+        yield ctx.slots.register({ name: seat, key: 'web_search', locale: NS }, WebRow)
+        yield ctx.slots.register({ name: seat, key: 'web_fetch', locale: NS }, WebRow)
+      })
+    }
   },
 }

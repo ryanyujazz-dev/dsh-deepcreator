@@ -21,6 +21,7 @@ import {
 } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ToolCallViewProps } from '../../contract/slots.ts'
+import { TOOLVIEW_SEATS } from '../../contract/slots.ts'
 import { terminalBlockLabels, terminalCardModel, terminalFailed } from '../models/terminal-card-model.ts'
 import { toolRowModel, type ToolRowState } from '../models/tool-call-model.ts'
 import { CONVERSATION_NS as NS } from '../../locale.ts'
@@ -181,7 +182,9 @@ export const bashToolviewSample = {
    * @param ctx - registrant context (disposal rides ctx.effect inside slots.register).
    */
   apply(ctx: Context): void {
-    ctx.slots.inject('tool.call.toolview', () =>
-      ctx.slots.register({ name: 'tool.call.toolview', key: 'bash', locale: NS }, BashRow))
+    for (const seat of TOOLVIEW_SEATS) {
+      ctx.slots.inject(seat, () =>
+        ctx.slots.register({ name: seat, key: 'bash', locale: NS }, BashRow))
+    }
   },
 }

@@ -13,6 +13,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { IconEditOutline16 } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ToolCallViewProps } from '../../contract/slots.ts'
+import { TOOLVIEW_SEATS } from '../../contract/slots.ts'
 import { diffCardModel } from '../models/diff-card-model.ts'
 import { toolRowModel } from '../models/tool-call-model.ts'
 import { ToolRow } from '../components/ToolRow.tsx'
@@ -69,9 +70,11 @@ export const fileMutationToolview = {
    * @param ctx - registrant context (disposal rides ctx.effect inside slots.register).
    */
   apply(ctx: Context): void {
-    ctx.slots.inject('tool.call.toolview', function* () {
-      yield ctx.slots.register({ name: 'tool.call.toolview', key: 'edit', locale: NS }, FileMutationRow)
-      yield ctx.slots.register({ name: 'tool.call.toolview', key: 'write', locale: NS }, FileMutationRow)
-    })
+    for (const seat of TOOLVIEW_SEATS) {
+      ctx.slots.inject(seat, function* () {
+        yield ctx.slots.register({ name: seat, key: 'edit', locale: NS }, FileMutationRow)
+        yield ctx.slots.register({ name: seat, key: 'write', locale: NS }, FileMutationRow)
+      })
+    }
   },
 }

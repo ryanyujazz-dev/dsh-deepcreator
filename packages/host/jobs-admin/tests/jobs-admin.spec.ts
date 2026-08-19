@@ -1,0 +1,167 @@
+import { Context } from '@deepseek-ai/cordis'
+import { describe, expect, it, vi } from 'vitest'
+import { JobsAdmin } from '../src/index.ts'
+import type { JobStopResult, SubagentEventsResult } from '../src/types.ts'
+
+const SESSION = 'session-11111111-2222-4333-8444-555555555555'
+const CHILD = 'session-99999999-8888-4777-8666-555555555555'
+
+interface JobEntry {
+  id: string
+  status: string
+}
+
+interface LiveSession {
+  parentSession?: string
+  events: Array<{ seq: number; type: string }>
+}
+
+interface AdminUnderTest {
+  admin: JobsAdmin
+  kill: ReturnType<typeof vi.fn>
+}
+
+/** Mount the admin over fake registries holding one agent's job set. */
+function makeAdmin(options: {
+  jobs?: JobEntry[]
+  agentLive?: boolean
+  liveSessions?: Record<string, LiveSession>
+  childInbox?: { nextStep: Array<{ id: string }>; nextTurn: Array<{ id: string }> }
+} = {}): AdminUnderTest {
+  const { jobs = [], agentLive = true, liveSessions = {}, childInbox } = options
+  const ctx = new Context()
+  ;(ctx as unknown as { agents: unknown }).agents = {
+    get: (id: string) => {
+      if (id === SESSION) return agentLive ? { id: SESSION } : undefined
+      if (id === CHILD) return childInbox === undefined ? undefined : { inbox: childInbox }
+      return undefined
+    },
+  }
+  const kill = vi.fn()
+  ;(ctx as unknown as { jobs: unknown }).jobs = {
+    list: (agent: { id: string }) => jobs.map(job => ({ ...job })),
+    kill,
+  }
+  ;(ctx as unknown as { sessions: unknown }).sessions = {
+    get: (id: string) => {
+      const entry = liveSessions[id]
+      return entry === undefined ? undefined : { header: { parentSession: entry.parentSession }, events: entry.events }
+    },
+  }
+  return { admin: new JobsAdmin(ctx), kill }
+}
+
+describe('JobsAdmin.stop', () => {
+  it('kills a running job owned by the session', async () => {
+    const { admin, kill } = makeAdmin({ jobs: [{ id: 'bash-3', status: 'running' }] })
+    await expect(admin.stop(SESSION, 'bash-3')).resolves.toEqual({ ok: true })
+    expect(kill).toHaveBeenCalledExactlyOnceWith('bash-3', { id: SESSION }, 'user-stop')
+  })
+
+  it('forwards a stop request for a stopping job and stays idempotent', async () => {
+    const { admin, kill } = makeAdmin({ jobs: [{ id: 'subagent-1', status: 'stopping' }] })
+    await expect(admin.stop(SESSION, 'subagent-1')).resolves.toEqual({ ok: true })
+    expect(kill).toHaveBeenCalledExactlyOnceWith('subagent-1', { id: SESSION }, 'user-stop')
+  })
+
+  it('rejects malformed ids before touching the registries', async () => {
+    const { admin, kill } = makeAdmin()
+    expect(await admin.stop('not-a-session', 'bash-1')).toMatchObject({ ok: false, code: 'INVALID_SESSION' })
+    expect(await admin.stop(SESSION, '../etc/passwd')).toMatchObject({ ok: false, code: 'INVALID_JOB' })
+    expect(kill).not.toHaveBeenCalled()
+  })
+
+  it('reports a missing agent as SESSION_GONE', async () => {
+    const { admin } = makeAdmin({ jobs: [{ id: 'bash-3', status: 'running' }], agentLive: false })
+    await expect(admin.stop(SESSION, 'bash-3')).resolves.toMatchObject({ ok: false, code: 'SESSION_GONE' })
+  })
+
+  it('reports jobs outside the owner list as JOB_NOT_FOUND', async () => {
+    const { admin, kill } = makeAdmin({ jobs: [{ id: 'bash-3', status: 'running' }] })
+    await expect(admin.stop(SESSION, 'bash-4')).resolves.toMatchObject({ ok: false, code: 'JOB_NOT_FOUND' })
+    expect(kill).not.toHaveBeenCalled()
+  })
+
+  it('refuses settled jobs as NOT_LIVE', async () => {
+    const { admin, kill } = makeAdmin({ jobs: [{ id: 'bash-3', status: 'completed' }] })
+    await expect(admin.stop(SESSION, 'bash-3')).resolves.toMatchObject({ ok: false, code: 'NOT_LIVE' })
+    expect(kill).not.toHaveBeenCalled()
+  })
+
+  it('folds a throwing kill into KILL_FAILED', async () => {
+    const { admin } = makeAdmin({ jobs: [{ id: 'bash-3', status: 'running' }] })
+    ;(admin as unknown as { ctx: { jobs: { kill: () => void } } }).ctx.jobs.kill = () => { throw new Error('boom') }
+    const result: JobStopResult = await admin.stop(SESSION, 'bash-3')
+    expect(result).toMatchObject({ ok: false, code: 'KILL_FAILED' })
+    expect((result as { message?: string }).message).toContain('boom')
+  })
+})
+
+describe('JobsAdmin.subagentEvents', () => {
+  const events = Array.from({ length: 10 }, (_value, index) => ({ seq: index, type: 'turn/start' }))
+
+  it('serves the trailing window with the live inbox in FIFO order', async () => {
+    const { admin } = makeAdmin({
+      liveSessions: { [CHILD]: { parentSession: SESSION, events } },
+      childInbox: {
+        nextStep: [{ id: 'msg-step' }],
+        nextTurn: [{ id: 'msg-turn-1' }, { id: 'msg-turn-2' }],
+      },
+    })
+    const result = await admin.subagentEvents(SESSION, CHILD)
+    expect(result).toEqual({
+      ok: true,
+      events,
+      totalSeq: 9,
+      queue: [
+        { id: 'msg-step', placement: 'steering', message: { id: 'msg-step' } },
+        { id: 'msg-turn-1', placement: 'queued', message: { id: 'msg-turn-1' } },
+        { id: 'msg-turn-2', placement: 'queued', message: { id: 'msg-turn-2' } },
+      ],
+    })
+  })
+
+  it('caps the initial window at the trailing slice', async () => {
+    const many = Array.from({ length: 1400 }, (_value, index) => ({ seq: index, type: 'turn/start' }))
+    const { admin } = makeAdmin({ liveSessions: { [CHILD]: { parentSession: SESSION, events: many } } })
+    const result = await admin.subagentEvents(SESSION, CHILD)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.events).toHaveLength(1200)
+    expect(result.events[0]).toEqual({ seq: 200, type: 'turn/start' })
+    expect(result.totalSeq).toBe(1399)
+  })
+
+  it('serves only events after the cursor', async () => {
+    const { admin } = makeAdmin({ liveSessions: { [CHILD]: { parentSession: SESSION, events } } })
+    const result = await admin.subagentEvents(SESSION, CHILD, 7)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.events.map(event => (event as { seq: number }).seq)).toEqual([8, 9])
+  })
+
+  it('reports an empty log as totalSeq -1', async () => {
+    const { admin } = makeAdmin({ liveSessions: { [CHILD]: { parentSession: SESSION, events: [] } } })
+    const result = await admin.subagentEvents(SESSION, CHILD)
+    expect(result).toMatchObject({ ok: true, totalSeq: -1, events: [] })
+  })
+
+  it('refuses ids before any lookup', async () => {
+    const { admin } = makeAdmin()
+    await expect(admin.subagentEvents('nope', CHILD)).resolves.toMatchObject({ ok: false, code: 'INVALID_SESSION' })
+    await expect(admin.subagentEvents(SESSION, 'nope')).resolves.toMatchObject({ ok: false, code: 'INVALID_CHILD' })
+  })
+
+  it('refuses a child whose durable parent is someone else', async () => {
+    const { admin } = makeAdmin({
+      liveSessions: { [CHILD]: { parentSession: 'session-00000000-0000-4000-8000-000000000000', events } },
+    })
+    await expect(admin.subagentEvents(SESSION, CHILD)).resolves.toMatchObject({ ok: false, code: 'FORBIDDEN' })
+  })
+
+  it('reports an unreadable cold child as NOT_FOUND', async () => {
+    const { admin } = makeAdmin()
+    const result: SubagentEventsResult = await admin.subagentEvents(SESSION, CHILD)
+    expect(result).toMatchObject({ ok: false, code: 'NOT_FOUND' })
+  })
+})

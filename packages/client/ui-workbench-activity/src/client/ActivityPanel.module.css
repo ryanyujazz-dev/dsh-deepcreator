@@ -1,11 +1,60 @@
-.root { display: flex; min-height: 100%; flex-direction: column; padding: 10px; box-sizing: border-box; }
-.summary { display: flex; justify-content: space-between; padding: 2px 4px 8px; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; }
+/* Activity panel: one vertical page on the Home route (job sections + the
+   subagent catalog) and a read-only tail view on instance routes. Rows reuse
+   the Workbench card grammar (1px l1 border, 8px radius, fill surfaces). */
+
+.root { display: flex; min-height: 100%; flex-direction: column; gap: 14px; padding: 10px; box-sizing: border-box; }
+
+.section { display: flex; flex-direction: column; gap: 6px; }
+.sectionTitle { display: flex; align-items: center; gap: 6px; margin: 0; padding: 2px 4px; color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 16px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
+.sectionTitle span { color: var(--dsw-alias-label-caption); font-variant-numeric: tabular-nums; }
+.sectionEmpty { padding: 4px 6px 2px; color: var(--dsw-alias-label-caption); font-size: 12px; line-height: 18px; }
+
 .list { display: flex; flex-direction: column; gap: 6px; }
 .row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 8px; padding: 10px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 8px; background: var(--dsw-alias-fill-l1); }
 .row[data-live] { background: var(--dsw-alias-fill-l2); }
+.stateDot { margin-top: 4px; }
 .copy { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
 .copy strong { overflow: hidden; color: var(--dsw-alias-label-primary); font-size: 13px; line-height: 18px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
-.copy span, .row time { color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 18px; }
-.row time { font-family: var(--dsw-font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.copy span { overflow: hidden; color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
+.rowSide { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.row time { color: var(--dsw-alias-label-tertiary); font-size: 11px; font-family: var(--dsw-font-mono); font-variant-numeric: tabular-nums; line-height: 16px; white-space: nowrap; }
+.stop { min-height: 22px; padding: 2px 8px; border: none; border-radius: 6px; background: transparent; color: var(--dsw-alias-label-secondary); font-size: 11px; line-height: 16px; cursor: pointer; }
+.stop:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.stop:disabled { color: var(--dsw-alias-label-caption); cursor: default; }
+
+.subagentRow { display: flex; width: 100%; min-height: 32px; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 8px; background: var(--dsw-alias-fill-l1); color: var(--dsw-alias-label-primary); cursor: pointer; text-align: left; }
+.subagentRow .stateDot { margin-top: 0; }
+.subagentRow:hover { background: color-mix(in srgb, var(--dsw-alias-label-primary) 4%, var(--dsw-alias-fill-l1)); }
+.subagentRow[data-open] { border-color: var(--dsw-alias-border-l2); }
+.subagentLabel { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; line-height: 18px; }
+/* Running child: the label breathes — the same pulse the tab's streaming
+   rows use — signalling live execution without extra chrome. */
+.subagentRow[data-active] .subagentLabel { animation: activity-tail-pulse 1.6s ease-in-out infinite; }
+.subagentMeta { flex: none; color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 16px; }
+
+.notice { padding: 6px 8px; border-radius: 8px; background: color-mix(in srgb, var(--dsw-alias-label-warning, #d97706) 10%, var(--dsw-alias-fill-l1)); color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 18px; }
+
 .empty { min-height: 100%; display: grid; place-content: center; gap: 4px; padding: 24px; text-align: center; color: var(--dsw-alias-label-tertiary); font-size: 12px; }
 .empty strong { color: var(--dsw-alias-label-secondary); font-size: 13px; font-weight: 500; }
+
+/* --- Subagent instance route --- */
+
+.tabRoot { display: flex; height: 100%; min-height: 0; flex-direction: column; }
+.tabHeader { display: flex; flex: none; align-items: center; gap: 8px; padding: 10px; border-bottom: 1px solid var(--dsw-alias-border-l1); }
+.tabHeader .stateDot { margin-top: 0; }
+.tabCopy { display: flex; min-width: 0; flex: 1 1 auto; flex-direction: column; gap: 1px; }
+.tabCopy strong { overflow: hidden; color: var(--dsw-alias-label-primary); font-size: 13px; line-height: 18px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.tabCopy span { overflow: hidden; color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
+.openButton { flex: none; min-height: 24px; padding: 3px 10px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 6px; background: var(--dsw-alias-fill-l1); color: var(--dsw-alias-label-secondary); font-size: 11px; line-height: 16px; cursor: pointer; white-space: nowrap; }
+.openButton:hover:not(:disabled) { color: var(--dsw-alias-label-primary); background: var(--dsw-alias-fill-l2); }
+.openButton:disabled { color: var(--dsw-alias-label-caption); cursor: default; }
+
+.tabRoot .notice { margin: 10px 10px 0; }
+
+/* The embedded classic-mode flow fills the remaining tab body. */
+.embedBody { display: flex; min-height: 0; flex: 1 1 auto; flex-direction: column; }
+
+@keyframes activity-tail-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}

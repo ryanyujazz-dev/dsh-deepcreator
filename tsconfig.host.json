@@ -21,6 +21,7 @@
     { "path": "./packages/internal/agent-face" },
     { "path": "./packages/host/artifacts" },
     { "path": "./packages/host/session-admin" },
+    { "path": "./packages/host/jobs-admin" },
     { "path": "./packages/host/review" },
     { "path": "./packages/host/terminal-workbench" }
   ]

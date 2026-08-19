@@ -2,6 +2,9 @@
 
 English | [中文](README.zh.md)
 
+Every toolview registrant now registers on BOTH dispatch seats — `tool.call.toolview` (the conversation flow) and `deepcreator.conversation.embed.toolview` (the Activity panel's embedded child flow) — and the Tool tree renders on the mirror node seat through the `EmbedToolCallTree` adapter, so the embedded classic-mode flow shows the same tool rows as the conversation area.
+
+
 Client Tool presentation plugin. `ui-conversation` dispatches each ordered `tool-call` Conversation Node through the matching key of `conversation.chat.node`; this package renders its root and Code Dispatch children, then dispatches every atomic call through the keyed `tool.call.toolview` slot. Unregistered Tool names use the generic card.
 
 Business UI packages register only their wire Tool names and atomic views. They do not pair Session events, rebuild the transcript, or own root/subcall topology. The Runtime remains authoritative for call/result pairing, lifecycle, and recursive `subCalls` projection; the conversation view remains authoritative for ChatFlow placement.

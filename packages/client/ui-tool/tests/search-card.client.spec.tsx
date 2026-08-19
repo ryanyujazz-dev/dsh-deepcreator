@@ -365,12 +365,12 @@ describe('SearchRow keyed card', () => {
       },
     } as never
     searchToolview.apply(ctx)
-    expect(registered.map(r => r.key)).toEqual(['grep', 'glob'])
+    // Both dispatch seats (chat flow + Activity embed) carry the same keys.
+    expect(registered.map(r => r.key)).toEqual(['grep', 'glob', 'grep', 'glob'])
     // Both keys claim the conversation locale seat ToolRow's body copy needs.
-    expect(registered.map(r => r.locale)).toEqual(['conversation', 'conversation'])
-    // One component, two keys.
-    expect(registered[0]!.component).toBe(SearchRow)
-    expect(registered[1]!.component).toBe(SearchRow)
+    expect(registered.map(r => r.locale)).toEqual(['conversation', 'conversation', 'conversation', 'conversation'])
+    // One component, every cell.
+    for (const row of registered) expect(row.component).toBe(SearchRow)
     expect(searchToolview.inject).toEqual(['slots'])
   })
 })

@@ -11,6 +11,7 @@ import { IconChecklistOutline14 } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { Context } from '@deepseek-ai/cordis'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ToolCallViewProps } from '../../contract/slots.ts'
+import { TOOLVIEW_SEATS } from '../../contract/slots.ts'
 import { toolRowModel } from '../models/tool-call-model.ts'
 import { ToolRow } from '../components/ToolRow.tsx'
 import { CONVERSATION_NS as NS } from '../../locale.ts'
@@ -93,7 +94,9 @@ export const todoToolview = {
    * @param ctx - registrant context (disposal rides ctx.effect inside slots.register).
    */
   apply(ctx: Context): void {
-    ctx.slots.inject('tool.call.toolview', () =>
-      ctx.slots.register({ name: 'tool.call.toolview', key: 'todo_write', locale: NS }, TodoRow))
+    for (const seat of TOOLVIEW_SEATS) {
+      ctx.slots.inject(seat, () =>
+        ctx.slots.register({ name: seat, key: 'todo_write', locale: NS }, TodoRow))
+    }
   },
 }

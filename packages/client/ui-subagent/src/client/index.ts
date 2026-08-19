@@ -10,13 +10,17 @@
  * prompt ships the same literal). Consumption semantics stay with future
  * business work. No adjudication hooks: subagent
  * references never enter command adjudication.
+ *
+ * The session-header subagent catalog tree this fork used to register here is
+ * retired: subagent visibility lives in the Workbench's Activity panel (one
+ * home per fact), which also carries the official jump into the conversation
+ * area.
  */
 import type {
-  ClientContext, SessionId, SubagentAddress,
+  ClientContext,
 } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ComposerChainProps } from '@ryanyujazz/dsh-client-ui-conversation/client'
 import type { ClientSessionContext, InputTriggerServiceContract, InputTriggerSource } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
-import { SubagentCatalogAction, type SubagentCatalogInjected } from './SubagentCatalogAction.tsx'
 import {
   SubagentReadOnlyComposer, type SubagentReadOnlyMatch,
 } from './SubagentReadOnlyComposer.tsx'
@@ -25,19 +29,16 @@ import { en, NS, zh, type SubagentKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
-    /** Subagent catalog and read-only composer copy. */
+    /** Subagent read-only composer copy. */
     'subagent': SubagentKey
   }
 }
 
 export type {
-  SubagentCatalogActionProps, SubagentCatalogInjected,
-} from './SubagentCatalogAction.tsx'
-export type {
   SubagentReadOnlyComposerProps, SubagentReadOnlyMatch,
 } from './SubagentReadOnlyComposer.tsx'
 
-/** Required services for references, conversation slots, and session navigation. */
+/** Required services for references and conversation slots. */
 export const inject = ['inputTriggers', 'sessions', 'slots', 'locale']
 
 /** Claim the composer for one-shot history or an unavailable continuation owner. */
@@ -96,27 +97,6 @@ export function apply(ctx: ClientContext): void {
   const inputTriggers = ctx.get('inputTriggers') as InputTriggerServiceContract
   ctx.effect(() => inputTriggers.registerSource(source), 'ui-subagent: @ source')
 
-  const catalogActions = (_parentSessionId: SessionId): SubagentCatalogInjected => ({
-    openChild(address: SubagentAddress) {
-      sessions.openSubagent(address)
-    },
-    refresh(parentSessionId: SessionId) {
-      void sessions.refreshSubagents(parentSessionId)
-    },
-    setCatalogOpen(parentSessionId: SessionId, open: boolean) {
-      sessions.setSubagentCatalogOpen(parentSessionId, open)
-    },
-  })
-  ctx.slots.inject(
-    'conversation.session.header.actions',
-    () => ctx.slots.register({
-      name: 'conversation.session.header.actions',
-      id: 'subagent-catalog',
-      order: 10,
-      locale: NS,
-      inject: catalogActions,
-    }, SubagentCatalogAction),
-  )
   ctx.slots.inject(
     'conversation.composer',
     () => ctx.slots.register({
