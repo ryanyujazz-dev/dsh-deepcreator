@@ -11,6 +11,15 @@ import { SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
 import InvariantRegistry from '@deepseek-ai/dsh-invariants'
 import { stubSettingsScope } from '@deepseek-ai/dsh-client-test-runtime'
 
+const CODE_THEME_IDS = [
+  'deepcreator-light',
+  'deepcreator-dark',
+  'github-light',
+  'github-dark',
+  'one-light',
+  'one-dark',
+] as const
+
 describe('invariant companion', () => {
   it('loads the code-theme stylesheet from the client entry', () => {
     const packageRoot = resolve(process.cwd(), 'packages/client/ui-theme')
@@ -18,15 +27,19 @@ describe('invariant companion', () => {
     const stylesheet = readFileSync(resolve(packageRoot, 'src/styles/shiki.css'), 'utf8')
 
     expect(entry).toContain("import '../styles/shiki.css'")
-    for (const themeId of [
-      'deepcreator-light',
-      'deepcreator-dark',
-      'github-light',
-      'github-dark',
-      'one-light',
-      'one-dark',
-    ]) {
+    for (const themeId of CODE_THEME_IDS) {
       expect(stylesheet).toContain(`[data-code-theme='${themeId}']`)
+    }
+  })
+
+  it('binds token colors directly on each theme selector', () => {
+    const packageRoot = resolve(process.cwd(), 'packages/client/ui-theme')
+    const stylesheet = readFileSync(resolve(packageRoot, 'src/styles/shiki.css'), 'utf8')
+
+    expect(stylesheet).not.toContain('--ds-active-token-color')
+    for (const themeId of CODE_THEME_IDS) {
+      const selector = String.raw`\[data-code-theme='${themeId}'\] :where\(\.shiki span, \[data-code-token\]\) \{[\s\S]*?color: var\(--shiki-${themeId}, var\(--ds-code-foreground\)\);`
+      expect(stylesheet).toMatch(new RegExp(selector))
     }
   })
 
