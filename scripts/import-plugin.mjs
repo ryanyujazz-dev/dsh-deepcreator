@@ -67,7 +67,7 @@ if (!existsSync(target)) {
   cpSync(join(source, 'package.json'), join(target, 'package.json'))
   cpSync(join(source, 'src'), join(target, 'src'), { recursive: true })
   if (existsSync(join(source, 'tests'))) cpSync(join(source, 'tests'), join(target, 'tests'), { recursive: true })
-  for (const file of ['tsdown.config.ts', 'README.md', 'README.zh.md', 'README.i18n.yaml']) {
+  for (const file of ['tsdown.config.ts', 'README.md', 'README.zh.md']) {
     const from = join(source, file)
     if (existsSync(from)) cpSync(from, join(target, file))
   }
