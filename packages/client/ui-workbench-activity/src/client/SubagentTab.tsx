@@ -16,12 +16,14 @@ import css from './ActivityPanel.module.css'
 
 type T = (key: ActivityKey, values?: Record<string, unknown>) => string
 /**
- * Near-live streaming cadence while a child runs: the wire carries token
- * `assistant/chunk` deltas, so a sub-second poll renders the flow growing
- * continuously (typing feel) instead of 2.5s bursts. Idle children fetch
- * once and stop.
+ * Adaptive streaming cadence while a child runs. The wire carries token
+ * `assistant/chunk` deltas, so the poll CHASES the stream: any poll that
+ * returned events re-polls after the fast interval (visually token-paced,
+ * matching the main conversation), while quiet polls back off toward the
+ * ceiling (tool execution, long thinking). Idle children fetch once and stop.
  */
-const POLL_INTERVAL_MS = 350
+const FAST_POLL_MS = 120
+const IDLE_POLL_CEILING_MS = 400
 
 /** Compact token count: 517 / 12.2K / 517K / 1.2M (one decimal under three digits). */
 export function formatTokens(n: number): string {
@@ -85,6 +87,13 @@ export function SubagentTab({
     let cancelled = false
     let timer: number | undefined
     let cursor: number | undefined
+    /** Adaptive backoff: fast while deltas land, relaxing when quiet. */
+    let delay = FAST_POLL_MS
+    const schedule = (hadEvents: boolean): void => {
+      if (!running) return
+      delay = hadEvents ? FAST_POLL_MS : Math.min(delay * 2, IDLE_POLL_CEILING_MS)
+      timer = window.setTimeout(pull, delay)
+    }
     const pull = (): void => {
       const initial = cursor === undefined
       void subagentEvents(parentSessionId, childId, cursor).then(result => {
@@ -98,14 +107,14 @@ export function SubagentTab({
             queue: result.queue,
             totalSeq: result.totalSeq,
           }))
-          if (running) timer = window.setTimeout(pull, POLL_INTERVAL_MS)
+          schedule(delta.length > 0)
         } else {
           setError(t('events.error', { code: result.code }))
-          if (running) timer = window.setTimeout(pull, POLL_INTERVAL_MS)
+          schedule(false)
         }
       }).catch(() => {
-        if (cancelled || !running) return
-        timer = window.setTimeout(pull, POLL_INTERVAL_MS)
+        if (cancelled) return
+        schedule(false)
       })
     }
     pull()
