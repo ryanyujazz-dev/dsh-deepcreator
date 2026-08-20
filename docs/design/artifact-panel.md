@@ -47,8 +47,10 @@ conversation turn from session events:
   whose `kind` is `edit`, contributes its `locations` paths. Reads, deletes,
   failed results, and replacement surfaces (compaction) contribute nothing.
 
-The conversation turn tail then lists those files ("产物" chips) and resolves
-inline-code mentions to them.
+DeepCreator disables the official visible "产物" chip row because the Review
+Turn-change card owns that tail. The Artifact projection still publishes the
+same Turn-scoped facts and resolves exact paths or unique basenames in closing
+prose, so removing the duplicate row does not remove file navigation.
 
 ## Data flow (phase 1, implemented)
 

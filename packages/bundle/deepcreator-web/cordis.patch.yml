@@ -35,6 +35,8 @@
   disabled: true
 - id: ui-jobs
   disabled: true
+- id: ui-deliverables
+  disabled: true
 
 - insert:
     # Workbench Host plane: domain services stay independent from their UI.
@@ -47,14 +49,14 @@
     - id: deepcreator-artifacts
       name: '@ryanyujazz/dsh-artifacts'
 
-    - id: deepcreator-session-admin
-      name: '@ryanyujazz/dsh-session-admin'
-
     - id: deepcreator-jobs-admin
       name: '@ryanyujazz/dsh-jobs-admin'
 
     - id: deepcreator-review
       name: '@ryanyujazz/dsh-review'
+
+    - id: deepcreator-session-admin
+      name: '@ryanyujazz/dsh-session-admin'
 
     - id: deepcreator-skills
       name: '@ryanyujazz/dsh-skills'

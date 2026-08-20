@@ -51,7 +51,7 @@ export interface ParsedLayerFile {
 }
 
 export interface ParsedLayer {
-  kind: 'staged' | 'working-tree'
+  kind: 'staged' | 'working-tree' | 'uncommitted' | 'turn'
   files: readonly ParsedLayerFile[]
   added: number
   removed: number

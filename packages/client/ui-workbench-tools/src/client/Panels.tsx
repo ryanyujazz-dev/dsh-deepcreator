@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@ryanyujazz/dsh-review/remote'
+import type { ReviewScope } from '@ryanyujazz/dsh-review/types'
 import type { TerminalSessionView } from '@ryanyujazz/dsh-terminal-workbench/types'
 import type {} from '@ryanyujazz/dsh-terminal-workbench/remote'
 import type {
@@ -10,11 +11,9 @@ import type {
 } from '@ryanyujazz/dsh-client-ui-workbench/client'
 import {
   DiffBlock, FileIcon, IconChevronDownOutline14, IconPlusOutline16, IconRefreshOutline14, IconUnfoldLessOutline16,
-  IconUnfoldMoreOutline16, WorkbenchPanelIconButton,
+  IconUnfoldMoreOutline16, Menu, WorkbenchPanelIconButton, type MenuEntry,
 } from '@ryanyujazz/dsh-client-ui-primitives'
-import {
-  matchReviewFile, type FileEntry,
-} from './review-model.ts'
+import type { FileEntry } from './review-model.ts'
 import type { ReviewCacheController } from './review-cache.ts'
 import css from './Panels.module.css'
 import { TerminalEmulator } from './TerminalEmulator.tsx'
@@ -247,7 +246,6 @@ const ReviewFileRow = memo(function ReviewFileRow({
         onClick={onHeaderClick}
       >
         <IconChevronDownOutline14 className={expanded ? undefined : css.reviewFileChevronCollapsed} />
-        <code className={css.reviewFileState}>{file.index}{file.workingTree}</code>
         <FileIcon path={file.path} />
         <span className={css.reviewFilePath}>{label}</span>
         {pending
@@ -266,7 +264,13 @@ const ReviewFileRow = memo(function ReviewFileRow({
           {ready !== null && ready.layers.map(layer => (
             <section key={layer.kind} className={css.diffLayer}>
               <div className={css.diffLayerTitle}>
-                <span>{layer.kind === 'staged' ? t('review.layer.staged') : t('review.layer.working')}</span>
+                <span>{layer.kind === 'staged'
+                  ? t('review.layer.staged')
+                  : layer.kind === 'working-tree'
+                    ? t('review.layer.working')
+                    : layer.kind === 'turn'
+                      ? t('review.layer.turn')
+                      : t('review.layer.uncommitted')}</span>
                 {(layerFolds[layer.kind] ?? 0) > 0 && (
                   <button
                     type="button"
@@ -304,6 +308,7 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
   const cache = useSyncExternalStore(controller.subscribe, controller.getSnapshot)
   const [expandedPaths, setExpandedPaths] = useState<ReadonlySet<string>>(new Set())
   const [missedPath, setMissedPath] = useState<string | null>(null)
+  const [scopeMenuOpen, setScopeMenuOpen] = useState(false)
   const listRef = useRef<HTMLDivElement | null>(null)
   const expandedRef = useRef(expandedPaths); expandedRef.current = expandedPaths
   const prevVisible = useRef(false)
@@ -347,13 +352,10 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
   // re-fire.
   useEffect(() => {
     if (reveal === undefined) return
-    const optimistic = matchReviewFile(cache.status?.files ?? [], reveal.target)
-    if (optimistic !== undefined && cache.entries[optimistic] !== undefined) {
-      const next = new Set([...expandedRef.current, optimistic])
-      expandedRef.current = next
-      setExpandedPaths(next)
-    }
-    void controller.refresh({ focusPath: reveal.target, silent: true }).then((focus) => {
+    const turnValue = reveal.parameters?.turn
+    const turn = turnValue === undefined ? Number.NaN : Number(turnValue)
+    const requested: ReviewScope = Number.isSafeInteger(turn) && turn >= 0 ? { turn } : cache.scope
+    void controller.selectScope(requested, reveal.target).then((focus) => {
       if (focus === undefined) {
         setMissedPath(reveal.target)
         return
@@ -393,7 +395,43 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
   // One header action left of the refresh button: expand-all when nothing is
   // expanded, collapse-all otherwise — the icon states swap with the action.
   const anyExpanded = expandedPaths.size > 0
+  const scopeId = typeof cache.scope === 'string' ? cache.scope : `turn:${cache.scope.turn}`
+  const scopeLabel = typeof cache.scope === 'string'
+    ? t(`review.scope.${cache.scope}`)
+    : t('review.scope.turn', { turn: cache.scope.turn })
+  const scopeItems = useMemo<MenuEntry[]>(() => [
+    { id: 'unstaged', label: t('review.scope.unstaged') },
+    { id: 'staged', label: t('review.scope.staged') },
+    { id: 'uncommitted', label: t('review.scope.uncommitted') },
+    ...(cache.history?.turns.some(turn => turn.remainingFiles > 0) === true
+      ? [{ type: 'separator' as const, id: 'history-separator' }]
+      : []),
+    ...(cache.history?.turns
+      .filter(turn => turn.remainingFiles > 0)
+      .map(turn => ({ id: `turn:${turn.turn}`, label: t('review.scope.turn', { turn: turn.turn }) })) ?? []),
+  ], [cache.history, t])
   const headerActions = useMemo<WorkbenchPanelHeaderContribution>(() => ({
+    left: <Menu
+      open={scopeMenuOpen}
+      items={scopeItems}
+      selectedId={scopeId}
+      onClose={() => { setScopeMenuOpen(false) }}
+      onSelect={id => {
+        setScopeMenuOpen(false)
+        const next: ReviewScope = id.startsWith('turn:') ? { turn: Number(id.slice(5)) } : id as Exclude<ReviewScope, { turn: number }>
+        setExpandedPaths(new Set())
+        void controller.selectScope(next)
+      }}
+      anchor={<button
+        type="button"
+        className={css.reviewScopeButton}
+        aria-label={t('review.scope.choose')}
+        aria-expanded={scopeMenuOpen}
+        onClick={() => { setScopeMenuOpen(open => !open) }}
+      >
+        <span>{scopeLabel}</span><IconChevronDownOutline14 />
+      </button>}
+    />,
     right: <>
       <WorkbenchPanelIconButton
         label={anyExpanded ? t('review.collapseAll') : t('review.expandAll')}
@@ -417,7 +455,7 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
       </WorkbenchPanelIconButton>
       <WorkbenchPanelIconButton label={t('refresh')} onClick={() => { void controller.refresh({ runChecks: true }) }}><IconRefreshOutline14 /></WorkbenchPanelIconButton>
     </>
-  }), [anyExpanded, cache.status, controller, t])
+  }), [anyExpanded, cache.status, controller, scopeId, scopeItems, scopeLabel, scopeMenuOpen, t])
   usePanelHeaderActions(contributeHeaderActions, headerActions)
 
   const reviewTotals = (() => {
@@ -434,7 +472,7 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
       {cache.error !== null && <div className={css.error}>{cache.error}</div>}
       <div className={css.reviewBody}>
         <div className={css.reviewStatus}>
-          <strong>{cache.status?.branch || t('review.title')} → {t('review.title')}</strong>
+          <strong>{cache.status?.branch || t('review.title')} → {scopeLabel}</strong>
           <span>{cache.checks !== null && !cache.checks.clean
             ? t('review.checks.failed')
             : reviewTotals.added > 0 || reviewTotals.removed > 0

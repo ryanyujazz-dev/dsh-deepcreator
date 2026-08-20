@@ -456,9 +456,10 @@ export function apply(ctx: Context): void {
         // The mutation rows' path link: focus the file's change in the review
         // panel when the Workbench and its review type are composed, and keep
         // the host open behavior otherwise (no silent dead link).
-        revealChange: (path) => {
+        revealChange: (path, turn) => {
           const cwd = sessions.list.getSnapshot().byId[sessionId]?.cwd
           const resolved = resolveWorkspacePath(cwd, path)
+          if (turn !== undefined && ctx.get('turnChangeNavigation')?.open(sessionId, turn, resolved) === true) return
           const workbench = ctx.get('workbench')
           if (workbench !== undefined && workbench.types.list().some(definition => definition.id === 'review')) {
             workbench.reveal('review', resolved)

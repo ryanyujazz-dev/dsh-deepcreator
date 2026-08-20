@@ -13,6 +13,11 @@
 .reviewMissed { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--dsw-alias-border-l1); background: var(--dsh-review-surface); color: var(--dsw-alias-label-tertiary); font-size: 10px; line-height: 16px; }
 .reviewMissed code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--ds-font-family-code); font-style: normal; }
 .reviewBulkToggle.reviewBulkToggle > svg { width: 16px; height: 16px; }
+.reviewScopeButton { max-width: 210px; height: 24px; display: inline-flex; align-items: center; gap: 3px; border: 0; border-radius: 6px; padding: 0 6px; color: var(--dsw-alias-label-secondary); background: transparent; cursor: pointer; font: inherit; }
+.reviewScopeButton:hover { color: var(--dsw-alias-label-primary); background: var(--dsw-alias-interactive-bg-hover); }
+.reviewScopeButton:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: -2px; }
+.reviewScopeButton span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reviewScopeButton svg { flex: none; }
 .fileList { min-width: 0; }
 .reviewFile { position: relative; min-width: 0; content-visibility: auto; contain-intrinsic-size: auto 36px; }
 .reviewFileContentCollapsed { display: none; }
@@ -23,7 +28,6 @@
 .reviewFileHeader:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: -2px; }
 .reviewFileHeader svg { flex: none; transition: transform 120ms ease; }
 .reviewFileChevronCollapsed { transform: rotate(-90deg); }
-.reviewFileState { flex: none; color: var(--dsw-alias-label-tertiary); font: inherit; }
 .reviewFilePath { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .reviewFileLoading { flex: none; color: var(--dsw-alias-label-tertiary); font-size: 10px; }
 .reviewFileContent { min-width: 0; }

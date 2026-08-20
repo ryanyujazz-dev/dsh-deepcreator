@@ -58,6 +58,8 @@ export interface WorkbenchPresentRequest {
    * treats it as a workspace file path.
    */
   target?: string
+  /** Provider-defined, presentation-only parameters accompanying the target. */
+  parameters?: Readonly<Record<string, string>>
   reveal?: boolean
   reason: 'user' | 'agent' | 'system'
 }
@@ -96,7 +98,7 @@ export interface WorkbenchPanelOwnerProps {
    * same target re-fires; providers consume it from an effect keyed on the
    * nonce. Undefined on panels the request did not address.
    */
-  reveal?: { target: string; nonce: number } | undefined
+  reveal?: { target: string; parameters?: Readonly<Record<string, string>>; nonce: number } | undefined
   /**
    * Whether this group's cell is actually rendered. Hidden and
    * responsive-removed Groups stay mounted (display:none) with `visible:

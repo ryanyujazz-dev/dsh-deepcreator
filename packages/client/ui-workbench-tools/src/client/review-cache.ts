@@ -10,7 +10,9 @@ import type {
   ConversationSnapshot, ObservableSnapshot, SessionId,
 } from '@deepseek-ai/dsh-client-runtime/client'
 import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
-import type { ReviewChecksResult, ReviewStatusResult } from '@ryanyujazz/dsh-review/types'
+import type {
+  ReviewChecksResult, ReviewHistoryResult, ReviewScope, ReviewStatusResult, ReviewUndoTurnResult,
+} from '@ryanyujazz/dsh-review/types'
 import {
   REVIEW_CACHE_LIMIT, REVIEW_PREFETCH_LIMIT, decodeMutationSignal, encodeMutationSignal,
   evictCollapsedCaches, markStale, matchReviewFile, mergeFileEntries, mutationSignal,
@@ -19,17 +21,22 @@ import {
 
 type StatusOk = Extract<ReviewStatusResult, { ok: true }>
 type ChecksOk = Extract<ReviewChecksResult, { ok: true }>
+type HistoryOk = Extract<ReviewHistoryResult, { ok: true }>
 
 /** The immutable view the panel renders through useSyncExternalStore. */
 export interface ReviewCacheSnapshot {
   status: StatusOk | null
   checks: ChecksOk | null
+  history: HistoryOk | null
+  scope: ReviewScope
   entries: Readonly<FileEntries>
   /** Manual-refresh error surface; background failures stay silent. */
   error: string | null
 }
 
-const EMPTY_SNAPSHOT: ReviewCacheSnapshot = { status: null, checks: null, entries: {}, error: null }
+const EMPTY_SNAPSHOT: ReviewCacheSnapshot = {
+  status: null, checks: null, history: null, scope: 'uncommitted', entries: {}, error: null,
+}
 
 /** Settled mutation tools are coalesced into one invalidation after this long. */
 const MUTATION_DEBOUNCE_MS = 600
@@ -66,6 +73,8 @@ export class ReviewCacheController {
   private seenMutations: MutationSignal = { count: 0, lastSeq: 0, lastName: '', lastPath: null }
   private seenTurnEnds = -1
   private unsubscribeSession: () => void
+  private historyTimer: number | null = null
+  private readonly onWindowFocus = (): void => { if (!this.disposed) void this.refresh({ silent: true }) }
 
   constructor(options: {
     remote: TypertClientRemote
@@ -86,6 +95,12 @@ export class ReviewCacheController {
     this.seenTurnEnds = initial.turnEnds.size
     this.unsubscribeSession = options.session.subscribe(() => { this.onSessionSnapshot() })
     void this.refresh()
+    if (typeof window !== 'undefined') {
+      this.historyTimer = window.setInterval(() => {
+        if (!this.disposed && document.visibilityState === 'visible') void this.refreshHistory(true, true)
+      }, 2_000)
+      window.addEventListener('focus', this.onWindowFocus)
+    }
   }
 
   readonly subscribe = (listener: () => void): (() => void) => {
@@ -94,6 +109,41 @@ export class ReviewCacheController {
   }
 
   readonly getSnapshot = (): ReviewCacheSnapshot => this.state
+
+  async selectScope(scope: ReviewScope, focusPath?: string): Promise<string | undefined> {
+    const same = JSON.stringify(scope) === JSON.stringify(this.state.scope)
+    if (!same) {
+      this.queue = []
+      this.queued.clear()
+      this.publish({ scope, status: null, entries: {}, error: null })
+    }
+    return this.refresh({ ...(focusPath === undefined ? {} : { focusPath }), silent: true })
+  }
+
+  async refreshHistory(silent = false, refreshOnHeadChange = false): Promise<void> {
+    try {
+      const wire = await this.remote.review.history(this.sessionId)
+      if (!wire.ok) throw transportError(wire)
+      if (!wire.value.ok) throw new Error(wire.value.message)
+      if (!this.disposed) {
+        const previousHead = this.state.history?.head
+        this.publish({ history: wire.value, ...(silent ? {} : { error: null }) })
+        if (refreshOnHeadChange && previousHead !== undefined && wire.value.head !== previousHead) {
+          void this.refresh({ silent: true })
+        }
+      }
+    } catch (reason) {
+      if (!silent && !this.disposed) this.publish({ error: reason instanceof Error ? reason.message : String(reason) })
+    }
+  }
+
+  async undoTurn(turn: number): Promise<ReviewUndoTurnResult> {
+    const wire = await this.remote.review.undoTurn(this.sessionId, turn)
+    if (!wire.ok) throw transportError(wire)
+    await this.refreshHistory(true)
+    await this.refresh({ silent: true })
+    return wire.value
+  }
 
   /** Panel expansion share: exempt from cache eviction. */
   setExpanded(paths: ReadonlySet<string>): void {
@@ -142,6 +192,8 @@ export class ReviewCacheController {
     if (this.disposed) return
     this.disposed = true
     if (this.invalidateTimer !== null) window.clearTimeout(this.invalidateTimer)
+    if (this.historyTimer !== null) window.clearInterval(this.historyTimer)
+    if (typeof window !== 'undefined') window.removeEventListener('focus', this.onWindowFocus)
     this.unsubscribeSession()
     this.listeners.clear()
   }
@@ -168,7 +220,9 @@ export class ReviewCacheController {
       ...(revalidate ? {} : { cache: { kind: 'loading' } as const }),
     }))
     try {
-      const wire = await this.remote.review.diff(this.sessionId, path)
+      const wire = this.state.scope === 'uncommitted'
+        ? await this.remote.review.diff(this.sessionId, path)
+        : await this.remote.review.diff(this.sessionId, path, this.state.scope)
       if (!wire.ok) throw transportError(wire)
       if (!wire.value.ok) throw new Error(wire.value.message)
       const result = wire.value
@@ -230,7 +284,9 @@ export class ReviewCacheController {
     const { focusPath, runChecks = false, silent = false } = options
     const seq = ++this.generation
     try {
-      const statusWire = await this.remote.review.status(this.sessionId)
+      const statusWire = this.state.scope === 'uncommitted'
+        ? await this.remote.review.status(this.sessionId)
+        : await this.remote.review.status(this.sessionId, this.state.scope)
       if (!statusWire.ok) throw transportError(statusWire)
       if (!statusWire.value.ok) throw new Error(statusWire.value.message)
       let nextChecks: ChecksOk | null = null
@@ -251,6 +307,7 @@ export class ReviewCacheController {
         ...(nextChecks !== null ? { checks: nextChecks } : {}),
         error: null,
       })
+      void this.refreshHistory(true)
       // A reveal focus wants the current content immediately; everything
       // else (new or stale) flows through the sequential background queue.
       if (focus !== undefined) this.ensure(focus, true)

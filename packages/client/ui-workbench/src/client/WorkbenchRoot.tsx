@@ -184,7 +184,12 @@ export function WorkbenchRoot({
     && command.sequence > commandFloor.current
     && command.action.kind === 'present'
     && command.action.request.target !== undefined
-    ? { typeId: command.action.request.typeId, target: command.action.request.target, nonce: command.sequence }
+    ? {
+        typeId: command.action.request.typeId,
+        target: command.action.request.target,
+        ...(command.action.request.parameters === undefined ? {} : { parameters: command.action.request.parameters }),
+        nonce: command.sequence,
+      }
     : null
   const dragStart = useRef<number | null>(null)
   const tracksRef = useRef<HTMLDivElement | null>(null)

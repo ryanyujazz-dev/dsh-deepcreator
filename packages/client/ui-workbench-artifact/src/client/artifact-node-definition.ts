@@ -73,6 +73,13 @@ export const artifactNodeDefinition: ConversationNodeDefinition<ArtifactTurnStat
           anchorSeq: match.event.seq,
         }
   },
+  buildLocationData: (context, scope) => {
+    if (scope !== 'turn' || context.state === undefined) return null
+    const value: ArtifactTurnData = {
+      kind: 'turn', turn: context.state.turn, produced: context.state.produced,
+    }
+    return { kind: 'turn', turn: context.state.turn, key: 'workbench-artifact', value }
+  },
   buildViewNode: (context: ConversationNodeContext<ArtifactTurnState>) => {
     if (context.state === undefined) return null
     const data: ArtifactTurnData = {

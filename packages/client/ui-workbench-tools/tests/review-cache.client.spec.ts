@@ -65,6 +65,12 @@ function remoteMock(files: string[] = ['src/a.ts', 'src/b.ts']) {
           }],
         },
       })),
+      history: vi.fn().mockResolvedValue({
+        ok: true, value: { ok: true, repositoryRoot: '/workspace', turns: [] },
+      }),
+      undoTurn: vi.fn().mockResolvedValue({
+        ok: true, value: { ok: true, repositoryRoot: '/workspace', turn: 1, revertedFiles: [] },
+      }),
     },
   }
 }
@@ -249,6 +255,30 @@ describe('ReviewCacheController', () => {
     expect(remote.review.status).toHaveBeenCalledTimes(2)
     expect(remote.review.diff.mock.calls.length).toBeGreaterThan(before)
     expect(remote.review.diff).toHaveBeenLastCalledWith(SID, 'src/b.ts')
+    cache.dispose()
+  })
+
+  it('switches to a historical turn as provider-defined scope and shares its history cache', async () => {
+    const remote = remoteMock(['src/a.ts'])
+    remote.review.history.mockResolvedValue({
+      ok: true,
+      value: {
+        ok: true, repositoryRoot: '/workspace',
+        turns: [{
+          turn: 9, totalFiles: 1, remainingFiles: 1, state: 'active', undoable: true,
+          files: [{ path: 'src/a.ts', state: 'pending' }],
+        }],
+      },
+    })
+    const cache = new ReviewCacheController({ remote: remote as never, sessionId: SID, session: sessionStub().session })
+    await flush(); await flush()
+    expect(cache.getSnapshot().history?.turns[0]?.turn).toBe(9)
+
+    await cache.selectScope({ turn: 9 }, '/workspace/src/a.ts')
+    await flush()
+    expect(cache.getSnapshot().scope).toEqual({ turn: 9 })
+    expect(remote.review.status).toHaveBeenLastCalledWith(SID, { turn: 9 })
+    expect(remote.review.diff).toHaveBeenLastCalledWith(SID, 'src/a.ts', { turn: 9 })
     cache.dispose()
   })
 })
