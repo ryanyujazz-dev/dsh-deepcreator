@@ -160,14 +160,16 @@ function useReviewResidency(options: {
   controller: ReviewCacheController
   files: readonly ReviewFileStatus[]
   expanded: ReadonlySet<string>
+  forced: ReadonlySet<string>
   eagerPath: string | null
   listRef: RefObject<HTMLDivElement | null>
 }) {
-  const { controller, files, expanded, eagerPath, listRef } = options
+  const { controller, files, expanded, forced, eagerPath, listRef } = options
   const [resident, setResident] = useState<ReadonlySet<string>>(new Set())
   const [scrollRoot, setScrollRoot] = useState<HTMLElement | null>(null)
   const [widthBucket, setWidthBucket] = useState(0)
   const expandedRef = useRef(expanded); expandedRef.current = expanded
+  const forcedRef = useRef(forced); forcedRef.current = forced
   const eagerRef = useRef(eagerPath); eagerRef.current = eagerPath
   const near = useRef(new Set<string>())
   const stamps = useRef(new Map<string, number>())
@@ -181,13 +183,13 @@ function useReviewResidency(options: {
     if (timer !== undefined) { window.clearTimeout(timer); releaseTimers.current.delete(path) }
     controller.ensure(path, immediate ? 'focus' : 'viewport')
     const commit = () => {
-      if (!expandedRef.current.has(path) || (!immediate && !near.current.has(path))) return
+      if (!expandedRef.current.has(path) || (!immediate && !near.current.has(path) && !forcedRef.current.has(path))) return
       stamps.current.set(path, ++stamp.current)
       setResident(current => {
         const next = new Set(current); next.add(path)
         if (next.size > REVIEW_BODY_RESIDENT_LIMIT) {
           const removable = [...next]
-            .filter(candidate => !near.current.has(candidate) && candidate !== eagerRef.current)
+            .filter(candidate => !near.current.has(candidate) && !forcedRef.current.has(candidate) && candidate !== eagerRef.current)
             .toSorted((left, right) => (stamps.current.get(left) ?? 0) - (stamps.current.get(right) ?? 0))
           while (next.size > REVIEW_BODY_RESIDENT_LIMIT && removable.length > 0) {
             const candidate = removable.shift()
@@ -246,7 +248,7 @@ function useReviewResidency(options: {
           if (existing !== undefined) { window.clearTimeout(existing); releaseTimers.current.delete(path) }
           continue
         }
-        if (existing !== undefined || path === eagerRef.current) continue
+        if (existing !== undefined || path === eagerRef.current || forcedRef.current.has(path)) continue
         const timer = window.setTimeout(() => {
           releaseTimers.current.delete(path)
           if (near.current.has(path) || path === eagerRef.current) return
@@ -271,6 +273,22 @@ function useReviewResidency(options: {
   useEffect(() => {
     if (eagerPath !== null) hydrate(eagerPath, true)
   }, [eagerPath, hydrate])
+
+  useEffect(() => {
+    for (const path of forced) hydrate(path)
+    setResident(current => {
+      if (current.size <= REVIEW_BODY_RESIDENT_LIMIT || forced.size > 0) return current
+      const next = new Set(current)
+      const removable = [...next]
+        .filter(path => !near.current.has(path) && path !== eagerRef.current)
+        .toSorted((left, right) => (stamps.current.get(left) ?? 0) - (stamps.current.get(right) ?? 0))
+      while (next.size > REVIEW_BODY_RESIDENT_LIMIT && removable.length > 0) {
+        const candidate = removable.shift()
+        if (candidate !== undefined) next.delete(candidate)
+      }
+      return next.size === current.size ? current : next
+    })
+  }, [forced, hydrate])
 
   useEffect(() => {
     const mounted = new Set(files.map(file => file.path))
@@ -327,6 +345,8 @@ function useReviewProgressiveGate(options: {
   const [unlockedEnd, setUnlockedEnd] = useState(() => Math.min(REVIEW_IDLE_PREFETCH_LIMIT, files.length))
   const [pendingBefore, setPendingBefore] = useState<number | null>(null)
   const [pendingAfter, setPendingAfter] = useState<number | null>(null)
+  const [stagedStart, setStagedStart] = useState<number | null>(null)
+  const [stagedEnd, setStagedEnd] = useState<number | null>(null)
   const [rangeSettled, setRangeSettled] = useState(false)
   const beforeSentinelRef = useRef<HTMLDivElement | null>(null)
   const afterSentinelRef = useRef<HTMLDivElement | null>(null)
@@ -339,6 +359,8 @@ function useReviewProgressiveGate(options: {
       setUnlockedEnd(Math.min(REVIEW_IDLE_PREFETCH_LIMIT, files.length))
       setPendingBefore(null)
       setPendingAfter(null)
+      setStagedStart(null)
+      setStagedEnd(null)
       setRangeSettled(false)
       return
     }
@@ -357,6 +379,8 @@ function useReviewProgressiveGate(options: {
     setUnlockedEnd(index + 1)
     setPendingBefore(null)
     setPendingAfter(null)
+    setStagedStart(null)
+    setStagedEnd(null)
     setRangeSettled(false)
   }, [eagerPath, files, unlockedEnd, unlockedStart])
 
@@ -375,7 +399,7 @@ function useReviewProgressiveGate(options: {
     const paths = files.slice(pendingBefore, unlockedStart).map(file => file.path)
     const check = () => {
       if (!paths.every(path => reviewFileSettled(controller, path))) return
-      setUnlockedStart(current => Math.min(current, pendingBefore))
+      setStagedStart(pendingBefore)
       setPendingBefore(null)
     }
     const off = paths.map(path => controller.subscribeFile(path, check))
@@ -388,7 +412,7 @@ function useReviewProgressiveGate(options: {
     const paths = files.slice(unlockedEnd, pendingAfter).map(file => file.path)
     const check = () => {
       if (!paths.every(path => reviewFileSettled(controller, path))) return
-      setUnlockedEnd(current => Math.max(current, pendingAfter))
+      setStagedEnd(pendingAfter)
       setPendingAfter(null)
     }
     const off = paths.map(path => controller.subscribeFile(path, check))
@@ -404,7 +428,7 @@ function useReviewProgressiveGate(options: {
   }, [listRef])
 
   const beginBeforeBatch = useCallback(() => {
-    if (!rangeSettled || pendingBefore !== null || unlockedStart <= 0) return
+    if (!rangeSettled || pendingBefore !== null || stagedStart !== null || unlockedStart <= 0) return
     let height = 0
     let start = unlockedStart
     const budget = batchBudget()
@@ -417,10 +441,10 @@ function useReviewProgressiveGate(options: {
     if (start === unlockedStart) return
     setPendingBefore(start)
     for (const file of files.slice(start, unlockedStart)) controller.ensure(file.path, 'viewport')
-  }, [batchBudget, controller, expanded, files, pendingBefore, rangeSettled, summaries, unlockedStart])
+  }, [batchBudget, controller, expanded, files, pendingBefore, rangeSettled, stagedStart, summaries, unlockedStart])
 
   const beginAfterBatch = useCallback(() => {
-    if (!rangeSettled || pendingAfter !== null || unlockedEnd >= files.length) return
+    if (!rangeSettled || pendingAfter !== null || stagedEnd !== null || unlockedEnd >= files.length) return
     let height = 0
     let end = unlockedEnd
     const budget = batchBudget()
@@ -433,7 +457,7 @@ function useReviewProgressiveGate(options: {
     if (end === unlockedEnd) return
     setPendingAfter(end)
     for (const file of files.slice(unlockedEnd, end)) controller.ensure(file.path, 'viewport')
-  }, [batchBudget, controller, expanded, files, pendingAfter, rangeSettled, summaries, unlockedEnd])
+  }, [batchBudget, controller, expanded, files, pendingAfter, rangeSettled, stagedEnd, summaries, unlockedEnd])
 
   useEffect(() => {
     const sentinel = beforeSentinelRef.current
@@ -455,8 +479,34 @@ function useReviewProgressiveGate(options: {
     return () => { observer.disconnect() }
   }, [beginAfterBatch, files.length, listRef, unlockedEnd])
 
+  const renderStart = stagedStart ?? unlockedStart
+  const renderEnd = stagedEnd ?? unlockedEnd
+  const renderedFiles = useMemo(() => files.slice(renderStart, renderEnd), [files, renderEnd, renderStart])
+  const preloadPaths = useMemo(() => new Set([
+    ...(stagedStart === null ? [] : files.slice(stagedStart, unlockedStart).map(file => file.path)),
+    ...(stagedEnd === null ? [] : files.slice(unlockedEnd, stagedEnd).map(file => file.path)),
+  ]), [files, stagedEnd, stagedStart, unlockedEnd, unlockedStart])
+  const promoteResident = useCallback((resident: ReadonlySet<string>) => {
+    if (stagedStart !== null) {
+      const before = files.slice(stagedStart, unlockedStart)
+      if (before.every(file => resident.has(file.path))) {
+        setUnlockedStart(stagedStart)
+        setStagedStart(null)
+      }
+    }
+    if (stagedEnd !== null) {
+      const after = files.slice(unlockedEnd, stagedEnd)
+      if (after.every(file => resident.has(file.path))) {
+        setUnlockedEnd(stagedEnd)
+        setStagedEnd(null)
+      }
+    }
+  }, [files, stagedEnd, stagedStart, unlockedEnd, unlockedStart])
+
   return {
-    files: range,
+    files: renderedFiles,
+    preloadPaths,
+    promoteResident,
     beforeSentinelRef,
     afterSentinelRef,
     hasBeforeBoundary: unlockedStart > 0,
@@ -478,13 +528,14 @@ function useReviewProgressiveGate(options: {
  * their logical expansion and controlled fold state remain intact.
  */
 const ReviewFileRow = memo(function ReviewFileRow({
-  file, summary, controller, expanded, resident, scrollRoot, widthBucket, onToggle, t,
+  file, summary, controller, expanded, resident, preload, scrollRoot, widthBucket, onToggle, t,
 }: {
   file: ReviewFileStatus
   summary: ReviewFileSummary | undefined
   controller: ReviewCacheController
   expanded: boolean
   resident: boolean
+  preload: boolean
   scrollRoot: HTMLElement | null
   widthBucket: number
   onToggle: (path: string) => void
@@ -548,7 +599,7 @@ const ReviewFileRow = memo(function ReviewFileRow({
   useEffect(() => { setBodyHeight(measuredHeights.current.get(widthBucket) ?? estimate) }, [estimate, widthBucket])
   useEffect(() => {
     const node = bodyRef.current
-    if (!resident || !expanded || node === null || typeof ResizeObserver === 'undefined') return
+    if (preload || !resident || !expanded || node === null || typeof ResizeObserver === 'undefined') return
     const measure = () => {
       const next = Math.max(1, Math.ceil(node.getBoundingClientRect().height))
       const previous = measuredHeights.current.get(widthBucket) ?? bodyHeight
@@ -564,7 +615,7 @@ const ReviewFileRow = memo(function ReviewFileRow({
     const observer = new ResizeObserver(measure)
     observer.observe(node)
     return () => { observer.disconnect() }
-  }, [bodyHeight, expanded, resident, scrollRoot, widthBucket])
+  }, [bodyHeight, expanded, preload, resident, scrollRoot, widthBucket])
 
   const onHeaderClick = useCallback(() => {
     if (!expanded) controller.ensure(file.path, 'focus')
@@ -574,7 +625,7 @@ const ReviewFileRow = memo(function ReviewFileRow({
   const deletions = summary?.deletions ?? ready?.removed
   const showCounts = summary?.binary !== true && additions !== undefined && deletions !== undefined
   return (
-    <article ref={anchorRef} className={css.reviewFile} data-review-path={file.path}>
+    <article ref={anchorRef} className={preload ? `${css.reviewFile} ${css.reviewFilePreload}` : css.reviewFile} data-review-path={file.path}>
       <button
         type="button"
         className={css.reviewFileHeader}
@@ -668,7 +719,10 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
   const gate = useReviewProgressiveGate({
     controller, files, summaries, expanded: expandedPaths, eagerPath, listRef, scopeKey: scopeId,
   })
-  const residency = useReviewResidency({ controller, files: gate.files, expanded: expandedPaths, eagerPath, listRef })
+  const residency = useReviewResidency({
+    controller, files: gate.files, expanded: expandedPaths, forced: gate.preloadPaths, eagerPath, listRef,
+  })
+  useEffect(() => { gate.promoteResident(residency.resident) }, [gate.promoteResident, residency.resident])
 
   // Opening the panel (first mount visible, or hidden→visible) means
   // expand-all with the list focused at the top — unless this open is driven
@@ -873,6 +927,7 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
                   controller={controller}
                   expanded={expandedPaths.has(file.path)}
                   resident={residency.resident.has(file.path)}
+                  preload={gate.preloadPaths.has(file.path)}
                   scrollRoot={residency.scrollRoot}
                   widthBucket={residency.widthBucket}
                   onToggle={toggleFile}

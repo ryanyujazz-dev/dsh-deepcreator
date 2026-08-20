@@ -22,6 +22,7 @@
 .reviewLoadBoundary { min-height: 36px; box-sizing: border-box; display: grid; place-items: center; border-bottom: 1px solid var(--dsw-alias-border-l1); color: var(--dsw-alias-label-tertiary); background: var(--dsh-review-surface); font-size: 10px; line-height: 16px; }
 .reviewLoadBoundary:first-child { border-top: 1px solid var(--dsw-alias-border-l1); }
 .reviewFile { position: relative; min-width: 0; content-visibility: auto; contain-intrinsic-size: auto 36px; }
+.reviewFilePreload { position: absolute; inset-inline: 0; visibility: hidden; pointer-events: none; }
 .reviewFileSkeleton { box-sizing: border-box; display: grid; place-items: center; border-bottom: 1px solid var(--dsw-alias-border-l1); color: var(--dsw-alias-label-tertiary); font-size: 10px; }
 .reviewFile + .reviewFile { border-top: 1px solid var(--dsw-alias-border-l1); }
 .reviewFileHeader { position: sticky; z-index: 3; top: 0; width: 100%; min-height: 36px; box-sizing: border-box; display: flex; align-items: center; gap: 5px; border: 0; border-bottom: 1px solid var(--dsw-alias-border-l1); padding: 0 10px; color: var(--dsw-alias-label-secondary); background: color-mix(in srgb, var(--dsw-alias-label-primary) 5%, var(--dsh-review-surface)); text-align: left; cursor: pointer; font-size: 11px; }

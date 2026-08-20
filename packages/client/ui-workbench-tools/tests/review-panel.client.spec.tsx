@@ -562,6 +562,15 @@ describe('Review Panel file stream', () => {
     // of that test-host geometry, the range grows only after the whole batch
     // settles and remains far smaller than the 500-file repository.
     await waitFor(() => { expect(remote.review.diff.mock.calls.length).toBeGreaterThan(6) })
+    await waitFor(() => {
+      expect(view.container.querySelectorAll('article[class*="reviewFilePreload"]').length).toBeGreaterThan(0)
+    })
+    // Data-ready rows are mounted invisibly one per frame. Until every body
+    // is resident, the visible scroll frontier stays on the loading row.
+    expect(view.container.querySelector('[data-review-boundary="after"]')).toBe(afterBoundary)
+    await waitFor(() => {
+      expect(view.container.querySelectorAll('article[class*="reviewFilePreload"]')).toHaveLength(0)
+    }, { timeout: 5000 })
     await waitFor(() => { expect(view.container.querySelectorAll('[data-review-path]').length).toBeGreaterThan(6) })
     expect(view.container.querySelectorAll('[data-review-path]').length).toBeLessThan(100)
 
@@ -593,6 +602,12 @@ describe('Review Panel file stream', () => {
       nextAfterGate.trigger(afterBoundaryAtReveal, true)
     })
     expect(view.container.querySelectorAll('[data-review-path]')).toHaveLength(1)
+    await waitFor(() => {
+      expect(view.container.querySelectorAll('article[class*="reviewFilePreload"]').length).toBeGreaterThan(0)
+    })
+    await waitFor(() => {
+      expect(view.container.querySelectorAll('article[class*="reviewFilePreload"]')).toHaveLength(0)
+    }, { timeout: 5000 })
     await waitFor(() => {
       const current = [...view.container.querySelectorAll<HTMLElement>('[data-review-path]')]
         .map(row => row.dataset.reviewPath ?? '')
