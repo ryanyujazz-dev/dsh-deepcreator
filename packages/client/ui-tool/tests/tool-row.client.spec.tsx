@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render } from '@testing-library/react'
 
@@ -17,6 +19,7 @@ afterEach(() => {
 
 // Mirrors the real lookup chain (conversation namespace, then common).
 const t: GenericToolCardProps['t'] = makeTranslate(zh, commonZh)
+const toolRowStyles = readFileSync(resolve(process.cwd(), 'packages/client/ui-tool/src/client/tool/components/ToolRow.module.css'), 'utf8')
 
 const running = (over?: Partial<RunningToolCall>): RunningToolCall => ({
   callId: 'c1', name: 'bash', argsRaw: '{"command":"ls -la","description":"List files"}',
@@ -227,14 +230,12 @@ describe('ToolRow', () => {
     expect(view.getByText('List files')).toBeTruthy()
   })
 
-  it('running keeps the icon (row sweep carries the signal); error swaps in a StateDot', () => {
+  it('running and error keep the tool icon while stopped owns the warning state', () => {
     const runningView = render(<ToolRow {...rowProps} state="running" />)
     expect(runningView.queryByTestId('tool-icon')).not.toBeNull()
     expect(runningView.container.querySelector('[data-state="running"]')).not.toBeNull()
     const errorView = render(<ToolRow {...rowProps} state="error" />)
-    expect(errorView.container.querySelector('[data-testid="tool-icon"]')).toBeNull()
-    // The dot rides the idle slot, so an expandable error row keeps the
-    // icon→chevron hover preview instead of losing it with the icon.
+    expect(errorView.container.querySelector('[data-testid="tool-icon"]')).not.toBeNull()
     expect(errorView.container.querySelector('[class*="chevronHover"]')).not.toBeNull()
   })
 
@@ -292,20 +293,32 @@ describe('ToolRow', () => {
     expect(open).not.toHaveBeenCalled()
   })
 
-  it('an error row shows the failure first line in the collapsed summary and the full text expanded', () => {
+  it('an error row shows fixed failure copy in the title and the full diagnostic expanded', () => {
     const view = render(
       <ToolRow {...rowProps} state="error" errorSummary="boom" output={'boom\ndetail'} />,
     )
-    expect(view.getByText('boom')).toBeTruthy()
+    expect(view.getByText('执行失败')).toBeTruthy()
+    expect(view.queryByText('boom')).toBeNull()
     expect(view.queryByText('List files')).toBeNull()
     fireEvent.click(view.getByRole('button'))
     expect(view.getByText(/detail/)).toBeTruthy()
     expect(view.container.querySelector('[data-error]')).not.toBeNull()
   })
 
-  it('an error row without an error summary keeps the args summary', () => {
+  it('gives the fixed failure label the same hover feedback as a file link rather than an error accent', () => {
+    expect(toolRowStyles).toMatch(/\.errorSummary\s*\{[^}]*color: var\(--dsw-alias-label-secondary\);[^}]*text-decoration: underline;[^}]*text-decoration-color: var\(--dsw-alias-label-quaternary\);[^}]*\}/s)
+    expect(toolRowStyles).toMatch(/\.fileLink:hover,\s*\.errorSummary:hover,\s*\.row:focus-visible \.errorSummary\s*\{[^}]*color: var\(--dsw-alias-label-primary\);[^}]*text-decoration-color: currentColor;[^}]*\}/s)
+    expect(toolRowStyles).not.toMatch(/\.errorSummary\s*\{[^}]*state-error-primary/s)
+  })
+
+  it('keeps diff counts on the surrounding text line box and baseline', () => {
+    expect(toolRowStyles).toMatch(/\.diffCounts\s*\{[^}]*align-items: baseline;[^}]*line-height: inherit;[^}]*\}/s)
+  })
+
+  it('an error row without an error summary still uses fixed failure copy', () => {
     const view = render(<ToolRow {...rowProps} state="error" errorSummary={null} />)
-    expect(view.getByText('List files')).toBeTruthy()
+    expect(view.getByText('执行失败')).toBeTruthy()
+    expect(view.queryByText('List files')).toBeNull()
   })
 
   it('renders summarySuffix outside the ellipsized summary span, and drops it on a failure line', () => {
@@ -350,7 +363,7 @@ describe('ToolRow', () => {
         filePath="src/a.ts" onOpenFile={open}
       />,
     )
-    fireEvent.click(view.getByText('cannot overwrite'))
+    fireEvent.click(view.getByText('执行失败'))
     expect(open).not.toHaveBeenCalled()
     // The failure line renders as plain text, not the underlined link button.
     expect(view.container.querySelector('[class*="fileLink"]')).toBeNull()

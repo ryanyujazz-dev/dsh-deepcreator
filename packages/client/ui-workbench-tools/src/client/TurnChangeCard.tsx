@@ -68,8 +68,12 @@ export function TurnChangeCard({ turn, controller, workbench, openFile, t }: Pro
             aria-expanded={active ? expanded : undefined}
             onClick={() => { setExpanded(value => !value) }}
           >
-            {expanded ? <IconChevronDownOutline14 size={13} /> : <IconChevronRightOutline14 size={13} />}
-            <DeepCreatorIconReview16 size={16} />
+            <span className={css.leadingIcon} data-turn-change-leading-icon>
+              <DeepCreatorIconReview16 size={16} className={css.reviewIcon} />
+              {expanded
+                ? <IconChevronDownOutline14 size={13} className={css.chevronIcon} />
+                : <IconChevronRightOutline14 size={13} className={css.chevronIcon} />}
+            </span>
             <span className={css.label}>{t('turnCard.files', { count: record.totalFiles })}</span>
             {showTotals && <span className={css.diffCounts}><b>{`+${additions}`}</b><i>{`-${deletions}`}</i></span>}
             {record.remainingFiles < record.totalFiles && record.remainingFiles > 0 && (
@@ -104,7 +108,7 @@ export function TurnChangeCard({ turn, controller, workbench, openFile, t }: Pro
                     else openFile(file.path)
                   }}
                 >
-                  <FileIcon path={file.path} />
+                  <span className={css.fileIcon}><FileIcon path={file.path} /></span>
                   <span className={css.filePath}>{file.path}</span>
                   {file.additions !== undefined && file.deletions !== undefined && (file.additions > 0 || file.deletions > 0) && (
                     <span className={css.diffCounts}><b>{`+${file.additions}`}</b><i>{`-${file.deletions}`}</i></span>

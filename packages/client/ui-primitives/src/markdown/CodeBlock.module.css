@@ -2,15 +2,16 @@
    stay on the existing shiki `--shiki-*` sheet (not Prism highlight.css). */
 
 .block {
-  --dsl-code-block-banner-background-color: var(--dsw-alias-markdown-code-block-banner);
   --dsl-code-block-border-radius: 12px;
   --dsl-code-block-banner-font: var(--dsw-font-xs-13);
   --dsl-code-block-content-font: var(--dsw-font-markdown-code-block);
 
   position: relative;
+  box-sizing: border-box;
   margin: 16px 0;
+  border: 1px solid var(--dsw-alias-border-l1);
   color: var(--ds-code-foreground, var(--dsw-alias-label-primary));
-  background: var(--ds-code-background, var(--dsw-alias-markdown-code-block));
+  background: var(--dsw-specific-sidebar-fill);
   border-radius: var(--dsl-code-block-border-radius);
 }
 
@@ -22,14 +23,17 @@
   position: sticky;
   top: 0;
   z-index: 6;
-  background-color: var(--dsw-alias-bg-base);
+  background-color: var(--dsw-specific-sidebar-fill);
   border-top-left-radius: var(--dsl-code-block-border-radius);
   border-top-right-radius: var(--dsl-code-block-border-radius);
 }
 
 .banner {
-  background: var(--dsl-code-block-banner-background-color);
-  padding: 9px 14px;
+  height: 42px;
+  min-height: 42px;
+  box-sizing: border-box;
+  background: transparent;
+  padding: 7px 7px 7px 11px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -57,23 +61,40 @@
 }
 
 .copyButton {
-  background-color: rgb(255 255 255 / 0);
-  border: none;
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
   padding: 0;
   margin: 0;
-  color: inherit;
+  color: var(--dsw-alias-label-secondary);
   cursor: pointer;
   font: inherit;
+}
+
+.copyButton:hover { color: var(--dsw-alias-label-primary); background: var(--dsw-alias-interactive-bg-hover); }
+.copyButton:focus-visible { outline: 1px solid var(--dsw-alias-state-business-primary); outline-offset: 1px; }
+
+.floatingCopy {
+  position: absolute;
+  z-index: 2;
+  top: 7px;
+  right: 7px;
 }
 
 .block :where(pre) {
   font: var(--dsl-code-block-content-font);
   padding: 16px;
   margin: 0 !important;
+  border-top: 1px solid var(--dsw-alias-border-l1);
   overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-all;
-  background: var(--ds-code-background, var(--dsw-alias-markdown-code-block));
+  background: var(--dsw-specific-sidebar-fill);
   /* Bottom radii live on <pre>: overflow:hidden on .block would kill the
      sticky banner, and this opaque fill otherwise squares off the wrapper. */
   border-bottom-left-radius: var(--dsl-code-block-border-radius);
@@ -82,7 +103,15 @@
 
 /* Shiki inlines its theme background var; route it to the repo token. */
 .block :where(pre.shiki) {
-  background: var(--ds-code-background, var(--dsw-alias-markdown-code-block)) !important;
+  background: var(--dsw-specific-sidebar-fill) !important;
+}
+
+/* A fence without a language/title has no empty banner. Its copy action floats
+   over the card corner and the source reserves that corner horizontally. */
+.block[data-titleless] :where(pre) {
+  padding-right: 48px;
+  border-top: 0;
+  border-radius: var(--dsl-code-block-border-radius);
 }
 
 .block :where(pre) code {

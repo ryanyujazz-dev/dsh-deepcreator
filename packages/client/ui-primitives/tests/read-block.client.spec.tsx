@@ -8,6 +8,8 @@
 // the accepted and refused clipboard paths.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { DEFAULT_READ_MAX_LINES, ReadBlock, type ReadBlockLine } from '../src/index.ts'
 import { grammarLoadCount, highlightLines, subscribeGrammarLoaded } from '../src/markdown/highlight.ts'
@@ -97,6 +99,20 @@ describe('highlightLines', () => {
 })
 
 describe('ReadBlock rows', () => {
+  it('exposes consumer seams for soft wrapping and a vertically scrolling height cap', () => {
+    const stylesheet = readFileSync(resolve(process.cwd(), 'packages/client/ui-primitives/src/ReadBlock.module.css'), 'utf8')
+    expect(stylesheet).toMatch(/\.body\s*\{[^}]*max-height:\s*var\(--dsl-read-body-max-height, none\);[^}]*overflow-x:\s*var\(--dsl-read-overflow-x, auto\);[^}]*overflow-y:\s*var\(--dsl-read-overflow-y, hidden\);/s)
+    expect(stylesheet).toMatch(/\.line\s*\{[^}]*white-space:\s*var\(--dsl-read-white-space, pre\);/s)
+    expect(stylesheet).toMatch(/\.content\s*\{[^}]*overflow-wrap:\s*var\(--dsl-read-overflow-wrap, normal\);/s)
+  })
+
+  it('fades file labels from the left and ordinary replacement titles from the right', () => {
+    const view = render(<ReadBlock filePath="packages/client/src/chat.tsx" label="packages/client/src/chat.tsx" lines={lines(1)} totalLines={1} />)
+    expect(view.container.querySelector('[data-overflow-fade="left"]')?.textContent).toBe('packages/client/src/chat.tsx')
+    view.rerender(<ReadBlock label="Generated command output" lines={lines(1)} totalLines={1} />)
+    expect(view.container.querySelector('[data-overflow-fade="right"]')?.textContent).toBe('Generated command output')
+  })
+
   it('renders one gutter-numbered row per line, keeping the file line numbers', () => {
     const view = render(<ReadBlock label="a.ts" lines={lines(3, 41)} totalLines={3} />)
     expect(gutters(view.container)).toEqual(['41', '42', '43'])

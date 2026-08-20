@@ -100,11 +100,13 @@
 
 .diffCounts {
   display: inline-flex;
+  align-items: baseline;
   flex: none;
   gap: 5px;
   margin-left: 4px;
   white-space: nowrap;
   font: var(--dsw-font-markdown-code-block-small);
+  line-height: inherit;
 }
 
 .diffCounts b { color: var(--dsw-alias-state-success-primary); font-weight: 500; }
@@ -150,14 +152,20 @@
   gap: 5px;
 }
 
-.fileLink:hover {
-  color: var(--dsw-alias-label-primary);
-  text-decoration-color: currentColor;
+/* Failed title-row state: the diagnostic stays in OUT; this stable label uses
+   exactly the file-link color and underline interaction above. */
+.errorSummary {
+  color: var(--dsw-alias-label-secondary);
+  text-decoration: underline;
+  text-decoration-color: var(--dsw-alias-label-quaternary);
+  text-underline-offset: 3px;
 }
 
-/* Error row's collapsed summary: the failure's first line in the error color. */
-.errorSummary {
-  color: var(--dsw-alias-state-error-primary);
+.fileLink:hover,
+.errorSummary:hover,
+.row:focus-visible .errorSummary {
+  color: var(--dsw-alias-label-primary);
+  text-decoration-color: currentColor;
 }
 
 /* Expanded body + Inspect pill wrapper (sibling of .row: clicks never toggle). */
@@ -330,6 +338,24 @@
 .searchBody,
 .webBody {
   margin: 4px 0 4px 4px;
+}
+
+/* Edit cards keep their 42px file header visible while a long diff scrolls
+   inside the code region. Bind the limit on the row root so every nested Diff
+   surface inherits it, including alternate conversation render paths. */
+.root[data-variant='edit'] {
+  --dsl-diff-rows-max-height: 420px;
+}
+
+/* Conversation Read cards match the Artifact viewer: preserve indentation,
+   soft-wrap long source lines to the available width, and keep the same
+   vertical reading budget as an expanded Edit card before scrolling. */
+.readBody {
+  --dsl-read-body-max-height: 420px;
+  --dsl-read-overflow-x: hidden;
+  --dsl-read-overflow-y: auto;
+  --dsl-read-white-space: pre-wrap;
+  --dsl-read-overflow-wrap: anywhere;
 }
 
 /* ExecFlow: same title-column indent for every expanded card body. */

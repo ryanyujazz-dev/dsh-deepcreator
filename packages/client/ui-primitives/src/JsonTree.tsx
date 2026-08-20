@@ -395,6 +395,8 @@ export interface JsonTreeProps {
   copyable?: boolean
   /** Whether the top-level object or array is always expanded. */
   expandTopLevel?: boolean
+  /** Soft-wrap long values to the available width instead of scrolling horizontally. */
+  wrap?: boolean
   /** Localized display copy; omitted fields keep the built-in defaults. */
   labels?: Partial<JsonTreeLabels> | undefined
 }
@@ -410,6 +412,7 @@ export function JsonTree({
   className,
   copyable = true,
   expandTopLevel = true,
+  wrap = false,
   labels,
 }: JsonTreeProps) {
   const copyLabels = useMemo<JsonTreeLabels>(
@@ -553,6 +556,7 @@ export function JsonTree({
     <div
       ref={rootRef}
       className={clsx(css.root, className)}
+      data-wrap={wrap || undefined}
       onMouseOver={handleRootMouseOver}
       onMouseLeave={() => {
         if (!copyMenuOpenRef.current) clearCopyTarget()

@@ -16,8 +16,8 @@
 // links (stopPropagation keeps the two gestures independent): they focus the
 // file's change in the review surface when the owner supplies onRevealChange
 // (the mutation rows' link points at the change, not the file) and open
-// through the host otherwise; an error row's collapsed summary is the
-// failure's first line in the error color.
+// through the host otherwise; an error row's collapsed summary is fixed
+// product copy, while the expanded OUT section retains the diagnostic text.
 
 import { useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import clsx from 'clsx'
@@ -26,7 +26,7 @@ import {
 } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { WebBlockProps } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
-import { CHAT_DIFF_MAX_LINES, type DiffCardModel } from '../models/diff-card-model.ts'
+import type { DiffCardModel } from '../models/diff-card-model.ts'
 import { CHAT_READ_MAX_LINES, type ReadCardModel } from '../models/read-card-model.ts'
 import { CHAT_SEARCH_MAX_LINES, type SearchCardModel } from '../models/search-card-model.ts'
 import { terminalBlockLabels, type TerminalCardModel } from '../models/terminal-card-model.ts'
@@ -57,7 +57,7 @@ export interface ToolRowProps {
   body: string | null
   /** Flattened result text for the expanded Output section; null/absent = no output section. */
   output?: string | null | undefined
-  /** Error first line shown as the collapsed summary on an error row; null/absent = keep `summary`. */
+  /** Error first line retained by the model for diagnostic consumers; the row title uses fixed failure copy. */
   errorSummary?: string | null | undefined
   /**
    * Terminal-card material for a call whose render intent is a terminal card
@@ -117,12 +117,11 @@ export interface ToolRowProps {
   execflow?: boolean | undefined
 }
 
-/** Leading-slot state substitution: the tool icon yields to the terminal state
- *  semantic (error = red, interrupted = amber halo). Running keeps the icon —
- *  the row sweep (CSS on data-state) carries the in-flight signal. */
+/** Leading-slot state substitution: interrupted keeps its warning semantic;
+ *  failed rows retain the tool icon because the underlined failure label owns
+ *  the visible state without introducing a red title-row accent. */
 function leadingFor(state: ToolRowState, icon: ReactNode): ReactNode {
   switch (state) {
-    case 'error': return <StateDot state="error" />
     case 'stopped': return <StateDot state="warning" />
     default: return icon
   }
@@ -152,7 +151,6 @@ export function ToolRow({
   diffCounts,
   body,
   output,
-  errorSummary,
   terminal,
   diff,
   read,
@@ -181,21 +179,19 @@ export function ToolRow({
   // The run-state label AT needs: the StateDot and the running sweep are both
   // aria-hidden / colour-only, so a stopped or running row is otherwise silent.
   const status = stateStatus(state, t)
-  // An error row's collapsed summary IS the failure: the first error line in
-  // the error color outranks both the args summary and a terminal description.
-  const failureLine = state === 'error' ? errorSummary ?? null : null
-  const summaryText = failureLine ?? summary
-  // The failure line replaces the summary wholesale, so a suffix derived from
-  // the call args has nothing left to sit beside.
-  const suffix = failureLine === null ? summarySuffix ?? null : null
-  const visibleDiffCounts = failureLine === null && diffCounts !== null && diffCounts !== undefined
+  // Diagnostics belong to the expanded OUT section. The collapsed row remains
+  // stable and scannable regardless of error length or path content.
+  const failed = state === 'error'
+  const summaryText = failed ? t('command.failed') : summary
+  const suffix = failed ? null : summarySuffix ?? null
+  const visibleDiffCounts = !failed && diffCounts !== null && diffCounts !== undefined
     && (diffCounts.added > 0 || diffCounts.removed > 0)
     ? diffCounts
     : null
   // The failure line is error prose, not the path: no file affordance.
   const activateFile = onRevealChange ?? onOpenFile
-  const fileLink = filePath !== undefined && activateFile !== undefined && failureLine === null
-  const fileSummary = filePath !== undefined && failureLine === null
+  const fileLink = filePath !== undefined && activateFile !== undefined && !failed
+  const fileSummary = filePath !== undefined && !failed
   const revealLink = fileLink && onRevealChange !== undefined
   const toggleExpand = () => {
     setExpanded(v => !v)
@@ -266,7 +262,7 @@ export function ToolRow({
               </span>
             ) : (
               <span
-                className={clsx(css.summary, failureLine !== null && css.errorSummary)}
+                className={clsx(css.summary, failed && css.errorSummary)}
               >
                 {summaryText}
               </span>
@@ -288,13 +284,14 @@ export function ToolRow({
             ? (
               <TerminalBlock
                 {...terminalBody.card}
+                title={terminalBody.description}
                 maxLines={Infinity}
                 labels={terminalBlockLabels(t)}
                 className={css.terminalBody}
               />
             )
             : diffBody !== null
-              ? <DiffBlock {...diffBody.card} maxLines={CHAT_DIFF_MAX_LINES} className={css.diffBody} />
+              ? <DiffBlock {...diffBody.card} className={css.diffBody} showFooter={variant !== 'edit'} />
               : readBody !== null
                 ? <ReadBlock {...readBody} maxLines={CHAT_READ_MAX_LINES} className={css.readBody} />
                 : searchBody !== null

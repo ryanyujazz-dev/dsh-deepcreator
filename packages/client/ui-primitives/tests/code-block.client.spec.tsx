@@ -72,6 +72,15 @@ describe('CodeBlock', () => {
     const view = render(<CodeBlock code="plain text" />)
     expect(view.container.querySelector('pre.shiki')).toBeNull()
     expect(view.getByText('plain text')).toBeTruthy()
+    expect(view.container.querySelector('[data-titleless]')).not.toBeNull()
+    expect(view.container.querySelector('[data-code-title]')).toBeNull()
+    expect(view.getByRole('button', { name: '复制' }).querySelector('svg')).not.toBeNull()
+  })
+
+  it('can keep a visible title independent from the grammar hint', () => {
+    const view = render(<CodeBlock code="plain text" title="typescript" />)
+    expect(view.container.querySelector('[data-titleless]')).toBeNull()
+    expect(view.container.querySelector('[data-code-title]')?.textContent).toContain('typescript')
   })
 
   it('shows the language banner and copies the pre textContent', async () => {

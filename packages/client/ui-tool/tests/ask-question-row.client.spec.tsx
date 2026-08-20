@@ -83,11 +83,11 @@ describe('AskQuestionRow', () => {
     expect(screen.getByText(`ask_user_question · ${ARGS}`)).toBeTruthy()
   })
 
-  it('user cancellation names the verdict instead of the generic failed shape', () => {
+  it('user cancellation uses the shared fixed failure title', () => {
     // ASK_CANCELLED: the apiproxy ask_user_question handler's cancel error.
     const view = render(<AskQuestionRow {...rowProps(resultNode(ARGS, null,
       { isError: true, error: { name: 'UserQuestionError', code: 'ASK_CANCELLED' } }))} />)
-    expect(screen.getByText('已取消')).toBeTruthy()
+    expect(screen.getByText('执行失败')).toBeTruthy()
     expect(view.container.querySelector('[data-state="error"]')).not.toBeNull()
   })
 
@@ -107,10 +107,10 @@ describe('AskQuestionRow', () => {
     expect(screen.getByText(`ask_user_question · ${ARGS}`)).toBeTruthy()
   })
 
-  it('other tool errors keep the generic summary with the error state', () => {
+  it('other tool errors use the shared fixed failure title with the error state', () => {
     const view = render(<AskQuestionRow {...rowProps(resultNode(ARGS, null, { isError: true }))} />)
     expect(view.container.querySelector('[data-state="error"]')).not.toBeNull()
-    expect(screen.getByText(`ask_user_question · ${ARGS}`)).toBeTruthy()
+    expect(screen.getByText('执行失败')).toBeTruthy()
   })
 
   it('window-truncated result (call head lost) falls back to the callId summary', () => {

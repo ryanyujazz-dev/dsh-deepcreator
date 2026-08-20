@@ -45,6 +45,22 @@ function body(count: number): string {
 }
 
 describe('TerminalBlock prompt label', () => {
+  it('puts a model-authored description in a real title bar and moves copy there', () => {
+    const view = render(<TerminalBlock title="Test context trimming logic" command="python3 test.py" output="OK" />)
+    const title = view.container.querySelector('[data-terminal-title]')
+    const command = view.container.querySelector('[data-terminal-command]')
+    expect(title?.textContent).toContain('Test context trimming logic')
+    expect(title?.querySelector('[aria-label="复制"]')).not.toBeNull()
+    expect(command?.querySelector('[aria-label="复制"]')).toBeNull()
+    expect(title?.querySelector('[data-overflow-fade="right"]')?.textContent).toBe('Test context trimming logic')
+  })
+
+  it('keeps the copy action in the command section when no description exists', () => {
+    const view = render(<TerminalBlock command="ls" output="a" />)
+    expect(view.container.querySelector('[data-terminal-title]')).toBeNull()
+    expect(view.container.querySelector('[data-terminal-command] [aria-label="复制"]')).not.toBeNull()
+  })
+
   it('collapses the home directory itself to ~', () => {
     render(<TerminalBlock command="ls" cwd="/Users/me" home="/Users/me" />)
     expect(screen.getByText('~')).toBeTruthy()

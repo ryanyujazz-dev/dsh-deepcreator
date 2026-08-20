@@ -1,0 +1,24 @@
+.viewport {
+  min-width: 0;
+  display: flex;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.ink {
+  min-width: max-content;
+  flex: none;
+}
+
+/* File paths preserve the basename and nearest parent segments. */
+.viewport[data-overflow-fade='left'][data-truncated] {
+  justify-content: flex-end;
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 16px, #000 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 16px, #000 100%);
+}
+
+/* Prose titles preserve their beginning and dissolve at the trailing edge. */
+.viewport[data-overflow-fade='right'][data-truncated] {
+  -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 16px), transparent 100%);
+  mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 16px), transparent 100%);
+}

@@ -18,7 +18,7 @@ import type { SelectionTarget } from '@ryanyujazz/dsh-client-ui-conversation/cli
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { computeHunkDiffs } from '@deepseek-ai/dsh-tool-fs'
 import { zh as commonZh } from '@ryanyujazz/dsh-client-locale/src/locales/zh.ts'
-import { CHAT_DIFF_MAX_LINES, diffCardModel } from '../src/client/tool/models/diff-card-model.ts'
+import { diffCardModel } from '../src/client/tool/models/diff-card-model.ts'
 import { createChatStore } from '@ryanyujazz/dsh-client-ui-conversation/src/client/stores.ts'
 import { GenericToolCard, type GenericToolCardProps } from '../src/client/tool/toolviews/GenericToolCard.tsx'
 import { FileMutationRow, fileMutationToolview } from '../src/client/tool/toolviews/file-mutation-row.tsx'
@@ -137,8 +137,7 @@ describe('chat row diff body', () => {
     callId: 'c1', toolName: 'edit', block, openFile: vi.fn(), t,
   })
 
-  it('the expanded body is the applied diff, capped tighter than the panel', () => {
-    expect(CHAT_DIFF_MAX_LINES).toBeLessThan(16)
+  it('the expanded body is the complete applied diff', () => {
     const view = render(<GenericToolCard {...ownerProps(settled())} />)
     // Collapsed: the summary row (path) only, no diff body.
     expect(view.queryByText('hello fixture')).toBeNull()
@@ -146,12 +145,29 @@ describe('chat row diff body', () => {
     fireEvent.click(view.container.querySelector('[data-expandable]')!)
     expect(view.container.querySelector('[data-diff]')).not.toBeNull()
     expect(hasDiffRowText(view.container, 'hello fixture')).toBe(true)
+    expect(view.queryByText('└ +1 -1 · 1 file')).toBeNull()
   })
 
   it('a running diff call expands to its intended change', () => {
     const view = render(<GenericToolCard {...ownerProps(running())} />)
     fireEvent.click(view.container.querySelector('[data-expandable]')!)
     expect(view.container.querySelector('[data-diff]')).not.toBeNull()
+  })
+
+  it('composes multiple hunks from one tool file into one file card', () => {
+    const view = render(<GenericToolCard {...ownerProps(settled({
+      resultView: resultDiff({
+        diffs: [
+          { path: 'notes/demo.txt', oldStart: 4, newStart: 4, oldText: 'old one', newText: 'new one' },
+          { path: 'notes/demo.txt', oldStart: 20, newStart: 20, oldText: 'old two', newText: 'new two' },
+        ],
+      }),
+    }))} />)
+    fireEvent.click(view.container.querySelector('[data-expandable]')!)
+    expect(view.container.querySelectorAll('[data-diff-file]')).toHaveLength(1)
+    expect(view.container.querySelectorAll('[class*="_path_"]')).toHaveLength(1)
+    expect(hasDiffRowText(view.container, 'new one')).toBe(true)
+    expect(hasDiffRowText(view.container, 'new two')).toBe(true)
   })
 
   it('a non-diff call keeps the args-JSON text body', () => {
@@ -222,7 +238,7 @@ describe('FileMutationRow diff card', () => {
     toggleRow(view)
     expect(view.container.querySelector('[data-diff]')).not.toBeNull()
     expect(hasDiffRowText(view.container, 'hello fixture')).toBe(true)
-    expect(view.getByText('复制')).toBeTruthy()
+    expect(view.getByRole('button', { name: '复制' })).toBeTruthy()
   })
 
   it('the summary is a path link that opens the tool path through the host', () => {
@@ -276,13 +292,15 @@ describe('FileMutationRow diff card', () => {
 
   it('surfaces the result text when an errored mutation has no diff card', () => {
     // write/edit return undefined from presentResult on isError, so the failure
-    // has no diff — ToolRow shows the model-facing error text as the collapsed
-    // summary's first line (errorSummary) instead of a bare red dot.
+    // has no diff — ToolRow keeps the title stable and exposes diagnostics in OUT.
     const view = render(<FileMutationRow {...rowProps(settled({
       isError: true, callView: null, resultView: null,
       content: [{ type: 'text', text: 'old_string not found in notes/demo.txt' }],
     }))} />)
     expect(view.container.querySelector('[data-diff]')).toBeNull()
+    expect(view.getByText('执行失败')).toBeTruthy()
+    expect(view.queryByText('old_string not found in notes/demo.txt')).toBeNull()
+    toggleRow(view)
     expect(view.getByText('old_string not found in notes/demo.txt')).toBeTruthy()
   })
 
@@ -291,6 +309,9 @@ describe('FileMutationRow diff card', () => {
       isError: true, callView: null, resultView: null, content: [],
       error: { name: 'ToolError', code: 'sandbox_denied' },
     }))} />)
+    expect(view.getByText('执行失败')).toBeTruthy()
+    expect(view.queryByText('ToolError: sandbox_denied')).toBeNull()
+    toggleRow(view)
     expect(view.getByText('ToolError: sandbox_denied')).toBeTruthy()
   })
 
