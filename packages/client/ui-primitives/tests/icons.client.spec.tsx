@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import * as primitives from '@ryanyujazz/dsh-client-ui-primitives'
 import {
   DeepCreatorIconActivity16, DeepCreatorIconArtifact16, DeepCreatorIconBrain16, DeepCreatorIconGearshape16,
+  DeepCreatorIconMarkdownCode16, DeepCreatorIconMarkdownPreview16,
   DeepCreatorIconPanelCollapse16, DeepCreatorIconPanelExpand16, DeepCreatorIconPin16,
   DeepCreatorIconPreview16, DeepCreatorIconReview16,
   DeepCreatorIconTerminal16, DeepCreatorIconTimer16,
@@ -20,14 +21,14 @@ const icons = Object.fromEntries(
 ) as Record<string, (p: primitives.IconProps) => React.JSX.Element>
 const iconNames = Object.keys(icons)
 const productIcons = Object.fromEntries(
-  Object.entries(primitives).filter(([name]) => name.startsWith('DeepCreatorIcon')),
+  Object.entries(primitives).filter(([name]) => name.startsWith('DeepCreatorIcon') && name !== 'DeepCreatorIconAnimatedFolder16'),
 ) as Record<string, (p: primitives.IconProps) => React.JSX.Element>
 const productIconNames = Object.keys(productIcons)
 
 describe('ic_ds_ icon set', () => {
-  it('keeps the 70 shared glyphs (66 official-compatible + 4 harness-only) separate from sixteen product glyphs', () => {
+  it('keeps the 70 shared glyphs (66 official-compatible + 4 harness-only) separate from eighteen product glyphs', () => {
     expect(iconNames.length).toBe(70)
-    expect(productIconNames.length).toBe(16)
+    expect(productIconNames.length).toBe(18)
   })
 
   it.each(productIconNames)('%s renders from the marked DeepCreator product set', (name) => {
@@ -55,6 +56,17 @@ describe('ic_ds_ icon set', () => {
     expect(svg.getAttribute('data-deepcreator-icon')).toBe('timer')
     expect(svg.getAttribute('viewBox')).toBe('0 0 14 14')
     expect(svg.getAttribute('width')).toBe('14')
+  })
+
+  it('keeps the supplied Markdown eye and the hand-authored source glyph distinct', () => {
+    const preview = render(<DeepCreatorIconMarkdownPreview16 />).container
+    const code = render(<DeepCreatorIconMarkdownCode16 />).container
+    expect(preview.querySelector('svg')!.getAttribute('data-deepcreator-icon')).toBe('markdown-preview')
+    expect(preview.querySelector('path')!.getAttribute('d')).toContain('M15.25 7.65')
+    expect(preview.querySelector('path')!.getAttribute('fill')).toBe('currentColor')
+    expect(code.querySelector('svg')!.getAttribute('data-deepcreator-icon')).toBe('markdown-code')
+    expect(code.querySelector('path')!.getAttribute('d')).toContain('M5.5 4.25 1.75 8')
+    expect(code.querySelector('path')!.getAttribute('stroke')).toBe('currentColor')
   })
 
   it('keeps the five Workbench type glyphs on their specified minimal geometry', () => {

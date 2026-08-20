@@ -56,6 +56,9 @@ describe('ArtifactPanel', () => {
 
   it('keeps the path tail visible and fades its leading edge only when truncated', () => {
     const stylesheet = readFileSync(resolve(process.cwd(), 'packages/client/ui-workbench-artifact/src/client/ArtifactPanel.module.css'), 'utf8')
+    expect(stylesheet).toMatch(/\.panel\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*0;[^}]*overflow:\s*hidden;/)
+    expect(stylesheet).toMatch(/\.pathBar\s*\{[^}]*flex:\s*none;/)
+    expect(stylesheet).toMatch(/\.content\s*\{[^}]*flex:\s*1;[^}]*overflow:\s*auto;/)
     expect(stylesheet).toMatch(/\.pathViewport\[data-truncated\]\s*\{[^}]*justify-content:\s*flex-end;/)
     expect(stylesheet).toMatch(/\.pathViewport\[data-truncated\]\s*\{[^}]*mask-image:\s*linear-gradient\(to right, transparent 0, #000 16px, #000 100%\);/)
   })
@@ -132,6 +135,9 @@ describe('ArtifactPanel', () => {
     expect(pathBar?.getAttribute('aria-label')).toBe('E:/repo/a.md')
     expect([...pathBar!.querySelectorAll('[data-artifact-path-segment]')].map(segment => segment.textContent)).toEqual(['E:', 'repo', 'a.md'])
     expect(pathBar?.querySelector('[data-file-icon="markdown"]')).not.toBeNull()
+    expect(view.getByRole('button', { name: 'openFolder' })
+      .querySelector('[data-deepcreator-icon="animated-folder"]')
+      ?.getAttribute('data-optical-scale')).toBe('false')
     fireEvent.click(view.getByRole('button', { name: 'openFolder' }))
     expect(openContainingFolder).toHaveBeenCalledWith('E:/repo/a.md')
 
@@ -145,6 +151,46 @@ describe('ArtifactPanel', () => {
     view.rerender(<ArtifactPanel {...instanceProps(snapshotOf([{ path: 'E:/repo/b.md', updatedAt: 2_000, turn: 2 }]), 'E:/repo/b.md')} />)
     await waitFor(() => { expect(view.getByText('v2')).toBeTruthy() })
     expect(read).toHaveBeenCalledTimes(2)
+  })
+
+  it('defaults Markdown to conversation-grade preview and switches to the code renderer', async () => {
+    const path = 'E:/repo/report.md'
+    const read = vi.fn(async () => ({ ok: true as const, value: { ok: true as const, content: '# 标题\n\n正文' } }))
+    const input = props(snapshotOf([{ path, updatedAt: 1_000, turn: 1 }]), read)
+    const view = render(<ArtifactPanel {...{ ...input.input, route: 'instance', activeInstanceId: path }} />)
+
+    await waitFor(() => { expect(view.getByRole('heading', { name: '标题' })).toBeTruthy() })
+    const switcher = view.getByRole('group', { name: 'renderMode' })
+    const preview = view.getByRole('button', { name: 'renderMode.preview' })
+    const code = view.getByRole('button', { name: 'renderMode.code' })
+    const folder = view.getByRole('button', { name: 'openFolder' })
+    expect(preview.getAttribute('aria-pressed')).toBe('true')
+    expect(preview.querySelector('[data-deepcreator-icon="markdown-preview"]')).not.toBeNull()
+    expect(code.querySelector('[data-deepcreator-icon="markdown-code"]')).not.toBeNull()
+    expect(preview.textContent).toBe('')
+    expect(switcher.nextElementSibling).toBe(folder)
+    expect(view.container.querySelector('[data-artifact]')).toBeNull()
+
+    fireEvent.mouseEnter(code)
+    expect(view.getByRole('tooltip').textContent).toBe('renderMode.code')
+    fireEvent.mouseLeave(code)
+
+    fireEvent.click(code)
+    expect(code.getAttribute('aria-pressed')).toBe('true')
+    expect(view.getByText(/# 标题/)).toBeTruthy()
+    expect(view.container.querySelector('[data-artifact]')).not.toBeNull()
+    expect(read).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps non-Markdown artifacts on code rendering without a mode switch', async () => {
+    const path = 'E:/repo/index.ts'
+    const read = vi.fn(async () => ({ ok: true as const, value: { ok: true as const, content: 'export const ok = true' } }))
+    const input = props(snapshotOf([{ path, updatedAt: 1_000, turn: 1 }]), read)
+    const view = render(<ArtifactPanel {...{ ...input.input, route: 'instance', activeInstanceId: path }} />)
+
+    await waitFor(() => { expect(view.getByText('export const ok = true')).toBeTruthy() })
+    expect(view.queryByRole('group', { name: 'renderMode' })).toBeNull()
+    expect(view.container.querySelector('[data-artifact]')).not.toBeNull()
   })
 
   it('surfaces a read failure for an active path absent from the projection', async () => {

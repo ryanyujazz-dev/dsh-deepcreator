@@ -91,9 +91,11 @@ describe('ReasoningRow', () => {
       />,
     )
     const row = view.getByRole('button')
+    expect(row.getAttribute('data-hover-chevron')).toBe('right')
 
     fireEvent.click(view.getByText('Inspect the session'))
     expect(row.getAttribute('aria-expanded')).toBe('true')
+    expect(row.getAttribute('data-hover-chevron')).toBe('down')
     expect(view.getByText(/Check persistence/)).toBeTruthy()
 
     fireEvent.click(view.getByText('Think'))

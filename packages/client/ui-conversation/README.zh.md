@@ -24,7 +24,7 @@ Chat 业务行是彼此独立的注册表贡献，不是封闭的内建联合。
 
 Think 行默认保持折叠，并在不展开思维链的情况下暴露实时推理（reasoning）吞吐：当推理块是流式输出尾部时，摘要从结算后的首行切换到最新的非空行，其单行滚动区会随每个 delta 追到行内末端。展开该行会移除移动摘要，让完整推理进入普通页面流，因此页面阅读不会与内部跟随器争夺滚动；结算后恢复左对齐的稳定首行摘要（[决策](../../../.agents/notes/implemented/feature/2026-08-02-web-thinking-tail-scroll.md)）。
 
-经典模式正在接收 reasoning 时，`Deep diving...` 右侧会直接挂载原生模式折叠态的 `ReasoningRow`，而不是复刻其外观。图标、`Think · 最新非空行`、扫光动画和流式行尾跟随因此始终只有一份实现。每一段单次 reasoning 只在它作为当前流式尾部时出现；block 结束并进入正文或工具阶段后立即消失，不等待整个 Turn 结束。原生模式点击后就地展开；这里点击同一行则进入思考模式，让完整 reasoning 回到行内展示。思考模式不重复提供该入口，变化中的摘要也不进入活动状态的 live region。
+经典模式正在接收 reasoning 时，`Deep diving...` 右侧会直接挂载原生模式折叠态的 `ReasoningRow`，而不是复刻其外观。图标、`Think · 最新非空行`、扫光动画和流式行尾跟随因此始终只有一份实现。每一段单次 reasoning 只在它作为当前流式尾部时出现；block 结束并进入正文或工具阶段后立即消失，不等待整个 Turn 结束。原生模式点击后就地展开；这里点击同一行则进入思考模式，让完整 reasoning 回到行内展示，其悬浮预览使用向上折角。所有模式下对话流内的普通 Think 仍保留展开项方向：折叠时向右，展开时向下。思考模式不重复提供该入口，变化中的摘要也不进入活动状态的 live region。
 
 会话流中所有可见正文共享框架级 `--dsh-conversation-flow-font`，并映射到 Host 主题的 `--dsw-font-markdown-base`：assistant 正文、用户气泡、Think、上下文注入、折叠工具行、执行聚合摘要、压缩、重试和终态错误因此会在所有渲染模式中跟随同一个 transcript 字号偏好。InputBar 会把同一个 Host 角色应用到 textarea、placeholder、装饰 backdrop 与高度 mirror，因此输入文字和提示文字会随正文偏好一起改变字号、行高与常规字重。展开后的工具载荷与结构化上下文是刻意保留的紧凑例外，使用 `--dsw-font-markdown-code-block-small`。按 key 注册的 renderer 继承公开的框架变量，不再各自声明 transcript 字号。
 
@@ -52,7 +52,7 @@ Host 带 placement 的 `session/queue` 快照也会携带待处理 steering。Qu
 
 `src/client/` 按领域组织。`contract/` 是 slot 声明、组合 props 与跨领域类型的共享表层；`skeleton/`、`chat/`、`input/`、`queue/` 和 `settings/` 保持内部实现，`apply.ts` 是它们的组装点。`/client` 导出表层只包含 loader entry、service class 和 contract 类型；组件与 store factory 经 slot 注册抵达页面。
 
-完成的一轮会物化一个有序的 `turn-tail` Conversation Node。它由引擎维护的 `TurnLocation` 提供收尾 Assistant 和 Turn data；renderer 在该 Node 的 IconActions 之前渲染 `conversation.chat.turnTail` chain，并派发包含 Turn、收尾 seq 和 Artifact 优先 `openFile` 的 `TurnTailOwnerProps`。该回调先按会话 cwd 解析路径；已组合 Artifact Workbench 时激活对应文件标签，否则回退官方 Host 路径开启器。因此 Read 行、轮尾产物 chip 与收尾正文中确认过的产物引用会打开同一个 Artifact tab。本包只拥有空位；`@deepseek-ai/dsh-client-ui-deliverables` 把改写工具的 `locations` 累积到 Turn data，并拥有产物行、chip 上限和文案，因此把该插件从 cordis.yml 中组合掉即可关闭该交互面，空位以零成本渲染为空。收尾正文经由同一个开关参与其中：chat 视图向可选的 `chatFileMentions` service（ctx.get；由同一插件提供）索取收尾消息的行内代码词表，并把结果接进 MarkdownText 的 `fileMentions` seam——service 缺席时正文保持死文本。
+完成的一轮会物化一个有序的 `turn-tail` Conversation Node。它由引擎维护的 `TurnLocation` 提供收尾 Assistant 和 Turn data。renderer 先派发官方 `conversation.chat.turnTail` selector chain，由 Artifact 把当前 Turn 的产物渲染成可展开文件卡；再渲染 additive 的 `deepcreator.conversation.chat.turnChanges` list，由 Review 贡献独立的未解决变更卡；最后才是 IconActions。官方 `ui-deliverables` row 保持组合，继续持有 Turn 产物事实、收尾正文 `chatFileMentions` 与模型提示。同一路径可同时出现在两张卡中：产物文件打开完整 Artifact 标签，变更文件打开所属历史 Review 范围。
 
 ## 模型体验
 

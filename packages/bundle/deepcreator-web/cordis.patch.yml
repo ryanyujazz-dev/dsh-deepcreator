@@ -35,8 +35,6 @@
   disabled: true
 - id: ui-jobs
   disabled: true
-- id: ui-deliverables
-  disabled: true
 
 - insert:
     # Workbench Host plane: domain services stay independent from their UI.

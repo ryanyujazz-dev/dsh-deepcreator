@@ -269,9 +269,10 @@ describe('FileMutationRow diff card', () => {
       callView: { card: 'diff', title: 'Write notes/new.txt', diffs: [{ path: 'notes/new.txt', oldText: null, newText: 'hello fixture' }] },
       resultView: { card: 'diff', title: 'Write notes/new.txt', diffs: [{ path: 'notes/new.txt', oldText: null, newText: 'hello fixture' }] },
     }), 'write')} />)
-    // The footer counts live inside the collapsed diff card.
+    // Write matches Edit: the title row already carries +N/-N, so the expanded
+    // card does not repeat the aggregate Diff footer.
     toggleRow(view)
-    expect(view.getByText('└ +1 -0 · 1 file')).toBeTruthy()
+    expect(view.queryByText('└ +1 -0 · 1 file')).toBeNull()
   })
 
   it('reflects the run state on its leading slot', () => {

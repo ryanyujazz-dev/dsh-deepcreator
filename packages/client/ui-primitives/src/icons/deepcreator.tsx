@@ -72,6 +72,26 @@ export const DeepCreatorIconPreview16 = (props: IconProps) => (
   </WorkbenchGlyph>
 )
 
+/** Markdown render mode: the supplied eye.svg geometry, recolored by the host theme. */
+export const DeepCreatorIconMarkdownPreview16 = (props: IconProps) => (
+  <WorkbenchGlyph {...props} name="markdown-preview">
+    <path
+      d="M15.25 7.65Q14.51 6.32 13.36 5.34Q12.21 4.37 10.82 3.85Q9.44 3.33 8 3.33Q6.56 3.33 5.18 3.85Q3.79 4.37 2.64 5.34Q1.49 6.32 0.75 7.65Q0.67 7.79 0.67 7.96Q0.67 8.13 0.75 8.29Q1.49 9.6 2.64 10.59Q3.79 11.58 5.18 12.12Q6.58 12.66 8 12.66Q9.44 12.66 10.82 12.12Q12.21 11.58 13.36 10.6Q14.51 9.62 15.25 8.29Q15.33 8.13 15.33 7.96Q15.33 7.79 15.25 7.65ZM6.77 11.55Q5.23 11.2 3.91 10.27Q2.59 9.34 1.78 8L1.78 7.89Q2.75 6.26 4.44 5.3Q6.13 4.34 8 4.34Q9.9 4.34 11.58 5.3Q13.26 6.27 14.24 7.9L14.24 8.03Q13.42 9.38 12.11 10.3Q10.8 11.22 9.28 11.57Q8.03 11.84 6.77 11.55ZM7.98 11.74Q8.93 11.74 9.72 11.28Q10.51 10.82 10.98 10.02Q11.44 9.22 11.44 8.27Q11.44 7.33 10.98 6.54Q10.51 5.74 9.72 5.28Q8.93 4.82 7.98 4.82Q7.39 4.82 6.83 5.01Q6.67 5.07 6.67 5.14Q6.67 5.2 6.85 5.28Q7.22 5.46 7.44 5.8Q7.66 6.14 7.66 6.56Q7.66 7.15 7.25 7.57Q6.83 7.98 6.26 7.98Q5.89 7.98 5.57 7.8Q5.25 7.62 5.06 7.31Q4.93 7.12 4.82 7.12Q4.7 7.12 4.64 7.33Q4.51 7.81 4.51 8.27Q4.51 9.22 4.98 10.02Q5.44 10.82 6.24 11.28Q7.04 11.74 7.98 11.74Z"
+      fill="currentColor"
+    />
+  </WorkbenchGlyph>
+)
+
+/** Markdown source mode: a compact hand-authored </> glyph. */
+export const DeepCreatorIconMarkdownCode16 = (props: IconProps) => (
+  <WorkbenchGlyph {...props} name="markdown-code">
+    <path
+      d="M5.5 4.25 1.75 8l3.75 3.75M10.5 4.25 14.25 8l-3.75 3.75M9.25 2.75l-2.5 10.5"
+      stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round"
+    />
+  </WorkbenchGlyph>
+)
+
 /** Workbench Panel expand: the supplied outward-arrow glyph in its original direction. */
 export const DeepCreatorIconPanelExpand16 = (props: IconProps) => (
   <WorkbenchGlyph {...props} name="workbench-panel-expand">

@@ -4,15 +4,17 @@
 
 纯 React 原子组件（零 cordis）：StateDot、DisclosureRow、官方兼容 `ic_ds_*` 图标、独立持有的 `DeepCreatorIcon*` 产品图标、Material 支撑的 `FileIcon`／`FileLabel`、Button/Pill/Menu/Modal/Input、Toast 短时横幅、OnboardingSurface 首次使用接管层（portal 到 body 的遮罩加不透明展示层，在且仅在自身生命周期内保持 `#root` 为 `inert`）、markdown 家族（MessageText/MarkdownText/JsonBlock）、只读 JsonTree 检查器、`useAnchoredMaxHeight` 钩子（把底部锚定的浮层高度收敛到锚点上方的视口空间，并在 resize、scroll 与调用方提供的依赖变化时重新测量）、TerminalBlock、DiffBlock、ReadBlock、SearchBlock，以及 WebBlock。官方与 Harness／Figma 派生资源保留在 `src/icons/index.tsx`；自绘和产品资源放在 `src/icons/deepcreator.tsx`，使各套图标可以独立演进。
 
+`ConversationFileCard` 是 Artifact 与 Review 共用的轮尾文件卡 chrome：42px 可展开标题头、图标到折角的悬浮切换、只使用 token 的 12px 圆角外框、透明 28px 文字操作以及带 Material 图标和分割线的文件行。它只持有呈现；计数、动作、文件路由与生命周期由各消费方提供。
+
 `FileIcon` 按 Material Icon Theme 原生的精确文件名、路径特例和最长复合扩展名规则解析真实路径，并统一桌面平台的分隔符与大小写；`FileLabel` 将这个装饰图标和可访问文字配对。仓库内的构建期生成器读取上游 VS Code manifest，只把文件映射实际引用的 SVG 生成为本地 data image；浏览器 bundle 不包含 VS Code runtime，也不会发起网络请求。浅色 SVG 变体只跟随应用的 `body[data-ds-dark-theme]`，与代码主题选择相互独立。
 
 `WorkbenchPanelShell` 是 Workbench 宿主与独立 bundle Provider 共用的、无业务状态的面板框架，统一拥有内缩圆角表面、紧凑 Header、公共导航与 Body 边界。`WorkbenchPanelTabs` 是所有 Panel 类型共用的公共 pill 标签条，统一处理标签键盘导航、悬浮显现的关闭按钮，以及紧跟最新标签的新建操作位置。关闭槽位始终预留，避免标题重排；键盘聚焦关闭按钮时同样显现。pill 宽度贴合标签文字、无固定上限，仅在标签条空间不足时压缩；真实截断的标签文字以右侧渐消（`mask-image`，逐标签测量）替代省略号，且每个标签的完整名称通过 hover Tooltip 提供。Provider 可经 `filePaths` 将 tab id 与真实文件路径配对；只有这些文件型 tabs 绘制 `FileIcon`，Terminal 等语义标签保持无文件图标。Workbench owner 通过 shell 的 `leftActions` 与 `rightActions` props 传入 Provider 操作，`WorkbenchPanelIconButton` 保持统一的工具栏命中框与 Tooltip 语义。所有标签、状态和回调都来自 props；这些原语不会读取 Cordis 或功能 store。
 
 `CodeSurface` 是面板级的只读文件表层：采用 DiffBlock 的对齐行网格（行号 gutter＋内容列，无符号列）以全尺寸正文形态呈现，shiki 逐行 token 走共享 `data-code-theme` 配色链，并以软换行（`pre-wrap`＋安全断词）替代 ReadBlock 的横向滚动——面板产物偏散文，长行应折叠。它不自涂底色，透出面板 shell 表面。持久化的 GitHub 代码主题 id 映射到 Shiki 的 GitHub Default 注册，同时保留较短的产品 id 以兼容已有设置。
 
-`SIDEBAR_ICON_SIZE` 是侧边栏操作控件在展开和轨道布局中共用的 14px 图标规格。`BrandWordmark` 渲染由鲸鱼标记和文字组成的 DeepCreator 组合字标，其中鲸鱼以 16px 做视觉放大并与操作图标共用中轴，文字由当前产品字体 token 驱动。
+`SIDEBAR_ICON_SIZE` 是侧边栏操作控件在展开和轨道布局中共用的 14px 图标规格。`BrandWordmark` 渲染由鲸鱼标记和文字组成的 DeepCreator 组合字标，其中鲸鱼以 16px 做视觉放大并与操作图标共用中轴，文字由当前产品字体 token 驱动。`DeepCreatorIconAnimatedFolder16` 持有从 DeepSeeker CodeAgent 迁移的产品文件夹 Lottie：第 0 帧闭合、第 7 帧展开，状态变化按对应方向播放；系统偏好减少动态效果时直接跳到目标帧。组件默认校正源画布留白；紧凑操作可通过 `opticalScale={false}` 保留原始图形比例而不改变图标布局框。动画内固定的黑色描边会重绑定到 `currentColor`，播放器位于懒加载模块边界之后，因此导入 primitives barrel 不会提前初始化 `lottie-web`。
 
-`Menu` 分割线支持 `inset="text"`：当菜单项带前置图标时，分割线可对齐文字列，而不是延伸至卡片两侧。产品图标模块导出置顶、设置、定时任务、文件夹操作、闪光、检查与技能图标；它们都只是呈现原语，自身不持有功能行为。
+`Menu` 分割线支持 `inset="text"`：当菜单项带前置图标时，分割线可对齐文字列，而不是延伸至卡片两侧。产品图标模块导出置顶、设置、定时任务、动画文件夹、文件夹操作、闪光、检查与技能图标；它们都只是呈现原语，自身不持有功能行为。
 
 ## 悬浮卡片
 

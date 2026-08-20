@@ -11,7 +11,7 @@
 import type { ReactNode, RefObject } from 'react'
 import { useCallback, useEffect, useState } from 'react'
 import {
-  Button, IconFolderClose16, IconPlusOutline16, Menu, Modal, type MenuEntry,
+  Button, DeepCreatorIconAnimatedFolder16, IconPlusOutline16, Menu, Modal, type MenuEntry,
 } from '@ryanyujazz/dsh-client-ui-primitives'
 import type {
   WorkspaceId, WorkspaceListState, WorkspaceView,
@@ -108,7 +108,7 @@ export function WorkspacePickFlow({
     ? workspaces.map(workspace => ({
       id: workspace.workspaceId,
       label: workspace.title,
-      icon: <IconFolderClose16 size={16} />,
+      icon: <DeepCreatorIconAnimatedFolder16 size={16} />,
       disabled: flowBusy,
     }))
     : addEntries

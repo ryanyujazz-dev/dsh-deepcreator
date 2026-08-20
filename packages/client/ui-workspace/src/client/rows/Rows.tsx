@@ -1,17 +1,16 @@
 /**
  * Workspace browser tree row components (figma Cell set 14:3080): pure presentational —
- * all data and callbacks arrive via props. Hover swaps (folder->chevron,
- * time->ellipsis, action buttons) are CSS-only. Row ... menus are visual-only
+ * all data and callbacks arrive via props. Hover swaps (time->ellipsis and
+ * action buttons) are CSS-only. Row ... menus are visual-only
  * except workspace Rename/Delete and session Pin/Fork/Archive/native-open; the session
  * and workspace hover cards are suppressed while a menu is open.
  */
 import { useState } from 'react'
 import clsx from 'clsx'
 import {
-  DeepCreatorIconFolderOpenOutline16, DeepCreatorIconPin16, HoverCard,
+  DeepCreatorIconAnimatedFolder16, DeepCreatorIconPin16, HoverCard,
   IconArchiveOutline20, IconBranchOutline16, IconEditOutline16,
-  IconEllipsisOutline16, IconFolderClose16, IconFolderOpen16,
-  IconPlusOutline16, IconTrashOutline16, IconTriangleRightFill14,
+  IconEllipsisOutline16, IconPlusOutline16, IconTrashOutline16,
   Menu, SidebarRow, StateDot,
 } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { MenuEntry, StateDotState } from '@ryanyujazz/dsh-client-ui-primitives'
@@ -152,10 +151,7 @@ export function ProjectRowItem({ group, onToggle, onCreate, actions, drag, t }: 
       onDragEnd={drag?.end}
     >
       <span className={clsx(css.slot, css.folder)}>
-        {row.expanded ? <IconFolderOpen16 size={14} /> : <IconFolderClose16 size={14} />}
-      </span>
-      <span className={clsx(css.slot, css.chevron)}>
-        <IconTriangleRightFill14 size={12} className={clsx(css.arrow, row.expanded && css.arrowOpen)} />
+        <DeepCreatorIconAnimatedFolder16 expanded={row.expanded} size={14} />
       </span>
       <span className={css.projectText}>
         <span className={css.title}>{label}</span>
@@ -417,7 +413,7 @@ export function SessionNodeItem({
     {
       id: 'open-location',
       label: openLocationLabel(fileManager, t),
-      icon: <DeepCreatorIconFolderOpenOutline16 />,
+      icon: <DeepCreatorIconAnimatedFolder16 expanded />,
       disabled: !canOpenLocation || row.cwd === undefined || onOpenLocation === undefined,
     },
   ]

@@ -1,0 +1,31 @@
+.root {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  color: inherit;
+}
+
+.root > :global(div),
+.root :global(svg) {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* The animation draws only 22px of ink inside its 32px composition. Scale its
+ * player container—not the generated SVG, whose inline transform is owned by
+ * lottie-web—to match the optical footprint of the 14/16px product glyphs
+ * without changing the component's layout box or row alignment. */
+.opticalScale > :global(div) {
+  transform: scale(1.3);
+  transform-origin: center;
+}
+
+/* The supplied Lottie stores black in its stroke layer. Product icons follow
+ * the surrounding semantic label color, so both generated paths are rebound
+ * to currentColor for light/dark, hover, disabled and selected states. */
+.root :global(svg path) {
+  stroke: currentColor !important;
+}

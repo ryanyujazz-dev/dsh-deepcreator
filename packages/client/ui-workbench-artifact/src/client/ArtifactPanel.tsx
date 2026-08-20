@@ -5,13 +5,15 @@ import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 // into this program so TypertClientRemote['artifacts'] resolves.
 import type {} from '@ryanyujazz/dsh-artifacts/remote'
 import {
-  FileIcon, FileLabel, IconChevronRightOutline14, IconFolderOpen16, IconRefreshOutline14, WorkbenchPanelIconButton,
+  DeepCreatorIconAnimatedFolder16, DeepCreatorIconMarkdownCode16, DeepCreatorIconMarkdownPreview16, FileIcon, FileLabel,
+  IconChevronRightOutline14, IconRefreshOutline14, MarkdownText, Tooltip, WorkbenchPanelIconButton,
 } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { WorkbenchPanelProps } from '@ryanyujazz/dsh-client-ui-workbench/client'
 import { EMPTY_ARTIFACTS_SNAPSHOT } from './artifact-contract.ts'
 import {
-  artifactPathSegments, artifactTabFilePaths, artifactTabLabels, basename, formatAge,
+  artifactPathSegments, artifactTabFilePaths, artifactTabLabels, basename, formatAge, isMarkdownArtifactPath,
 } from './artifact-view-model.ts'
+import type { MarkdownRenderMode } from './artifact-view-model.ts'
 import css from './ArtifactPanel.module.css'
 
 type Props = WorkbenchPanelProps & PropsLocale<'workbench-artifact'> & {
@@ -23,10 +25,44 @@ function Empty({ title, body, filePath }: { title: string; body: string; filePat
   return <div className={css.empty}><strong>{filePath === undefined ? title : <FileLabel path={filePath} label={title} iconSize={16} />}</strong><span>{body}</span></div>
 }
 
-function ArtifactPath({ path, openContainingFolder, openFolderLabel }: {
+function MarkdownModeSwitch({ mode, onChange, label, previewLabel, codeLabel }: {
+  mode: MarkdownRenderMode
+  onChange(mode: MarkdownRenderMode): void
+  label: string
+  previewLabel: string
+  codeLabel: string
+}) {
+  return (
+    <div className={css.modeSwitch} role="group" aria-label={label} data-artifact-markdown-mode>
+      {([
+        ['preview', previewLabel, DeepCreatorIconMarkdownPreview16],
+        ['code', codeLabel, DeepCreatorIconMarkdownCode16],
+      ] as const).map(([value, optionLabel, Icon]) => (
+        <Tooltip key={value} label={optionLabel} side="bottom">
+          <button
+            type="button"
+            className={css.modeOption}
+            aria-label={optionLabel}
+            aria-pressed={mode === value}
+            onClick={() => { onChange(value) }}
+          >
+            <Icon size={14} />
+          </button>
+        </Tooltip>
+      ))}
+    </div>
+  )
+}
+
+function ArtifactPath({ path, openContainingFolder, openFolderLabel, markdownMode, onMarkdownModeChange, renderModeLabel, previewLabel, codeLabel }: {
   path: string
   openContainingFolder(path: string): void
   openFolderLabel: string
+  markdownMode?: MarkdownRenderMode | undefined
+  onMarkdownModeChange?(mode: MarkdownRenderMode): void
+  renderModeLabel: string
+  previewLabel: string
+  codeLabel: string
 }) {
   const segments = artifactPathSegments(path)
   const viewportRef = useRef<HTMLDivElement>(null)
@@ -59,12 +95,21 @@ function ArtifactPath({ path, openContainingFolder, openFolderLabel }: {
           ))}
         </div>
       </div>
+      {markdownMode !== undefined && onMarkdownModeChange !== undefined && (
+        <MarkdownModeSwitch
+          mode={markdownMode}
+          onChange={onMarkdownModeChange}
+          label={renderModeLabel}
+          previewLabel={previewLabel}
+          codeLabel={codeLabel}
+        />
+      )}
       <WorkbenchPanelIconButton
         className={css.pathAction}
         label={openFolderLabel}
         onClick={() => { openContainingFolder(path) }}
       >
-        <IconFolderOpen16 />
+        <DeepCreatorIconAnimatedFolder16 expanded opticalScale={false} />
       </WorkbenchPanelIconButton>
     </div>
   )
@@ -81,6 +126,7 @@ export function ArtifactPanel({ artifacts, sessionId, route, tabs, activeInstanc
   const [content, setContent] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [refreshTick, setRefreshTick] = useState(0)
+  const [markdownModes, setMarkdownModes] = useState<Readonly<Record<string, MarkdownRenderMode>>>({})
   const [now] = useState(() => Date.now())
   const active = snapshot.records.find(item => item.path === activeInstanceId)
 
@@ -108,15 +154,35 @@ export function ArtifactPanel({ artifacts, sessionId, route, tabs, activeInstanc
     right: <WorkbenchPanelIconButton label={t('refresh')} onClick={() => { setRefreshTick(tick => tick + 1) }}><IconRefreshOutline14 /></WorkbenchPanelIconButton>,
   }), [t])
   useEffect(() => contributeHeaderActions(headerActions), [contributeHeaderActions, headerActions])
+  const markdownCodeLabels = useMemo(() => ({ copyLabel: t('copy'), copiedLabel: t('copied') }), [t])
 
   if (route === 'instance' && activeInstanceId !== undefined) {
     const activePath = active?.path ?? activeInstanceId
+    const markdown = isMarkdownArtifactPath(activePath)
+    const markdownMode = markdownModes[activePath] ?? 'preview'
+    const changeMarkdownMode = (mode: MarkdownRenderMode) => {
+      setMarkdownModes(current => ({ ...current, [activePath]: mode }))
+    }
     return (
       <div className={css.panel}>
-        <ArtifactPath path={activePath} openContainingFolder={openContainingFolder} openFolderLabel={t('openFolder')} />
+        <ArtifactPath
+          path={activePath}
+          openContainingFolder={openContainingFolder}
+          openFolderLabel={t('openFolder')}
+          renderModeLabel={t('renderMode')}
+          previewLabel={t('renderMode.preview')}
+          codeLabel={t('renderMode.code')}
+          {...(markdown ? { markdownMode, onMarkdownModeChange: changeMarkdownMode } : {})}
+        />
         {error !== null && <div className={css.error}>{error}</div>}
         {content !== null
-          ? <div className={css.content}>{renderArtifact({ artifactId: activePath, content })}</div>
+          ? (
+            <div className={`${css.content}${markdown && markdownMode === 'preview' ? ` ${css.markdownPreview}` : ''}`}>
+              {markdown && markdownMode === 'preview'
+                ? <MarkdownText text={content} codeLabels={markdownCodeLabels} />
+                : renderArtifact({ artifactId: activePath, content })}
+            </div>
+          )
           : error === null && <Empty title={basename(activePath)} body={t('loading')} filePath={activePath} />}
       </div>
     )

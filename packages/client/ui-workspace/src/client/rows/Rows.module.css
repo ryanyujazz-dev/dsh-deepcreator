@@ -1,7 +1,6 @@
 /* Tree rows: project/session 32px; session indentation remains 22px
-   (16px slot + 6px gap). Hover swaps
-   are pure CSS: project folder -> chevron + action buttons; session time ->
-   ellipsis button. */
+   (16px slot + 6px gap). Project folders stay visible on hover; session time
+   still swaps to the ellipsis button. */
 
 .sessionRow {
   display: flex;
@@ -156,21 +155,6 @@
 .projectRow .slot {
   width: 14px;
   height: 18px;
-}
-
-
-/* Project leading slot: folder by default, expand arrow on row hover. */
-.projectRow .chevron { display: none; }
-.projectRow:hover .chevron { display: inline-flex; }
-.projectRow:hover .folder { display: none; }
-
-/* Expand arrow (filled triangle): points right closed, rotates to point down open. */
-.arrow {
-  transition: transform 150ms var(--ds-ease-in-out);
-}
-
-.arrowOpen {
-  transform: rotate(90deg);
 }
 
 .projectText {
@@ -359,15 +343,8 @@
   color: var(--dsw-alias-label-primary);
 }
 
-/* Chevrons ride the caption grey (#ADB2B8); the folder glyph stays one step
-   darker (tertiary, #81858C) per the cell spec. */
-.chevron {
-  color: var(--dsw-alias-label-caption);
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .sessionRow,
-  .arrow {
+  .sessionRow {
     animation: none;
     transition: none;
   }

@@ -22,6 +22,7 @@ describe('ui-workbench-artifact registration', () => {
     const nodeDefinitions: Array<{ kind?: string; target?: string }> = []
     const viewDefinitions: Array<{ target?: string }> = []
     const injectedSlots: string[] = []
+    const turnTailEntries: Array<Record<string, unknown>> = []
     const localeNamespaces: string[] = []
     const disposed: string[] = []
     const provide = vi.fn()
@@ -42,6 +43,7 @@ describe('ui-workbench-artifact registration', () => {
           if (entry.name === 'deepcreator.workbench.panel' && entry.id !== undefined) panels.set(entry.id, component)
           if (entry.name === 'deepcreator.workbench.panel-icon' && entry.id !== undefined) icons.set(entry.id, component)
           if (entry.name === 'deepcreator.workbench.artifact.renderer' && entry.id !== undefined) renderers.set(entry.id, component)
+          if (entry.name === 'conversation.chat.turnTail') turnTailEntries.push(entry)
           return dispose(`slot:${entry.name}:${entry.id ?? ''}`)
         },
       },
@@ -58,10 +60,11 @@ describe('ui-workbench-artifact registration', () => {
       id: 'artifact', order: 3, scope: 'session', closePolicy: 'detach',
       supportsHome: true, supportsMultipleInstances: true,
     })
-    expect(injectedSlots).toEqual(['deepcreator.workbench.panel', 'deepcreator.workbench.panel-icon', 'deepcreator.workbench.artifact.renderer'])
+    expect(injectedSlots).toEqual(['deepcreator.workbench.panel', 'deepcreator.workbench.panel-icon', 'deepcreator.workbench.artifact.renderer', 'conversation.chat.turnTail'])
     expect(panels.has('artifact')).toBe(true)
     expect(icons.has('artifact')).toBe(true)
     expect(renderers.has('code')).toBe(true)
+    expect(turnTailEntries[0]).toMatchObject({ priority: -100 })
     expect(nodeDefinitions[0]).toMatchObject({ kind: 'workbench-artifact', target: 'artifacts' })
     expect(viewDefinitions[0]).toMatchObject({ target: 'artifacts' })
     expect(localeNamespaces).toEqual(['workbench-artifact'])
@@ -79,6 +82,7 @@ describe('ui-workbench-artifact registration', () => {
     teardown!()
     expect(disposed).toEqual([
       'locale:workbench-artifact', 'view', 'node',
+      'inject:conversation.chat.turnTail',
       'inject:deepcreator.workbench.artifact.renderer',
       'inject:deepcreator.workbench.panel-icon',
       'inject:deepcreator.workbench.panel',

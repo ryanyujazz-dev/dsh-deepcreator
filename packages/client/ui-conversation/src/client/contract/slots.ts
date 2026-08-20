@@ -140,6 +140,18 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      */
     'conversation.chat.turnTail': { kind: 'chain'; scope: 'session'; owner: TurnTailOwnerProps }
     /**
+     * DeepCreator-owned additive rows immediately after the official Turn
+     * tail and before the finalized message's IconActions. The official
+     * `conversation.chat.turnTail` remains a selector chain (one winning
+     * provider); this separate list lets Review keep its independent change
+     * card below the official per-Turn produced-files row.
+     */
+    'deepcreator.conversation.chat.turnChanges': {
+      kind: 'list'
+      scope: 'session'
+      owner: TurnTailOwnerProps
+    }
+    /**
      * Action strip attached to one finalized assistant message, rendered
      * inside that message's IconActions row. The chat entry owns the render
      * site and passes the addressed message identity; contributors add

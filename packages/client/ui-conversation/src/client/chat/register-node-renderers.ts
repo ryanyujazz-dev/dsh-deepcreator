@@ -43,6 +43,7 @@ export function registerChatNodeRenderers(ctx: Context): void {
     locale: NS,
     children: {
       'conversation.chat.turnTail': { kind: 'chain', scope: 'session' },
+      'deepcreator.conversation.chat.turnChanges': { kind: 'list', scope: 'session' },
       'conversation.chat.assistant-actions': { kind: 'list', scope: 'session' },
     },
   }, TurnTailNodeView))

@@ -6,6 +6,13 @@ export const zh = {
   'loading': '正在加载…',
   'refresh': '刷新',
   'openFolder': '打开所在文件夹',
+  'renderMode': 'Markdown 渲染模式',
+  'renderMode.preview': '预览',
+  'renderMode.code': '代码',
+  'copy': '复制',
+  'copied': '复制成功',
+  'turnCard.files': '产物 {count} 个文件',
+  'turnCard.view': '查看',
 } as const
 export type ArtifactKey = keyof typeof zh
 export const en: Record<ArtifactKey, string> = {
@@ -15,4 +22,11 @@ export const en: Record<ArtifactKey, string> = {
   'loading': 'Loading…',
   'refresh': 'Refresh',
   'openFolder': 'Open containing folder',
+  'renderMode': 'Markdown render mode',
+  'renderMode.preview': 'Preview',
+  'renderMode.code': 'Code',
+  'copy': 'Copy',
+  'copied': 'Copied',
+  'turnCard.files': 'Produced {count} files',
+  'turnCard.view': 'View',
 }

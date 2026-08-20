@@ -13,7 +13,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
-  Button, DeepCreatorIconFolderOpenOutline16, IconBrowseOutline16, IconCopyOutline16, IconPlusOutline16, IconTrashOutline16, Modal, Tooltip,
+  Button, DeepCreatorIconAnimatedFolder16, IconBrowseOutline16, IconCopyOutline16, IconPlusOutline16, IconTrashOutline16, Modal, Tooltip,
 } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
@@ -316,7 +316,7 @@ export function AgentPresetSection(props: AgentPresetSectionProps): ReactNode {
                             aria-label={`${state.hasDocument ? t('openLocation') : t('showLocation')}: ${text.name}`}
                             onClick={() => { void props.openLocation(row.id) }}
                           >
-                            <DeepCreatorIconFolderOpenOutline16 />
+                            <DeepCreatorIconAnimatedFolder16 expanded />
                           </button>
                         )}
                       <button

@@ -9,6 +9,12 @@ export { StateDot } from './StateDot.tsx'
 export type { StateDotState } from './StateDot.tsx'
 export { DisclosureRow } from './DisclosureRow.tsx'
 export type { DisclosureRowProps } from './DisclosureRow.tsx'
+export {
+  ConversationFileCard, ConversationFileCardAction, ConversationFileCardFile, ConversationFileCardList,
+} from './ConversationFileCard.tsx'
+export type {
+  ConversationFileCardActionProps, ConversationFileCardFileProps, ConversationFileCardProps,
+} from './ConversationFileCard.tsx'
 export { Button } from './Button.tsx'
 export type { ButtonVariant } from './Button.tsx'
 export { Pill } from './Pill.tsx'
@@ -81,3 +87,5 @@ export { CODE_THEME_IDS } from './markdown/code-themes.ts'
 export type { CodeThemeId, LightCodeThemeId, DarkCodeThemeId } from './markdown/code-themes.ts'
 export * from './icons/index.tsx'
 export * from './icons/deepcreator.tsx'
+export { DeepCreatorIconAnimatedFolder16 } from './icons/AnimatedFolderIcon.tsx'
+export type { DeepCreatorIconAnimatedFolder16Props } from './icons/AnimatedFolderIcon.tsx'

@@ -6,12 +6,9 @@
 import type { ReactNode } from 'react'
 import { CodeSurface, diffLanguageFromPath } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { ArtifactRendererProps } from '@ryanyujazz/dsh-client-ui-workbench/client'
-
-function isMarkdownLanguage(lang: string | undefined): boolean {
-  return lang === 'markdown' || lang === 'mdx'
-}
+import { isMarkdownArtifactPath } from './artifact-view-model.ts'
 
 export function ArtifactCodeRenderer({ artifactId, content }: ArtifactRendererProps): ReactNode {
   const lang = diffLanguageFromPath(artifactId)
-  return <CodeSurface content={content} lang={lang} variant={isMarkdownLanguage(lang) ? 'document' : 'panel'} />
+  return <CodeSurface content={content} lang={lang} variant={isMarkdownArtifactPath(artifactId) ? 'document' : 'panel'} />
 }

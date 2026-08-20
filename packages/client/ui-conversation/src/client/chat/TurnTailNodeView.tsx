@@ -6,7 +6,11 @@ import { assistantText } from './turn-assistant.ts'
 import css from './TurnTailNodeView.module.css'
 
 type TurnTailNodeViewProps = ChatNodeViewProps<'turn-tail'>
-  & PropsRenderSlots<'conversation.chat.turnTail' | 'conversation.chat.assistant-actions'>
+  & PropsRenderSlots<
+    'conversation.chat.turnTail'
+    | 'deepcreator.conversation.chat.turnChanges'
+    | 'conversation.chat.assistant-actions'
+  >
 
 /** Turn-local actions and feature tail over the Location index, independent of Assistant placement. */
 export const TurnTailNodeView = memo(function TurnTailNodeView({
@@ -22,7 +26,12 @@ export const TurnTailNodeView = memo(function TurnTailNodeView({
   const closing = data.closing
   const owner: TurnTailOwnerProps = { turn, seq: closing?.finalNode.seq ?? data.seq, openFile }
   const tail = renderSlotChain('conversation.chat.turnTail', owner)
-  if (closing === null) return tail === null ? null : <div className={css.root}>{tail}</div>
+  const turnChanges = renderSlot('deepcreator.conversation.chat.turnChanges', owner)
+  if (closing === null) {
+    return tail === null && turnChanges === null
+      ? null
+      : <div className={css.root}>{tail}{turnChanges}</div>
+  }
   const runMs = turn.start === undefined || turn.end === undefined
     ? undefined
     : Math.max(0, turn.end.time - turn.start.time)
@@ -35,6 +44,7 @@ export const TurnTailNodeView = memo(function TurnTailNodeView({
   return (
     <div className={css.root} data-turn-tail={data.turn} data-time-hover-root>
       {tail}
+      {turnChanges}
       <MessageIconActions
         text={assistantText(closing.blocks)}
         time={closing.time}

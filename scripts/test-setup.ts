@@ -5,3 +5,14 @@ if (URL.createObjectURL === undefined) {
 if (URL.revokeObjectURL === undefined) {
   URL.revokeObjectURL = () => {}
 }
+
+/** lottie-web performs a tiny canvas feature probe even when using its SVG renderer. */
+if (typeof HTMLCanvasElement !== 'undefined') {
+  Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+    configurable: true,
+    value: () => ({
+      fillStyle: '',
+      fillRect: () => {},
+    }),
+  })
+}

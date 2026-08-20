@@ -19,7 +19,7 @@
 
 import type { ReactNode } from 'react'
 import {
-  FileIcon, IconChecklistOutline14, IconCodeOutline16, IconEditOutline16, IconListPenOutline16,
+  DisclosureRow, FileIcon, IconChecklistOutline14, IconCodeOutline16, IconEditOutline16, IconListPenOutline16,
 } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { ChatViewSlotProps } from '../contract/slots.ts'
 import css from './DraftingToolRow.module.css'
@@ -61,15 +61,20 @@ export function DraftingToolRow({ label, icon, target }: {
   target?: string | null
 }): React.JSX.Element {
   return (
-    <div className={css.row}>
-      <span className={css.leading} aria-hidden>{icon}</span>
-      <span className={css.label}>{label}</span>
-      {target !== undefined && target !== null && target !== '' && (
+    <DisclosureRow
+      rowClassName={css.row}
+      titleClassName={css.label}
+      icon={icon}
+      title={label}
+      open={false}
+      expandable={false}
+      onToggle={() => {}}
+      collapsedContent={target !== undefined && target !== null && target !== '' && (
         <>
           <span className={css.sep} aria-hidden />
           <span className={css.target}><FileIcon path={target} /><span>{target}</span></span>
         </>
       )}
-    </div>
+    />
   )
 }

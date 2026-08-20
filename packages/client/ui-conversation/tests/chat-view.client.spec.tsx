@@ -173,7 +173,10 @@ function renderShippedMode(owner: object, props: ChatViewSlotProps): React.React
   )
 }
 
-function makeHarness(init?: Partial<ConversationSnapshot>) {
+function makeHarness(
+  init?: Partial<ConversationSnapshot>,
+  turnTail?: { official?: React.ReactNode; changes?: React.ReactNode },
+) {
   const { set, source } = makeSource(init)
   const openDetails = vi.fn<(t: SelectionTarget) => void>()
   const openFile = vi.fn<(path: string) => void>()
@@ -202,9 +205,11 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
   }> = []
   const renderCommandSlot = ((_key: string, _owner: object, opts?: { fallback?: React.ReactNode }) =>
     opts?.fallback ?? null) as unknown as React.ComponentProps<typeof CommandNodeView>['renderSlot']
-  const renderTurnTail = ((_key: string, _owner: object) => null) as unknown as
+  const renderTurnTail = ((_key: string, _owner: object) => turnTail?.official ?? null) as unknown as
     React.ComponentProps<typeof TurnTailNodeView>['renderSlotChain']
-  const renderTurnTailSlot = (() => null) as unknown as
+  const renderTurnTailSlot = ((key: string) => key === 'deepcreator.conversation.chat.turnChanges'
+    ? turnTail?.changes ?? null
+    : null) as unknown as
     React.ComponentProps<typeof TurnTailNodeView>['renderSlot']
   const renderSlot = ((key: string, owner: object, opts?: {
     fallback?: React.ReactNode
@@ -371,6 +376,21 @@ function installScrollMetrics(element: HTMLElement, initialHeight: number, clien
 }
 
 describe('Chat node rendering', () => {
+
+  it('renders the official produced-files tail above the independent change card', () => {
+    const h = makeHarness({
+      nodes: [user(1, 'build it'), assistant(2, 'done', 1)],
+      turnEnds: new Map([[1, 2]]),
+    }, {
+      official: <div data-testid="produced-card">Produced</div>,
+      changes: <div data-testid="change-card">Changes</div>,
+    })
+    const view = render(<h.ChatView {...h.props} />)
+    const tail = view.container.querySelector('[data-turn-tail="1"]')
+    const children = [...(tail?.children ?? [])]
+    expect(children.indexOf(view.getByTestId('produced-card')))
+      .toBeLessThan(children.indexOf(view.getByTestId('change-card')))
+  })
 
   it('threads the injected file-mention vocabulary into the closing prose only', () => {
     const wrote = (seq: number, callId: string, path: string): ToolResultNode => ({

@@ -1,4 +1,13 @@
+import { diffLanguageFromPath } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { FileArtifactRecord } from './artifact-contract.ts'
+
+export type MarkdownRenderMode = 'preview' | 'code'
+
+/** Whether a file can use the conversation-grade Markdown preview. */
+export function isMarkdownArtifactPath(path: string): boolean {
+  const lang = diffLanguageFromPath(path)
+  return lang === 'markdown' || lang === 'mdx'
+}
 
 /** Trailing path segment, the part that identifies the file at a glance. */
 export function basename(path: string): string {

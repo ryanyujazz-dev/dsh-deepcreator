@@ -291,7 +291,7 @@ export function ToolRow({
               />
             )
             : diffBody !== null
-              ? <DiffBlock {...diffBody.card} className={css.diffBody} showFooter={variant !== 'edit'} />
+              ? <DiffBlock {...diffBody.card} className={css.diffBody} showFooter={variant !== 'edit' && variant !== 'write'} />
               : readBody !== null
                 ? <ReadBlock {...readBody} maxLines={CHAT_READ_MAX_LINES} className={css.readBody} />
                 : searchBody !== null

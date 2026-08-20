@@ -63,6 +63,8 @@ describe('conversation typography', () => {
     expect(drafting).toContain('font-size: var(--dsw-font-markdown-base-font-size, 14px);')
     expect(drafting).toContain('line-height: var(--dsw-font-markdown-base-line-height, 22px);')
     expect(drafting).toContain('font-weight: 400;')
+    expect(drafting).not.toContain('transform: translateY')
+    expect(drafting).not.toMatch(/\.leading\s*\{/)
   })
 
   it('keeps expanded structured context on the compact detail role', () => {

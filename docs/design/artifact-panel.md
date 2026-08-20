@@ -47,10 +47,12 @@ conversation turn from session events:
   whose `kind` is `edit`, contributes its `locations` paths. Reads, deletes,
   failed results, and replacement surfaces (compaction) contribute nothing.
 
-DeepCreator disables the official visible "产物" chip row because the Review
-Turn-change card owns that tail. The Artifact projection still publishes the
-same Turn-scoped facts and resolves exact paths or unique basenames in closing
-prose, so removing the duplicate row does not remove file navigation.
+DeepCreator keeps the official row composed for its Turn facts, closing-prose
+links, and model guidance. Artifact contributes the higher-priority visual
+winner to the same selector chain: an expandable card containing only that
+closing Turn's produced files. Review renders its independent change card in
+the additive DeepCreator slot immediately below it, so a path may appear in
+both cards with different navigation.
 
 ## Data flow (phase 1, implemented)
 

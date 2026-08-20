@@ -17,7 +17,7 @@ Client 工具展示插件。`ui-conversation` 通过 `conversation.chat.node` �
 
 旧 `conversation.details.tool` 注册连同其 `ToolDetails` renderer 已随 `ui-conversation` 退役的 DetailsPanel 一并移除；该 slot 已从契约中删除。工具审查后续必须作为 keyed Workbench Inspector Provider 重做。聊天行 renderer 仍复用 `terminal`、`read`、`diff`、`search` 和 `web` 的纯 card model。
 
-通用行把已知工具名称归类为 search、read、shell、write、edit、code 或 generic 变体。运行中、成功、失败和中断状态只来自冻结的 call/result slice。Write／Edit 结果会保留官方可选的 `oldStart`／`newStart` 元数据；展开卡片使用 ui-primitives 的公共行级／词级 Diff 模型、真实 Shiki 语法 token、单行号 gutter、软换行，并把同一文件的 hunk 合成为一张卡片。Edit 卡不显示 DiffBlock 汇总尾行，42px 文件头保持在代码区上方；代码区最大高度为 216px，超出后在内部纵向滚动。没有起始行元数据的历史结果仍可渲染，只是行号留空。只有用户调用 Host 打开文件回调时，文件路径才相对会话 `cwd` 解析；展示代码不读取会话服务。
+通用行把已知工具名称归类为 search、read、shell、write、edit、code 或 generic 变体。运行中、成功、失败和中断状态只来自冻结的 call/result slice。Write／Edit 结果会保留官方可选的 `oldStart`／`newStart` 元数据；展开卡片使用 ui-primitives 的公共行级／词级 Diff 模型、真实 Shiki 语法 token、单行号 gutter、软换行，并把同一文件的 hunk 合成为一张卡片。Write／Edit 的标题行已经显示本次 applied `+N -N`，因此展开卡都不再显示 DiffBlock 汇总尾行。两者的 42px 文件头保持在代码区上方，代码区最大高度为 420px；Read 正文区使用相同的 420px 高度预算，超出后均在各自内容区内部纵向滚动。没有起始行元数据的历史结果仍可渲染，只是行号留空。只有用户调用 Host 打开文件回调时，文件路径才相对会话 `cwd` 解析；展示代码不读取会话服务。
 
 在执行流渲染模式中，展开后的工具内容从 22px 标题列开始，并共用一条位于 16px leading glyph 的 x=8 中轴上的 1px 引导线。Code Dispatch 分支始终由父 Code 行持有这条引导线，而每个子调用的 leading 图标从父级「Code」标题左边界开始。由于当前锁定版本的官方 `ui-skill` keyed row 尚未消费 owner 的 `execflow` 标记，Tool 树也会在这一稳定边界补齐相同几何。
 

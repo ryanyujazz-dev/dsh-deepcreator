@@ -2,6 +2,8 @@
    [16 leading] gap6 [title 14/24] gap8 [2x2 dot] gap8 [summary FILL truncate]. */
 
 .root {
+  --dsh-tool-card-body-max-height: 420px;
+
   display: flex;
   flex-direction: column;
 }
@@ -340,18 +342,19 @@
   margin: 4px 0 4px 4px;
 }
 
-/* Edit cards keep their 42px file header visible while a long diff scrolls
-   inside the code region. Bind the limit on the row root so every nested Diff
-   surface inherits it, including alternate conversation render paths. */
-.root[data-variant='edit'] {
-  --dsl-diff-rows-max-height: 420px;
+/* Mutation cards keep their 42px file header visible while a long diff scrolls
+   inside the code region. Bind the shared limit on the row root so both Write
+   and Edit — including alternate conversation render paths — inherit it. */
+.root[data-variant='edit'],
+.root[data-variant='write'] {
+  --dsl-diff-rows-max-height: var(--dsh-tool-card-body-max-height);
 }
 
 /* Conversation Read cards match the Artifact viewer: preserve indentation,
    soft-wrap long source lines to the available width, and keep the same
    vertical reading budget as an expanded Edit card before scrolling. */
 .readBody {
-  --dsl-read-body-max-height: 420px;
+  --dsl-read-body-max-height: var(--dsh-tool-card-body-max-height);
   --dsl-read-overflow-x: hidden;
   --dsl-read-overflow-y: auto;
   --dsl-read-white-space: pre-wrap;

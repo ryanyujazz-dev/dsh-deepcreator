@@ -30,6 +30,22 @@ function producedPaths(view: ToolCallView | null): string[] {
   return []
 }
 
+/** Per-Turn produced paths visible at one closing Assistant sequence. */
+export function producedForClosing(
+  data: Readonly<ArtifactTurnData> | undefined,
+  seq = Number.POSITIVE_INFINITY,
+): readonly string[] {
+  if (data === undefined) return []
+  const paths: string[] = []
+  const seen = new Set<string>()
+  for (const produced of data.produced) {
+    if (produced.seq > seq || seen.has(produced.path)) continue
+    seen.add(produced.path)
+    paths.push(produced.path)
+  }
+  return paths
+}
+
 /**
  * Per-turn Context definition: one node per turn, data = the files that
  * turn produced (first-seen order, deduped). Truncated windows stay inert:

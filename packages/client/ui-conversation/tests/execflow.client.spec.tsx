@@ -176,6 +176,7 @@ describe('ExecFlow partition and slot forms', () => {
     expect(link.hasAttribute('data-disclosure-row')).toBe(true)
     expect(link.hasAttribute('aria-expanded')).toBe(false)
     expect(link.querySelector('svg')).not.toBeNull()
+    expect(link.getAttribute('data-hover-chevron')).toBe('up')
     expect(view.getByText('streaming tail')).toBeTruthy()
     expect(view.getByRole('status').textContent).toBe('Deep diving...')
 
@@ -313,6 +314,7 @@ describe('ExecFlow partition and slot forms', () => {
     })
     const { container } = render(<h.Body {...h.props} />)
     expect(container.textContent).toContain('Editing')
+    expect(container.querySelector('[data-disclosure-row]')?.textContent).toContain('Editing')
     // Unmapped short-drafting tools render no drafting row.
     const h2 = makeHarness({
       nodes: [user(1, 'go')],

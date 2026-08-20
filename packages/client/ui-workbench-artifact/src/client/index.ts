@@ -1,6 +1,6 @@
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
-import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { createElement, type ReactNode } from 'react'
 import type {} from '@ryanyujazz/dsh-artifacts/remote'
 import type {} from '@ryanyujazz/dsh-client-locale/client'
@@ -10,7 +10,8 @@ import type {} from '@ryanyujazz/dsh-client-ui-workbench/client'
 import { ArtifactIcon } from './ArtifactIcon.tsx'
 import { ArtifactPanel } from './ArtifactPanel.tsx'
 import { ArtifactCodeRenderer } from './ArtifactCodeRenderer.tsx'
-import { registerArtifactNodeDefinition } from './artifact-node-definition.ts'
+import { ArtifactTurnCard } from './ArtifactTurnCard.tsx'
+import { producedForClosing, registerArtifactNodeDefinition } from './artifact-node-definition.ts'
 import { registerArtifactsConversationView } from './artifacts-snapshot-builder.ts'
 import { artifactParentDirectory } from './artifact-view-model.ts'
 import { en, NS, zh, type ArtifactKey } from './locales.ts'
@@ -40,6 +41,11 @@ export function apply(ctx: ClientContext): void {
   }
   const panel = (props: WorkbenchPanelProps & PropsLocale<'workbench-artifact'>): ReactNode =>
     createElement(ArtifactPanel, { ...props, artifacts, openContainingFolder })
+  const turnCard = (props: PropsRuntime<'conversation.chat.turnTail'> & PropsLocale<'workbench-artifact'> & { matched: readonly string[] }): ReactNode =>
+    createElement(ArtifactTurnCard, {
+      ...props,
+      openArtifacts: () => { ctx.workbench.activate('artifact') },
+    })
   const definition: PanelTypeDefinition = {
     id: 'artifact', label: () => t('type'), scope: 'session', order: 3, supportsHome: true, supportsCreate: false,
     supportsMultipleInstances: true, minWidth: 150, minHeight: 260, preferredWidth: 520, initialWidthRatio: 1 / 3, closePolicy: 'detach',
@@ -51,6 +57,15 @@ export function apply(ctx: ClientContext): void {
       disposers.push(ctx.slots.inject('deepcreator.workbench.panel', () => ctx.slots.register({ name: 'deepcreator.workbench.panel', id: 'artifact', locale: NS }, panel)))
       disposers.push(ctx.slots.inject('deepcreator.workbench.panel-icon', () => ctx.slots.register({ name: 'deepcreator.workbench.panel-icon', id: 'artifact' }, ArtifactIcon)))
       disposers.push(ctx.slots.inject('deepcreator.workbench.artifact.renderer', () => ctx.slots.register({ name: 'deepcreator.workbench.artifact.renderer', id: 'code' }, ArtifactCodeRenderer)))
+      disposers.push(ctx.slots.inject('conversation.chat.turnTail', () => ctx.slots.register({
+        name: 'conversation.chat.turnTail',
+        priority: -100,
+        select: owner => {
+          const paths = producedForClosing(owner.turn.data.get('workbench-artifact'), owner.seq)
+          return paths.length === 0 ? null : paths
+        },
+        locale: NS,
+      }, turnCard)))
       disposers.push(registerArtifactNodeDefinition(ctx))
       disposers.push(registerArtifactsConversationView(ctx))
       disposers.push(ctx.locale.register(NS, { zh, en }))

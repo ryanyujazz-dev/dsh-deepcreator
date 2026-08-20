@@ -107,6 +107,8 @@ describe('WorkspaceBrowser', () => {
     expect(glyphWidth('搜索会话')).toBe('14')
     expect(glyphWidth('视图选项')).toBe('14')
     expect(glyphWidth('添加工作区')).toBe('14')
+    expect(screen.getByRole('button', { name: '添加工作区' })
+      .querySelector('[data-deepcreator-icon="animated-folder"]')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '搜索会话' }))
     expect(glyphWidth('搜索会话')).toBe('14')
   })
@@ -235,7 +237,11 @@ describe('WorkspaceBrowser', () => {
       useWorkspaces: hook(workspaceState([workspace('alpha', ['alpha-s'])])),
       open,
     })
+    const projectRow = screen.getByText('alpha').closest('[role="treeitem"]') as HTMLElement
+    const folder = projectRow.querySelector('[data-deepcreator-icon="animated-folder"]')
+    expect(folder?.hasAttribute('data-expanded')).toBe(false)
     fireEvent.click(screen.getByText('alpha'))
+    expect(folder?.getAttribute('data-expanded')).toBe('true')
     fireEvent.click(screen.getByText('alpha-s'))
     expect(open).toHaveBeenCalledWith(sid('alpha-s'))
     // Collapse hides the row again.

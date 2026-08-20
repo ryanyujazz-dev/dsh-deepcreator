@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { SessionEvent } from '@deepseek-ai/dsh-session/types'
 import type { ConversationMatch, ConversationNodeContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ToolCallView } from '@deepseek-ai/dsh-tools/presentation'
-import { artifactNodeDefinition } from '../src/client/artifact-node-definition.ts'
+import { artifactNodeDefinition, producedForClosing } from '../src/client/artifact-node-definition.ts'
 
 type NodeState = ReturnType<typeof artifactNodeDefinition.start>
 
@@ -86,6 +86,16 @@ describe('artifactNodeDefinition', () => {
 
     expect(current.produced.map(item => item.path)).toEqual(['E:/repo/a.md', 'E:/repo/b.md'])
     expect(current.produced.map(item => item.seq)).toEqual([13, 14])
+  })
+
+  it('selects only this turn\'s paths settled by the closing seq and deduplicates first-seen order', () => {
+    expect(producedForClosing({
+      kind: 'turn', turn: 2, produced: [
+        { path: 'a.md', seq: 10, time: 100 },
+        { path: 'b.ts', seq: 12, time: 120 },
+        { path: 'a.md', seq: 14, time: 140 },
+      ],
+    }, 12)).toEqual(['a.md', 'b.ts'])
   })
 
   it('ignores non-mutation views, failed results and unknown call ids', () => {

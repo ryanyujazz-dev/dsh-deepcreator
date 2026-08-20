@@ -80,15 +80,3 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-/* Leading glyph seat: same 14px box the settled row's icon occupies, with
-   the ToolRow title gap so the drafting → running swap keeps text position. */
-.leading {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  width: 14px;
-  height: 14px;
-  margin-right: 6px;
-  color: var(--dsw-alias-label-primary);
-}

@@ -46,16 +46,21 @@ describe('ToolRow.module.css summary line', () => {
   })
 })
 
-describe('expanded Edit diff', () => {
-  it('caps only the card code region through the shared DiffBlock seam', () => {
-    expect(css).toMatch(/\.root\[data-variant='edit'\]\s*\{[^}]*--dsl-diff-rows-max-height: 420px;[^}]*\}/s)
+describe('expanded file cards', () => {
+  it('gives Write, Edit, and Read one shared 420px body budget', () => {
+    expect(declarations('.root')).toEqual(expect.arrayContaining([
+      '--dsh-tool-card-body-max-height: 420px',
+    ]))
+    expect(css).toMatch(/\.root\[data-variant='edit'\],\s*\.root\[data-variant='write'\]\s*\{[^}]*--dsl-diff-rows-max-height: var\(--dsh-tool-card-body-max-height\);[^}]*\}/s)
+    expect(declarations('.readBody')).toEqual(expect.arrayContaining([
+      '--dsl-read-body-max-height: var(--dsh-tool-card-body-max-height)',
+    ]))
   })
 })
 
 describe('expanded Read source', () => {
-  it('soft-wraps like Artifact and shares the Edit card height budget', () => {
+  it('soft-wraps like Artifact and scrolls vertically inside the shared budget', () => {
     expect(declarations('.readBody')).toEqual(expect.arrayContaining([
-      '--dsl-read-body-max-height: 420px',
       '--dsl-read-overflow-x: hidden',
       '--dsl-read-overflow-y: auto',
       '--dsl-read-white-space: pre-wrap',
