@@ -11,8 +11,11 @@ the call view, and an append-surface `tool/result` collects the paths a diff
 card (or a generic `edit` card) produced — reads, deletes, failed results and
 replacement surfaces contribute nothing. The `artifacts` snapshot builder folds
 per-turn nodes into one record per path (latest production wins), sorted by
-production time descending, so the panel shows the same files the conversation
-turn-tail lists.
+production time descending. DeepCreator disables the official duplicate
+produced-files tail while the new Review change card owns the visible tail.
+This projection publishes Turn location data only; the official
+`ui-deliverables` client remains the single owner of closing-prose
+`chatFileMentions` so the assembled browser never registers that service twice.
 
 Instance content is read through the mounted `artifacts` remote namespace,
 keyed on the active path: a re-read happens only when the active path changes

@@ -89,4 +89,37 @@ describe('WorkbenchRoot reveal delivery', () => {
     expect(owners.get('review')?.visible).toBe(false)
     expect(owners.get('artifact')?.visible).toBe(true)
   })
+
+  it('preserves provider-defined parameters on a reveal', async () => {
+    const { controller, owners } = mountRoot()
+    await act(() => {
+      controller.present({
+        typeId: 'review',
+        target: '/repo/src/app.ts',
+        parameters: { turn: '7', scope: 'turn' },
+        reveal: true,
+        reason: 'user',
+      })
+    })
+    expect(owners.get('review')?.reveal).toMatchObject({
+      target: '/repo/src/app.ts',
+      parameters: { turn: '7', scope: 'turn' },
+    })
+  })
+
+  it('delivers a parameter-only presentation without inventing a target path', async () => {
+    const { controller, owners } = mountRoot()
+    await act(() => {
+      controller.present({
+        typeId: 'review',
+        parameters: { scope: 'unstaged', expand: 'all' },
+        reveal: true,
+        reason: 'user',
+      })
+    })
+    expect(owners.get('review')?.reveal).toMatchObject({
+      parameters: { scope: 'unstaged', expand: 'all' },
+    })
+    expect(owners.get('review')?.reveal?.target).toBeUndefined()
+  })
 })

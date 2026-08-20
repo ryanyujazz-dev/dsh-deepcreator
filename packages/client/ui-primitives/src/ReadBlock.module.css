@@ -12,33 +12,43 @@
   --dsl-read-gutter: 48px;
 
   position: relative;
+  box-sizing: border-box;
+  overflow: hidden;
   margin: 16px 0;
+  border: 1px solid var(--dsw-alias-border-l1);
   color: var(--ds-code-foreground, var(--dsw-alias-label-primary));
-  background: var(--ds-code-background, var(--dsw-alias-markdown-code-block));
+  background: var(--dsw-specific-sidebar-fill);
   border-radius: var(--dsl-read-radius);
 }
 
 .banner {
+  height: 42px;
+  min-height: 42px;
+  box-sizing: border-box;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  padding: 9px 14px;
-  background: var(--dsw-alias-markdown-code-block-banner);
+  padding: 7px 7px 7px 11px;
+  background: transparent;
   border-top-left-radius: var(--dsl-read-radius);
   border-top-right-radius: var(--dsl-read-radius);
 }
 
 .label {
   min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 5px;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   color: var(--dsw-alias-label-primary);
   font-family: var(--ds-font-family-code);
   font-size: 12px;
   line-height: 18px;
 }
+
+.labelText { min-width: 0; flex: 1; }
 
 .action {
   display: flex;
@@ -48,20 +58,26 @@
 }
 
 .count {
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsw-alias-label-secondary);
   font: var(--dsw-font-xs-13);
 }
 
 .lang {
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsw-alias-label-secondary);
   font-family: var(--ds-font-family-code);
   font-size: 12px;
   line-height: 18px;
 }
 
 .copyButton {
-  background-color: transparent;
-  border: none;
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
   padding: 0;
   margin: 0;
   color: var(--dsw-alias-label-secondary);
@@ -69,20 +85,27 @@
   font: var(--dsw-font-xs-13);
 }
 
+.copyButton:hover { color: var(--dsw-alias-label-primary); background: var(--dsw-alias-interactive-bg-hover); }
+.copyButton:focus-visible { outline: 1px solid var(--dsw-alias-state-business-primary); outline-offset: 1px; }
+
 .body {
+  border-top: 1px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-specific-sidebar-fill);
+  max-height: var(--dsl-read-body-max-height, none);
   padding: 12px 0;
   font: var(--dsw-font-markdown-code-block);
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow-x: var(--dsl-read-overflow-x, auto);
+  overflow-y: var(--dsl-read-overflow-y, hidden);
 }
 
-/* One row per file line: a fixed gutter column, then the content. No wrapping —
-   a source line's leading whitespace is meaningful and scrolls sideways. */
+/* One row per file line: a fixed gutter column, then the content. Standalone
+   reads preserve source lines and scroll horizontally; compact consumers can
+   opt into artifact-style pre-wrap through the custom-property seam. */
 .line {
   display: flex;
   min-height: var(--dsl-read-line-height);
   line-height: var(--dsl-read-line-height);
-  white-space: pre;
+  white-space: var(--dsl-read-white-space, pre);
 }
 
 .gutter {
@@ -96,7 +119,12 @@
   user-select: none;
 }
 
-.content { color: var(--ds-code-foreground, var(--dsw-alias-label-primary)); }
+.content {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: var(--dsl-read-overflow-wrap, normal);
+  color: var(--ds-code-foreground, var(--dsw-alias-label-primary));
+}
 
 .expand {
   display: block;

@@ -8,6 +8,7 @@ import type {} from '@deepseek-ai/dsh-agent'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-jobs'
+import type {} from '@ryanyujazz/dsh-review'
 import type { SessionDeleteResult } from './types.ts'
 export type { SessionDeleteError, SessionDeleteOk, SessionDeleteResult } from './types.ts'
 
@@ -25,7 +26,7 @@ const SESSION_ID_PATTERN = /^session-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
  */
 export class SessionAdmin extends TypertRemoteService {
   /** Required services: the official agent/job/session registries. */
-  static inject = ['agents', 'jobs', 'sessions']
+  static inject = ['agents', 'jobs', 'sessions', 'review']
 
   constructor(ctx: Context) { super(ctx, 'session-admin') }
 
@@ -62,6 +63,13 @@ export class SessionAdmin extends TypertRemoteService {
     }
     if (matches.length > 1) {
       return { ok: false, code: 'AMBIGUOUS', message: `Session ${sessionId} exists in multiple workspaces; refusing to delete.` }
+    }
+    const review = this.ctx.get('review')
+    if (live !== undefined && review !== undefined) {
+      try { await review.deleteSessionSnapshots(live) }
+      catch (error) {
+        return { ok: false, code: 'CLEANUP_FAILED', message: `Turn snapshot cleanup failed: ${error instanceof Error ? error.message : String(error)}` }
+      }
     }
     const target = matches[0]!
     await rm(target, { recursive: true, force: true })

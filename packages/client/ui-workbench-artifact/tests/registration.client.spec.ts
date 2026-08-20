@@ -24,11 +24,13 @@ describe('ui-workbench-artifact registration', () => {
     const injectedSlots: string[] = []
     const localeNamespaces: string[] = []
     const disposed: string[] = []
+    const provide = vi.fn()
     const dispose = (tag: string) => () => { disposed.push(tag) }
 
     let teardown: (() => void) | undefined
     const ctx = {
       get: () => remote,
+      provide,
       locale: {
         bind: () => (key: string) => key,
         register: (ns: string) => { localeNamespaces.push(ns); return dispose(`locale:${ns}`) },
@@ -63,6 +65,7 @@ describe('ui-workbench-artifact registration', () => {
     expect(nodeDefinitions[0]).toMatchObject({ kind: 'workbench-artifact', target: 'artifacts' })
     expect(viewDefinitions[0]).toMatchObject({ target: 'artifacts' })
     expect(localeNamespaces).toEqual(['workbench-artifact'])
+    expect(provide).not.toHaveBeenCalled()
 
     // The traced namespace is captured once, outside every React renderer.
     const render = panels.get('artifact')!

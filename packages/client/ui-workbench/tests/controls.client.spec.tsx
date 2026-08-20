@@ -21,10 +21,11 @@ const definitions: PanelTypeDefinition[] = ['Activity', 'Artifact', 'Review', 'T
 function props(panelControls: 'expanded' | 'compact') {
   const hide = vi.fn()
   const activate = vi.fn()
+  const present = vi.fn()
   const controller = {
     types: { list: () => definitions, subscribe: () => () => {}, version: () => 1 },
     visibility: { list: () => ['activity', 'review'], subscribe: () => () => {}, version: () => 1 },
-    hide,
+    hide, present,
     activate,
   }
   return {
@@ -37,7 +38,7 @@ function props(panelControls: 'expanded' | 'compact') {
         ? '面板'
         : `${key === 'hide' ? '隐藏' : '打开'}${params?.type ?? ''}面板`,
     } as unknown as WorkbenchControlsProps,
-    hide,
+    hide, present,
     activate,
   }
 }
@@ -69,6 +70,34 @@ describe('WorkbenchControls responsive placement', () => {
     expect(view.getByRole('button', { name: '打开Artifact面板' })).toBeTruthy()
     expect(view.getByRole('button', { name: '隐藏Review面板' })).toBeTruthy()
     expect(view.getAllByRole('button')).toHaveLength(5)
+  })
+
+  it('passes provider open parameters through the shared panel control', () => {
+    const input = props('expanded')
+    const review = definitions.find(definition => definition.id === 'review')
+    if (review === undefined) throw new Error('missing review definition')
+    const controller = {
+      ...(input.value.controller as object),
+      types: {
+        ...(input.value.controller.types as object),
+        list: () => definitions.map(definition => definition.id === 'review'
+          ? { ...definition, openParameters: { scope: 'unstaged', expand: 'all' } }
+          : definition),
+      },
+    }
+    const view = render(<WorkbenchControls {...{ ...input.value, controller } as unknown as WorkbenchControlsProps} />)
+    fireEvent.click(view.getByRole('button', { name: '打开Artifact面板' }))
+    expect(input.activate).toHaveBeenCalledWith('artifact')
+    fireEvent.click(view.getByRole('button', { name: '隐藏Review面板' }))
+    expect(input.hide).toHaveBeenCalledWith('review')
+
+    // Re-render with Review hidden so its button exercises the provider-aware open path.
+    controller.visibility = { list: () => ['activity'], subscribe: () => () => {}, version: () => 2 }
+    view.rerender(<WorkbenchControls {...{ ...input.value, controller } as unknown as WorkbenchControlsProps} />)
+    fireEvent.click(view.getByRole('button', { name: '打开Review面板' }))
+    expect(input.present).toHaveBeenCalledWith({
+      typeId: 'review', route: 'home', parameters: { scope: 'unstaged', expand: 'all' }, reveal: true, reason: 'user',
+    })
   })
 
   it('replaces the complete strip with one independent Panel menu', () => {

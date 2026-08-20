@@ -341,10 +341,18 @@ export interface ChatFileMentions {
   forClosing(owner: TurnTailOwnerProps): MarkdownFileMentions | undefined
 }
 
+/** Optional bridge owned by the Review integration for turn-aware file links. */
+export interface TurnChangeNavigation {
+  /** Return true when the Review/Artifact Workbench handled the request. */
+  open(sessionId: SessionId, turn: number, path: string): boolean
+}
+
 declare module '@deepseek-ai/cordis' {
   interface Context {
-    /** Prose file-mention provider (ui-deliverables); reach via ctx.get — optional. */
+    /** Prose file-mention provider (Artifact in DeepCreator); reach via ctx.get — optional. */
     chatFileMentions: ChatFileMentions
+    /** Turn-aware Review navigation; absent when the Review plugin is not composed. */
+    turnChangeNavigation: TurnChangeNavigation
   }
 }
 
@@ -458,7 +466,7 @@ export interface ChatNodeOwnerProps {
    * mutation link keeps its Host fallback. Other file rows use the
    * Artifact-first `openFile` path.
    */
-  revealChange?: ((path: string) => void) | undefined
+  revealChange?: ((path: string, turn?: number) => void) | undefined
   inspectCall: (callId: CallId) => void
   forkAt: (seq: number) => void
   /** Resolve a session-authorized historical image for inline display. */
@@ -805,7 +813,7 @@ export interface ChatRenderOwnerProps {
    * composed (relative paths resolve against the session cwd); absent = the
    * mutation link keeps its Host fallback.
    */
-  revealChange?: ((path: string) => void) | undefined
+  revealChange?: ((path: string, turn?: number) => void) | undefined
   loadOlder: () => void
   /** Resolve a session-authorized historical image for inline display. */
   loadImage: (attachment: ImageAttachmentRef) => Promise<string>
@@ -859,7 +867,7 @@ export interface ChatViewInjected {
    * composed (relative paths resolve against the session cwd); absent = the
    * mutation link keeps its Host fallback.
    */
-  revealChange?: ((path: string) => void) | undefined
+  revealChange?: ((path: string, turn?: number) => void) | undefined
   loadOlder: () => void
   /** Resolve a session-authorized historical image for inline display. */
   loadImage: (attachment: ImageAttachmentRef) => Promise<string>

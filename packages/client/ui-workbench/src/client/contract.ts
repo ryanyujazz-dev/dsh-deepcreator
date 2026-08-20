@@ -46,6 +46,8 @@ export interface PanelTypeDefinition {
   closePolicy: PanelClosePolicy
   /** Agent-scoped providers stay visible but inert for catalog-addressed subagents. */
   disabledWhenAddressed?: boolean
+  /** Provider parameters emitted when the shared panel control opens this type. */
+  openParameters?: Readonly<Record<string, string>>
 }
 
 export interface WorkbenchPresentRequest {
@@ -58,6 +60,8 @@ export interface WorkbenchPresentRequest {
    * treats it as a workspace file path.
    */
   target?: string
+  /** Provider-defined presentation parameters; valid with or without a focus target. */
+  parameters?: Readonly<Record<string, string>>
   reveal?: boolean
   reason: 'user' | 'agent' | 'system'
 }
@@ -91,12 +95,13 @@ export interface WorkbenchPanelOwnerProps {
   contributePanelInfo(contribution: WorkbenchPanelInfoContribution): () => void
   renderArtifact(owner: ArtifactRendererOwnerProps): ReactNode
   /**
-   * Pending focus target from the latest `reveal`/`present` request carrying a
-   * `target`. `nonce` is the publishing command's sequence, so repeating the
-   * same target re-fires; providers consume it from an effect keyed on the
-   * nonce. Undefined on panels the request did not address.
+   * Pending provider presentation from the latest `reveal`/`present` request
+   * carrying a target and/or parameters. `nonce` is the publishing command's
+   * sequence, so repeating the same request re-fires; providers consume it
+   * from an effect keyed on the nonce. Undefined on panels the request did
+   * not address.
    */
-  reveal?: { target: string; nonce: number } | undefined
+  reveal?: { target?: string; parameters?: Readonly<Record<string, string>>; nonce: number } | undefined
   /**
    * Whether this group's cell is actually rendered. Hidden and
    * responsive-removed Groups stay mounted (display:none) with `visible:

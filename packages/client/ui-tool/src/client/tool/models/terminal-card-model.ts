@@ -52,10 +52,9 @@ export interface TerminalCardModel {
    */
   card: Pick<TerminalBlockProps, 'command' | 'cwd' | 'output' | 'exitCode' | 'signal' | 'running'>
   /**
-   * The call view's model-authored description, which the contract defines as
-   * rendering ABOVE the card (the card itself has no description slot). Absent
-   * when the presenter supplied none, or when the window dropped the call side;
-   * a row then keeps its args-derived summary.
+   * The call view's model-authored description, used by the row summary and the
+   * TerminalBlock title bar. Absent when the presenter supplied none, or when
+   * the window dropped the call side; a row then keeps its args-derived summary.
    */
   description: string | undefined
 }

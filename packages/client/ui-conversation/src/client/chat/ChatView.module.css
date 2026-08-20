@@ -84,16 +84,30 @@
 /* Selection still sets data-selected for details linkage; no outline —
    tool rows match Think chrome (no selected ring). */
 
-/* Turn activity keeps the former loader's one-line footprint. A pale
-   brand-blue band sweeps from left to right; reduced-motion keeps it static. */
+/* Turn activity keeps the former loader's one-line footprint. The animated
+   text clip belongs only to the Deep diving label: putting streaming Think
+   descendants inside that compositing layer leaves stale glyph masks in
+   Chromium while their text updates. */
 .turnStatus {
   align-self: flex-start;
   flex: none;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  height: 26px;
+}
+
+.turnStatusStatus {
+  flex: none;
   display: inline-flex;
   align-items: center;
-  height: 26px;
-  font: var(--dsw-font-s-strong-14);
   white-space: nowrap;
+}
+
+.turnStatusLabel {
+  font: var(--dsw-font-s-strong-14);
   background: linear-gradient(
     90deg,
     var(--dsw-static-deepseek-500) 0%,
@@ -127,7 +141,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .turnStatus {
+  .turnStatusLabel {
     background-position: 0 0;
     background-size: 100% 100%;
     animation: none;
@@ -211,23 +225,11 @@
   background: var(--dsw-alias-button-floating-hover);
 }
 
-/* The Thinking toggle word beside the running-turn status: same muted caption
-   treatment as the clock, but clickable (persisted think-form switch). */
-.thinkToggle {
-  margin-left: 8px;
-  padding: 0 2px;
-  border: none;
-  background: none;
-  font: var(--dsw-font-xs-13);
-  font-variant-numeric: tabular-nums;
-  color: var(--dsw-alias-label-caption);
-  -webkit-text-fill-color: var(--dsw-alias-label-caption);
-  cursor: pointer;
-  text-decoration: underline dotted;
-  text-underline-offset: 3px;
-}
-
-.thinkToggle:hover {
-  color: var(--dsw-alias-label-secondary);
-  -webkit-text-fill-color: var(--dsw-alias-label-secondary);
+/* Classic mode mounts the native ReasoningRow itself beside Deep diving;
+   only its activation changes (enter Think mode instead of expanding). */
+.turnStatusThinking {
+  flex: 1 1 0;
+  min-width: 0;
+  margin-left: 12px;
+  overflow: hidden;
 }

@@ -15,10 +15,29 @@ describe('Workbench PanelShell geometry', () => {
     expect(shell).toContain('border-radius: 10px')
     expect(shell).toContain('height: 32px')
     expect(shell).toContain('flex: 0 0 32px')
-    expect(shell).toContain('.headerActions { margin-left: auto; }')
+    expect(shell).toContain('.headerActions { flex: none; margin-left: auto; }')
     expect(shell).not.toContain('border-bottom')
+    expect(shell.match(/\.title\s*\{([^}]*)\}/)?.[1]).toContain('font: var(--dsw-font-xxs-strong-12)')
+    expect(tabs.match(/\.tabText\s*\{([^}]*)\}/)?.[1]).toContain('font: var(--dsw-font-xxs-12)')
+    expect(providerPanels.match(/\.reviewScopeButton\s*\{([^}]*)\}/)?.[1]).toContain('font: var(--dsw-font-xxs-12)')
+    expect(providerPanels.match(/\.reviewScopeButton\s*\{([^}]*)\}/)?.[1]).not.toContain('font: inherit')
     expect(mosaic).toContain('padding: 4px')
     expect(mosaic).toContain('inset: 4px')
+  })
+
+  it('shrinks provider titles before the fixed right-side action group', () => {
+    const leadingRule = shell.match(/\.leading\s*\{([^}]*)\}/)?.[1] ?? ''
+    const leftActionsRule = shell.match(/\.leftActions\s*\{([^}]*)\}/)?.[1] ?? ''
+    const scopeRule = providerPanels.match(/\.reviewScopeButton\s*\{([^}]*)\}/)?.[1] ?? ''
+    const scopeTextRule = providerPanels.match(/\.reviewScopeButton span\s*\{([^}]*)\}/)?.[1] ?? ''
+    expect(leadingRule).toContain('flex: 1 1 auto')
+    expect(leadingRule).toContain('min-width: 0')
+    expect(leftActionsRule).toContain('flex: 1 1 auto')
+    expect(leftActionsRule).toContain('min-width: 0')
+    expect(scopeRule).toContain('width: 100%')
+    expect(scopeRule).toContain('min-width: 0')
+    expect(scopeTextRule).toContain('flex: 1')
+    expect(scopeTextRule).toContain('text-overflow: ellipsis')
   })
 
   it('matches the conversation base in light and keeps the dark sidebar step', () => {

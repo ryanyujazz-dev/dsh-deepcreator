@@ -16,7 +16,7 @@
   min-width: 0;
 }
 
-.row[data-expandable] {
+.row[data-interactive] {
   cursor: pointer;
 }
 

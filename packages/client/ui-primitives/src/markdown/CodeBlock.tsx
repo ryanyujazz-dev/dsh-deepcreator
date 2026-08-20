@@ -7,6 +7,8 @@
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import clsx from 'clsx'
 import { writeClipboard } from '../clipboard.ts'
+import { IconCheckOutline16, IconCopyOutline16 } from '../icons/index.tsx'
+import { Tooltip } from '../Tooltip.tsx'
 import { grammarLoadCount, highlightToHtml, subscribeGrammarLoaded } from './highlight.ts'
 import css from './CodeBlock.module.css'
 
@@ -15,6 +17,8 @@ export interface CodeBlockProps {
   code: string
   /** Grammar hint (markdown fence info string or a fixed caller id); unknown = plain. */
   lang?: string | undefined
+  /** Optional visible card title, independent from the grammar hint while a markdown stream is still plain. */
+  title?: string | undefined
   /** Extra class merged onto the wrapper (callers position; this component draws). */
   className?: string | undefined
   /** Copy-button idle label; the owner passes localized copy (this package is cordis-free, so copy arrives via props). */
@@ -23,7 +27,7 @@ export interface CodeBlockProps {
   copiedLabel?: string | undefined
 }
 
-export function CodeBlock({ code, lang, className, copyLabel = '复制', copiedLabel = '复制成功' }: CodeBlockProps) {
+export function CodeBlock({ code, lang, title, className, copyLabel = '复制', copiedLabel = '复制成功' }: CodeBlockProps) {
   const trimmed = code.endsWith('\n') ? code.slice(0, -1) : code
   // Re-render when a lazy grammar finishes loading, so a fence that showed plain
   // text while its language's grammar imported picks up highlighting. The
@@ -32,6 +36,8 @@ export function CodeBlock({ code, lang, className, copyLabel = '复制', copiedL
   const html = useMemo(() => highlightToHtml(trimmed, lang), [trimmed, lang, loaded])
   const rootRef = useRef<HTMLDivElement>(null)
   const [copied, setCopied] = useState(false)
+  const bannerLabel = title ?? lang ?? ''
+  const hasTitle = bannerLabel.trim() !== ''
 
   const onCopy = useCallback(() => {
     if (copied) return
@@ -56,18 +62,31 @@ export function CodeBlock({ code, lang, className, copyLabel = '复制', copiedL
       <div dangerouslySetInnerHTML={{ __html: html }} />
     )
 
+  const copyControl = (
+    <Tooltip label={copied ? copiedLabel : copyLabel} side="bottom">
+      <button
+        type="button"
+        className={clsx(css.copyButton, !hasTitle && css.floatingCopy)}
+        aria-label={copied ? copiedLabel : copyLabel}
+        onClick={onCopy}
+      >
+        {copied ? <IconCheckOutline16 size={14} /> : <IconCopyOutline16 size={14} />}
+      </button>
+    </Tooltip>
+  )
+
   return (
-    <div ref={rootRef} className={clsx(css.block, 'md-code-block', className)}>
-      <div className={css.bannerWrap}>
-        <div className={css.banner}>
-          <div className={css.infostring}>{lang ?? ''}</div>
-          <div className={css.action}>
-            <button type="button" className={css.copyButton} onClick={onCopy}>
-              {copied ? copiedLabel : copyLabel}
-            </button>
+    <div ref={rootRef} className={clsx(css.block, 'md-code-block', className)} data-titleless={hasTitle ? undefined : ''}>
+      {hasTitle
+        ? (
+          <div className={css.bannerWrap} data-code-title="">
+            <div className={css.banner}>
+              <div className={css.infostring}>{bannerLabel}</div>
+              <div className={css.action}>{copyControl}</div>
+            </div>
           </div>
-        </div>
-      </div>
+        )
+        : copyControl}
       {body}
     </div>
   )

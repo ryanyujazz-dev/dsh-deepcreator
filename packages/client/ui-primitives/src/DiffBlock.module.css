@@ -9,9 +9,15 @@
 .copyButton {
   position: absolute;
   z-index: 2;
-  top: 8px;
-  right: 12px;
+  top: 7px;
+  right: 7px;
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
   border: 0;
+  border-radius: 50%;
   padding: 0;
   color: var(--dsw-alias-label-secondary);
   background: transparent;
@@ -19,37 +25,54 @@
   font: var(--dsw-font-xs-13);
 }
 
+.copyButton:hover { color: var(--dsw-alias-label-primary); background: var(--dsw-alias-interactive-bg-hover); }
+.copyButton:focus-visible { outline: 1px solid var(--dsw-alias-state-business-primary); outline-offset: 1px; }
+
 .body { display: grid; gap: 10px; min-width: 0; }
 
 .hunk {
   min-width: 0;
   overflow: hidden;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 12px;
-  background: var(--ds-code-background, var(--shiki-background, var(--dsw-alias-markdown-code-block)));
+  background: var(--dsw-specific-sidebar-fill);
 }
 
 .path {
-  min-height: 38px;
+  height: 42px;
+  min-height: 42px;
   box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   padding: 8px 68px 8px 14px;
-  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-specific-sidebar-fill);
   color: var(--dsw-alias-label-secondary);
   font-weight: 500;
   overflow-wrap: anywhere;
 }
 
-.pathLabel { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
-.pathLabel > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.pathLabel { min-width: 0; flex: 1; display: inline-flex; align-items: center; gap: 5px; overflow: hidden; }
+.pathText { min-width: 0; flex: 1; }
 
 .counts { display: inline-flex; gap: 5px; white-space: nowrap; font-style: normal; font-weight: 400; }
 .counts b { color: var(--dsw-alias-state-success-primary); font-weight: 500; }
 .counts i { color: var(--dsw-alias-state-error-primary); font-style: normal; }
-.rows { min-width: 0; }
+.rows {
+  min-width: 0;
+  max-height: var(--dsl-diff-rows-max-height, none);
+  overflow-y: auto;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+}
+
+.rows::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 6px;
+  background-clip: padding-box;
+}
+
+.rows::-webkit-scrollbar-track { margin: 6px 0; }
 
 .line {
   display: grid;

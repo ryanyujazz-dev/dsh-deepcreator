@@ -36,6 +36,30 @@
   white-space: pre;
 }
 
+.root[data-wrap] {
+  overflow-x: hidden;
+  overscroll-behavior-x: auto;
+}
+
+.root[data-wrap] .container,
+.root[data-wrap] .expandedTopLevel {
+  width: 100%;
+  min-width: 0;
+  white-space: pre-wrap;
+}
+
+.root[data-wrap] .row {
+  min-width: 0;
+  padding-right: 8px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.root[data-wrap] .row::after {
+  height: 100%;
+}
+
 .expandedTopLevel {
   box-sizing: border-box;
   width: max-content;

@@ -202,7 +202,7 @@ describe('terminalCardModel', () => {
     expect(terminalCardModel(settled(), '/w/app')?.card.cwd).toBe('/w/app')
   })
 
-  it('carries the call view\'s description, which the contract renders above the card', () => {
+  it('carries the call view\'s description for both the row summary and card title', () => {
     expect(terminalCardModel(settled())?.description).toBe('List files')
     expect(terminalCardModel(running())?.description).toBe('List files')
     // A presenter that supplies none, and a window-truncated call side, both
@@ -285,7 +285,7 @@ describe('chat row terminal body', () => {
 
   it('the fallback row shows the presenter description, not the args summary', () => {
     // Any terminal-declaring tool without its own keyed row lands here, so the
-    // contract's above-card description has to win at this render site as well.
+    // presenter description has to win at this render site as well.
     const view = render(<GenericToolCard {...ownerProps(settled({
       callView: callTerminal({ description: 'Terminal 3' }),
     }))} />)
@@ -293,17 +293,15 @@ describe('chat row terminal body', () => {
     expect(view.queryByText('List files')).toBeNull()
   })
 
-  it('keeps the presenter description visible once the terminal card is expanded', () => {
-    // The contract puts the description ABOVE the card. The collapsed summary is
-    // hidden while a row is open, so an expanded terminal row has to draw it
-    // itself or the description would only ever be visible collapsed.
+  it('uses the presenter description as the expanded terminal card title', () => {
     const view = render(<GenericToolCard {...ownerProps(settled({
       callView: callTerminal({ description: 'Terminal 3' }),
     }))} />)
     expect(view.getByText('Terminal 3')).toBeTruthy()
     toggleRow(view)
-    expect(view.container.querySelector('[data-terminal]')).not.toBeNull()
-    expect(view.getByText('Terminal 3')).toBeTruthy()
+    const terminal = view.container.querySelector('[data-terminal]')
+    expect(terminal).not.toBeNull()
+    expect(terminal?.querySelector('[data-terminal-title]')?.textContent).toContain('Terminal 3')
   })
 
   it('a running terminal call expands to the prompt line with no output yet', () => {
@@ -363,7 +361,8 @@ describe('BashRow terminal card', () => {
     expect(view.queryByText(/a\.ts/)).toBeNull()
     fireEvent.click(view.container.querySelector('[data-expandable]')!)
     expect(view.getByText('a.ts  b.ts', RAW)).toBeTruthy()
-    expect(view.getByText('复制')).toBeTruthy()
+    expect(view.container.querySelector('[data-terminal-title]')?.textContent).toContain('List files')
+    expect(view.getByRole('button', { name: '复制' })).toBeTruthy()
     // Collapse back in place: the summary row returns, the card unmounts.
     fireEvent.click(view.container.querySelector('[data-expandable]')!)
     expect(view.queryByText(/a\.ts/)).toBeNull()
@@ -440,4 +439,3 @@ describe('BashRow terminal card', () => {
     expect(view.container.querySelector('[data-error]')?.textContent).toBe('Error: command aborted')
   })
 })
-

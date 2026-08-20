@@ -16,6 +16,7 @@
   --dsl-terminal-gutter: 30px;
 
   position: relative;
+  box-sizing: border-box;
   margin: 16px 0;
   /* The gutter is the card's OWN padding, not a margin: every consumer rewrites
      `margin` wholesale (each render site sets its own indent), which silently
@@ -24,7 +25,8 @@
      with the component that depends on it. */
   padding-left: var(--dsl-terminal-gutter);
   color: var(--dsw-alias-label-primary);
-  background: var(--dsw-alias-markdown-code-block);
+  border: 1px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-specific-sidebar-fill);
   border-radius: var(--dsl-terminal-radius);
   /* Clip the banner to the card's own radius: when a consumer adds a border,
      the banner's equal corner radius no longer nests inside it and leaves a
@@ -32,10 +34,34 @@
   overflow: hidden;
 }
 
-/* The status pill and copy control top-align to the FIRST prompt row (their
-   heights are capped to the prompt line, so on a multi-line command they sit
-   with the first command instead of floating mid-banner). */
-.header {
+.titleHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 42px;
+  box-sizing: border-box;
+  margin-left: calc(-1 * var(--dsl-terminal-gutter));
+  padding: 7px 7px 7px 11px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  border-top-left-radius: var(--dsl-terminal-radius);
+  border-top-right-radius: var(--dsl-terminal-radius);
+}
+
+.title {
+  min-width: 0;
+  flex: 1;
+  color: var(--dsw-alias-label-primary);
+  font: var(--dsw-font-xs-13);
+  font-weight: 500;
+}
+
+/* The status pill and titleless fallback copy control top-align to the FIRST
+   prompt row (their heights are capped to the prompt line, so on a multi-line
+   command they sit with the first command instead of floating mid-section). */
+.commandHeader {
+  min-height: 42px;
+  box-sizing: border-box;
   display: flex;
   align-items: flex-start;
   gap: 12px;
@@ -44,9 +70,7 @@
      keep their positions. The banner shares the card's own surface (no banner
      token): the l2 divider below is the section boundary. */
   margin-left: calc(-1 * var(--dsl-terminal-gutter));
-  padding: 9px 14px 9px var(--dsl-terminal-gutter);
-  border-top-left-radius: var(--dsl-terminal-radius);
-  border-top-right-radius: var(--dsl-terminal-radius);
+  padding: 7px 7px 7px var(--dsl-terminal-gutter);
   /* A long multi-line command scrolls inside the banner (same cap as the
      IN/OUT card's sections) instead of pushing the output off screen. */
   max-height: 150px;
@@ -54,21 +78,19 @@
 }
 
 /* Banner scrollbar floats off the card edge like the output's. */
-.header::-webkit-scrollbar-thumb {
+.block:not([data-titled]) .commandHeader {
+  border-top-left-radius: var(--dsl-terminal-radius);
+  border-top-right-radius: var(--dsl-terminal-radius);
+}
+
+.commandHeader::-webkit-scrollbar-thumb {
   border: 2px solid transparent;
   background-clip: padding-box;
   border-radius: 6px;
 }
 
-.header::-webkit-scrollbar-track {
+.commandHeader::-webkit-scrollbar-track {
   margin: 6px;
-}
-
-/* Full-width l2 hairline between the command banner and the body — the same
-   divider the IN/OUT card draws between its sections. A running card is
-   banner-only, so it draws none. */
-.block:not([data-running]) .header {
-  border-bottom: 1px solid var(--dsw-alias-border-l2);
 }
 
 /* One row per command line. The prompt column is the only element allowed to
@@ -145,8 +167,14 @@
   top: 0;
   /* Card surface, not transparent: the control is sticky over the banner's
      own scroll, so scrolled command text must not bleed through it. */
-  background-color: var(--dsw-alias-markdown-code-block);
-  border: none;
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--dsw-specific-sidebar-fill);
+  border: 0;
+  border-radius: 50%;
   padding: 0;
   margin: 0;
   color: var(--dsw-alias-label-secondary);
@@ -155,6 +183,9 @@
   line-height: var(--dsl-terminal-line-height);
 }
 
+.copyButton:hover { color: var(--dsw-alias-label-primary); background: var(--dsw-alias-interactive-bg-hover); }
+.copyButton:focus-visible { outline: 1px solid var(--dsw-alias-state-business-primary); outline-offset: -1px; }
+
 /* Vertical scrolling lives on the OUTPUT, not the card root: a root scroller
    would run its scrollbar over the banner (and the copy control), while here
    the banner stays pinned and the bar sits inside the output's right padding.
@@ -162,6 +193,8 @@
 .output {
   max-height: var(--dsl-terminal-output-max-height, none);
   padding: 12px 14px 12px 0;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-specific-sidebar-fill);
   font: var(--dsl-terminal-font);
   overflow-x: auto;
   overflow-y: auto;

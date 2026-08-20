@@ -43,6 +43,10 @@ export const EMPTY_ARTIFACTS_SNAPSHOT: ArtifactsSnapshot = {
 }
 
 declare module '@deepseek-ai/dsh-client-runtime/client' {
+  interface ConversationTurnDataMap {
+    /** Successful mutation paths accumulated for Artifact/mention consumers. */
+    'workbench-artifact': ArtifactTurnData
+  }
   interface ConversationViewSnapshotMap {
     /** Live produced-files list consumed by the Workbench Artifact panel. */
     artifacts: ArtifactsSnapshot

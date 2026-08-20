@@ -18,11 +18,11 @@
 // lifecycle updates replace only their own row without remounting it.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type {  } from '@deepseek-ai/dsh-client-runtime/client'
 import { IconChevronDownOutline14 } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { ChatRenderSlotProps, EmbedNodeDispatch, ThinkMode } from '../contract/slots.ts'
 import { PendingSteeringBubble } from './MessageItem.tsx'
 import { ChatNodeSeat } from './ChatNodeSeat.tsx'
+import { ReasoningRow } from './ReasoningRow.tsx'
 import { ExecutionSlot, type SlotDrafting, type SlotMember } from './ExecutionSlot.tsx'
 import { formatRunDuration } from './message-chrome.ts'
 import css from './ChatView.module.css'
@@ -77,19 +77,17 @@ function anchorElement(list: HTMLElement, key: string): HTMLElement | null {
   return null
 }
 
-
 /** Turn-level model activity label retained across first-token, tool, and streaming phases. */
-function TurnStatus({ startTime, t, thinkForm, onToggleThinkMode, showThinkSwitch }: {
+function TurnStatus({ startTime, t, thinkingText, onShowThinking }: {
   /** The running turn's logged `turn/start` time; null falls back to mount
    *  time when that boundary is outside the window. */
   startTime: number | null
   /** The owning mode body's locale seat. */
   t: ChatRenderSlotProps['t']
-  /** Active think display form; the Thinking chip switches the mode live. */
-  thinkForm: ThinkMode
-  onToggleThinkMode: () => void
-  /** Only while the model is thinking right now (streaming reasoning blocks). */
-  showThinkSwitch: boolean
+  /** Current streaming reasoning block; null hides the classic-mode link. */
+  thinkingText: string | null
+  /** Enter the Think render mode, where the complete reasoning is inline. */
+  onShowThinking: () => void
 }) {
   const [mountedAt] = useState(() => Date.now())
   // Anchored to turn/start so a mid-turn reload keeps the real
@@ -108,34 +106,36 @@ function TurnStatus({ startTime, t, thinkForm, onToggleThinkMode, showThinkSwitc
   // has clearly been running for a while.
   const showClock = elapsedMs >= 15_000
   return (
-    <div className={css.turnStatus} role="status" aria-live="polite">
-      Deep diving...
-      {showClock && (
-        <span className={css.turnStatusClock} aria-hidden>
-          {formatRunDuration(elapsedMs, t)}
-        </span>
-      )}
-      {showThinkSwitch && (
-        <button
-          type="button"
-          className={css.thinkToggle}
-          aria-pressed={thinkForm === 'compact'}
-          title={thinkForm === 'compact' ? t('execflow.status.showThink') : t('execflow.status.hideThink')}
-          onClick={onToggleThinkMode}
-        >
-          {t('execflow.status.thinking')}
-        </button>
+    <div className={css.turnStatus}>
+      <span className={css.turnStatusStatus} role="status" aria-live="polite">
+        <span className={css.turnStatusLabel}>Deep diving...</span>
+        {showClock && (
+          <span className={css.turnStatusClock} aria-hidden>
+            {formatRunDuration(elapsedMs, t)}
+          </span>
+        )}
+      </span>
+      {thinkingText !== null && (
+        <div className={css.turnStatusThinking}>
+          <ReasoningRow
+            text={thinkingText}
+            running
+            activationLabel={t('execflow.status.showThink')}
+            onActivate={onShowThinking}
+            t={t}
+          />
+        </div>
       )}
     </div>
   )
 }
 
 /** Injected face of the execflow mode bodies: which think form this mode is
- * (classic = compact, think = inline) and the sibling mode to switch to. */
+ * (classic = compact, think = inline) and its sibling mode id. */
 export interface ExecFlowBodyInjected {
   /** Active think display form for this mode's partition and renderers. */
   thinkForm: ThinkMode
-  /** The sibling execflow mode id (the Thinking chip switches between them). */
+  /** Target mode for Classic's live Think-row shortcut. */
   siblingId: string
 }
 
@@ -146,7 +146,7 @@ export type ExecFlowBodyProps = ChatRenderSlotProps & ExecFlowBodyInjected & Exe
 export interface ExecFlowBodyEmbedProps {
   /** When present, node dispatch crosses the Activity embed's mirror seat. */
   embedNodeSeat?: { readonly dispatch: EmbedNodeDispatch } | undefined
-  /** True in the embed: the classic form is fixed, so the Thinking chip never shows. */
+  /** True in the embed: the classic form is fixed, so its live Think link never shows. */
   lockThinkForm?: boolean | undefined
   /**
    * Full bottom padding (px) for the scroll container, replacing the base
@@ -185,6 +185,8 @@ export function ExecFlowBody({
   const runningTurnStart = useMemo(() => runningTurnStartTime(timeline), [timeline])
 
   const partial = useSession(s => s.partial)
+  const streamingTail = partial?.blocks.at(-1)
+  const streamingReasoning = streamingTail?.kind === 'reasoning' ? streamingTail.text : null
   // Drafting signature: names+count of the partial's tool-call blocks. The
   // partition only cares about THIS shape — text deltas inside the partial
   // change the object identity every token but never the signature, so the
@@ -590,15 +592,14 @@ export function ExecFlowBody({
               double-render the same wait. */}
           {/* Turn-level loading signal: rides the whole running turn (first-token
               wait, tool execution, streaming) so it never flickers per step.
-              The Thinking switch shows only while the model is actually
-              thinking this moment (streaming reasoning blocks in the partial). */}
+              Classic mode adds one live single-line reasoning link; each
+              reasoning block unmounts as soon as its streaming phase ends. */}
           {running && (
             <TurnStatus
               startTime={runningTurnStart}
               t={t}
-              thinkForm={thinkForm}
-              onToggleThinkMode={() => { selectRenderMode(sessionId, siblingId, actions.setRenderMode) }}
-              showThinkSwitch={!lockThinkForm && partial !== null && partial.blocks.some(block => block.kind === 'reasoning')}
+              thinkingText={!lockThinkForm && thinkForm === 'compact' ? streamingReasoning : null}
+              onShowThinking={() => { selectRenderMode(sessionId, siblingId, actions.setRenderMode) }}
             />
           )}
           {pendingSteering.map(item => (

@@ -20,6 +20,16 @@ afterEach(() => {
 })
 
 describe('JsonTree', () => {
+  it('opts into width wrapping without changing the default scrolling behavior', () => {
+    const view = render(<JsonTree wrap data={{ path: '/a/very/long/path', nested: { value: true } }} />)
+    const root = view.container.querySelector('[data-wrap]')
+    expect(root).not.toBeNull()
+    view.unmount()
+
+    const plain = render(<JsonTree data={{ path: '/a/very/long/path' }} />)
+    expect(plain.container.querySelector('[data-wrap]')).toBeNull()
+  })
+
   it('keeps the top level open and renders expandable value previews', () => {
     render(
       <JsonTree

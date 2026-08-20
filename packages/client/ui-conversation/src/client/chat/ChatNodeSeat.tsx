@@ -32,19 +32,25 @@ export const ChatNodeSeat = memo(function ChatNodeSeat({
 }: ChatNodeSeatProps) {
   const node = useSession(snapshot => snapshot.chat.nodes.get(nodeKey))
   const routedNode = node as ChatNode | undefined
+  const turnId = node?.location.kind === 'turn' || node?.location.kind === 'step'
+    ? node.location.turn.turn
+    : undefined
+  const routedRevealChange = useMemo(() => revealChange === undefined
+    ? undefined
+    : (path: string) => { revealChange(path, turnId) }, [revealChange, turnId])
   const owner = useMemo<ChatNodeOwnerProps | null>(() => node === undefined
     ? null
     : {
       selectedCallId,
       cwd,
       openFile,
-      revealChange,
+      revealChange: routedRevealChange,
       inspectCall,
       forkAt,
       loadImage,
       fileMentions,
       thinkMode,
-    }, [node, selectedCallId, cwd, openFile, revealChange, inspectCall, forkAt, loadImage, fileMentions, thinkMode])
+    }, [node, selectedCallId, cwd, openFile, routedRevealChange, inspectCall, forkAt, loadImage, fileMentions, thinkMode])
   if (routedNode === undefined || owner === null) return null
   // Runtime dispatch owns the correlation: every Node's discriminant is the
   // keyed-slot entry passed alongside that same Node. TypeScript does not

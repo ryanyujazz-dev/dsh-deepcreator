@@ -1523,6 +1523,7 @@ function RecordPayload({
         data={json}
         label="Result JSON"
         className={payloadClassName}
+        wrap
       />
     )
   }
@@ -1564,6 +1565,7 @@ function RecordPayload({
         data={json}
         label={`${direction === 'input' ? 'Payload' : 'Result'} JSON`}
         className={payloadClassName}
+        wrap
       />
     )
   }
@@ -1573,8 +1575,7 @@ function RecordPayload({
       preview ? css.payloadPreview : undefined,
       error ? css.errorPayload : undefined,
       value === 'No output' ? css.noOutputText : undefined,
-    ].filter((value): value is string => value !== undefined).join(' ')}
-    >
+    ].filter((item): item is string => item !== undefined).join(' ')}>
       {value}
     </pre>
   )
@@ -1604,6 +1605,7 @@ function RecordSchema({
             data={schema.parameters}
             label={`${schema.name} parameters JSON`}
             className={css.schemaTree}
+            wrap
           />
         </section>
       </div>

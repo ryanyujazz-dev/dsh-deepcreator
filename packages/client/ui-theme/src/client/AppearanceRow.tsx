@@ -90,7 +90,6 @@ function CodeThemePreview({ themeId, label }: { themeId: LightCodeTheme | DarkCo
     <div className={css.preview} data-code-theme={themeId} data-code-theme-isolate aria-label={label}>
       <DiffBlock
         diffs={PREVIEW_DIFF}
-        maxLines={8}
         showPath={false}
         showFooter={false}
         variant="preview"

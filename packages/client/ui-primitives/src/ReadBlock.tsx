@@ -12,7 +12,10 @@
 import { useCallback, useMemo, useState, useSyncExternalStore } from 'react'
 import clsx from 'clsx'
 import { writeClipboard } from './clipboard.ts'
-import { FileLabel } from './file-icons/FileIcon.tsx'
+import { FileIcon } from './file-icons/FileIcon.tsx'
+import { IconCheckOutline16, IconCopyOutline16 } from './icons/index.tsx'
+import { Tooltip } from './Tooltip.tsx'
+import { OverflowFadeText } from './OverflowFadeText.tsx'
 import {
   grammarLoadCount,
   highlightLines,
@@ -140,7 +143,8 @@ export function ReadBlock({
     <div className={clsx(css.block, className)} data-read="">
       <div className={css.banner}>
         <div className={css.label}>
-          {label === undefined ? '' : filePath === undefined ? label : <FileLabel path={filePath} label={label} />}
+          {filePath !== undefined && <FileIcon path={filePath} />}
+          {label !== undefined && <OverflowFadeText className={css.labelText} text={label} fade={filePath === undefined ? 'right' : 'left'} />}
         </div>
         <div className={css.action}>
           {windowed && (
@@ -152,9 +156,11 @@ export function ReadBlock({
               card:'read', so this branch is reachable, and copying then would
               wipe the clipboard with an empty string. */}
           {lines.length > 0 && (
-            <button type="button" className={css.copyButton} onClick={onCopy}>
-              {copied ? '复制成功' : '复制'}
-            </button>
+            <Tooltip label={copied ? '复制成功' : '复制'} side="bottom">
+              <button type="button" className={css.copyButton} aria-label={copied ? '复制成功' : '复制'} onClick={onCopy}>
+                {copied ? <IconCheckOutline16 size={14} /> : <IconCopyOutline16 size={14} />}
+              </button>
+            </Tooltip>
           )}
         </div>
       </div>

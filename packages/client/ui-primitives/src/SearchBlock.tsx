@@ -12,6 +12,8 @@ import { useCallback, useState, type ReactNode } from 'react'
 import clsx from 'clsx'
 import { FileIcon } from './file-icons/FileIcon.tsx'
 import { headTailCap } from './head-tail-cap.ts'
+import { IconCheckOutline16, IconCopyOutline16 } from './icons/index.tsx'
+import { Tooltip } from './Tooltip.tsx'
 import { useCopyFeedback } from './use-copy-feedback.ts'
 import css from './SearchBlock.module.css'
 
@@ -243,9 +245,11 @@ export function SearchBlock(props: SearchBlockProps) {
       <div className={css.header}>
         <span className={css.summary}>{summaryText(props, shown, truncated, total)}</span>
         {!empty && (
-          <button type="button" className={css.copyButton} onClick={onCopy}>
-            {copied ? '复制成功' : '复制'}
-          </button>
+          <Tooltip label={copied ? '复制成功' : '复制'} side="bottom">
+            <button type="button" className={css.copyButton} aria-label={copied ? '复制成功' : '复制'} onClick={onCopy}>
+              {copied ? <IconCheckOutline16 size={14} /> : <IconCopyOutline16 size={14} />}
+            </button>
+          </Tooltip>
         )}
       </div>
       {empty

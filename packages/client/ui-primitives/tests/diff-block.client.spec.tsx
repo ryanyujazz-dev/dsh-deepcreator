@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-// DiffBlock: the per-file hunk rows (path header, removed block, added block),
-// the same-file second-hunk gap separator, the `+A -R · N file(s)` footer and
+// DiffBlock: the per-file cards (path header, removed block, added block),
+// same-file hunk composition, the `+A -R · N file(s)` footer and
 // its singular/plural, context and head/tail inline FoldRows, the
 // empty-diffs null render, and the copy control writing the prefixed diff text
 // on both the accepted and the refused clipboard paths. writeClipboard's own
@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import {
-  buildDiffHunkModel, DEFAULT_DIFF_MAX_LINES, DiffBlock, parseUnifiedDiff, type DiffHunk,
+  buildDiffHunkModel, DiffBlock, parseUnifiedDiff, type DiffHunk,
 } from '../src/index.ts'
 
 afterEach(cleanup)
@@ -38,11 +38,12 @@ function added(count: number): string {
 }
 
 describe('DiffBlock structure', () => {
-  it('lets only the Review variant reveal its app-owned panel surface', () => {
+  it('uses the shared conversation-card surface while Review reveals its owning panel', () => {
     const stylesheet = readFileSync(resolve(process.cwd(), 'packages/client/ui-primitives/src/DiffBlock.module.css'), 'utf8')
 
-    expect(stylesheet).toMatch(/\.hunk\s*\{[^}]*background:\s*var\(--ds-code-background/)
+    expect(stylesheet).toMatch(/\.hunk\s*\{[^}]*background:\s*var\(--dsw-specific-sidebar-fill\)/)
     expect(stylesheet).toMatch(/\.review\s+\.hunk\s*\{[^}]*background:\s*transparent;/)
+    expect(stylesheet).toMatch(/\.rows\s*\{[^}]*max-height:\s*var\(--dsl-diff-rows-max-height, none\);[^}]*overflow-y:\s*auto;/s)
   })
 
   it('advances absolute old/new line numbers independently and marks changed words', () => {
@@ -102,6 +103,13 @@ describe('DiffBlock structure', () => {
     expect(container.querySelectorAll('[class*="_add_"]').length).toBe(2)
   })
 
+  it('treats the file header as a tail-preserving path title', () => {
+    const { container } = render(<DiffBlock diffs={[{ path: 'packages/client/src/chat.tsx', oldText: 'a', newText: 'b' }]} />)
+    const title = container.querySelector('[data-overflow-fade="left"]')
+    expect(title?.textContent).toBe('packages/client/src/chat.tsx')
+    expect(title?.getAttribute('title')).toBe('packages/client/src/chat.tsx')
+  })
+
   it('renders an edit as a removed block above an added block', () => {
     const diffs: DiffHunk[] = [{ path: 'a.ts', oldText: 'old', newText: 'new' }]
     const { container } = render(<DiffBlock diffs={diffs} />)
@@ -110,14 +118,16 @@ describe('DiffBlock structure', () => {
     expect(changeRows(container)).toEqual(['old', 'new'])
   })
 
-  it('renders every distant hunk as an independent card with its full path', () => {
+  it('composes distant hunks from one file into one file card and one aggregated header', () => {
     const diffs: DiffHunk[] = [
       { path: 'a.ts', oldText: 'x', newText: 'y' },
       { path: 'a.ts', oldText: 'p', newText: 'q' },
     ]
     const { container } = render(<DiffBlock diffs={diffs} />)
-    expect(container.querySelectorAll('[data-diff-hunk]').length).toBe(2)
-    expect(container.querySelectorAll('[class*="_path_"]').length).toBe(2)
+    expect(container.querySelectorAll('[data-diff-file]').length).toBe(1)
+    expect(container.querySelectorAll('[class*="_path_"]').length).toBe(1)
+    expect(screen.getByText('+2')).toBeTruthy()
+    expect(screen.getByText('-2')).toBeTruthy()
   })
 
   it('opens a new file with its own path header', () => {
@@ -127,7 +137,7 @@ describe('DiffBlock structure', () => {
     ]
     const { container } = render(<DiffBlock diffs={diffs} />)
     expect(container.querySelectorAll('[class*="_path_"]').length).toBe(2)
-    expect(container.querySelectorAll('[data-diff-hunk]').length).toBe(2)
+    expect(container.querySelectorAll('[data-diff-file]').length).toBe(2)
   })
 
   it('renders nothing for empty diffs', () => {
@@ -173,29 +183,23 @@ describe('DiffBlock footer', () => {
   })
 })
 
-describe('DiffBlock height cap', () => {
-  it('inserts an inline FoldRow between the capped head and tail', () => {
-    // One added line over the default cap forces the collapse.
-    const diffs: DiffHunk[] = [{ path: 'a.ts', oldText: null, newText: added(DEFAULT_DIFF_MAX_LINES + 1) }]
+describe('DiffBlock context folding', () => {
+  it('never folds changed rows behind the general line cap', () => {
+    const diffs: DiffHunk[] = [{ path: 'a.ts', oldText: null, newText: added(24) }]
     const { container } = render(<DiffBlock diffs={diffs} />)
-    const toggle = screen.getByRole('button', { name: '展开 2 行' })
-    // Collapsed shows fewer rows than the full body.
-    const collapsedCount = bodyRows(container).length
-    expect(collapsedCount).toBeLessThan(DEFAULT_DIFF_MAX_LINES + 1)
-    fireEvent.click(toggle)
-    expect(screen.queryByRole('button', { name: '展开 2 行' })).toBeNull()
-    expect(bodyRows(container)).toHaveLength(DEFAULT_DIFF_MAX_LINES + 1)
+    expect(screen.queryByRole('button', { name: /展开 \d+ 行/ })).toBeNull()
+    expect(bodyRows(container)).toHaveLength(24)
   })
 
   it('shows no expand control at or under the cap', () => {
     const diffs: DiffHunk[] = [{ path: 'a.ts', oldText: null, newText: added(4) }]
-    render(<DiffBlock diffs={diffs} maxLines={16} />)
+    render(<DiffBlock diffs={diffs} />)
     expect(screen.queryByRole('button', { name: /展开 \d+ 行/ })).toBeNull()
   })
 
   it('folds a long context run in place and expands only that FoldRow', () => {
     const stable = Array.from({ length: 20 }, (_value, index) => `stable ${index + 1}`).join('\n')
-    const { container } = render(<DiffBlock diffs={[{ path: 'stable.ts', oldText: stable, newText: stable }]} maxLines={16} />)
+    const { container } = render(<DiffBlock diffs={[{ path: 'stable.ts', oldText: stable, newText: stable }]} />)
     const toggle = screen.getByRole('button', { name: '展开 14 行' })
 
     expect(bodyRows(container)).toHaveLength(6)
@@ -204,11 +208,11 @@ describe('DiffBlock height cap', () => {
     expect(bodyRows(container)).toHaveLength(20)
   })
 
-  it('reports expanded folds and re-folds every row on a reset signal', () => {
+  it('reports expanded context folds and re-folds them on a reset signal', () => {
     const stable = Array.from({ length: 20 }, (_value, index) => `stable ${index + 1}`).join('\n')
     const expandedFolds = vi.fn()
     const { rerender } = render(
-      <DiffBlock diffs={[{ path: 'stable.ts', oldText: stable, newText: stable }]} maxLines={16} onFoldStateChange={expandedFolds} />,
+      <DiffBlock diffs={[{ path: 'stable.ts', oldText: stable, newText: stable }]} onFoldStateChange={expandedFolds} />,
     )
     expect(expandedFolds).toHaveBeenLastCalledWith(0)
     fireEvent.click(screen.getByRole('button', { name: '展开 14 行' }))
@@ -216,7 +220,7 @@ describe('DiffBlock height cap', () => {
     expect(screen.queryByRole('button', { name: '展开 14 行' })).toBeNull()
 
     rerender(
-      <DiffBlock diffs={[{ path: 'stable.ts', oldText: stable, newText: stable }]} maxLines={16} foldResetSignal={1} onFoldStateChange={expandedFolds} />,
+      <DiffBlock diffs={[{ path: 'stable.ts', oldText: stable, newText: stable }]} foldResetSignal={1} onFoldStateChange={expandedFolds} />,
     )
     expect(screen.getByRole('button', { name: '展开 14 行' })).toBeTruthy()
     expect(expandedFolds).toHaveBeenLastCalledWith(0)
@@ -268,8 +272,8 @@ describe('DiffBlock copy', () => {
     render(<DiffBlock diffs={diffs} />)
     const copy = screen.getByRole('button', { name: '复制' })
     await act(async () => { fireEvent.click(copy) })
-    // Path header, del/add prefixes, and the same-file gap all reach the clipboard.
-    expect(writeText).toHaveBeenCalledWith('a.ts\n- old\n+ new\na.ts\n- p\n+ q')
+    // One file identity precedes all of its composed hunks.
+    expect(writeText).toHaveBeenCalledWith('a.ts\n- old\n+ new\n- p\n+ q')
     expect(screen.getByRole('button', { name: '复制成功' })).toBeTruthy()
     await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
     expect(screen.getByRole('button', { name: '复制' })).toBeTruthy()

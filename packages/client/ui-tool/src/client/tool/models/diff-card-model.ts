@@ -7,24 +7,12 @@
  * call this, so the hunks they show are derived once.
  * @module
  */
-import type { DiffBlockProps, DiffHunk } from '@ryanyujazz/dsh-client-ui-primitives'
+import { countDiffHunkLines, type DiffBlockProps, type DiffHunk } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { ToolCallBlock } from './tool-call-model.ts'
 
 /**
- * Diff-body lines the chat row shows before collapsing the middle — half the
- * primitive's own default, which the details panel keeps. A chat row is a
- * summary surface inside the message flow: the flow must stay scannable across
- * many calls, while the details panel is the single-call reading surface. The
- * same split {@link CHAT_TERMINAL_MAX_LINES} draws for a terminal card, so the
- * two card kinds cap a long body at the same place in the flow. A design
- * constant of this UI's row geometry, not a deployment choice.
- */
-export const CHAT_DIFF_MAX_LINES = 8
-
-/**
  * The {@link DiffBlock} props this derivation owns. Picked off the primitive's
- * props so the two stay in step; `maxLines`/`className` belong to each render
- * site.
+ * props so the two stay in step; `className` belongs to each render site.
  */
 export interface DiffCardModel {
   /**
@@ -33,6 +21,16 @@ export interface DiffCardModel {
    * neighbouring field into it.
    */
   card: Pick<DiffBlockProps, 'diffs'>
+  added: number
+  removed: number
+}
+
+function cardModel(diffs: DiffHunk[]): DiffCardModel {
+  const counts = diffs.reduce((total, hunk) => {
+    const next = countDiffHunkLines(hunk)
+    return { added: total.added + next.added, removed: total.removed + next.removed }
+  }, { added: 0, removed: 0 })
+  return { card: { diffs }, ...counts }
 }
 
 /**
@@ -92,12 +90,12 @@ export function diffCardModel(block: ToolCallBlock): DiffCardModel | null {
     // Running: the call view may carry the intended diff; the result is absent.
     const call = block.callView?.card === 'diff' ? block.callView : null
     const diffs = call === null ? null : narrowDiffs(call.diffs)
-    return diffs === null ? null : { card: { diffs } }
+    return diffs === null ? null : cardModel(diffs)
   }
   // Settled: the result view's applied hunks replace the call-time diff. A
   // window that dropped the call head leaves only the result, which still
   // renders — the result view carries the whole change.
   const result = block.resultView?.card === 'diff' ? block.resultView : null
   const diffs = result === null ? null : narrowDiffs(result.diffs)
-  return diffs === null ? null : { card: { diffs } }
+  return diffs === null ? null : cardModel(diffs)
 }

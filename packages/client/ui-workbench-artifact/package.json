@@ -17,7 +17,8 @@
     "@deepseek-ai/dsh-client-runtime",
     "@ryanyujazz/dsh-client-workbench-remotes",
     "@ryanyujazz/dsh-client-ui-workbench",
-    "@ryanyujazz/dsh-client-ui-primitives"
+    "@ryanyujazz/dsh-client-ui-primitives",
+    "@ryanyujazz/dsh-client-ui-conversation"
   ], "platform": "web" } },
   "scripts": { "bundle": "tsc -p tsconfig.json && tsdown", "watch": "tsdown --watch", "typecheck": "tsc -p tsconfig.json --noEmit" },
   "license": "MIT",
@@ -33,7 +34,8 @@
     "@ryanyujazz/dsh-client-locale": "^0.1.0",
     "@ryanyujazz/dsh-client-workbench-remotes": "^0.1.0",
     "@ryanyujazz/dsh-client-ui-primitives": "^0.1.0",
-    "@ryanyujazz/dsh-client-ui-workbench": "^0.1.0"
+    "@ryanyujazz/dsh-client-ui-workbench": "^0.1.0",
+    "@ryanyujazz/dsh-client-ui-conversation": "^0.1.0"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.1",
@@ -48,7 +50,8 @@
     "@ryanyujazz/dsh-client-locale": "workspace:^",
     "@ryanyujazz/dsh-client-workbench-remotes": "workspace:^",
     "@ryanyujazz/dsh-client-ui-primitives": "workspace:^",
-    "@ryanyujazz/dsh-client-ui-workbench": "workspace:^"
+    "@ryanyujazz/dsh-client-ui-workbench": "workspace:^",
+    "@ryanyujazz/dsh-client-ui-conversation": "workspace:^"
   },
   "files": ["lib/index.js", "lib/client.js", "lib/types/**/*.d.ts"]
 }

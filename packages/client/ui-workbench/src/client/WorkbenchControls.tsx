@@ -17,6 +17,19 @@ export function WorkbenchControls({
   // order after all ordered ones.
   const ordered = [...definitions].sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity))
   const visibleTypeIds = controller.visibility.list()
+  const open = (definition: typeof ordered[number]) => {
+    if (definition.openParameters === undefined) {
+      controller.activate(definition.id)
+      return
+    }
+    controller.present({
+      typeId: definition.id,
+      route: 'home',
+      parameters: definition.openParameters,
+      reveal: true,
+      reason: 'user',
+    })
+  }
 
   if (definitions.length === 0) return null
 
@@ -36,7 +49,10 @@ export function WorkbenchControls({
           selectedIds={visibleTypeIds}
           onSelect={(typeId) => {
             if (visibleTypeIds.includes(typeId)) controller.hide(typeId)
-            else controller.activate(typeId)
+            else {
+              const definition = ordered.find(item => item.id === typeId)
+              if (definition !== undefined) open(definition)
+            }
             setMenuOpen(false)
           }}
           portal
@@ -77,7 +93,7 @@ export function WorkbenchControls({
               disabled={disabled}
               onClick={() => {
                 if (visible) controller.hide(definition.id)
-                else controller.activate(definition.id)
+                else open(definition)
               }}
             >
               {renderSlot('deepcreator.workbench.panel-icon', { size: ICON_TOOLBAR_GLYPH_SIZE, visible }, { only: definition.id })}

@@ -9,20 +9,26 @@
   --dsl-search-line-height: 22px;
 
   position: relative;
+  box-sizing: border-box;
+  overflow: hidden;
   margin: 16px 0;
+  border: 1px solid var(--dsw-alias-border-l1);
   color: var(--dsw-alias-label-primary);
-  background: var(--dsw-alias-markdown-code-block);
+  background: var(--dsw-specific-sidebar-fill);
   border-radius: var(--dsl-search-radius);
 }
 
 /* The banner: result summary on the left, the copy control holding its
    intrinsic width on the right. */
 .header {
+  height: 42px;
+  min-height: 42px;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 9px 14px;
-  background: var(--dsw-alias-markdown-code-block-banner);
+  padding: 7px 7px 7px 11px;
+  background: transparent;
   border-top-left-radius: var(--dsl-search-radius);
   border-top-right-radius: var(--dsl-search-radius);
 }
@@ -39,8 +45,14 @@
 
 .copyButton {
   flex: none;
-  background-color: transparent;
-  border: none;
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
   padding: 0;
   margin: 0;
   color: var(--dsw-alias-label-secondary);
@@ -48,7 +60,12 @@
   font: var(--dsw-font-xs-13);
 }
 
+.copyButton:hover { color: var(--dsw-alias-label-primary); background: var(--dsw-alias-interactive-bg-hover); }
+.copyButton:focus-visible { outline: 1px solid var(--dsw-alias-state-business-primary); outline-offset: 1px; }
+
 .body {
+  border-top: 1px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-specific-sidebar-fill);
   padding: 8px 14px 12px 0;
   font: var(--dsw-font-markdown-code-block);
   overflow-x: auto;

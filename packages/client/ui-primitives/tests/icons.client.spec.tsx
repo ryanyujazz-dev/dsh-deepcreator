@@ -70,7 +70,7 @@ describe('ic_ds_ icon set', () => {
     const review = render(<DeepCreatorIconReview16 />).container
     expect(review.querySelectorAll('rect')).toHaveLength(1)
     expect(review.querySelector('rect')!.getAttribute('rx')).toBe('2')
-    expect(review.querySelector('path')!.getAttribute('d')).toBe('M5.5 6h5M8 3.5v5M6.5 12h3')
+    expect(review.querySelector('path')!.getAttribute('d')).toBe('M5.5 6h5M8 3.5v5M6.5 11.5h3')
 
     const terminal = render(<DeepCreatorIconTerminal16 />).container
     expect(terminal.querySelectorAll('rect, circle')).toHaveLength(0)

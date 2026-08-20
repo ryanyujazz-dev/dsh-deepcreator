@@ -112,8 +112,8 @@ export function BashRow({ toolName, block, sessionId, useSessions, inspect, exec
         {status !== null && <span className={css.visuallyHidden}>{status}</span>}
         <span className={css.title}>{model.title}</span>
         <span className={css.sep} aria-hidden />
-        {/* The terminal presenter's description is the contractual
-            above-card summary; a failure's first line outranks both. */}
+        {/* The terminal presenter's description names both this summary and
+            the expanded card title; a failure's first line outranks both. */}
         <span className={clsx(css.summary, failureLine !== null && css.errorSummary)}>
           {failureLine ?? terminal?.description ?? model.summary}
         </span>
@@ -126,6 +126,7 @@ export function BashRow({ toolName, block, sessionId, useSessions, inspect, exec
             ? (
               <TerminalBlock
                 {...terminal.card}
+                title={terminal.description}
                 maxLines={Infinity}
                 labels={terminalBlockLabels(t)}
                 className={css.terminal}

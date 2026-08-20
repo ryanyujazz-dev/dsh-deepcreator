@@ -118,6 +118,7 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
     read: () => savedScroll,
   }
   const forkAt = vi.fn()
+  const selectRenderMode = vi.fn<ChatRenderSlotProps['selectRenderMode']>()
   const chat = createChatStore().create()
   const t = makeTranslate(zh, commonZh)
   const renderSlot = ((_key: string, _owner: object, opts?: { fallback?: React.ReactNode }) =>
@@ -147,14 +148,69 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
     chatScroll,
     forkAt,
     fileMentions: () => undefined,
+    selectRenderMode,
     t,
     thinkForm: 'compact',
     siblingId: 'think',
   }
-  return { set, Body: ExecFlowBody, props, openDetails, openFile, loadOlder, inspectCall, chatScroll, forkAt }
+  return {
+    set, Body: ExecFlowBody, props, openDetails, openFile, loadOlder, inspectCall,
+    chatScroll, forkAt, selectRenderMode,
+  }
 }
 
 describe('ExecFlow partition and slot forms', () => {
+
+  it('shows the live reasoning tail in classic mode and enters Think mode from the row', () => {
+    const h = makeHarness({
+      nodes: [user(1, 'go')],
+      running: true,
+      partial: {
+        turn: 1,
+        step: 1,
+        blocks: [{ kind: 'reasoning', text: 'first line\nstreaming tail' }],
+      },
+    })
+    const view = render(<h.Body {...h.props} />)
+    const link = view.getByRole('button', { name: '显示思考内容' })
+    expect(link.hasAttribute('data-disclosure-row')).toBe(true)
+    expect(link.hasAttribute('aria-expanded')).toBe(false)
+    expect(link.querySelector('svg')).not.toBeNull()
+    expect(view.getByText('streaming tail')).toBeTruthy()
+    expect(view.getByRole('status').textContent).toBe('Deep diving...')
+
+    fireEvent.click(link)
+    expect(h.selectRenderMode).toHaveBeenCalledWith(SID, 'think', h.props.actions.setRenderMode)
+
+    act(() => {
+      h.set({
+        partial: {
+          turn: 1,
+          step: 1,
+          blocks: [{ kind: 'reasoning', text: 'first line\nnewest streamed thought' }],
+        },
+      })
+    })
+    expect(view.getByRole('button', { name: '显示思考内容' })).toBe(link)
+    expect(view.getByText('newest streamed thought')).toBeTruthy()
+    expect(view.container.querySelector('[class*="thinkBody"]')).toBeNull()
+
+    // Each individual Think row exists only while reasoning is the streaming
+    // tail; advancing to a tool block removes it immediately.
+    act(() => {
+      h.set({
+        partial: {
+          turn: 1,
+          step: 2,
+          blocks: [{ kind: 'tool-call', callId: 'call-1', name: 'bash', argsRaw: '{' }],
+        },
+      })
+    })
+    expect(view.queryByRole('button', { name: '显示思考内容' })).toBeNull()
+
+    view.rerender(<h.Body {...h.props} thinkForm="inline" siblingId="classic" />)
+    expect(view.queryByRole('button', { name: '显示思考内容' })).toBeNull()
+  })
 
   it('contiguous same-turn tool calls collapse into one aggregate row', () => {
     const h = makeHarness({

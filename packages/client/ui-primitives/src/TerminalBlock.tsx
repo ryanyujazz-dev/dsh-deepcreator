@@ -9,9 +9,12 @@ import { useCallback, useMemo, useState } from 'react'
 import clsx from 'clsx'
 import { parseAnsiLines, type AnsiLine } from './ansi.ts'
 import { headTailCap } from './head-tail-cap.ts'
+import { IconCheckOutline16, IconCopyOutline16 } from './icons/index.tsx'
 import { useCopyFeedback } from './use-copy-feedback.ts'
 import { Pill } from './Pill.tsx'
+import { OverflowFadeText } from './OverflowFadeText.tsx'
 import { StateDot, type StateDotState } from './StateDot.tsx'
+import { Tooltip } from './Tooltip.tsx'
 import css from './TerminalBlock.module.css'
 
 /**
@@ -70,6 +73,8 @@ const DEFAULT_LABELS: TerminalBlockLabels = {
 }
 
 export interface TerminalBlockProps {
+  /** Model-authored command description shown in the card title bar. */
+  title?: string | undefined
   /** The command line, rendered verbatim after the prompt label. */
   command: string
   /** Working directory for the prompt label; absent renders a plain `$`. */
@@ -172,6 +177,7 @@ function renderLine(line: AnsiLine) {
  * @returns the terminal block element.
  */
 export function TerminalBlock({
+  title,
   command,
   cwd,
   home,
@@ -203,6 +209,7 @@ export function TerminalBlock({
     return terminated ? parsed.slice(0, -1) : parsed
   }, [text])
   const [expanded, setExpanded] = useState(false)
+  const hasTitle = title !== undefined && title.trim() !== ''
   // The raw output, never the rendered tree: the prompt line and the status pill
   // are chrome the user did not run.
   const { copied, onCopy } = useCopyFeedback(text)
@@ -225,10 +232,25 @@ export function TerminalBlock({
   // for invisible bytes, and hide the placeholder that belongs there.
   const empty = lines.every(line => line.every(span => span.text.trim() === ''))
   const { hidden, capped, headLines, tailLines } = headTailCap(lines.length, maxLines, expanded)
+  const copyControl = !running && !empty
+    ? (
+      <Tooltip label={copied ? copy.copied : copy.copy} side="bottom">
+        <button type="button" className={css.copyButton} aria-label={copied ? copy.copied : copy.copy} onClick={onCopy}>
+          {copied ? <IconCheckOutline16 size={14} /> : <IconCopyOutline16 size={14} />}
+        </button>
+      </Tooltip>
+    )
+    : null
 
   return (
-    <div className={clsx(css.block, className)} data-terminal="" data-running={running ? '' : undefined}>
-      <div className={css.header}>
+    <div className={clsx(css.block, className)} data-terminal="" data-running={running ? '' : undefined} data-titled={hasTitle ? '' : undefined}>
+      {hasTitle && (
+        <div className={css.titleHeader} data-terminal-title="">
+          <OverflowFadeText className={css.title} text={title ?? ''} fade="right" />
+          {copyControl}
+        </div>
+      )}
+      <div className={css.commandHeader} data-terminal-command="">
         <div className={css.prompt}>
           <span className={css.runStateLabel}>{state.label}</span>
           {commandLines.map((line, index) => (
@@ -252,11 +274,7 @@ export function TerminalBlock({
           ))}
         </div>
         {status !== undefined && <Pill className={css.status}>{status}</Pill>}
-        {!running && !empty && (
-          <button type="button" className={css.copyButton} onClick={onCopy}>
-            {copied ? copy.copied : copy.copy}
-          </button>
-        )}
+        {!hasTitle && copyControl}
       </div>
       {!running && (empty
         ? <div className={css.empty}>{copy.noOutput}</div>

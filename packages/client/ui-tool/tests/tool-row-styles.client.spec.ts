@@ -46,6 +46,24 @@ describe('ToolRow.module.css summary line', () => {
   })
 })
 
+describe('expanded Edit diff', () => {
+  it('caps only the card code region through the shared DiffBlock seam', () => {
+    expect(css).toMatch(/\.root\[data-variant='edit'\]\s*\{[^}]*--dsl-diff-rows-max-height: 420px;[^}]*\}/s)
+  })
+})
+
+describe('expanded Read source', () => {
+  it('soft-wraps like Artifact and shares the Edit card height budget', () => {
+    expect(declarations('.readBody')).toEqual(expect.arrayContaining([
+      '--dsl-read-body-max-height: 420px',
+      '--dsl-read-overflow-x: hidden',
+      '--dsl-read-overflow-y: auto',
+      '--dsl-read-white-space: pre-wrap',
+      '--dsl-read-overflow-wrap: anywhere',
+    ]))
+  })
+})
+
 describe('execution-flow guide rails', () => {
   it('anchors a Code sub-call branch to its parent icon axis', () => {
     expect(treeCss).toContain('.subCalls::before')

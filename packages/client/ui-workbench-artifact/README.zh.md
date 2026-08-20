@@ -2,7 +2,7 @@
 
 持有 `artifact` Workbench 类型与面板。列表是**官方产物事实**的投影——模型实际写入或编辑的文件——经 trajectory 同款会话事件机制从会话事件折叠而来,不是插件自有副本、也不是拉取。
 
-`workbench-artifact` 节点完全遵循官方 `ui-deliverables` 的推导规则:`turn/start` 启动每轮上下文,`tool/call` 记录调用视图,append 表面的 `tool/result` 收集 diff 卡片(或 generic `edit` 卡片)产出的路径——读取、删除、失败结果与替换表面不产生产物。`artifacts` 快照 builder 把每轮节点折叠为每条路径一条记录(最新产出胜出),按产出时间倒序排列,因此面板列出的文件与对话 turn 尾部展示的完全一致。
+`workbench-artifact` 节点完全遵循官方 `ui-deliverables` 的推导规则:`turn/start` 启动每轮上下文,`tool/call` 记录调用视图,append 表面的 `tool/result` 收集 diff 卡片(或 generic `edit` 卡片)产出的路径——读取、删除、失败结果与替换表面不产生产物。`artifacts` 快照 builder 把每轮节点折叠为每条路径一条记录(最新产出胜出),按产出时间倒序排列。DeepCreator 禁用官方重复的产物尾行，由新的 Turn 变更卡接管可见尾部；本投影只发布 Turn location data，closing prose 的 `chatFileMentions` 仍由官方 `ui-deliverables` client 单独持有，避免组装后的浏览器重复注册同一服务。
 
 实例内容经挂载的 `artifacts` remote 命名空间按活动路径键控读取:仅当活动路径变化或用户手动刷新时重读。每个实例在加载态、错误态与实际内容上方持续显示一条紧凑的完整路径面包屑；视觉片段省略 Unix／UNC 开头的斜杠（可访问名称仍保留精确路径），窄栏优先保留文件侧的末尾路径，并在被裁切的左边缘渐消；最右侧固定保留文件夹操作，通过官方 Workspace 路径开启器打开当前文件的所在目录，不随面包屑滚动或被其挤压；tab 继续只承担短文件名身份。路径缺失或逃逸时展示 reader 的错误码;不存在墓碑状态,因为官方事实从不撤回。
 

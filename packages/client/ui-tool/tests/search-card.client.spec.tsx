@@ -254,7 +254,7 @@ describe('SearchRow keyed card', () => {
     expect(searchRows(view.container)).toContain('12: const foo = 1')
     expect(searchKindOf(view.container)).toBe('matches')
     // The card's copy control lives inside the expanded body.
-    expect(view.getByText('复制')).toBeTruthy()
+    expect(view.getByRole('button', { name: '复制' })).toBeTruthy()
   })
 
   it('expands to the glob path card', () => {
@@ -280,17 +280,16 @@ describe('SearchRow keyed card', () => {
   })
 
   it('surfaces the result text through the Output section when an errored search has no card', () => {
-    // grep/glob return no presentResult on error → no card; the row shows the
-    // first error line as the collapsed summary and the full text once expanded.
+    // grep/glob return no presentResult on error → no card; the row keeps a
+    // fixed failure label and exposes the full diagnostic only when expanded.
     const view = render(<SearchRow {...rowProps(settledGrep({
       isError: true, resultView: null,
       content: [{ type: 'text', text: 'grep: invalid regular expression' }],
     }), 'grep')} />)
     expect(searchKindOf(view.container)).toBeNull()
-    // Error state: the first line is the collapsed summary.
-    expect(view.getByText('grep: invalid regular expression')).toBeTruthy()
+    expect(view.getByText('执行失败')).toBeTruthy()
+    expect(view.queryByText('grep: invalid regular expression')).toBeNull()
     toggleRow(view)
-    // Now in ToolRow's Output section too (the kept summary makes it appear twice).
     expect(view.container.querySelector('[data-error]')?.textContent).toBe('grep: invalid regular expression')
   })
 
@@ -334,7 +333,9 @@ describe('SearchRow keyed card', () => {
       isError: true, resultView: null, content: [],
       error: { name: 'ToolError', code: 'timeout' },
     }), 'grep')} />)
-    // Error state: the derived name/code line is the collapsed summary.
+    expect(view.getByText('执行失败')).toBeTruthy()
+    expect(view.queryByText('ToolError: timeout')).toBeNull()
+    toggleRow(view)
     expect(view.getByText('ToolError: timeout')).toBeTruthy()
   })
 
@@ -374,4 +375,3 @@ describe('SearchRow keyed card', () => {
     expect(searchToolview.inject).toEqual(['slots'])
   })
 })
-

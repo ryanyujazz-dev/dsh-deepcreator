@@ -10,7 +10,9 @@ import type {
   ConversationSnapshot, ObservableSnapshot, SessionId,
 } from '@deepseek-ai/dsh-client-runtime/client'
 import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
-import type { ReviewChecksResult, ReviewStatusResult } from '@ryanyujazz/dsh-review/types'
+import type {
+  ReviewChecksResult, ReviewHistoryResult, ReviewScope, ReviewStatusResult, ReviewUndoTurnResult,
+} from '@ryanyujazz/dsh-review/types'
 import {
   REVIEW_CACHE_LIMIT, REVIEW_PREFETCH_LIMIT, decodeMutationSignal, encodeMutationSignal,
   evictCollapsedCaches, markStale, matchReviewFile, mergeFileEntries, mutationSignal,
@@ -19,17 +21,30 @@ import {
 
 type StatusOk = Extract<ReviewStatusResult, { ok: true }>
 type ChecksOk = Extract<ReviewChecksResult, { ok: true }>
+type HistoryOk = Extract<ReviewHistoryResult, { ok: true }>
 
 /** The immutable view the panel renders through useSyncExternalStore. */
 export interface ReviewCacheSnapshot {
   status: StatusOk | null
   checks: ChecksOk | null
+  history: HistoryOk | null
+  scope: ReviewScope
   entries: Readonly<FileEntries>
   /** Manual-refresh error surface; background failures stay silent. */
   error: string | null
 }
 
-const EMPTY_SNAPSHOT: ReviewCacheSnapshot = { status: null, checks: null, entries: {}, error: null }
+/** A focused refresh must not confuse cancellation or transport failure with a real miss. */
+export type ReviewRefreshOutcome =
+  | { kind: 'ready' }
+  | { kind: 'found'; path: string }
+  | { kind: 'missing' }
+  | { kind: 'superseded' }
+  | { kind: 'error'; message: string }
+
+const EMPTY_SNAPSHOT: ReviewCacheSnapshot = {
+  status: null, checks: null, history: null, scope: 'uncommitted', entries: {}, error: null,
+}
 
 /** Settled mutation tools are coalesced into one invalidation after this long. */
 const MUTATION_DEBOUNCE_MS = 600
@@ -66,6 +81,10 @@ export class ReviewCacheController {
   private seenMutations: MutationSignal = { count: 0, lastSeq: 0, lastName: '', lastPath: null }
   private seenTurnEnds = -1
   private unsubscribeSession: () => void
+  private historyTimer: number | null = null
+  private turnStatsLoading = false
+  private readonly turnStats = new Map<string, { additions: number; deletions: number }>()
+  private readonly onWindowFocus = (): void => { if (!this.disposed) void this.refresh({ silent: true }) }
 
   constructor(options: {
     remote: TypertClientRemote
@@ -86,6 +105,12 @@ export class ReviewCacheController {
     this.seenTurnEnds = initial.turnEnds.size
     this.unsubscribeSession = options.session.subscribe(() => { this.onSessionSnapshot() })
     void this.refresh()
+    if (typeof window !== 'undefined') {
+      this.historyTimer = window.setInterval(() => {
+        if (!this.disposed && document.visibilityState === 'visible') void this.refreshHistory(true, true)
+      }, 2_000)
+      window.addEventListener('focus', this.onWindowFocus)
+    }
   }
 
   readonly subscribe = (listener: () => void): (() => void) => {
@@ -94,6 +119,141 @@ export class ReviewCacheController {
   }
 
   readonly getSnapshot = (): ReviewCacheSnapshot => this.state
+
+  async selectScope(scope: ReviewScope, focusPath?: string): Promise<ReviewRefreshOutcome> {
+    const same = JSON.stringify(scope) === JSON.stringify(this.state.scope)
+    if (!same) {
+      this.queue = []
+      this.queued.clear()
+      this.publish({ scope, status: null, entries: {}, error: null })
+    }
+    // Scope selection and file reveal are user gestures: surface a failed
+    // status request instead of leaving an unexplained blank panel.
+    return this.refresh({ ...(focusPath === undefined ? {} : { focusPath }), silent: false })
+  }
+
+  async refreshHistory(silent = false, refreshOnHeadChange = false): Promise<boolean> {
+    try {
+      const wire = await this.remote.review.history(this.sessionId)
+      if (!wire.ok) throw transportError(wire)
+      if (!wire.value.ok) throw new Error(wire.value.message)
+      if (!this.disposed) {
+        const history = this.mergeTurnStats(wire.value)
+        const previousHead = this.state.history?.head
+        const selectedScope = this.state.scope
+        const selectedTurn = typeof selectedScope === 'object'
+          ? history.turns.find(turn => turn.turn === selectedScope.turn)
+          : undefined
+        const clearCompletedTurn = selectedTurn !== undefined && selectedTurn.remainingFiles === 0
+        if (clearCompletedTurn) {
+          // Drop historical source/patch caches as soon as reconciliation says
+          // the selected turn is fully resolved. The completed history record
+          // remains available to gray its conversation card.
+          this.generation += 1
+          this.queue = []
+          this.queued.clear()
+          this.publish({
+            history,
+            scope: 'uncommitted',
+            status: null,
+            entries: {},
+            ...(silent ? {} : { error: null }),
+          })
+          void this.refresh({ silent: true })
+        } else {
+          this.publish({ history, ...(silent ? {} : { error: null }) })
+        }
+        void this.hydrateMissingTurnStats(history)
+        if (!clearCompletedTurn && refreshOnHeadChange && previousHead !== undefined && history.head !== previousHead) {
+          void this.refresh({ silent: true })
+        }
+      }
+      return true
+    } catch (reason) {
+      if (!silent && !this.disposed) this.publish({ error: reason instanceof Error ? reason.message : String(reason) })
+      return false
+    }
+  }
+
+  private turnStatsKey(turn: number, path: string): string {
+    return `${turn}\0${path}`
+  }
+
+  private mergeTurnStats(history: HistoryOk): HistoryOk {
+    let moved = false
+    const turns = history.turns.map(turn => {
+      let filesMoved = false
+      const files = turn.files.map(file => {
+        if (file.additions !== undefined && file.deletions !== undefined) {
+          this.turnStats.set(this.turnStatsKey(turn.turn, file.path), { additions: file.additions, deletions: file.deletions })
+          return file
+        }
+        const cached = this.turnStats.get(this.turnStatsKey(turn.turn, file.path))
+        if (cached === undefined) return file
+        moved = true
+        filesMoved = true
+        return { ...file, ...cached }
+      })
+      if (!files.every(file => file.additions !== undefined && file.deletions !== undefined)) {
+        return filesMoved ? { ...turn, files } : turn
+      }
+      const additions = files.reduce((sum, file) => sum + (file.additions ?? 0), 0)
+      const deletions = files.reduce((sum, file) => sum + (file.deletions ?? 0), 0)
+      if (turn.additions === additions && turn.deletions === deletions && !filesMoved) return turn
+      moved = true
+      return { ...turn, files, additions, deletions }
+    })
+    return moved ? { ...history, turns } : history
+  }
+
+  private async hydrateMissingTurnStats(history: HistoryOk): Promise<void> {
+    if (this.turnStatsLoading || this.disposed) return
+    const missing = history.turns.flatMap(turn => turn.remainingFiles === 0
+      ? []
+      : turn.files
+        .filter(file => file.additions === undefined || file.deletions === undefined)
+        .map(file => ({ turn: turn.turn, path: file.path })))
+    if (missing.length === 0) return
+    this.turnStatsLoading = true
+    try {
+      for (const file of missing) {
+        if (this.disposed) return
+        const wire = await this.remote.review.diff(this.sessionId, file.path, { turn: file.turn })
+        if (!wire.ok || !wire.value.ok) continue
+        const parsed = parseDiffResult(wire.value)
+        this.turnStats.set(this.turnStatsKey(file.turn, file.path), {
+          additions: parsed.added,
+          deletions: parsed.removed,
+        })
+      }
+      if (!this.disposed && this.state.history !== null) {
+        const merged = this.mergeTurnStats(this.state.history)
+        if (merged !== this.state.history) this.publish({ history: merged })
+      }
+    } finally {
+      this.turnStatsLoading = false
+    }
+  }
+
+  async undoTurn(turn: number): Promise<ReviewUndoTurnResult> {
+    const wire = await this.remote.review.undoTurn(this.sessionId, turn)
+    if (!wire.ok) throw transportError(wire)
+    await this.refreshHistory(true)
+    await this.refresh({ silent: true })
+    return wire.value
+  }
+
+  /** Resolve a chat file click against freshly reconciled turn history. */
+  async resolveTurnFile(turn: number, path: string): Promise<'pending' | 'resolved'> {
+    await this.refreshHistory(true)
+    const record = this.state.history?.turns.find(item => item.turn === turn)
+    const normalized = path.replaceAll('\\', '/')
+    const turnFile = record?.files.find(file => {
+      const candidates = [file.path, file.oldPath].filter((item): item is string => item !== undefined)
+      return candidates.some(candidate => normalized === candidate || normalized.endsWith(`/${candidate}`))
+    })
+    return turnFile?.state === 'pending' ? 'pending' : 'resolved'
+  }
 
   /** Panel expansion share: exempt from cache eviction. */
   setExpanded(paths: ReadonlySet<string>): void {
@@ -142,6 +302,8 @@ export class ReviewCacheController {
     if (this.disposed) return
     this.disposed = true
     if (this.invalidateTimer !== null) window.clearTimeout(this.invalidateTimer)
+    if (this.historyTimer !== null) window.clearInterval(this.historyTimer)
+    if (typeof window !== 'undefined') window.removeEventListener('focus', this.onWindowFocus)
     this.unsubscribeSession()
     this.listeners.clear()
   }
@@ -168,7 +330,7 @@ export class ReviewCacheController {
       ...(revalidate ? {} : { cache: { kind: 'loading' } as const }),
     }))
     try {
-      const wire = await this.remote.review.diff(this.sessionId, path)
+      const wire = await this.remote.review.diff(this.sessionId, path, this.state.scope)
       if (!wire.ok) throw transportError(wire)
       if (!wire.value.ok) throw new Error(wire.value.message)
       const result = wire.value
@@ -226,11 +388,11 @@ export class ReviewCacheController {
     }
   }
 
-  async refresh(options: { focusPath?: string; runChecks?: boolean; silent?: boolean } = {}): Promise<string | undefined> {
+  async refresh(options: { focusPath?: string; runChecks?: boolean; silent?: boolean } = {}): Promise<ReviewRefreshOutcome> {
     const { focusPath, runChecks = false, silent = false } = options
     const seq = ++this.generation
     try {
-      const statusWire = await this.remote.review.status(this.sessionId)
+      const statusWire = await this.remote.review.status(this.sessionId, this.state.scope)
       if (!statusWire.ok) throw transportError(statusWire)
       if (!statusWire.value.ok) throw new Error(statusWire.value.message)
       let nextChecks: ChecksOk | null = null
@@ -240,7 +402,7 @@ export class ReviewCacheController {
         if (!checksWire.value.ok) throw new Error(checksWire.value.message)
         nextChecks = checksWire.value
       }
-      if (seq !== this.generation || this.disposed) return undefined
+      if (seq !== this.generation || this.disposed) return { kind: 'superseded' }
       const nextStatus = statusWire.value
       const merged = mergeFileEntries(this.state.entries, nextStatus.files, () => ++this.stamp)
       let focus: string | undefined
@@ -251,6 +413,7 @@ export class ReviewCacheController {
         ...(nextChecks !== null ? { checks: nextChecks } : {}),
         error: null,
       })
+      void this.refreshHistory(true)
       // A reveal focus wants the current content immediately; everything
       // else (new or stale) flows through the sequential background queue.
       if (focus !== undefined) this.ensure(focus, true)
@@ -262,13 +425,15 @@ export class ReviewCacheController {
         }))
       const evicted = evictCollapsedCaches(merged, this.expanded, this.cacheLimit)
       if (evicted !== null) this.publish({ entries: evicted })
-      return focus
+      if (focusPath === undefined) return { kind: 'ready' }
+      return focus === undefined ? { kind: 'missing' } : { kind: 'found', path: focus }
     } catch (reason) {
-      if (seq !== this.generation || this.disposed) return undefined
+      if (seq !== this.generation || this.disposed) return { kind: 'superseded' }
       // Silent (background) failures keep the last good data; the manual
       // refresh keeps its visible error surface.
-      if (!silent) this.publish({ error: reason instanceof Error ? reason.message : String(reason) })
-      return undefined
+      const message = reason instanceof Error ? reason.message : String(reason)
+      if (!silent) this.publish({ error: message })
+      return { kind: 'error', message }
     }
   }
 
