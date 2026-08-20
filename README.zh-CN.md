@@ -109,7 +109,7 @@ DeepCreator 只替换展示层，不 fork Harness 运行时：
 | 层级 | 所有者 | 职责 |
 | --- | --- | --- |
 | 桌面进程 | DeepCreator | Electron 生命周期、Host 子进程、导航策略与关闭流程 |
-| 展示 Bundle | DeepCreator | Cordis rows 与 16 个 Client 插件依赖 |
+| 展示 Bundle | DeepCreator | Cordis rows 与 21 个 Client 插件依赖 |
 | UI 功能 | DeepCreator | 通过 Slot 组合的 React 视图与纯展示状态 |
 | 运行时与业务数据 | DeepSeek Harness | 智能体执行、会话、RPC、设置、工作区及 Client Runtime 对象 |
 

@@ -109,7 +109,7 @@ DeepCreator changes the presentation layer without forking the Harness runtime:
 | Layer | Owner | Responsibility |
 | --- | --- | --- |
 | Desktop process | DeepCreator | Electron lifecycle, Host child process, navigation policy, shutdown |
-| Presentation bundle | DeepCreator | Cordis rows and 16 Client plugin dependencies |
+| Presentation bundle | DeepCreator | Cordis rows and 21 Client plugin dependencies |
 | UI features | DeepCreator | Slot-composed React views and presentation-only stores |
 | Runtime and data | DeepSeek Harness | Agent execution, sessions, RPC, settings, workspaces, Client Runtime objects |
 
