@@ -128,6 +128,67 @@ describe('Review Service', () => {
     expect(untracked.ok && untracked.layers[0]?.patch).toContain('+export const ready = true')
   })
 
+  it('treats untracked files in an unborn repository as unstaged and uncommitted', async () => {
+    const repository = await mkdtemp(join(tmpdir(), 'dsh-review-')); temporary.push(repository)
+    await exec('git', ['init', '-q', repository])
+    await writeFile(join(repository, 'chat_agent.py'), 'print("ready")\n')
+    const session = { id: 's-unborn', header: { cwd: repository } } as unknown as Session
+    const review = new ReviewService(new Context())
+
+    await expect(review.status(session, 'unstaged')).resolves.toMatchObject({
+      ok: true, files: [{ path: 'chat_agent.py', index: '?', workingTree: '?' }],
+    })
+    await expect(review.status(session, 'staged')).resolves.toMatchObject({ ok: true, files: [] })
+    await expect(review.status(session)).resolves.toMatchObject({
+      ok: true, files: [{ path: 'chat_agent.py', index: '?', workingTree: '?' }],
+    })
+    await expect(review.diff(session, 'chat_agent.py')).resolves.toMatchObject({
+      ok: true,
+      layers: [{
+        kind: 'uncommitted',
+        oldSource: { revision: 'head', text: null },
+        newSource: { revision: 'worktree', text: 'print("ready")\n' },
+      }],
+    })
+  })
+
+  it('compares staged and edited files against an empty tree in an unborn repository', async () => {
+    const repository = await mkdtemp(join(tmpdir(), 'dsh-review-')); temporary.push(repository)
+    await exec('git', ['init', '-q', repository])
+    await writeFile(join(repository, 'chat_agent.py'), 'print("staged")\n')
+    await exec('git', ['-C', repository, 'add', 'chat_agent.py'])
+    await writeFile(join(repository, 'chat_agent.py'), 'print("worktree")\n')
+    const session = { id: 's-unborn-staged', header: { cwd: repository } } as unknown as Session
+    const review = new ReviewService(new Context())
+
+    await expect(review.diff(session, 'chat_agent.py', 'staged')).resolves.toMatchObject({
+      ok: true,
+      layers: [{
+        kind: 'staged',
+        oldSource: { revision: 'head', text: null },
+        newSource: { revision: 'index', text: 'print("staged")\n' },
+      }],
+    })
+    await expect(review.diff(session, 'chat_agent.py', 'unstaged')).resolves.toMatchObject({
+      ok: true,
+      layers: [{
+        kind: 'working-tree',
+        oldSource: { revision: 'index', text: 'print("staged")\n' },
+        newSource: { revision: 'worktree', text: 'print("worktree")\n' },
+      }],
+    })
+    const uncommitted = await review.diff(session, 'chat_agent.py')
+    expect(uncommitted).toMatchObject({
+      ok: true,
+      layers: [{
+        kind: 'uncommitted',
+        oldSource: { revision: 'head', text: null },
+        newSource: { revision: 'worktree', text: 'print("worktree")\n' },
+      }],
+    })
+    expect(uncommitted.ok && uncommitted.layers[0]?.patch).toContain('+print("worktree")')
+  })
+
   it('persists one history record per changed turn and omits zero-change turns', async () => {
     const repository = await mkdtemp(join(tmpdir(), 'dsh-review-')); temporary.push(repository)
     await exec('git', ['init', '-q', repository])
@@ -147,9 +208,28 @@ describe('Review Service', () => {
     await writeFile(join(repository, 'new.txt'), 'new\n')
     await capture.captureEnd(session, 2)
 
+    // Simulate an active ref written before diff counts were persisted. Its
+    // retained boundary trees must be enough for history() to backfill them.
+    const ref = 'refs/deepcreator/turns/session-test/2'
+    const { stdout: endTree } = await exec('git', ['-C', repository, 'show', '-s', '--format=%T', ref])
+    const { stdout: parent } = await exec('git', ['-C', repository, 'show', '-s', '--format=%P', ref])
+    const { stdout: message } = await exec('git', ['-C', repository, 'show', '-s', '--format=%B', ref])
+    const legacy = JSON.parse(message.trim()) as { files: Array<{ additions?: number; deletions?: number }> }
+    for (const file of legacy.files) { delete file.additions; delete file.deletions }
+    const { stdout: legacyCommit } = await exec('git', [
+      '-C', repository, 'commit-tree', endTree.trim(), '-p', parent.trim(), '-m', JSON.stringify(legacy),
+    ])
+    await exec('git', ['-C', repository, 'update-ref', ref, legacyCommit.trim()])
+
     await expect(review.history(session)).resolves.toMatchObject({
       ok: true,
-      turns: [{ turn: 2, totalFiles: 2, remainingFiles: 2, state: 'active', undoable: true }],
+      turns: [{
+        turn: 2, totalFiles: 2, remainingFiles: 2, additions: 2, deletions: 1, state: 'active', undoable: true,
+        files: expect.arrayContaining([
+          expect.objectContaining({ path: 'file.txt', additions: 1, deletions: 1 }),
+          expect.objectContaining({ path: 'new.txt', additions: 1, deletions: 0 }),
+        ]),
+      }],
     })
     await expect(review.diff(session, 'file.txt', { turn: 2 })).resolves.toMatchObject({
       ok: true,
@@ -188,6 +268,33 @@ describe('Review Service', () => {
       expect.objectContaining({ path: 'a.txt', state: 'committed' }),
       expect.objectContaining({ path: 'b.txt', state: 'pending' }),
     ]))
+  })
+
+  it('reconciles a historical scope directly after an external commit', async () => {
+    const repository = await mkdtemp(join(tmpdir(), 'dsh-review-')); temporary.push(repository)
+    await exec('git', ['init', '-q', repository])
+    await exec('git', ['-C', repository, 'config', 'user.email', 'test@example.com'])
+    await exec('git', ['-C', repository, 'config', 'user.name', 'Test'])
+    await writeFile(join(repository, 'file.txt'), 'before\n')
+    await exec('git', ['-C', repository, 'add', '.'])
+    await exec('git', ['-C', repository, 'commit', '-qm', 'initial'])
+    const session = { id: 'session-test', header: { cwd: repository } } as unknown as Session
+    const review = new ReviewService(new Context())
+    const capture = review as unknown as { captureStart(session: Session, turn: number): Promise<void>; captureEnd(session: Session, turn: number): Promise<void> }
+    await capture.captureStart(session, 10)
+    await writeFile(join(repository, 'file.txt'), 'after\n')
+    await capture.captureEnd(session, 10)
+    await exec('git', ['-C', repository, 'add', '.'])
+    await exec('git', ['-C', repository, 'commit', '-qm', 'external'])
+
+    // No history() poll precedes the status request: selecting TURN 10 must
+    // still reconcile HEAD and omit its now-committed file immediately.
+    await expect(review.status(session, { turn: 10 })).resolves.toMatchObject({
+      ok: true, scope: { turn: 10 }, files: [],
+    })
+    await expect(review.history(session)).resolves.toMatchObject({
+      ok: true, turns: [{ turn: 10, remainingFiles: 0, state: 'committed' }],
+    })
   })
 
   it('undoes only the newest active turn and preserves non-conflicting later edits', async () => {
@@ -232,6 +339,9 @@ describe('Review Service', () => {
 
     await expect(review.history(session)).resolves.toMatchObject({
       ok: true, turns: [{ turn: 5, remainingFiles: 0, state: 'committed', undoable: false }],
+    })
+    await expect(review.diff(session, 'file.txt', { turn: 5 })).resolves.toMatchObject({
+      ok: true, scope: { turn: 5 }, path: 'file.txt', layers: [],
     })
     const ref = 'refs/deepcreator/turns/session-test/5'
     const { stdout: parents } = await exec('git', ['-C', repository, 'show', '-s', '--format=%P', ref])

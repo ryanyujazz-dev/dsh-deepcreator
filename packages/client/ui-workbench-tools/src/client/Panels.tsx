@@ -148,10 +148,11 @@ type ReviewPanelProps = WorkbenchPanelProps & PropsLocale<'workbench-tools'> & {
  * so a collapse→expand cycle is a pure CSS flip with zero rebuild.
  */
 const ReviewFileRow = memo(function ReviewFileRow({
-  entry, expanded, onToggle, t,
+  entry, expanded, eager, onToggle, t,
 }: {
   entry: FileEntry
   expanded: boolean
+  eager: boolean
   onToggle: (path: string) => void
   t: RemoteProps['t']
 }) {
@@ -198,6 +199,14 @@ const ReviewFileRow = memo(function ReviewFileRow({
   const [skeletonMounted, setSkeletonMounted] = useState(false)
   const [bodyMounted, setBodyMounted] = useState(false)
   const anchorRef = useRef<HTMLElement | null>(null)
+  // A conversation file reveal is a direct user gesture. Mount its complete
+  // body before the focus scroll instead of leaving a transient skeleton at
+  // the destination while the batch pause queue catches up.
+  useEffect(() => {
+    if (!eager || !expanded) return
+    setSkeletonMounted(true)
+    setBodyMounted(true)
+  }, [eager, expanded])
   // Approaching the viewport mounts only the light skeleton — a scrolling
   // frame must never commit a full diff body.
   useEffect(() => {
@@ -307,6 +316,7 @@ const ReviewFileRow = memo(function ReviewFileRow({
 export function ReviewPanel({ controller, reveal, visible, contributeHeaderActions, t }: ReviewPanelProps) {
   const cache = useSyncExternalStore(controller.subscribe, controller.getSnapshot)
   const [expandedPaths, setExpandedPaths] = useState<ReadonlySet<string>>(new Set())
+  const [eagerPath, setEagerPath] = useState<string | null>(null)
   const [missedPath, setMissedPath] = useState<string | null>(null)
   const [scopeMenuOpen, setScopeMenuOpen] = useState(false)
   const listRef = useRef<HTMLDivElement | null>(null)
@@ -346,38 +356,58 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
     })
   }, [cache.status, controller, reveal, visible])
 
+  // Publish the hidden→visible edge before processing its presentation. The
+  // controller's visibility catch-all may start a status refresh; running it
+  // first lets the explicit scope/reveal refresh supersede that generic one.
+  // In the opposite order the catch-all could supersede selectScope and skip
+  // its expand-all completion, leaving a random subset from the prior scope.
+  useEffect(() => { controller.setVisible(visible !== false) }, [controller, visible])
+
   // A reveal expands and scrolls to the target: the optimistic pass points
   // at a cached file immediately, the silent refresh corrects and re-fetches
   // the focused file. The nonce (command sequence) makes same-path repeats
   // re-fire.
   useEffect(() => {
     if (reveal === undefined) return
+    // A new reveal invalidates any previous miss immediately. Only a
+    // completed status response is allowed to declare the new target absent.
+    setMissedPath(null)
+    const scopeValue = reveal.parameters?.scope
     const turnValue = reveal.parameters?.turn
     const turn = turnValue === undefined ? Number.NaN : Number(turnValue)
-    const requested: ReviewScope = Number.isSafeInteger(turn) && turn >= 0 ? { turn } : cache.scope
-    void controller.selectScope(requested, reveal.target).then((focus) => {
-      if (focus === undefined) {
-        setMissedPath(reveal.target)
+    const requested: ReviewScope = scopeValue === 'unstaged' || scopeValue === 'staged' || scopeValue === 'uncommitted'
+      ? scopeValue
+      : Number.isSafeInteger(turn) && turn >= 0 ? { turn } : cache.scope
+    // Every Review presentation is expand-all by contract. Parameters still
+    // spell it out for self-documenting entry points, but this provider-side
+    // default prevents a future or fallback reveal from silently regressing.
+    void controller.selectScope(requested, reveal.target).then((outcome) => {
+      if (outcome.kind === 'missing') {
+        if (reveal.target !== undefined) setMissedPath(reveal.target)
         return
       }
-      setMissedPath(null)
-      const next = new Set([...expandedRef.current, focus])
-      expandedRef.current = next
-      setExpandedPaths(next)
-      // Scroll after paint: the expansion above must join the layout first.
-      requestAnimationFrame(() => {
-        const escaped = focus.replaceAll('\\', '\\\\').replaceAll('"', '\\"')
-        listRef.current?.querySelector<HTMLElement>(`[data-review-path="${escaped}"]`)
-          ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      })
+      if (outcome.kind === 'ready' || outcome.kind === 'found') {
+        const paths = controller.getSnapshot().status?.files.map(file => file.path) ?? []
+        const next = new Set(paths)
+        expandedRef.current = next
+        const focus = outcome.kind === 'found' ? outcome.path : null
+        setEagerPath(focus)
+        setExpandedPaths(next)
+        controller.loadAll(next)
+        requestAnimationFrame(() => {
+          const rows = [...(listRef.current?.querySelectorAll<HTMLElement>('[data-review-path]') ?? [])]
+          const row = focus === null
+            ? rows[0]
+            : rows.find(node => node.dataset.reviewPath === focus)
+          row?.scrollIntoView(focus === null ? { block: 'start' } : { behavior: 'smooth', block: 'start' })
+        })
+      }
     }).catch(() => {
       // Reveal refresh failures keep the last good panel; the optimistic
       // expansion above already pointed the user at the file.
     })
   }, [reveal, controller])
 
-  // The controller gates its hidden→visible catch-all refresh on this share.
-  useEffect(() => { controller.setVisible(visible !== false) }, [controller, visible])
   // Expansion exempts entries from the controller's cache eviction.
   useEffect(() => { controller.setExpanded(expandedPaths) }, [controller, expandedPaths])
 
@@ -399,17 +429,18 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
   const scopeLabel = typeof cache.scope === 'string'
     ? t(`review.scope.${cache.scope}`)
     : t('review.scope.turn', { turn: cache.scope.turn })
+  const historyTurns = useMemo(() => cache.history?.turns
+    .filter(turn => turn.remainingFiles > 0)
+    .toSorted((a, b) => b.turn - a.turn) ?? [], [cache.history])
   const scopeItems = useMemo<MenuEntry[]>(() => [
     { id: 'unstaged', label: t('review.scope.unstaged') },
     { id: 'staged', label: t('review.scope.staged') },
     { id: 'uncommitted', label: t('review.scope.uncommitted') },
-    ...(cache.history?.turns.some(turn => turn.remainingFiles > 0) === true
-      ? [{ type: 'separator' as const, id: 'history-separator' }]
+    ...(historyTurns.length > 0
+      ? [{ type: 'label' as const, id: 'history-label', text: t('review.scope.history') }]
       : []),
-    ...(cache.history?.turns
-      .filter(turn => turn.remainingFiles > 0)
-      .map(turn => ({ id: `turn:${turn.turn}`, label: t('review.scope.turn', { turn: turn.turn }) })) ?? []),
-  ], [cache.history, t])
+    ...historyTurns.map(turn => ({ id: `turn:${turn.turn}`, label: t('review.scope.turn', { turn: turn.turn }) })),
+  ], [historyTurns, t])
   const headerActions = useMemo<WorkbenchPanelHeaderContribution>(() => ({
     left: <Menu
       open={scopeMenuOpen}
@@ -419,8 +450,21 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
       onSelect={id => {
         setScopeMenuOpen(false)
         const next: ReviewScope = id.startsWith('turn:') ? { turn: Number(id.slice(5)) } : id as Exclude<ReviewScope, { turn: number }>
+        setMissedPath(null)
+        setEagerPath(null)
         setExpandedPaths(new Set())
-        void controller.selectScope(next)
+        void controller.selectScope(next).then((outcome) => {
+          if (outcome.kind !== 'ready' && outcome.kind !== 'found') return
+          const paths = controller.getSnapshot().status?.files.map(file => file.path) ?? []
+          const expanded = new Set(paths)
+          expandedRef.current = expanded
+          setExpandedPaths(expanded)
+          controller.loadAll(expanded)
+          requestAnimationFrame(() => {
+            listRef.current?.querySelector<HTMLElement>('[data-review-path]')
+              ?.scrollIntoView({ block: 'start' })
+          })
+        })
       }}
       anchor={<button
         type="button"
@@ -482,10 +526,12 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
         {missedPath !== null && (
           <div className={css.reviewMissed} role="status">{t('review.missedFile')}<FileIcon path={missedPath} /><code>{missedPath}</code></div>
         )}
-        {cache.status?.files.length === 0
-          ? <div className={css.reviewPlaceholder}>{t('review.clean')}</div>
-          : <div ref={listRef} className={css.fileList} role="list" aria-label={t('review.files')}>
-              {cache.status?.files.map(file => {
+        {cache.status === null
+          ? <div className={css.reviewPlaceholder}>{cache.error === null ? t('loading') : t('review.loadFailed')}</div>
+          : cache.status.files.length === 0
+            ? <div className={css.reviewPlaceholder}>{t('review.clean')}</div>
+            : <div ref={listRef} className={css.fileList} role="list" aria-label={t('review.files')}>
+              {cache.status.files.map(file => {
                 const entry = cache.entries[file.path]
                 if (entry === undefined) return null
                 return (
@@ -493,6 +539,7 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
                     key={file.path}
                     entry={entry}
                     expanded={expandedPaths.has(file.path)}
+                    eager={eagerPath === file.path}
                     onToggle={toggleFile}
                     t={t}
                   />

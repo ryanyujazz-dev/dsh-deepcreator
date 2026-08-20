@@ -55,19 +55,32 @@
 /* Only shown when the group has no tabs; 7px keeps the plain title at the
  * optical 10px inset the pill's own internal padding provides for tabs. */
 .leading {
+  flex: 1 1 auto;
+  min-width: 0;
   gap: var(--dsh-icon-toolbar-gap, 4px);
   padding-left: 7px;
 }
-.headerActions { margin-left: auto; }
+.headerActions { flex: none; margin-left: auto; }
 .headerActions,
 .leftActions,
 .rightActions { gap: var(--dsh-icon-toolbar-gap, 4px); }
 
+/* Provider-owned leading controls yield before the fixed Header action group.
+ * Their own root wrappers (Menu, Select, etc.) must participate in the same
+ * shrink chain so long labels cannot push focus/close outside the shell. */
+.leftActions {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.leftActions > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .title {
   color: var(--dsw-alias-label-primary);
-  font-size: var(--dsw-font-sidebar-font-size);
-  font-weight: 500;
-  line-height: var(--dsw-font-sidebar-line-height);
+  font: var(--dsw-font-xxs-strong-12);
   white-space: nowrap;
 }
 

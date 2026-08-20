@@ -183,10 +183,10 @@ export function WorkbenchRoot({
   const revealCommand = command !== null
     && command.sequence > commandFloor.current
     && command.action.kind === 'present'
-    && command.action.request.target !== undefined
+    && (command.action.request.target !== undefined || command.action.request.parameters !== undefined)
     ? {
         typeId: command.action.request.typeId,
-        target: command.action.request.target,
+        ...(command.action.request.target === undefined ? {} : { target: command.action.request.target }),
         ...(command.action.request.parameters === undefined ? {} : { parameters: command.action.request.parameters }),
         nonce: command.sequence,
       }
@@ -303,7 +303,11 @@ export function WorkbenchRoot({
                     focused={focusedTypeId === group.typeId}
                     visible={visible}
                     reveal={revealCommand !== null && revealCommand.typeId === group.typeId
-                      ? { target: revealCommand.target, nonce: revealCommand.nonce }
+                      ? {
+                          ...(revealCommand.target === undefined ? {} : { target: revealCommand.target }),
+                          ...(revealCommand.parameters === undefined ? {} : { parameters: revealCommand.parameters }),
+                          nonce: revealCommand.nonce,
+                        }
                       : undefined}
                     actions={actions}
                     t={t}

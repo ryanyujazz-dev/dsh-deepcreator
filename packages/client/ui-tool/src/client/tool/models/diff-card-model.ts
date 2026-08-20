@@ -7,7 +7,7 @@
  * call this, so the hunks they show are derived once.
  * @module
  */
-import type { DiffBlockProps, DiffHunk } from '@ryanyujazz/dsh-client-ui-primitives'
+import { countDiffHunkLines, type DiffBlockProps, type DiffHunk } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { ToolCallBlock } from './tool-call-model.ts'
 
 /**
@@ -33,6 +33,16 @@ export interface DiffCardModel {
    * neighbouring field into it.
    */
   card: Pick<DiffBlockProps, 'diffs'>
+  added: number
+  removed: number
+}
+
+function cardModel(diffs: DiffHunk[]): DiffCardModel {
+  const counts = diffs.reduce((total, hunk) => {
+    const next = countDiffHunkLines(hunk)
+    return { added: total.added + next.added, removed: total.removed + next.removed }
+  }, { added: 0, removed: 0 })
+  return { card: { diffs }, ...counts }
 }
 
 /**
@@ -92,12 +102,12 @@ export function diffCardModel(block: ToolCallBlock): DiffCardModel | null {
     // Running: the call view may carry the intended diff; the result is absent.
     const call = block.callView?.card === 'diff' ? block.callView : null
     const diffs = call === null ? null : narrowDiffs(call.diffs)
-    return diffs === null ? null : { card: { diffs } }
+    return diffs === null ? null : cardModel(diffs)
   }
   // Settled: the result view's applied hunks replace the call-time diff. A
   // window that dropped the call head leaves only the result, which still
   // renders — the result view carries the whole change.
   const result = block.resultView?.card === 'diff' ? block.resultView : null
   const diffs = result === null ? null : narrowDiffs(result.diffs)
-  return diffs === null ? null : { card: { diffs } }
+  return diffs === null ? null : cardModel(diffs)
 }

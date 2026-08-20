@@ -107,6 +107,7 @@ describe('ReviewCacheController', () => {
 
     await flush()
     // Strictly one in flight: b waits for a.
+    expect(remote.review.status).toHaveBeenCalledWith(SID, 'uncommitted')
     expect(remote.review.diff.mock.calls.map(call => call[1])).toEqual(['src/a.ts'])
     gates[0]?.()
     await flush()
@@ -254,7 +255,7 @@ describe('ReviewCacheController', () => {
     await flush(); await flush()
     expect(remote.review.status).toHaveBeenCalledTimes(2)
     expect(remote.review.diff.mock.calls.length).toBeGreaterThan(before)
-    expect(remote.review.diff).toHaveBeenLastCalledWith(SID, 'src/b.ts')
+    expect(remote.review.diff).toHaveBeenLastCalledWith(SID, 'src/b.ts', 'uncommitted')
     cache.dispose()
   })
 
@@ -279,6 +280,146 @@ describe('ReviewCacheController', () => {
     expect(cache.getSnapshot().scope).toEqual({ turn: 9 })
     expect(remote.review.status).toHaveBeenLastCalledWith(SID, { turn: 9 })
     expect(remote.review.diff).toHaveBeenLastCalledWith(SID, 'src/a.ts', { turn: 9 })
+    cache.dispose()
+  })
+
+  it('hydrates missing counts from historical diffs served by an older host', async () => {
+    const remote = remoteMock(['src/a.ts'])
+    remote.review.history.mockResolvedValue({
+      ok: true,
+      value: {
+        ok: true, repositoryRoot: '/workspace', head: 'head-1',
+        turns: [{
+          turn: 8, totalFiles: 1, remainingFiles: 1, state: 'active', undoable: true,
+          files: [{ path: 'src/a.ts', state: 'pending' }],
+        }],
+      },
+    })
+    const cache = new ReviewCacheController({ remote: remote as never, sessionId: SID, session: sessionStub().session })
+
+    await flush(); await flush(); await flush()
+    expect(remote.review.diff).toHaveBeenCalledWith(SID, 'src/a.ts', { turn: 8 })
+    expect(cache.getSnapshot().history?.turns[0]).toMatchObject({
+      additions: 1,
+      deletions: 1,
+      files: [{ path: 'src/a.ts', additions: 1, deletions: 1 }],
+    })
+    cache.dispose()
+  })
+
+  it('clears a selected historical turn as soon as its changes are committed', async () => {
+    const remote = remoteMock(['src/a.ts'])
+    remote.review.history.mockResolvedValue({
+      ok: true,
+      value: {
+        ok: true, repositoryRoot: '/workspace', head: 'before',
+        turns: [{
+          turn: 9, totalFiles: 1, remainingFiles: 1, state: 'active', undoable: true,
+          files: [{ path: 'src/a.ts', state: 'pending' }],
+        }],
+      },
+    })
+    const cache = new ReviewCacheController({ remote: remote as never, sessionId: SID, session: sessionStub().session })
+    await flush(); await flush()
+    await cache.selectScope({ turn: 9 })
+    await flush()
+    expect(cache.getSnapshot().scope).toEqual({ turn: 9 })
+    expect(Object.keys(cache.getSnapshot().entries)).toEqual(['src/a.ts'])
+
+    remote.review.status.mockResolvedValue({
+      ok: true,
+      value: { ok: true, repositoryRoot: '/workspace', branch: 'main', scope: 'uncommitted', files: [] },
+    })
+    remote.review.history.mockResolvedValue({
+      ok: true,
+      value: {
+        ok: true, repositoryRoot: '/workspace', head: 'after',
+        turns: [{
+          turn: 9, totalFiles: 1, remainingFiles: 0, state: 'committed', undoable: false,
+          files: [{ path: 'src/a.ts', state: 'committed' }],
+        }],
+      },
+    })
+
+    await expect(cache.refreshHistory()).resolves.toBe(true)
+    expect(cache.getSnapshot().scope).toBe('uncommitted')
+    expect(cache.getSnapshot().entries).toEqual({})
+    await flush()
+    expect(remote.review.status).toHaveBeenLastCalledWith(SID, 'uncommitted')
+    expect(cache.getSnapshot().status?.files).toEqual([])
+    cache.dispose()
+  })
+
+  it('distinguishes a superseded focus refresh from a real missing file', async () => {
+    const remote = remoteMock(['src/a.ts'])
+    const cache = new ReviewCacheController({ remote: remote as never, sessionId: SID, session: sessionStub().session })
+    await flush(); await flush()
+
+    let releaseFirst: ((value: unknown) => void) | undefined
+    remote.review.status
+      .mockImplementationOnce(() => new Promise(resolve => { releaseFirst = resolve }))
+      .mockResolvedValueOnce({
+        ok: true,
+        value: {
+          ok: true, repositoryRoot: '/workspace', branch: 'main',
+          files: [{ path: 'src/a.ts', index: ' ', workingTree: 'M' }],
+        },
+      })
+    const stale = cache.selectScope('staged', '/workspace/src/a.ts')
+    const current = cache.selectScope('uncommitted', '/workspace/src/a.ts')
+
+    await expect(current).resolves.toEqual({ kind: 'found', path: 'src/a.ts' })
+    releaseFirst?.({
+      ok: true,
+      value: {
+        ok: true, repositoryRoot: '/workspace', branch: 'main',
+        files: [{ path: 'src/a.ts', index: ' ', workingTree: 'M' }],
+      },
+    })
+    await expect(stale).resolves.toEqual({ kind: 'superseded' })
+    cache.dispose()
+  })
+
+  it('surfaces a user-selected scope failure instead of reporting a missing file', async () => {
+    const remote = remoteMock(['src/a.ts'])
+    const cache = new ReviewCacheController({ remote: remote as never, sessionId: SID, session: sessionStub().session })
+    await flush(); await flush()
+    remote.review.status.mockRejectedValueOnce(new Error('status unavailable'))
+
+    await expect(cache.selectScope('staged', '/workspace/src/a.ts')).resolves.toEqual({
+      kind: 'error', message: 'status unavailable',
+    })
+    expect(cache.getSnapshot().error).toBe('status unavailable')
+    expect(cache.getSnapshot().status).toBeNull()
+    cache.dispose()
+  })
+
+  it('refreshes turn history before routing a chat file click', async () => {
+    const remote = remoteMock(['src/a.ts'])
+    const cache = new ReviewCacheController({ remote: remote as never, sessionId: SID, session: sessionStub().session })
+    await flush(); await flush()
+
+    let release: ((value: unknown) => void) | undefined
+    remote.review.history.mockImplementationOnce(() => new Promise(resolve => { release = resolve }))
+    let settled = false
+    const resolution = cache.resolveTurnFile(12, '/workspace/src/a.ts').then(value => {
+      settled = true
+      return value
+    })
+    await flush()
+    expect(settled).toBe(false)
+    release?.({
+      ok: true,
+      value: {
+        ok: true, repositoryRoot: '/workspace',
+        turns: [{
+          turn: 12, totalFiles: 1, remainingFiles: 1, state: 'active', undoable: true,
+          files: [{ path: 'src/a.ts', state: 'pending' }],
+        }],
+      },
+    })
+
+    await expect(resolution).resolves.toBe('pending')
     cache.dispose()
   })
 })

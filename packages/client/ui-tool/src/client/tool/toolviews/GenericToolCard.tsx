@@ -65,6 +65,7 @@ export function GenericToolCard({ toolName, block, cwd, openFile, revealChange, 
       errorSummary={model.errorSummary}
       terminal={terminal}
       diff={diff}
+      diffCounts={singleFile && diff !== null ? { added: diff.added, removed: diff.removed } : null}
       read={read}
       search={search}
       web={web}

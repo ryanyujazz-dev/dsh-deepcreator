@@ -66,7 +66,10 @@ describe('ModelSelect reasoning effort', () => {
     const trigger = screen.getByRole('button', {
       name: '选择模型，当前 DeepSeek-V4-Flash，推理等级 High',
     })
-    expect(trigger.querySelector('[data-deepcreator-icon="brain"]')).toBeTruthy()
+    const compactIcon = trigger.firstElementChild
+    expect(compactIcon?.querySelector('[data-deepcreator-icon="brain"]')).toBeNull()
+    expect(compactIcon?.querySelector('svg')?.getAttribute('viewBox')).toBe('0 0 14 14')
+    expect(compactIcon?.querySelectorAll('path')).toHaveLength(2)
     expect(trigger.getAttribute('title')).toBe('DeepSeek-V4-Flash · High')
     fireEvent.click(trigger)
     fireEvent.click(screen.getByRole('menuitem', { name: /推理等级/ }))

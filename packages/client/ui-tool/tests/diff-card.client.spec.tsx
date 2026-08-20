@@ -78,6 +78,8 @@ describe('diffCardModel', () => {
   it('derives a running card from the call view alone', () => {
     expect(diffCardModel(running())).toEqual({
       card: { diffs: [{ path: 'notes/demo.txt', oldText: 'hello', newText: 'hello fixture' }] },
+      added: 1,
+      removed: 1,
     })
   })
 
@@ -87,6 +89,8 @@ describe('diffCardModel', () => {
       resultView: resultDiff({ diffs: [{ path: 'notes/demo.txt', oldText: 'a', newText: 'b' }] }),
     }))).toEqual({
       card: { diffs: [{ path: 'notes/demo.txt', oldText: 'a', newText: 'b' }] },
+      added: 1,
+      removed: 1,
     })
   })
 
@@ -214,6 +218,7 @@ describe('FileMutationRow diff card', () => {
     // The diff card is collapsed by default — not in the DOM until expanded.
     expect(view.container.querySelector('[data-diff]')).toBeNull()
     expect(view.queryByText('hello fixture')).toBeNull()
+    expect(view.getByLabelText('+1 -1')).not.toBeNull()
     toggleRow(view)
     expect(view.container.querySelector('[data-diff]')).not.toBeNull()
     expect(hasDiffRowText(view.container, 'hello fixture')).toBe(true)
@@ -353,4 +358,3 @@ describe('fileMutationToolview registration', () => {
     expect(registered.every(r => r.disposed)).toBe(true)
   })
 })
-

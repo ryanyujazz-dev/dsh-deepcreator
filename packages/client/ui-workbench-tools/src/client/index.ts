@@ -64,24 +64,24 @@ export function apply(ctx: ClientContext): void {
   if (typeof ctx.provide === 'function') ctx.provide('turnChangeNavigation', {
     open(sessionId, turn, path) {
       const controller = reviewCacheFor(sessionId)
-      const record = controller.getSnapshot().history?.turns.find(item => item.turn === turn)
-      const normalized = path.replaceAll('\\', '/')
-      const turnFile = record?.files.find(file => {
-        const candidates = [file.path, file.oldPath].filter((item): item is string => item !== undefined)
-        return candidates.some(candidate => normalized === candidate || normalized.endsWith(`/${candidate}`))
+      // Resolve against a fresh history snapshot. A synchronous cache miss is
+      // not evidence that the turn/file is resolved — it commonly means the
+      // controller's initial history request has not completed yet.
+      void controller.resolveTurnFile(turn, path).then(state => {
+        if (state === 'pending') {
+          ctx.workbench.present({
+            typeId: 'review', target: path, parameters: { scope: 'turn', turn: String(turn), expand: 'all' }, reveal: true, reason: 'user',
+          })
+          return
+        }
+        if (ctx.workbench.types.list().some(definition => definition.id === 'artifact')) {
+          ctx.workbench.activate('artifact', path)
+          return
+        }
+        // A composition without Artifact retains the pre-integration fallback.
+        ctx.workbench.reveal('review', path)
       })
-      const pending = turnFile?.state === 'pending'
-      if (pending) {
-        ctx.workbench.present({
-          typeId: 'review', target: path, parameters: { turn: String(turn) }, reveal: true, reason: 'user',
-        })
-        return true
-      }
-      if (record !== undefined && ctx.workbench.types.list().some(definition => definition.id === 'artifact')) {
-        ctx.workbench.activate('artifact', path)
-        return true
-      }
-      return false
+      return true
     },
   })
   ctx.effect(() => {
@@ -111,7 +111,7 @@ export function apply(ctx: ClientContext): void {
     workbench: ctx.workbench,
   })
   const providers: Array<{ definition: PanelTypeDefinition; panel: PanelComponent; icon: IconComponent }> = [
-    { definition: { id:'review',label:()=>t('review'),scope:'workspace',order:4,supportsHome:true,supportsCreate:false,supportsMultipleInstances:true,minWidth:150,minHeight:260,preferredWidth:560,initialWidthRatio:1/2,closePolicy:'dispose' }, panel: reviewPanel, icon: DeepCreatorIconReview16 },
+    { definition: { id:'review',label:()=>t('review'),scope:'workspace',order:4,supportsHome:true,supportsCreate:false,supportsMultipleInstances:true,minWidth:150,minHeight:260,preferredWidth:560,initialWidthRatio:1/2,closePolicy:'dispose',openParameters:{scope:'unstaged',expand:'all'} }, panel: reviewPanel, icon: DeepCreatorIconReview16 },
     { definition: { id:'terminal',label:()=>t('terminal'),scope:'session',order:1,supportsHome:false,supportsCreate:true,supportsMultipleInstances:true,minWidth:150,minHeight:220,preferredWidth:520,initialWidthRatio:1/3,closePolicy:'provider-controlled',disabledWhenAddressed:true }, panel: terminalPanel, icon: DeepCreatorIconTerminal16 },
     { definition: { id:'browser',label:()=>t('browser'),scope:'session',order:5,supportsHome:true,supportsCreate:true,supportsMultipleInstances:true,minWidth:150,minHeight:280,preferredWidth:640,initialWidthRatio:1/2,closePolicy:'provider-controlled' }, panel: BrowserPanel, icon: DeepCreatorIconPreview16 },
   ]

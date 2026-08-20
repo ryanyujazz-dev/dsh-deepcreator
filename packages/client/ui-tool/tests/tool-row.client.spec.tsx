@@ -322,6 +322,25 @@ describe('ToolRow', () => {
     expect(failed.queryByText('+2')).toBeNull()
   })
 
+  it('shows applied diff counts beside a file name and hides them on failure', () => {
+    const view = render(
+      <ToolRow {...rowProps} variant="edit" title="Edit" filePath="src/a.ts" diffCounts={{ added: 3, removed: 2 }} />,
+    )
+    expect(view.getByLabelText('+3 -2')).not.toBeNull()
+    view.unmount()
+    const failed = render(
+      <ToolRow {...rowProps} variant="edit" title="Edit" filePath="src/a.ts" state="error" errorSummary="boom" diffCounts={{ added: 3, removed: 2 }} />,
+    )
+    expect(failed.queryByLabelText('+3 -2')).toBeNull()
+  })
+
+  it('does not present an unavailable or binary 0/0 line count as a real diff', () => {
+    const view = render(
+      <ToolRow {...rowProps} variant="edit" title="Edit" filePath="cache.pyc" diffCounts={{ added: 0, removed: 0 }} />,
+    )
+    expect(view.queryByLabelText('+0 -0')).toBeNull()
+  })
+
   it('an error file row drops the open-file link (the summary is failure prose, not the path)', () => {
     const open = vi.fn()
     const view = render(

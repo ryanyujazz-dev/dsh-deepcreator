@@ -25,12 +25,17 @@ export interface ReviewTurnFile {
   path: string
   oldPath?: string
   state: ReviewTurnFileState
+  /** Line counts captured from this turn's start → end diff. */
+  additions?: number
+  deletions?: number
 }
 
 export interface ReviewTurnHistory {
   turn: number
   totalFiles: number
   remainingFiles: number
+  additions?: number
+  deletions?: number
   state: 'active' | 'committed' | 'reverted' | 'mixed'
   undoable: boolean
   files: ReviewTurnFile[]

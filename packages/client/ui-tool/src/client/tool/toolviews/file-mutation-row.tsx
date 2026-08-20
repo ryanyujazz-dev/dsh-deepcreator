@@ -47,6 +47,7 @@ export function FileMutationRow({ toolName, block, cwd, openFile, revealChange, 
       output={model.output}
       errorSummary={model.errorSummary}
       diff={diff}
+      diffCounts={diff === null ? null : { added: diff.added, removed: diff.removed }}
       state={model.state}
       filePath={model.filePath}
       onOpenFile={openFile}

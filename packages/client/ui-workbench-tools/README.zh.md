@@ -4,9 +4,11 @@
 
 Provider 视图只渲染 Body 内容。刷新、Terminal 控制和新建 Tab 操作都贡献到公共 Workbench Panel Header；Review 状态与 Preview URL 输入属于内容，不得形成第二层副标题工具栏。
 
-Review 标题旁的范围菜单固定提供「未暂存」「已暂存」「未提交」和仍有待处理文件的「历史轮次 · TURN N」，首次打开缺省为「未提交」。内容区是单一纵向滚动、可折叠文件列表；文件头不显示 `M` 等 Git 状态字母。范围与文件定位通过 Workbench presentation 的 `{ scope, turn, path }` 参数传递，历史文件可直接展开并滚动聚焦。Review 的基础表面始终跟随 Workbench shell；第三方代码主题只贡献语法色与 Diff 高亮，不改变画布底色。
+Review 标题旁的范围菜单固定提供「未暂存」「已暂存」「未提交」，其后以「历史轮次」小标题分组仍有待处理的轮次；中文项与选择器值显示「第 N 轮」，英文显示「TURN N」，并按新到旧排列，首次打开缺省为「未提交」。内容区是单一纵向滚动、可折叠文件列表；文件头不显示 `M` 等 Git 状态字母。范围与文件定位通过 Workbench presentation 的 `{ scope, turn, path }` 参数传递，历史文件可直接展开并滚动聚焦。Review 的基础表面始终跟随 Workbench shell；第三方代码主题只贡献语法色与 Diff 高亮，不改变画布底色。
 
-每会话一个 `ReviewCacheController` 同时服务 Review 与对话尾部变更卡。非零变更 Turn 显示文件数、剩余数、撤销和审查；全部提交或撤销后卡片变灰，只有最新未解决 Turn 可撤销。撤销先经确认 Modal，失败使用公共 Toast。未解决 mutation 文件打开所属 Turn Diff，已解决文件打开 Artifact 完整文件。页面可见时约两秒轻量刷新历史与外部 HEAD 状态。
+每会话一个 `ReviewCacheController` 同时服务 Review 与对话尾部变更卡。Review 的任何打开、reveal 或范围切换入口都必须全量展开当前范围的全部文件；非零变更 Turn 的卡片显示总 `+N -N`，点击主区在对话内展开带逐文件计数的清单，「审查」打开所属 Turn，具体 mutation／清单文件会在全量展开所属 Turn 后立即挂载并滚动聚焦目标文件，对话 Header 的 Review 类型入口固定打开「未暂存」。旧 Host 返回的活跃历史若缺少计数，Controller 会通过对应 Turn Diff 后台补算并缓存，不把未知值显示成 `0/0`。全部提交或撤销后卡片变灰，只有最新未解决 Turn 可撤销；若当前正在查看的轮次已全部提交，其历史 Diff/源码缓存会立即清空并返回「未提交」，对话中的完成卡只保留轻量状态。撤销先经确认 Modal，失败使用公共 Toast。已解决文件打开 Artifact 完整文件。页面可见时约两秒轻量刷新历史与外部 HEAD 状态。
+
+「未暂存」与「历史轮次」是不同 Diff 基线：前者为 Index → Worktree，后者为 Turn start → end；同一文件在两个范围中的增删内容和计数可以不同，这不是渲染缓存复用。隐藏面板重新打开时，可见性兜底刷新必须先于显式 presentation 执行，确保入口指定的范围刷新最终胜出并驱动全量展开。
 
 Terminal Body 使用内嵌 xterm emulator，并连接到受 Agent fence 保护的 `system` PTY Remote。键盘数据按顺序作为 raw input 发送；ANSI 输出通过单调 cursor 增量消费；`ResizeObserver` 与 Fit addon 让 PTY 行列数跟随 Panel。隐藏 Group 只改变可见性，不终止 PTY。旧的逐行终端仍可列出和关闭，但界面会提示新建交互式终端。
 

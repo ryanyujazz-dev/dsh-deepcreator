@@ -57,7 +57,7 @@ export type { CodeSurfaceProps } from './CodeSurface.tsx'
 export { DiffBlock, DEFAULT_DIFF_MAX_LINES } from './DiffBlock.tsx'
 export type { DiffBlockProps, DiffHunk } from './DiffBlock.tsx'
 export {
-  buildCachedDiffHunkModel, buildDiffHunkModel, diffContentLines, diffLanguageFromPath, prioritizeSnapshotHighlights,
+  buildCachedDiffHunkModel, buildDiffHunkModel, countDiffHunkLines, diffContentLines, diffLanguageFromPath, prioritizeSnapshotHighlights,
   snapshotHighlightKey, subscribeSnapshotHighlight, warmDiffHunkModels,
 } from './diff/model.ts'
 export type { AlignedRow, DiffHunkInput, DiffHunkModel, TextRange } from './diff/model.ts'

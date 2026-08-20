@@ -98,6 +98,18 @@
   color: var(--dsw-alias-label-tertiary);
 }
 
+.diffCounts {
+  display: inline-flex;
+  flex: none;
+  gap: 5px;
+  margin-left: 4px;
+  white-space: nowrap;
+  font: var(--dsw-font-markdown-code-block-small);
+}
+
+.diffCounts b { color: var(--dsw-alias-state-success-primary); font-weight: 500; }
+.diffCounts i { color: var(--dsw-alias-state-error-primary); font-style: normal; font-weight: 500; }
+
 /* File-tool path: same geometry as .summary, with a persistent link affordance. */
 .fileLink {
   display: flex;
@@ -120,6 +132,10 @@
   text-underline-offset: 3px;
   cursor: pointer;
 }
+
+/* Keep an applied count adjacent to the path instead of consuming the row's
+   remaining width. Long paths can still shrink before the fixed count. */
+.root[data-diff-counts] .fileLink { flex-grow: 0; }
 
 .fileLinkText {
   min-width: 0;

@@ -33,6 +33,18 @@ export interface DiffHunkModel {
   removed: number
 }
 
+/** Count changed lines with the same jsdiff semantics used by DiffBlock. */
+export function countDiffHunkLines(input: Pick<DiffHunkInput, 'oldText' | 'newText'>): { added: number; removed: number } {
+  let added = 0
+  let removed = 0
+  for (const part of diffLines(input.oldText ?? '', input.newText)) {
+    const count = diffContentLines(part.value).length
+    if (part.added === true) added += count
+    else if (part.removed === true) removed += count
+  }
+  return { added, removed }
+}
+
 const WORD_REFINEMENT_LIMIT = 4000
 const FULL_SOURCE_HIGHLIGHT_LIMIT = 512 * 1024
 

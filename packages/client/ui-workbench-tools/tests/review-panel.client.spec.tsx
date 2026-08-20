@@ -53,6 +53,10 @@ function sessionStub(initial: ConversationSnapshot = emptyChat()) {
 function remoteMock() {
   return {
     review: {
+      history: vi.fn().mockResolvedValue({
+        ok: true,
+        value: { ok: true, repositoryRoot: '/workspace', turns: [] },
+      }),
       status: vi.fn().mockResolvedValue({
         ok: true,
         value: {
@@ -103,6 +107,53 @@ function props(remote = remoteMock()): ComponentProps<typeof ReviewPanel> & { re
 }
 
 describe('Review Panel file stream', () => {
+  it('groups unresolved turns under a heading, sorts newest first, and keeps the trigger concise', async () => {
+    let contribution: { left?: React.ReactNode } | undefined
+    const remote = remoteMock()
+    remote.review.history.mockResolvedValue({
+      ok: true,
+      value: {
+        ok: true,
+        repositoryRoot: '/workspace',
+        turns: [
+          { turn: 4, totalFiles: 1, remainingFiles: 1, state: 'active', undoable: false, files: [{ path: 'src/a.ts', state: 'pending' }] },
+          { turn: 6, totalFiles: 1, remainingFiles: 0, state: 'committed', undoable: false, files: [{ path: 'src/a.ts', state: 'committed' }] },
+          { turn: 5, totalFiles: 1, remainingFiles: 1, state: 'active', undoable: true, files: [{ path: 'src/b.ts', state: 'pending' }] },
+        ],
+      },
+    })
+    const input = props(remote)
+    input.contributeHeaderActions = value => { contribution = value; return () => undefined }
+    input.t = ((key: string, params?: Record<string, unknown>) => {
+      if (key === 'review.scope.history') return '历史轮次'
+      if (key === 'review.scope.turn') return `第 ${String(params?.turn)} 轮`
+      return key
+    }) as never
+    render(<ReviewPanel {...input} />)
+
+    type ScopeMenu = {
+      props: {
+        items: Array<{ id: string; type?: string; text?: string; label?: string }>
+        onSelect: (id: string) => void
+        anchor: { props: { children: Array<{ props?: { children?: string } }> } }
+      }
+    }
+    await waitFor(() => {
+      const menu = contribution?.left as unknown as ScopeMenu | undefined
+      expect(menu?.props.items.slice(3).map(item => item.type === 'label' ? `${item.type}:${item.text}` : `${item.id}:${item.label}`)).toEqual([
+        'label:历史轮次',
+        'turn:5:第 5 轮',
+        'turn:4:第 4 轮',
+      ])
+    })
+
+    act(() => { (contribution?.left as unknown as ScopeMenu).props.onSelect('turn:5') })
+    await waitFor(() => {
+      const menu = contribution?.left as unknown as ScopeMenu
+      expect(menu.props.anchor.props.children[0]?.props?.children).toBe('第 5 轮')
+    })
+  })
+
   it('warms every file in the background; opening expands all and never refetches warmed files', { timeout: 15000 }, async () => {
     const input = props()
     const view = render(<ReviewPanel {...input} />)
@@ -237,7 +288,7 @@ describe('Review Panel file stream', () => {
     // The live expansion survives a reveal instead of resetting.
     expect(view.getByRole('button', { name: /src\/a\.ts/ }).getAttribute('aria-expanded')).toBe('true')
     // The focus wants current content: exactly one fresh re-fetch of b.
-    expect(input.remote.review.diff).toHaveBeenLastCalledWith('session-1', 'src/b.ts')
+    expect(input.remote.review.diff).toHaveBeenLastCalledWith('session-1', 'src/b.ts', 'uncommitted')
     expect(input.remote.review.diff).toHaveBeenCalledTimes(3)
     // The reveal scroll lands last: the open's top-focus scroll preceded it.
     // Heavy renders (multi-theme token payloads) can stretch the reveal's
@@ -265,6 +316,47 @@ describe('Review Panel file stream', () => {
     expect(first.getAttribute('aria-expanded')).toBe('true')
   })
 
+  it('clears a stale miss on scope selection and renders the pending scope as loading', async () => {
+    let contribution: { left?: React.ReactNode } | undefined
+    const input = props()
+    input.contributeHeaderActions = value => { contribution = value; return () => undefined }
+    const view = render(<ReviewPanel {...input} />)
+    await waitFor(() => { expect(input.remote.review.diff).toHaveBeenCalledTimes(2) })
+
+    view.rerender(<ReviewPanel {...input} reveal={{ target: '/workspace/src/gone.ts', nonce: 1 }} />)
+    await waitFor(() => { expect(view.getByText('review.missedFile')).toBeTruthy() })
+
+    let release: ((value: unknown) => void) | undefined
+    input.remote.review.status.mockImplementationOnce(() => new Promise(resolve => { release = resolve }))
+    type ScopeMenu = { props: { onSelect: (id: string) => void } }
+    const menu = contribution?.left as unknown as ScopeMenu
+    act(() => { menu.props.onSelect('staged') })
+
+    expect(view.queryByText('review.missedFile')).toBeNull()
+    expect(view.getByText('loading')).toBeTruthy()
+    release?.({
+      ok: true,
+      value: { ok: true, repositoryRoot: '/workspace', branch: 'main', files: [] },
+    })
+    await waitFor(() => { expect(view.getByText('review.clean')).toBeTruthy() })
+  })
+
+  it('shows a scope-load error without converting it into a missing-file warning', async () => {
+    let contribution: { left?: React.ReactNode } | undefined
+    const input = props()
+    input.contributeHeaderActions = value => { contribution = value; return () => undefined }
+    const view = render(<ReviewPanel {...input} />)
+    await waitFor(() => { expect(input.remote.review.diff).toHaveBeenCalledTimes(2) })
+    input.remote.review.status.mockRejectedValueOnce(new Error('status unavailable'))
+    type ScopeMenu = { props: { onSelect: (id: string) => void } }
+
+    act(() => { (contribution?.left as unknown as ScopeMenu).props.onSelect('staged') })
+
+    await waitFor(() => { expect(view.getByText('status unavailable')).toBeTruthy() })
+    expect(view.getByText('review.loadFailed')).toBeTruthy()
+    expect(view.queryByText('review.missedFile')).toBeNull()
+  })
+
   it('a visibility transition refreshes status silently and keeps caches and expansion', async () => {
     const input = props()
     const view = render(<ReviewPanel {...input} />)
@@ -279,7 +371,25 @@ describe('Review Panel file stream', () => {
     expect(view.getByRole('button', { name: /src\/a\.ts/ }).getAttribute('aria-expanded')).toBe('true')
   })
 
-  it('opening the panel expands every file; a reveal-driven open keeps its focus', async () => {
+  it('lets an explicit open presentation win the hidden-to-visible refresh and expands every file', async () => {
+    const input = props()
+    const view = render(<ReviewPanel {...input} visible={false} />)
+    await waitFor(() => { expect(input.remote.review.diff).toHaveBeenCalledTimes(2) })
+
+    view.rerender(<ReviewPanel
+      {...input}
+      visible
+      reveal={{ parameters: { scope: 'unstaged', expand: 'all' }, nonce: 1 }}
+    />)
+
+    await waitFor(() => {
+      expect(input.remote.review.status).toHaveBeenLastCalledWith('session-1', 'unstaged')
+      expect(view.getByRole('button', { name: /src\/a\.ts/ }).getAttribute('aria-expanded')).toBe('true')
+      expect(view.getByRole('button', { name: /src\/b\.ts/ }).getAttribute('aria-expanded')).toBe('true')
+    })
+  })
+
+  it('opening and every reveal expand all files; a targeted reveal also keeps its focus', async () => {
     const input = props()
     const view = render(<ReviewPanel {...input} />)
     await waitFor(() => { expect(input.remote.review.diff).toHaveBeenCalledTimes(2) })
@@ -291,9 +401,61 @@ describe('Review Panel file stream', () => {
     view.unmount()
     input.controller.dispose()
     const next = props()
-    const revealed = render(<ReviewPanel {...next} reveal={{ target: '/workspace/src/b.ts', nonce: 1 }} />)
+    const revealed = render(<ReviewPanel
+      {...next}
+      reveal={{ target: '/workspace/src/b.ts', parameters: { scope: 'turn', turn: '5', expand: 'all' }, nonce: 1 }}
+    />)
     await waitFor(() => { expect(next.remote.review.diff).toHaveBeenCalledTimes(2) })
+    expect(next.remote.review.status).toHaveBeenLastCalledWith('session-1', { turn: 5 })
+    expect(revealed.getByRole('button', { name: /src\/a\.ts/ }).getAttribute('aria-expanded')).toBe('true')
     expect(revealed.getByRole('button', { name: /src\/b\.ts/ }).getAttribute('aria-expanded')).toBe('true')
+    await waitFor(() => { expect(revealed.container.textContent).toContain('export const ready = true') })
+  })
+
+  it('fully expands the requested scope for card and shared Review-control presentations', async () => {
+    const fromCard = props()
+    const cardView = render(<ReviewPanel
+      {...fromCard}
+      reveal={{ parameters: { scope: 'turn', turn: '5', expand: 'all' }, nonce: 1 }}
+    />)
+    await waitFor(() => {
+      expect(fromCard.remote.review.status).toHaveBeenLastCalledWith('session-1', { turn: 5 })
+      expect(cardView.getByRole('button', { name: /src\/a\.ts/ }).getAttribute('aria-expanded')).toBe('true')
+      expect(cardView.getByRole('button', { name: /src\/b\.ts/ }).getAttribute('aria-expanded')).toBe('true')
+    })
+    cardView.unmount()
+    fromCard.controller.dispose()
+
+    const fromHeader = props()
+    const headerView = render(<ReviewPanel
+      {...fromHeader}
+      reveal={{ parameters: { scope: 'unstaged', expand: 'all' }, nonce: 2 }}
+    />)
+    await waitFor(() => {
+      expect(fromHeader.remote.review.status).toHaveBeenLastCalledWith('session-1', 'unstaged')
+      expect(headerView.getByRole('button', { name: /src\/a\.ts/ }).getAttribute('aria-expanded')).toBe('true')
+      expect(headerView.getByRole('button', { name: /src\/b\.ts/ }).getAttribute('aria-expanded')).toBe('true')
+    })
+  })
+
+  it('fully expands after a manual scope selection', async () => {
+    let contribution: { left?: React.ReactNode } | undefined
+    const input = props()
+    input.contributeHeaderActions = value => { contribution = value; return () => undefined }
+    const view = render(<ReviewPanel {...input} />)
+    await waitFor(() => { expect(input.remote.review.diff).toHaveBeenCalledTimes(2) })
+    fireEvent.click(view.getByRole('button', { name: /src\/a\.ts/ }))
+    fireEvent.click(view.getByRole('button', { name: /src\/b\.ts/ }))
+    expect(view.getByRole('button', { name: /src\/a\.ts/ }).getAttribute('aria-expanded')).toBe('false')
+    expect(view.getByRole('button', { name: /src\/b\.ts/ }).getAttribute('aria-expanded')).toBe('false')
+
+    type ScopeMenu = { props: { onSelect: (id: string) => void } }
+    act(() => { (contribution?.left as unknown as ScopeMenu).props.onSelect('staged') })
+    await waitFor(() => {
+      expect(input.remote.review.status).toHaveBeenLastCalledWith('session-1', 'staged')
+      expect(view.getByRole('button', { name: /src\/a\.ts/ }).getAttribute('aria-expanded')).toBe('true')
+      expect(view.getByRole('button', { name: /src\/b\.ts/ }).getAttribute('aria-expanded')).toBe('true')
+    })
   })
 })
 

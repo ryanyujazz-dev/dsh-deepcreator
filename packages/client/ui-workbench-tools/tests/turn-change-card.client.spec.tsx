@@ -38,18 +38,27 @@ describe('TurnChangeCard', () => {
     expect(view.container.innerHTML).toBe('')
   })
 
-  it('opens the exact turn/file and confirms undo for the newest active turn', async () => {
+  it('expands its file list, shows line counts, focuses a selected file, and confirms undo', async () => {
     const input = props({
       status: null, checks: null, scope: 'uncommitted', entries: {}, error: null,
       history: { ok: true, repositoryRoot: '/workspace', turns: [{
-        turn: 7, totalFiles: 2, remainingFiles: 1, state: 'mixed', undoable: true,
-        files: [{ path: 'src/a.ts', state: 'pending' }, { path: 'src/b.ts', state: 'committed' }],
+        turn: 7, totalFiles: 2, remainingFiles: 1, additions: 5, deletions: 3, state: 'mixed', undoable: true,
+        files: [
+          { path: 'src/a.ts', state: 'pending', additions: 4, deletions: 1 },
+          { path: 'src/b.ts', state: 'committed', additions: 1, deletions: 2 },
+        ],
       }] },
     })
     const view = render(<TurnChangeCard {...input} />)
     fireEvent.click(view.getByText('变更 2 个文件'))
+    expect(input.workbench.present).not.toHaveBeenCalled()
+    expect(view.getByText('src/a.ts')).not.toBeNull()
+    expect(view.getByText('src/b.ts')).not.toBeNull()
+    expect(view.getByText('+5')).not.toBeNull()
+    expect(view.getByText('src/a.ts').nextElementSibling?.textContent).toBe('+4-1')
+    fireEvent.click(view.getByText('src/a.ts'))
     expect(input.workbench.present).toHaveBeenCalledWith(expect.objectContaining({
-      typeId: 'review', target: 'src/a.ts', parameters: { turn: '7' }, reveal: true,
+      typeId: 'review', target: 'src/a.ts', parameters: { scope: 'turn', turn: '7', expand: 'all' }, reveal: true,
     }))
     fireEvent.click(view.getByRole('button', { name: '撤销' }))
     expect(view.getByRole('dialog', { name: '撤销本轮变更？' })).not.toBeNull()
@@ -67,6 +76,8 @@ describe('TurnChangeCard', () => {
     })
     const view = render(<TurnChangeCard {...input} />)
     expect(view.getByText('已提交')).not.toBeNull()
+    expect(view.queryByText('+0')).toBeNull()
+    expect(view.queryByText('-0')).toBeNull()
     expect((view.getByRole('button', { name: '审查' }) as HTMLButtonElement).disabled).toBe(true)
     expect((view.getByRole('button', { name: '撤销' }) as HTMLButtonElement).disabled).toBe(true)
   })

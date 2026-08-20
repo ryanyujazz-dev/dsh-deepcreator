@@ -124,6 +124,37 @@ function parseNameStatus(stdout: string): ReviewTurnFile[] {
   return files
 }
 
+function parseNumstat(stdout: string): Map<string, { additions: number; deletions: number }> {
+  const records = stdout.split('\0')
+  const stats = new Map<string, { additions: number; deletions: number }>()
+  for (let index = 0; index < records.length;) {
+    const header = records[index++]
+    if (header === undefined || header === '') continue
+    const match = /^([^\t]+)\t([^\t]+)\t(.*)$/s.exec(header)
+    if (match === null) continue
+    let path = match[3] ?? ''
+    if (path === '') {
+      // With -z, rename/copy rows put old and destination paths in their own
+      // NUL records. Counts belong to the destination shown in Review.
+      index += 1
+      path = records[index++] ?? ''
+    }
+    if (path === '') continue
+    stats.set(path, {
+      additions: /^\d+$/.test(match[1] ?? '') ? Number(match[1]) : 0,
+      deletions: /^\d+$/.test(match[2] ?? '') ? Number(match[2]) : 0,
+    })
+  }
+  return stats
+}
+
+function attachNumstat(files: ReviewTurnFile[], stats: ReadonlyMap<string, { additions: number; deletions: number }>): ReviewTurnFile[] {
+  return files.map(file => {
+    if (file.additions !== undefined && file.deletions !== undefined) return file
+    return { ...file, ...(stats.get(file.path) ?? { additions: 0, deletions: 0 }) }
+  })
+}
+
 function safeRef(session: Session, turn: number): string {
   const id = String(session.id)
   if (!/^[A-Za-z0-9._-]+$/.test(id) || !Number.isSafeInteger(turn) || turn < 0) throw new Error('Invalid session or turn identity.')
@@ -309,10 +340,12 @@ export class ReviewService extends TypertRemoteService {
         await git(repository, ['update-ref', '-d', ref])
         return
       }
+      const stats = parseNumstat(await gitDiff(repository, ['--numstat', '-z', '--find-renames', start.tree, endTree]))
+      const measured = attachNumstat(files, stats)
       await writeTurn(repository, ref, endTree, {
         // Keep the start boundary's HEAD as the first reconciliation base so
         // a commit created inside this turn is recognized immediately.
-        version: 1, sessionId: String(session.id), turn, phase: 'end', head: start.manifest.head, files,
+        version: 1, sessionId: String(session.id), turn, phase: 'end', head: start.manifest.head, files: measured,
       }, start.commit)
     })
   }
@@ -334,7 +367,18 @@ export class ReviewService extends TypertRemoteService {
     for (const ref of refs) await git(repository, ['update-ref', '-d', ref])
   }
 
-  private async reconcile(repository: string, stored: StoredTurn): Promise<StoredTurn> {
+  private async reconcile(repository: string, input: StoredTurn): Promise<StoredTurn> {
+    let stored = input
+    if (stored.parent !== undefined && stored.manifest.files.some(file => file.additions === undefined || file.deletions === undefined)) {
+      // Active refs from versions before line-count persistence still retain
+      // both boundary trees. Backfill them once so existing conversations get
+      // accurate cards without waiting for another turn.
+      const startTree = (await git(repository, ['show', '-s', '--format=%T', stored.parent])).trim()
+      const stats = parseNumstat(await gitDiff(repository, ['--numstat', '-z', '--find-renames', startTree, stored.tree]))
+      const manifest = { ...stored.manifest, files: attachNumstat(stored.manifest.files, stats) }
+      const commit = await writeTurn(repository, stored.ref, stored.tree, manifest, stored.parent)
+      stored = { ...stored, commit, manifest }
+    }
     const currentHead = await head(repository)
     if (stored.manifest.head === currentHead || stored.parent === undefined) return stored
     const fastForward = stored.manifest.head === null
@@ -388,6 +432,8 @@ export class ReviewService extends TypertRemoteService {
           turn: manifest.turn,
           totalFiles: manifest.files.length,
           remainingFiles: manifest.files.filter(file => file.state === 'pending').length,
+          additions: manifest.files.reduce((sum, file) => sum + (file.additions ?? 0), 0),
+          deletions: manifest.files.reduce((sum, file) => sum + (file.deletions ?? 0), 0),
           state: turnState(manifest.files),
           undoable: manifest.turn === latestActive,
           files: manifest.files,
@@ -404,7 +450,8 @@ export class ReviewService extends TypertRemoteService {
       const selected: ReviewScope = scope ?? 'uncommitted'
       const raw = parsePorcelainStatus(await git(repository, ['status', '--porcelain=v1', '--branch', '-z']))
       if (typeof selected === 'object') {
-        const stored = (await this.storedTurns(session, repository)).find(row => row.manifest.turn === selected.turn)
+        const retained = (await this.storedTurns(session, repository)).find(row => row.manifest.turn === selected.turn)
+        const stored = retained === undefined ? undefined : await this.reconcile(repository, retained)
         if (stored === undefined) return { ok: false, code: 'TURN_NOT_FOUND', message: `Turn ${selected.turn} has no retained changes.` }
         const files = stored.manifest.files.filter(file => file.state === 'pending').map(file => ({
           path: file.path, ...(file.oldPath === undefined ? {} : { oldPath: file.oldPath }), index: ' ', workingTree: 'M',
@@ -428,8 +475,15 @@ export class ReviewService extends TypertRemoteService {
       const rel = relative(repository, target)
       if (!isWithin(repository, target)) return { ok: false, code: 'OUTSIDE_REPOSITORY', message: 'Review path is outside the repository.' }
       if (typeof selected === 'object') {
-        const stored = (await this.storedTurns(session, repository)).find(row => row.manifest.turn === selected.turn)
-        if (stored === undefined || stored.parent === undefined) return { ok: false, code: 'TURN_NOT_FOUND', message: `Turn ${selected.turn} has no retained changes.` }
+        const retained = (await this.storedTurns(session, repository)).find(row => row.manifest.turn === selected.turn)
+        const stored = retained === undefined ? undefined : await this.reconcile(repository, retained)
+        if (stored === undefined) return { ok: false, code: 'TURN_NOT_FOUND', message: `Turn ${selected.turn} has no retained changes.` }
+        // A parentless record is a completed tombstone. Its heavy start/end
+        // snapshots have already been released, so the historical scope is
+        // intentionally empty rather than an unavailable/error state.
+        if (stored.parent === undefined) {
+          return { ok: true, repositoryRoot: repository, scope: selected, path: rel, layers: [] }
+        }
         const file = stored.manifest.files.find(file => file.path === rel || file.oldPath === rel)
         if (file === undefined || file.state !== 'pending') return { ok: true, repositoryRoot: repository, scope: selected, path: rel, layers: [] }
         const oldPath = file.oldPath ?? file.path
@@ -459,9 +513,10 @@ export class ReviewService extends TypertRemoteService {
           : await gitDiff(repository, ['--find-renames', '--find-copies', '--unified=3', '--', oldPath, rel])
         if (patch !== '') layer = { kind: 'working-tree', patch, oldSource: { revision: 'index', text: indexSource }, newSource: { revision: 'worktree', text: worktree } }
       } else {
+        const baseline = await head(repository) ?? await emptyTree(repository)
         patch = status?.index === '?' && worktree !== null
           ? await gitDiff(repository, ['--no-index', '--unified=3', '--', '/dev/null', rel])
-          : await gitDiff(repository, ['HEAD', '--find-renames', '--find-copies', '--unified=3', '--', oldPath, rel])
+          : await gitDiff(repository, [baseline, '--find-renames', '--find-copies', '--unified=3', '--', oldPath, rel])
         if (patch !== '') layer = { kind: 'uncommitted', patch, oldSource: { revision: 'head', text: headSource }, newSource: { revision: 'worktree', text: worktree } }
       }
       return { ok: true, repositoryRoot: repository, scope: selected, path: rel, ...(oldPath === rel ? {} : { oldPath }), layers: layer === undefined ? [] : [layer] }

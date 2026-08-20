@@ -70,7 +70,8 @@
 
 /* The composer row is an anonymous inline-size container owned by InputBar.
    Once its natural control labels would compete for the same pixels, the
-   model selector becomes one semantic icon button. The current model and
+   model selector becomes one semantic icon button using the same Think glyph
+   as the conversation flow. The current model and
    effort remain in aria-label/title and the same menu opens on activation. */
 @container (max-width: 460px) {
   .root {

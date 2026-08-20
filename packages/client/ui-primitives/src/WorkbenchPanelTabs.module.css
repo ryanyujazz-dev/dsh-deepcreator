@@ -66,9 +66,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--dsw-font-sidebar-font-size);
-  font-weight: 400;
-  line-height: var(--dsw-font-sidebar-line-height);
+  font: var(--dsw-font-xxs-12);
   /* Optical lift: centering the line box leaves Latin ink ~1px below the
    * pill's midline (em-box metrics hang below the baseline), dropping the
    * label under the close glyph's centerline. Line-height cannot move it

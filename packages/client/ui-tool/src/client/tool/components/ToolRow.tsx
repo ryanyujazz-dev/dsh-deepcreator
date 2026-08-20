@@ -51,6 +51,8 @@ export interface ToolRowProps {
    * error row, whose collapsed summary is the failure line instead.
    */
   summarySuffix?: string | null | undefined
+  /** Applied line counts shown to the right of a mutation file name. */
+  diffCounts?: { added: number; removed: number } | null | undefined
   /** Expanded-body input text; null = no input section. */
   body: string | null
   /** Flattened result text for the expanded Output section; null/absent = no output section. */
@@ -147,6 +149,7 @@ export function ToolRow({
   title,
   summary,
   summarySuffix,
+  diffCounts,
   body,
   output,
   errorSummary,
@@ -185,6 +188,10 @@ export function ToolRow({
   // The failure line replaces the summary wholesale, so a suffix derived from
   // the call args has nothing left to sit beside.
   const suffix = failureLine === null ? summarySuffix ?? null : null
+  const visibleDiffCounts = failureLine === null && diffCounts !== null && diffCounts !== undefined
+    && (diffCounts.added > 0 || diffCounts.removed > 0)
+    ? diffCounts
+    : null
   // The failure line is error prose, not the path: no file affordance.
   const activateFile = onRevealChange ?? onOpenFile
   const fileLink = filePath !== undefined && activateFile !== undefined && failureLine === null
@@ -222,7 +229,14 @@ export function ToolRow({
   // row keeps DisclosureRow's icon→chevron hover preview (its default) instead
   // of losing it with the icon.
   return (
-    <div className={css.root} data-variant={variant} data-tool={toolName} data-state={state} data-execflow={execflow || undefined}>
+    <div
+      className={css.root}
+      data-variant={variant}
+      data-tool={toolName}
+      data-state={state}
+      data-execflow={execflow || undefined}
+      data-diff-counts={visibleDiffCounts === null ? undefined : true}
+    >
       {status !== null && <span className={css.visuallyHidden}>{status}</span>}
       <DisclosureRow
         rowClassName={css.row}
@@ -255,6 +269,12 @@ export function ToolRow({
                 className={clsx(css.summary, failureLine !== null && css.errorSummary)}
               >
                 {summaryText}
+              </span>
+            )}
+            {visibleDiffCounts !== null && (
+              <span className={css.diffCounts} aria-label={`+${visibleDiffCounts.added} -${visibleDiffCounts.removed}`}>
+                <b>{`+${visibleDiffCounts.added}`}</b>
+                <i>{`-${visibleDiffCounts.removed}`}</i>
               </span>
             )}
             {suffix !== null && <span className={css.summarySuffix}>{suffix}</span>}
