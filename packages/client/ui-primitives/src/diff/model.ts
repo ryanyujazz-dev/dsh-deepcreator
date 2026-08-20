@@ -54,11 +54,19 @@ const FULL_SOURCE_HIGHLIGHT_LIMIT = 512 * 1024
  * the first hunk pays the tokenization and its siblings reuse the lines —
  * without this, N hunks re-tokenize each snapshot N times. Chat diffs build
  * hunks without snapshots, so they never enter this memo. Cleared when it
- * outgrows a generous working set (one file ≈ two snapshots) so an unexpected
- * burst of distinct sources cannot grow it unbounded.
+ * outgrows a weighted working set so many medium snapshots cannot grow it
+ * unbounded.
  */
-const snapshotHighlightMemo = new Map<string, Map<string, { version: number; lines: HighlightSpan[][] | undefined }>>()
-const SNAPSHOT_HIGHLIGHT_MEMO_LIMIT = 256
+interface SnapshotHighlightMemoEntry {
+  version: number
+  lines: HighlightSpan[][] | undefined
+  bytes: number
+  touched: number
+}
+const snapshotHighlightMemo = new Map<string, Map<string, SnapshotHighlightMemoEntry>>()
+const SNAPSHOT_HIGHLIGHT_MEMO_BYTES = 32 * 1024 * 1024
+let snapshotHighlightMemoBytes = 0
+let snapshotHighlightStamp = 0
 
 /**
  * Snapshot highlighting is scheduled, not synchronous: a full-file
@@ -104,6 +112,22 @@ export function prioritizeSnapshotHighlights(keys: ReadonlySet<string>): void {
   pendingSnapshots.push(...head, ...tail)
 }
 
+/** Cancel queued highlights after their last resident DiffBlock unmounts. */
+export function cancelSnapshotHighlights(keys: ReadonlySet<string>): void {
+  if (keys.size === 0) return
+  const stillObserved = new Set<string>()
+  for (const subscriber of snapshotSubscribers) {
+    for (const key of subscriber.keys) if (keys.has(key)) stillObserved.add(key)
+  }
+  if (stillObserved.size === keys.size) return
+  const kept = pendingSnapshots.filter(job => !keys.has(job.key) || stillObserved.has(job.key))
+  if (kept.length === pendingSnapshots.length) return
+  pendingSnapshots.length = 0
+  pendingSnapshots.push(...kept)
+  pendingSnapshotKeys.clear()
+  for (const job of pendingSnapshots) pendingSnapshotKeys.add(job.key)
+}
+
 /** Idle scheduling; a timer fallback keeps tests and non-browser hosts deterministic. */
 function scheduleIdle(task: () => void): void {
   if (typeof requestIdleCallback === 'function') {
@@ -116,11 +140,38 @@ function scheduleIdle(task: () => void): void {
 function setSnapshotHighlight(source: string, lang: string, lines: HighlightSpan[][] | undefined): void {
   let byLang = snapshotHighlightMemo.get(source)
   if (byLang === undefined) {
-    if (snapshotHighlightMemo.size >= SNAPSHOT_HIGHLIGHT_MEMO_LIMIT) snapshotHighlightMemo.clear()
     byLang = new Map()
     snapshotHighlightMemo.set(source, byLang)
   }
-  byLang.set(lang, { version: grammarLoadCount(), lines })
+  const previous = byLang.get(lang)
+  if (previous !== undefined) snapshotHighlightMemoBytes -= previous.bytes
+  let spans = 0
+  for (const line of lines ?? []) spans += line.length
+  const bytes = source.length * 2 + spans * 64
+  byLang.set(lang, { version: grammarLoadCount(), lines, bytes, touched: ++snapshotHighlightStamp })
+  snapshotHighlightMemoBytes += bytes
+  while (snapshotHighlightMemoBytes > SNAPSHOT_HIGHLIGHT_MEMO_BYTES) {
+    let oldestSource: string | undefined
+    let oldestLang: string | undefined
+    let oldest: SnapshotHighlightMemoEntry | undefined
+    let entryCount = 0
+    for (const [candidateSource, languages] of snapshotHighlightMemo) {
+      for (const [candidateLang, entry] of languages) {
+        entryCount += 1
+        if (oldest === undefined || entry.touched < oldest.touched) {
+          oldest = entry; oldestSource = candidateSource; oldestLang = candidateLang
+        }
+      }
+    }
+    // A single unusually dense snapshot may exceed the soft estimate by
+    // itself. Keep it to avoid an idle re-tokenization loop.
+    if (entryCount <= 1) break
+    if (oldest === undefined || oldestSource === undefined || oldestLang === undefined) break
+    const languages = snapshotHighlightMemo.get(oldestSource)
+    languages?.delete(oldestLang)
+    if (languages?.size === 0) snapshotHighlightMemo.delete(oldestSource)
+    snapshotHighlightMemoBytes -= oldest.bytes
+  }
 }
 
 /** One idle task per registration: each drain pass shifts a single job (or
@@ -135,7 +186,10 @@ function highlightSnapshot(source: string, language: string | undefined): Highli
   if (source.length > FULL_SOURCE_HIGHLIGHT_LIMIT) return undefined
   const version = grammarLoadCount()
   const hit = snapshotHighlightMemo.get(source)?.get(language ?? '')
-  if (hit !== undefined && hit.version === version) return hit.lines
+  if (hit !== undefined && hit.version === version) {
+    hit.touched = ++snapshotHighlightStamp
+    return hit.lines
+  }
   const key = snapshotHighlightKey(source, language)
   if (!pendingSnapshotKeys.has(key)) {
     pendingSnapshotKeys.add(key)

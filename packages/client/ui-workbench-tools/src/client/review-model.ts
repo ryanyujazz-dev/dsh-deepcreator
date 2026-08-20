@@ -4,15 +4,21 @@
 // mutation-tool digests, and per-repository expansion persistence. No React,
 // no Cordis: the panel wires these into component state.
 
-import { parseUnifiedDiff, warmDiffHunkModels, type DiffHunk } from '@ryanyujazz/dsh-client-ui-primitives'
+import { parseUnifiedDiff, type DiffHunk } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { ConversationNode, ToolCallBlock } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ReviewDiffResult, ReviewFileStatus } from '@ryanyujazz/dsh-review/types'
 
-/** Files whose diffs the background prefetch warms per status, in order. */
-export const REVIEW_PREFETCH_LIMIT = 50
+/** Backward-compatible controller default; idle preheat is intentionally tiny. */
+export const REVIEW_PREFETCH_LIMIT = 6
 
-/** Ready caches kept beyond this count are evicted oldest-first (safety valve). */
+/** Diff bodies warmed while Review is visible before viewport demand takes over. */
+export const REVIEW_IDLE_PREFETCH_LIMIT = 6
+
+/** Non-resident ready caches kept beyond this count are evicted oldest-first. */
 export const REVIEW_CACHE_LIMIT = 100
+
+/** Approximate UTF-16/raw patch working-set budget for non-resident ready files. */
+export const REVIEW_CACHE_BYTES = 32 * 1024 * 1024
 
 /** Normalize separators and drop a trailing slash so paths compare uniformly. */
 function comparablePath(path: string): string {
@@ -66,6 +72,15 @@ export type ReadyCache = {
   raw: Extract<ReviewDiffResult, { ok: true }>
 }
 
+/** Approximate retained wire bytes; enough for deterministic weighted eviction. */
+export function readyCacheBytes(cache: ReadyCache): number {
+  let characters = cache.raw.path.length + (cache.raw.oldPath?.length ?? 0)
+  for (const layer of cache.raw.layers) {
+    characters += layer.patch.length + (layer.oldSource.text?.length ?? 0) + (layer.newSource.text?.length ?? 0)
+  }
+  return characters * 2
+}
+
 export type FileCache =
   | { kind: 'empty' }
   | { kind: 'loading' }
@@ -114,10 +129,6 @@ export function parseDiffResult(diff: Extract<ReviewDiffResult, { ok: true }>): 
       removed: parsedFiles.reduce((sum, file) => sum + file.removed, 0),
     }
   })
-  // Warm the row-alignment/syntax models now: the sequential prefetch queue
-  // spreads this across awaits, so a later expand-all mounts DiffBlocks that
-  // read memoized models instead of highlighting every file in one frame.
-  warmDiffHunkModels(layers.flatMap(layer => layer.files.flatMap(file => file.hunks)))
   return {
     layers,
     added: layers.reduce((sum, layer) => sum + layer.added, 0),
@@ -192,20 +203,31 @@ export function markStale(entries: Readonly<FileEntries>, paths: ReadonlySet<str
 }
 
 /**
- * Evict the oldest ready caches beyond the limit. Expanded entries are exempt;
+ * Evict the oldest ready caches beyond the count or byte limit. Resident entries are exempt;
  * an in-flight fetch is never discarded. Returns null when nothing changed so
  * callers keep the previous record identity.
  */
 export function evictCollapsedCaches(
   entries: Readonly<FileEntries>,
-  expandedPaths: ReadonlySet<string>,
+  residentPaths: ReadonlySet<string>,
   limit: number,
+  byteLimit = REVIEW_CACHE_BYTES,
 ): FileEntries | null {
   const collapsed = Object.values(entries)
-    .filter(entry => entry.cache.kind === 'ready' && !expandedPaths.has(entry.status.path) && !entry.fetching)
+    .filter(entry => entry.cache.kind === 'ready' && !residentPaths.has(entry.status.path) && !entry.fetching)
     .sort((a, b) => a.lastOpened - b.lastOpened)
-  if (collapsed.length <= limit) return null
-  const evict = new Set(collapsed.slice(0, collapsed.length - limit).map(entry => entry.status.path))
+  let retainedBytes = Object.values(entries).reduce((sum, entry) => (
+    sum + (entry.cache.kind === 'ready' ? readyCacheBytes(entry.cache) : 0)
+  ), 0)
+  let retainedCount = collapsed.length
+  const evict = new Set<string>()
+  for (const entry of collapsed) {
+    if (retainedCount <= limit && retainedBytes <= byteLimit) break
+    evict.add(entry.status.path)
+    retainedCount -= 1
+    retainedBytes -= readyCacheBytes(entry.cache as ReadyCache)
+  }
+  if (evict.size === 0) return null
   const next: FileEntries = {}
   for (const [path, entry] of Object.entries(entries)) {
     next[path] = evict.has(path)

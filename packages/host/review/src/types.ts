@@ -7,6 +7,15 @@ export interface ReviewFileStatus {
   workingTree: string
 }
 
+/** Lightweight per-file line statistics returned independently of source snapshots. */
+export interface ReviewFileSummary {
+  path: string
+  oldPath?: string
+  additions: number
+  deletions: number
+  binary: boolean
+}
+
 export interface ReviewSourceSnapshot {
   revision: 'head' | 'index' | 'worktree' | 'turn-start' | 'turn-end'
   text: string | null
@@ -47,6 +56,17 @@ export type ReviewHistoryResult =
 
 export type ReviewStatusResult =
   | { ok: true; repositoryRoot: string; branch: string; scope: ReviewScope; files: ReviewFileStatus[] }
+  | { ok: false; code: 'NO_WORKSPACE' | 'NOT_REPOSITORY' | 'OUTSIDE_WORKSPACE' | 'TURN_NOT_FOUND' | 'READ_FAILED'; message: string }
+
+export type ReviewSummaryResult =
+  | {
+    ok: true
+    repositoryRoot: string
+    scope: ReviewScope
+    additions: number
+    deletions: number
+    files: ReviewFileSummary[]
+  }
   | { ok: false; code: 'NO_WORKSPACE' | 'NOT_REPOSITORY' | 'OUTSIDE_WORKSPACE' | 'TURN_NOT_FOUND' | 'READ_FAILED'; message: string }
 
 export type ReviewDiffResult =

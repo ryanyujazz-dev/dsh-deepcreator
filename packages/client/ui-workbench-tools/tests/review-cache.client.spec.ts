@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // ReviewCacheController: the session Review data plane — sequential
-// background prefetch from session entry, event-driven invalidation from the
+// visibility-gated near-viewport prefetch, event-driven invalidation from the
 // session snapshot, turn-end checks policy, visibility catch-all, and
 // parse-reference reuse on identical revalidates.
 
@@ -54,6 +54,14 @@ function remoteMock(files: string[] = ['src/a.ts', 'src/b.ts']) {
       checks: vi.fn().mockResolvedValue({
         ok: true, value: { ok: true, repositoryRoot: '/workspace', clean: true, output: '' },
       }),
+      summary: vi.fn().mockResolvedValue({
+        ok: true,
+        value: {
+          ok: true, repositoryRoot: '/workspace', scope: 'uncommitted',
+          additions: files.length, deletions: files.length,
+          files: files.map(path => ({ path, additions: 1, deletions: 1, binary: false })),
+        },
+      }),
       diff: vi.fn(async (_sessionId: string, path: string) => ({
         ok: true,
         value: {
@@ -87,7 +95,7 @@ const advance = async (): Promise<void> => {
 }
 
 describe('ReviewCacheController', () => {
-  it('prefetches every file sequentially in the background on session entry', async () => {
+  it('keeps bodies cold while hidden, then prefetches visible top files sequentially', async () => {
     const remote = remoteMock()
     const gates: Array<() => void> = []
     remote.review.diff = vi.fn((_sid: string, path: string) => new Promise(resolve => {
@@ -105,6 +113,9 @@ describe('ReviewCacheController', () => {
     })) as never
     const cache = new ReviewCacheController({ remote: remote as never, sessionId: SID, session: sessionStub().session })
 
+    await flush()
+    expect(remote.review.diff).not.toHaveBeenCalled()
+    cache.setVisible(true)
     await flush()
     // Strictly one in flight: b waits for a.
     expect(remote.review.status).toHaveBeenCalledWith(SID, 'uncommitted')
@@ -127,6 +138,7 @@ describe('ReviewCacheController', () => {
     const cache = new ReviewCacheController({
       remote: remote as never, sessionId: SID, session: sessionStub().session, prefetchLimit: 2,
     })
+    cache.setVisible(true)
     await flush(); await flush(); await flush()
     expect(remote.review.diff.mock.calls.map(call => call[1])).toEqual(['f1.ts', 'f2.ts'])
     cache.ensure('f3.ts')
@@ -135,7 +147,7 @@ describe('ReviewCacheController', () => {
     cache.dispose()
   })
 
-  it('loadAll queues batch gestures through the sequential drain, never concurrently', async () => {
+  it('queues multiple viewport ensures through the sequential drain, never concurrently', async () => {
     const gates: Array<() => void> = []
     const remote = remoteMock(['a.ts', 'b.ts', 'c.ts', 'd.ts'])
     remote.review.diff = vi.fn((_sid: string, path: string) => new Promise(resolve => {
@@ -152,22 +164,23 @@ describe('ReviewCacheController', () => {
       }))
     })) as never
     const cache = new ReviewCacheController({ remote: remote as never, sessionId: SID, session: sessionStub().session })
-    // The entry prefetch holds the first gate; the batch gesture appends to
-    // the same queue instead of firing its own concurrent fetches.
+    // A batch gesture uses the same sequential drain instead of firing
+    // concurrent fetches. Hidden panels do not enqueue idle work.
     await flush()
-    cache.loadAll(['b.ts', 'c.ts', 'd.ts'])
-    expect(remote.review.diff.mock.calls.map(call => call[1])).toEqual(['a.ts'])
+    cache.ensure('b.ts'); cache.ensure('c.ts'); cache.ensure('d.ts')
+    await flush()
+    expect(remote.review.diff.mock.calls.map(call => call[1])).toEqual(['b.ts'])
     gates[0]?.()
     await flush()
-    expect(remote.review.diff.mock.calls.map(call => call[1])).toEqual(['a.ts', 'b.ts'])
+    expect(remote.review.diff.mock.calls.map(call => call[1])).toEqual(['b.ts', 'c.ts'])
     // Ready entries are untouched by a repeat batch.
-    cache.loadAll(['a.ts', 'b.ts', 'c.ts', 'd.ts'])
+    cache.ensure('a.ts'); cache.ensure('b.ts'); cache.ensure('c.ts'); cache.ensure('d.ts')
     gates[1]?.()
     await flush()
-    expect(remote.review.diff.mock.calls.map(call => call[1])).toEqual(['a.ts', 'b.ts', 'c.ts'])
+    expect(remote.review.diff.mock.calls.map(call => call[1])).toEqual(['b.ts', 'c.ts', 'd.ts'])
     gates[2]?.()
     await flush()
-    expect(remote.review.diff.mock.calls.map(call => call[1])).toEqual(['a.ts', 'b.ts', 'c.ts', 'd.ts'])
+    expect(remote.review.diff.mock.calls.map(call => call[1])).toEqual(['b.ts', 'c.ts', 'd.ts', 'a.ts'])
     gates[3]?.()
     await flush()
     expect(cache.getSnapshot().entries['d.ts']?.cache.kind).toBe('ready')
@@ -180,6 +193,7 @@ describe('ReviewCacheController', () => {
     const feed = sessionStub()
     const remote = remoteMock()
     const cache = new ReviewCacheController({ remote: remote as never, sessionId: SID, session: feed.session })
+    cache.setVisible(true)
     await advance()
     expect(remote.review.diff).toHaveBeenCalledTimes(2)
 
@@ -200,6 +214,7 @@ describe('ReviewCacheController', () => {
     const feed = sessionStub()
     const remote = remoteMock()
     const cache = new ReviewCacheController({ remote: remote as never, sessionId: SID, session: feed.session })
+    cache.setVisible(true)
     await advance()
     const before = cache.getSnapshot().entries['src/a.ts']?.cache
     expect(before?.kind).toBe('ready')
@@ -214,7 +229,7 @@ describe('ReviewCacheController', () => {
     cache.dispose()
   })
 
-  it('runs checks when a turn ends, deferring them through invisibility', async () => {
+  it('defers turn-end checks through invisibility until the panel becomes visible', async () => {
     const feed = sessionStub()
     const remote = remoteMock()
     const cache = new ReviewCacheController({ remote: remote as never, sessionId: SID, session: feed.session })
@@ -224,6 +239,9 @@ describe('ReviewCacheController', () => {
     const ended = emptyChat()
     ended.turnEnds = new Map([[1, 9]])
     feed.publish(ended)
+    await flush(); await flush()
+    expect(remote.review.checks).not.toHaveBeenCalled()
+    cache.setVisible(true)
     await flush(); await flush()
     expect(remote.review.checks).toHaveBeenCalledTimes(1)
     cache.dispose()
@@ -285,6 +303,7 @@ describe('ReviewCacheController', () => {
 
   it('hydrates missing counts from historical diffs served by an older host', async () => {
     const remote = remoteMock(['src/a.ts'])
+    remote.review.summary.mockRejectedValue(new Error('unknown remote method'))
     remote.review.history.mockResolvedValue({
       ok: true,
       value: {
@@ -334,10 +353,7 @@ describe('ReviewCacheController', () => {
       ok: true,
       value: {
         ok: true, repositoryRoot: '/workspace', head: 'after',
-        turns: [{
-          turn: 9, totalFiles: 1, remainingFiles: 0, state: 'committed', undoable: false,
-          files: [{ path: 'src/a.ts', state: 'committed' }],
-        }],
+        turns: [],
       },
     })
 
@@ -421,5 +437,36 @@ describe('ReviewCacheController', () => {
 
     await expect(resolution).resolves.toBe('pending')
     cache.dispose()
+  })
+
+  it('notifies only the changed file subscription when one body finishes', async () => {
+    const remote = remoteMock()
+    const cache = new ReviewCacheController({ remote: remote as never, sessionId: SID, session: sessionStub().session })
+    cache.setVisible(true)
+    await flush(); await flush(); await flush()
+    const a = vi.fn()
+    const b = vi.fn()
+    const unsubscribeA = cache.subscribeFile('src/a.ts', a)
+    const unsubscribeB = cache.subscribeFile('src/b.ts', b)
+
+    cache.ensure('src/a.ts', 'focus', true)
+    await flush(); await flush()
+
+    expect(a).toHaveBeenCalled()
+    expect(b).not.toHaveBeenCalled()
+    unsubscribeA(); unsubscribeB(); cache.dispose()
+  })
+
+  it('does not publish structurally unchanged history polls', async () => {
+    const remote = remoteMock()
+    const cache = new ReviewCacheController({ remote: remote as never, sessionId: SID, session: sessionStub().session })
+    await flush(); await flush()
+    const listener = vi.fn()
+    const unsubscribe = cache.subscribeHistory(listener)
+
+    await cache.refreshHistory(true)
+
+    expect(listener).not.toHaveBeenCalled()
+    unsubscribe(); cache.dispose()
   })
 })

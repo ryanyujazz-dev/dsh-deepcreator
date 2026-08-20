@@ -65,6 +65,12 @@ describe('WorkbenchPanelTabs truncation fade', () => {
       expect(container.querySelector('[data-truncated]')).toBeNull()
     })
   })
+
+  it('uses the full idle edge and only reserves close space while the control is exposed', () => {
+    const stylesheet = readFileSync(resolve(process.cwd(), 'packages/client/ui-primitives/src/WorkbenchPanelTabs.module.css'), 'utf8')
+    expect(stylesheet).toMatch(/\.tab\[data-truncated\]\s+\.tabLabel\s*\{[^}]*mask-image:\s*linear-gradient\(to right, #000 calc\(100% - 16px\), transparent 100%\);/s)
+    expect(stylesheet).toMatch(/\.tab:hover\s+\.tabLabel,[\s\S]*?\.tab:has\(\.tabClose:focus-visible\)\s+\.tabLabel\s*\{[^}]*mask-image:\s*linear-gradient\(to right, #000 calc\(100% - 40px\), transparent calc\(100% - 24px\)\);/s)
+  })
 })
 
 describe('WorkbenchPanelTabs hover hint', () => {
@@ -83,9 +89,9 @@ describe('WorkbenchPanelTabs hover hint', () => {
 })
 
 describe('WorkbenchPanelTabs close visibility', () => {
-  it('reserves the close slot but reveals its control only on pointer or keyboard focus', () => {
+  it('overlays the close control and reveals it only on pointer or keyboard focus', () => {
     const stylesheet = readFileSync(resolve(process.cwd(), 'packages/client/ui-primitives/src/WorkbenchPanelTabs.module.css'), 'utf8')
-    expect(stylesheet).toMatch(/\.tabClose\s*\{[^}]*opacity:\s*0;[^}]*pointer-events:\s*none;/)
+    expect(stylesheet).toMatch(/\.tabClose\s*\{[^}]*position:\s*absolute;[^}]*right:\s*4px;[^}]*opacity:\s*0;[^}]*pointer-events:\s*none;/)
     expect(stylesheet).toMatch(/\.tab:hover\s+\.tabClose,[\s\S]*?\.tabClose:focus-visible\s*\{[^}]*opacity:\s*1;[^}]*pointer-events:\s*auto;/)
   })
 })

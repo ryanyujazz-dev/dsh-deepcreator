@@ -1,27 +1,27 @@
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { TurnTailOwnerProps } from '@ryanyujazz/dsh-client-ui-conversation/client'
 import {
-  Button, DeepCreatorIconReview16, FileIcon, IconChevronDownOutline14, IconChevronRightOutline14,
-  IconWarningOutline16, Modal, Toast,
+  Button, ConversationFileCard, ConversationFileCardAction, ConversationFileCardFile,
+  ConversationFileCardList, DeepCreatorIconReview16, IconWarningOutline16, Modal, Toast,
 } from '@ryanyujazz/dsh-client-ui-primitives'
-import { useCallback, useState, useSyncExternalStore } from 'react'
+import { useCallback, useState, useSyncExternalStore, type HTMLAttributes } from 'react'
 import type { WorkbenchService } from '@ryanyujazz/dsh-client-ui-workbench/client'
 import type { ReviewCacheController } from './review-cache.ts'
 import type { ToolsKey } from './locales.ts'
 import css from './TurnChangeCard.module.css'
 
-type Props = PropsRuntime<'conversation.chat.turnTail'>
+type Props = PropsRuntime<'deepcreator.conversation.chat.turnChanges'>
   & TurnTailOwnerProps
   & PropsLocale<'workbench-tools'>
   & { controller: ReviewCacheController; workbench: WorkbenchService }
 
 export function TurnChangeCard({ turn, controller, workbench, openFile, t }: Props) {
-  const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
+  const history = useSyncExternalStore(controller.subscribeHistory, controller.getHistorySnapshot, controller.getHistorySnapshot)
   const [expanded, setExpanded] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [undoing, setUndoing] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
-  const record = snapshot.history?.turns.find(item => item.turn === turn.turn)
+  const record = history?.turns.find(item => item.turn === turn.turn)
   const openReview = useCallback((path?: string) => {
     if (record === undefined || record.remainingFiles === 0) return
     workbench.present({
@@ -59,66 +59,53 @@ export function TurnChangeCard({ turn, controller, workbench, openFile, t }: Pro
   const showTotals = record.additions !== undefined && record.deletions !== undefined && (additions > 0 || deletions > 0)
   return (
     <>
-      <section className={css.card} data-active={active || undefined} data-turn-change-card={record.turn}>
-        <div className={css.header}>
-          <button
-            type="button"
-            className={css.summary}
-            disabled={!active}
-            aria-expanded={active ? expanded : undefined}
-            onClick={() => { setExpanded(value => !value) }}
-          >
-            <span className={css.leadingIcon} data-turn-change-leading-icon>
-              <DeepCreatorIconReview16 size={16} className={css.reviewIcon} />
-              {expanded
-                ? <IconChevronDownOutline14 size={13} className={css.chevronIcon} />
-                : <IconChevronRightOutline14 size={13} className={css.chevronIcon} />}
-            </span>
-            <span className={css.label}>{t('turnCard.files', { count: record.totalFiles })}</span>
+      <ConversationFileCard
+          active={active}
+          expanded={expanded}
+          onToggle={() => { setExpanded(value => !value) }}
+          icon={<DeepCreatorIconReview16 size={16} />}
+          label={t('turnCard.files', { count: record.totalFiles })}
+          sectionProps={{ 'data-turn-change-card': record.turn } as HTMLAttributes<HTMLElement>}
+          meta={(
+            <>
             {showTotals && <span className={css.diffCounts}><b>{`+${additions}`}</b><i>{`-${deletions}`}</i></span>}
             {record.remainingFiles < record.totalFiles && record.remainingFiles > 0 && (
               <span className={css.remaining}>{t('turnCard.remaining', { count: record.remainingFiles })}</span>
             )}
             {!active && <span className={css.remaining}>{t(stateKey)}</span>}
-          </button>
-          <div className={css.actions}>
-            <button
-              type="button"
-              className={css.action}
+            </>
+          )}
+          actions={(
+            <>
+            <ConversationFileCardAction
               disabled={!record.undoable || undoing}
               title={record.undoable ? t('turnCard.undo') : t('turnCard.undoUnavailable')}
               onClick={() => { setConfirming(true) }}
             >
               {t('turnCard.undo')}
-            </button>
-            <button type="button" className={css.action} disabled={!active} onClick={() => { openReview() }}>
+            </ConversationFileCardAction>
+            <ConversationFileCardAction disabled={!active} onClick={() => { openReview() }}>
               {t('turnCard.review')}
-            </button>
-          </div>
-        </div>
-        {active && expanded && (
-          <ul className={css.files}>
+            </ConversationFileCardAction>
+            </>
+          )}
+        >
+          <ConversationFileCardList>
             {record.files.map(file => (
-              <li key={`${file.oldPath ?? ''}\0${file.path}`}>
-                <button
-                  type="button"
-                  className={css.file}
-                  onClick={() => {
-                    if (file.state === 'pending') openReview(file.path)
-                    else openFile(file.path)
-                  }}
-                >
-                  <span className={css.fileIcon}><FileIcon path={file.path} /></span>
-                  <span className={css.filePath}>{file.path}</span>
-                  {file.additions !== undefined && file.deletions !== undefined && (file.additions > 0 || file.deletions > 0) && (
+              <ConversationFileCardFile
+                key={`${file.oldPath ?? ''}\0${file.path}`}
+                path={file.path}
+                onClick={() => {
+                  if (file.state === 'pending') openReview(file.path)
+                  else openFile(file.path)
+                }}
+                trailing={file.additions !== undefined && file.deletions !== undefined && (file.additions > 0 || file.deletions > 0) && (
                     <span className={css.diffCounts}><b>{`+${file.additions}`}</b><i>{`-${file.deletions}`}</i></span>
-                  )}
-                </button>
-              </li>
+                )}
+              />
             ))}
-          </ul>
-        )}
-      </section>
+          </ConversationFileCardList>
+      </ConversationFileCard>
       <Modal
         open={confirming}
         onClose={() => { if (!undoing) setConfirming(false) }}

@@ -7,6 +7,7 @@ import type { ReviewCacheSnapshot } from '../src/client/review-cache.ts'
 import { TurnChangeCard } from '../src/client/TurnChangeCard.tsx'
 
 const stylesheet = readFileSync(resolve(process.cwd(), 'packages/client/ui-workbench-tools/src/client/TurnChangeCard.module.css'), 'utf8')
+const sharedStylesheet = readFileSync(resolve(process.cwd(), 'packages/client/ui-primitives/src/ConversationFileCard.module.css'), 'utf8')
 
 afterEach(cleanup)
 
@@ -26,6 +27,8 @@ function props(snapshot: ReviewCacheSnapshot) {
   const controller = {
     subscribe: () => () => undefined,
     getSnapshot: () => snapshot,
+    subscribeHistory: () => () => undefined,
+    getHistorySnapshot: () => snapshot.history,
     undoTurn: vi.fn().mockResolvedValue({ ok: true, repositoryRoot: '/workspace', turn: 7, revertedFiles: ['src/a.ts'] }),
   }
   const workbench = { present: vi.fn() }
@@ -54,7 +57,7 @@ describe('TurnChangeCard', () => {
       }] },
     })
     const view = render(<TurnChangeCard {...input} />)
-    const leadingIcon = view.container.querySelector('[data-turn-change-leading-icon]')
+    const leadingIcon = view.container.querySelector('[data-conversation-file-card-leading-icon]')
     expect(leadingIcon?.querySelectorAll('svg')).toHaveLength(2)
     fireEvent.click(view.getByText('变更 2 个文件'))
     expect(input.workbench.present).not.toHaveBeenCalled()
@@ -89,21 +92,21 @@ describe('TurnChangeCard', () => {
   })
 
   it('keeps the card and actions on the shared panel interaction tokens', () => {
-    expect(stylesheet).toContain('background: var(--dsw-specific-sidebar-fill);')
-    expect(stylesheet).toMatch(/\.card\s*\{[^}]*border: 1px solid var\(--dsw-alias-border-l1\);[^}]*border-radius: 12px;[^}]*\}/s)
-    expect(stylesheet).toMatch(/\.actions\s*\{[^}]*gap: 4px;[^}]*\}/s)
-    expect(stylesheet).toMatch(/\.action\s*\{[^}]*height: 28px;[^}]*border-radius: 6px;[^}]*background: transparent;[^}]*\}/s)
-    expect(stylesheet).toMatch(/\.action:not\(:disabled\):hover\s*\{[^}]*background: var\(--dsw-alias-interactive-bg-hover\);[^}]*\}/s)
-    expect(stylesheet).not.toContain('.action + .action')
-    expect(stylesheet).toContain('.header:has(.summary:not(:disabled):hover)')
-    expect(stylesheet).not.toContain('.summary:not(:disabled):hover { background:')
-    expect(stylesheet).toContain('.summary:not(:disabled):hover .reviewIcon')
-    expect(stylesheet).toContain('.summary:not(:disabled):hover .chevronIcon')
-    expect(stylesheet).toMatch(/\.leadingIcon\s*\{[^}]*height: 16px;[^}]*transform: translateY\(-1px\);[^}]*\}/s)
-    expect(stylesheet).toMatch(/\.label\s*\{[^}]*line-height: 16px;[^}]*\}/s)
-    expect(stylesheet).toMatch(/\.file\s*\{[^}]*grid-template-columns: 16px minmax\(0, 1fr\) auto;[^}]*column-gap: 7px;[^}]*padding: 0 11px;[^}]*\}/s)
-    expect(stylesheet).toMatch(/\.fileIcon\s*\{[^}]*width: 16px;[^}]*place-items: center;[^}]*transform: translateY\(-1px\);[^}]*\}/s)
-    expect(stylesheet).toMatch(/\.filePath\s*\{[^}]*line-height: 16px;[^}]*\}/s)
+    expect(sharedStylesheet).toContain('background: var(--dsw-specific-sidebar-fill);')
+    expect(sharedStylesheet).toMatch(/\.card\s*\{[^}]*border: 1px solid var\(--dsw-alias-border-l1\);[^}]*border-radius: 12px;[^}]*\}/s)
+    expect(sharedStylesheet).toMatch(/\.actions\s*\{[^}]*gap: 4px;[^}]*\}/s)
+    expect(sharedStylesheet).toMatch(/\.action\s*\{[^}]*height: 28px;[^}]*border-radius: 6px;[^}]*background: transparent;[^}]*\}/s)
+    expect(sharedStylesheet).toMatch(/\.action:not\(:disabled\):hover\s*\{[^}]*background: var\(--dsw-alias-interactive-bg-hover\);[^}]*\}/s)
+    expect(sharedStylesheet).not.toContain('.action + .action')
+    expect(sharedStylesheet).toContain('.header:has(.summary:not(:disabled):hover)')
+    expect(sharedStylesheet).not.toContain('.summary:not(:disabled):hover { background:')
+    expect(sharedStylesheet).toContain('.summary:not(:disabled):hover .primaryIcon')
+    expect(sharedStylesheet).toContain('.summary:not(:disabled):hover .chevronIcon')
+    expect(sharedStylesheet).toMatch(/\.leadingIcon\s*\{[^}]*height: 16px;[^}]*transform: translateY\(-1px\);[^}]*\}/s)
+    expect(sharedStylesheet).toMatch(/\.label\s*\{[^}]*line-height: 16px;[^}]*\}/s)
+    expect(sharedStylesheet).toMatch(/\.file\s*\{[^}]*grid-template-columns: 16px minmax\(0, 1fr\) auto;[^}]*column-gap: 7px;[^}]*padding: 0 11px;[^}]*\}/s)
+    expect(sharedStylesheet).toMatch(/\.fileIcon\s*\{[^}]*width: 16px;[^}]*place-items: center;[^}]*transform: translateY\(-1px\);[^}]*\}/s)
+    expect(sharedStylesheet).toMatch(/\.filePath\s*\{[^}]*line-height: 16px;[^}]*\}/s)
     expect(stylesheet).toMatch(/\.diffCounts\s*\{[^}]*align-items: baseline;[^}]*height: 16px;[^}]*line-height: 16px;[^}]*\}/s)
   })
 })

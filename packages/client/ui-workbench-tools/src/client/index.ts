@@ -105,7 +105,7 @@ export function apply(ctx: ClientContext): void {
   }, 'ui-workbench-tools: review caches')
   const reviewPanel: PanelComponent = props => createElement(ReviewPanel, { ...props, controller: reviewCacheFor(props.sessionId) })
   const terminalPanel: PanelComponent = props => createElement(TerminalPanel, { ...props, terminal })
-  const turnChangeCard = (props: PropsRuntime<'conversation.chat.turnTail'> & PropsLocale<'workbench-tools'>) => createElement(TurnChangeCard, {
+  const turnChangeCard = (props: PropsRuntime<'deepcreator.conversation.chat.turnChanges'> & PropsLocale<'workbench-tools'>) => createElement(TurnChangeCard, {
     ...props,
     controller: reviewCacheFor(props.sessionId),
     workbench: ctx.workbench,
@@ -123,8 +123,8 @@ export function apply(ctx: ClientContext): void {
         disposers.push(ctx.slots.inject('deepcreator.workbench.panel', () => ctx.slots.register({ name:'deepcreator.workbench.panel',id:provider.definition.id,locale:NS }, provider.panel)))
         disposers.push(ctx.slots.inject('deepcreator.workbench.panel-icon', () => ctx.slots.register({ name:'deepcreator.workbench.panel-icon',id:provider.definition.id }, iconRenderer(provider.icon))))
       }
-      disposers.push(ctx.slots.inject('conversation.chat.turnTail', () => ctx.slots.register({
-        name: 'conversation.chat.turnTail', select: () => ({}), locale: NS,
+      disposers.push(ctx.slots.inject('deepcreator.conversation.chat.turnChanges', () => ctx.slots.register({
+        name: 'deepcreator.conversation.chat.turnChanges', id: 'review', locale: NS,
       }, turnChangeCard)))
       disposers.push(ctx.locale.register(NS, { zh, en }))
     } catch (error) {

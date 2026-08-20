@@ -9,13 +9,13 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   ReviewChecksResult, ReviewDiffResult, ReviewHistoryResult, ReviewPatchLayer, ReviewScope,
-  ReviewStatusResult, ReviewTurnFile, ReviewTurnHistory, ReviewUndoTurnResult,
+  ReviewStatusResult, ReviewSummaryResult, ReviewTurnFile, ReviewTurnHistory, ReviewUndoTurnResult,
 } from './types.ts'
 
 export type {
-  ReviewChecksResult, ReviewDiffResult, ReviewFileStatus, ReviewHistoryResult, ReviewPatchLayer,
-  ReviewScope, ReviewSourceSnapshot, ReviewStatusResult, ReviewTurnFile, ReviewTurnFileState,
-  ReviewTurnHistory, ReviewUndoTurnResult,
+  ReviewChecksResult, ReviewDiffResult, ReviewFileStatus, ReviewFileSummary, ReviewHistoryResult,
+  ReviewPatchLayer, ReviewScope, ReviewSourceSnapshot, ReviewStatusResult, ReviewSummaryResult,
+  ReviewTurnFile, ReviewTurnFileState, ReviewTurnHistory, ReviewUndoTurnResult,
 } from './types.ts'
 
 const exec = promisify(execFile)
@@ -124,9 +124,11 @@ function parseNameStatus(stdout: string): ReviewTurnFile[] {
   return files
 }
 
-function parseNumstat(stdout: string): Map<string, { additions: number; deletions: number }> {
+interface Numstat { additions: number; deletions: number; binary: boolean }
+
+function parseNumstat(stdout: string): Map<string, Numstat> {
   const records = stdout.split('\0')
-  const stats = new Map<string, { additions: number; deletions: number }>()
+  const stats = new Map<string, Numstat>()
   for (let index = 0; index < records.length;) {
     const header = records[index++]
     if (header === undefined || header === '') continue
@@ -140,15 +142,17 @@ function parseNumstat(stdout: string): Map<string, { additions: number; deletion
       path = records[index++] ?? ''
     }
     if (path === '') continue
+    const binary = match[1] === '-' || match[2] === '-'
     stats.set(path, {
       additions: /^\d+$/.test(match[1] ?? '') ? Number(match[1]) : 0,
       deletions: /^\d+$/.test(match[2] ?? '') ? Number(match[2]) : 0,
+      binary,
     })
   }
   return stats
 }
 
-function attachNumstat(files: ReviewTurnFile[], stats: ReadonlyMap<string, { additions: number; deletions: number }>): ReviewTurnFile[] {
+function attachNumstat(files: ReviewTurnFile[], stats: ReadonlyMap<string, Numstat>): ReviewTurnFile[] {
   return files.map(file => {
     if (file.additions !== undefined && file.deletions !== undefined) return file
     return { ...file, ...(stats.get(file.path) ?? { additions: 0, deletions: 0 }) }
@@ -347,6 +351,8 @@ export class ReviewService extends TypertRemoteService {
         // a commit created inside this turn is recognized immediately.
         version: 1, sessionId: String(session.id), turn, phase: 'end', head: start.manifest.head, files: measured,
       }, start.commit)
+      const completed = await readTurn(repository, ref)
+      if (completed !== null) await this.reconcile(repository, completed)
     })
   }
 
@@ -367,7 +373,7 @@ export class ReviewService extends TypertRemoteService {
     for (const ref of refs) await git(repository, ['update-ref', '-d', ref])
   }
 
-  private async reconcile(repository: string, input: StoredTurn): Promise<StoredTurn> {
+  private async reconcile(repository: string, input: StoredTurn): Promise<StoredTurn | null> {
     let stored = input
     if (stored.parent !== undefined && stored.manifest.files.some(file => file.additions === undefined || file.deletions === undefined)) {
       // Active refs from versions before line-count persistence still retain
@@ -380,13 +386,21 @@ export class ReviewService extends TypertRemoteService {
       stored = { ...stored, commit, manifest }
     }
     const currentHead = await head(repository)
-    if (stored.manifest.head === currentHead || stored.parent === undefined) return stored
+    if (stored.parent === undefined) {
+      if (stored.manifest.files.every(file => file.state === 'committed')) {
+        await git(repository, ['update-ref', '-d', stored.ref])
+        return null
+      }
+      return stored
+    }
+    const headChanged = stored.manifest.head !== currentHead
     const fastForward = stored.manifest.head === null
       ? currentHead !== null
       : currentHead !== null && await gitMaybe(repository, ['merge-base', '--is-ancestor', stored.manifest.head, currentHead]) !== null
     const changed = new Set<string>()
-    if (stored.manifest.head !== null && currentHead !== null) {
-      const names = await gitDiff(repository, ['--name-only', '-z', stored.manifest.head, currentHead])
+    if (headChanged && currentHead !== null) {
+      const baseline = stored.manifest.head ?? await emptyTree(repository)
+      const names = await gitDiff(repository, ['--name-only', '-z', baseline, currentHead])
       for (const name of names.split('\0')) if (name !== '') changed.add(name)
     }
     const porcelain = parsePorcelainStatus(await git(repository, ['status', '--porcelain=v1', '--branch', '-z'])).files
@@ -395,14 +409,19 @@ export class ReviewService extends TypertRemoteService {
     const files: ReviewTurnFile[] = []
     for (const file of stored.manifest.files) {
       if (file.state === 'reverted') { files.push(file); continue }
+      if (file.state === 'committed' && !headChanged) { files.push(file); continue }
       const endObject = (await gitMaybe(repository, ['rev-parse', `${stored.tree}:${file.path}`]))?.trim() ?? null
       const headObject = currentHead === null ? null : (await gitMaybe(repository, ['rev-parse', `HEAD:${file.path}`]))?.trim() ?? null
       const touched = changed.has(file.path) || (file.oldPath !== undefined && changed.has(file.oldPath))
       const remainsDirty = dirty.has(file.path) || (file.oldPath !== undefined && dirty.has(file.oldPath))
+      const ignored = file.state === 'pending'
+        && await gitMaybe(repository, ['check-ignore', '-q', '--', file.path]) !== null
       // A later fast-forward commit of this path subsumes earlier turns even
       // when a newer turn changed the same file again. Amend/reset and other
       // non-fast-forward moves require the exact end object instead.
-      const state = touched && !remainsDirty && (endObject === headObject || fastForward)
+      // Exact tree equality and a newly ignored untracked path also resolve
+      // generated files that no longer belong to Git's working change set.
+      const state = !remainsDirty && (ignored || endObject === headObject || (touched && fastForward))
         ? 'committed' as const
         : 'pending' as const
       files.push(file.state === state ? file : { ...file, state })
@@ -411,9 +430,8 @@ export class ReviewService extends TypertRemoteService {
     if (!moved) return stored
     const manifest: TurnManifest = { ...stored.manifest, head: currentHead, files }
     if (files.every(file => file.state !== 'pending')) {
-      const tree = await emptyTree(repository)
-      const commit = await writeTurn(repository, stored.ref, tree, manifest)
-      return { ref: stored.ref, commit, tree, manifest }
+      await git(repository, ['update-ref', '-d', stored.ref])
+      return null
     }
     const commit = await writeTurn(repository, stored.ref, stored.tree, manifest, stored.parent)
     return { ...stored, commit, manifest }
@@ -424,7 +442,8 @@ export class ReviewService extends TypertRemoteService {
     let repository: string
     try { ({ repository } = await repositoryFor(session)) } catch (error) { return boundaryFailure(error) }
     try {
-      const turns = await Promise.all((await this.storedTurns(session, repository)).map(turn => this.reconcile(repository, turn)))
+      const turns = (await Promise.all((await this.storedTurns(session, repository)).map(turn => this.reconcile(repository, turn))))
+        .filter((turn): turn is StoredTurn => turn !== null)
       const latestActive = turns.find(turn => turn.manifest.files.some(file => file.state === 'pending'))?.manifest.turn
       return {
         ok: true, repositoryRoot: repository, head: await head(repository),
@@ -452,7 +471,7 @@ export class ReviewService extends TypertRemoteService {
       if (typeof selected === 'object') {
         const retained = (await this.storedTurns(session, repository)).find(row => row.manifest.turn === selected.turn)
         const stored = retained === undefined ? undefined : await this.reconcile(repository, retained)
-        if (stored === undefined) return { ok: false, code: 'TURN_NOT_FOUND', message: `Turn ${selected.turn} has no retained changes.` }
+        if (stored === undefined || stored === null) return { ok: false, code: 'TURN_NOT_FOUND', message: `Turn ${selected.turn} has no retained changes.` }
         const files = stored.manifest.files.filter(file => file.state === 'pending').map(file => ({
           path: file.path, ...(file.oldPath === undefined ? {} : { oldPath: file.oldPath }), index: ' ', workingTree: 'M',
         }))
@@ -461,6 +480,64 @@ export class ReviewService extends TypertRemoteService {
       const files = raw.files.filter(file => selected === 'uncommitted'
         || (selected === 'staged' ? file.index !== ' ' && file.index !== '?' : file.workingTree !== ' ' || file.index === '?'))
       return { ok: true, repositoryRoot: repository, branch: raw.branch, scope: selected, files }
+    } catch (error) { return { ok: false, code: 'READ_FAILED', message: error instanceof Error ? error.message : String(error) } }
+  }
+
+  @Remote('summary')
+  async summary(session: Session, scope?: ReviewScope): Promise<ReviewSummaryResult> {
+    let repository: string
+    try { ({ repository } = await repositoryFor(session)) } catch (error) { return boundaryFailure(error) }
+    try {
+      const selected: ReviewScope = scope ?? 'uncommitted'
+      let startTree: string
+      let endTree: string
+      let files: Array<{ path: string; oldPath?: string }>
+      if (typeof selected === 'object') {
+        const retained = (await this.storedTurns(session, repository)).find(row => row.manifest.turn === selected.turn)
+        const stored = retained === undefined ? undefined : await this.reconcile(repository, retained)
+        if (stored === undefined || stored === null || stored.parent === undefined) {
+          return { ok: false, code: 'TURN_NOT_FOUND', message: `Turn ${selected.turn} has no retained changes.` }
+        }
+        startTree = (await git(repository, ['show', '-s', '--format=%T', stored.parent])).trim()
+        endTree = stored.tree
+        files = stored.manifest.files
+          .filter(file => file.state === 'pending')
+          .map(file => ({ path: file.path, ...(file.oldPath === undefined ? {} : { oldPath: file.oldPath }) }))
+      } else {
+        const baseline = await head(repository) ?? await emptyTree(repository)
+        const raw = parsePorcelainStatus(await git(repository, ['status', '--porcelain=v1', '--branch', '-z']))
+        files = raw.files
+          .filter(file => selected === 'uncommitted'
+            || (selected === 'staged' ? file.index !== ' ' && file.index !== '?' : file.workingTree !== ' ' || file.index === '?'))
+          .map(file => ({ path: file.path, ...(file.oldPath === undefined ? {} : { oldPath: file.oldPath }) }))
+        if (selected === 'staged') {
+          startTree = baseline
+          endTree = await indexTree(repository)
+        } else if (selected === 'unstaged') {
+          startTree = await indexTree(repository)
+          endTree = await snapshotWorktree(repository)
+        } else {
+          startTree = baseline
+          endTree = await snapshotWorktree(repository)
+        }
+      }
+      if (files.length === 0) {
+        return { ok: true, repositoryRoot: repository, scope: selected, additions: 0, deletions: 0, files: [] }
+      }
+      const paths = files.flatMap(file => [file.oldPath, file.path].filter((path): path is string => path !== undefined))
+      const stats = parseNumstat(await gitDiff(repository, ['--numstat', '-z', '--find-renames', startTree, endTree, '--', ...paths]))
+      const summarized = files.map(file => {
+        const row = stats.get(file.path) ?? { additions: 0, deletions: 0, binary: false }
+        return { ...file, ...row }
+      })
+      return {
+        ok: true,
+        repositoryRoot: repository,
+        scope: selected,
+        additions: summarized.reduce((sum, file) => sum + file.additions, 0),
+        deletions: summarized.reduce((sum, file) => sum + file.deletions, 0),
+        files: summarized,
+      }
     } catch (error) { return { ok: false, code: 'READ_FAILED', message: error instanceof Error ? error.message : String(error) } }
   }
 
@@ -477,8 +554,8 @@ export class ReviewService extends TypertRemoteService {
       if (typeof selected === 'object') {
         const retained = (await this.storedTurns(session, repository)).find(row => row.manifest.turn === selected.turn)
         const stored = retained === undefined ? undefined : await this.reconcile(repository, retained)
-        if (stored === undefined) return { ok: false, code: 'TURN_NOT_FOUND', message: `Turn ${selected.turn} has no retained changes.` }
-        // A parentless record is a completed tombstone. Its heavy start/end
+        if (stored === undefined || stored === null) return { ok: false, code: 'TURN_NOT_FOUND', message: `Turn ${selected.turn} has no retained changes.` }
+        // A parentless record is a reverted tombstone. Its heavy start/end
         // snapshots have already been released, so the historical scope is
         // intentionally empty rather than an unavailable/error state.
         if (stored.parent === undefined) {
@@ -528,7 +605,8 @@ export class ReviewService extends TypertRemoteService {
     let repository: string
     try { ({ repository } = await repositoryFor(session)) } catch (error) { return boundaryFailure(error) }
     try {
-      const turns = await Promise.all((await this.storedTurns(session, repository)).map(row => this.reconcile(repository, row)))
+      const turns = (await Promise.all((await this.storedTurns(session, repository)).map(row => this.reconcile(repository, row))))
+        .filter((turn): turn is StoredTurn => turn !== null)
       const latest = turns.find(row => row.manifest.files.some(file => file.state === 'pending'))
       const stored = turns.find(row => row.manifest.turn === turn)
       if (stored === undefined || stored.parent === undefined) return { ok: false, code: 'TURN_NOT_FOUND', message: `Turn ${turn} has no retained changes.` }

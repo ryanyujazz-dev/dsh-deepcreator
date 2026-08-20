@@ -19,8 +19,9 @@
 .reviewScopeButton span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reviewScopeButton svg { flex: none; }
 .fileList { min-width: 0; }
+.reviewLoadBoundary { min-height: 36px; box-sizing: border-box; display: grid; place-items: center; border-bottom: 1px solid var(--dsw-alias-border-l1); color: var(--dsw-alias-label-tertiary); background: var(--dsh-review-surface); font-size: 10px; line-height: 16px; }
+.reviewLoadBoundary:first-child { border-top: 1px solid var(--dsw-alias-border-l1); }
 .reviewFile { position: relative; min-width: 0; content-visibility: auto; contain-intrinsic-size: auto 36px; }
-.reviewFileContentCollapsed { display: none; }
 .reviewFileSkeleton { box-sizing: border-box; display: grid; place-items: center; border-bottom: 1px solid var(--dsw-alias-border-l1); color: var(--dsw-alias-label-tertiary); font-size: 10px; }
 .reviewFile + .reviewFile { border-top: 1px solid var(--dsw-alias-border-l1); }
 .reviewFileHeader { position: sticky; z-index: 3; top: 0; width: 100%; min-height: 36px; box-sizing: border-box; display: flex; align-items: center; gap: 5px; border: 0; border-bottom: 1px solid var(--dsw-alias-border-l1); padding: 0 10px; color: var(--dsw-alias-label-secondary); background: color-mix(in srgb, var(--dsw-alias-label-primary) 5%, var(--dsh-review-surface)); text-align: left; cursor: pointer; font-size: 11px; }
@@ -28,7 +29,7 @@
 .reviewFileHeader:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: -2px; }
 .reviewFileHeader svg { flex: none; transition: transform 120ms ease; }
 .reviewFileChevronCollapsed { transform: rotate(-90deg); }
-.reviewFilePath { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.reviewFilePath { min-width: 0; flex: 1; font-weight: 500; }
 .reviewFileLoading { flex: none; color: var(--dsw-alias-label-tertiary); font-size: 10px; }
 .reviewFileContent { min-width: 0; }
 .reviewFileMessage, .reviewFileError { min-height: 72px; display: grid; place-items: center; padding: 16px; box-sizing: border-box; color: var(--dsw-alias-label-tertiary); font-size: 11px; }

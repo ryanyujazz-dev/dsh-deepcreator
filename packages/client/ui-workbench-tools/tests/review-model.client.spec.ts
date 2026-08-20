@@ -103,6 +103,33 @@ describe('evictCollapsedCaches', () => {
     const entries: FileEntries = { 'src/a.ts': entry('src/a.ts') }
     expect(evictCollapsedCaches(entries, new Set(), REVIEW_CACHE_LIMIT)).toBeNull()
   })
+
+  it('honors the weighted byte budget while exempting resident files', () => {
+    const large = 'x'.repeat(1_024)
+    const largeEntry = (path: string, lastOpened: number) => entry(path, {
+      lastOpened,
+      cache: {
+        kind: 'ready',
+        ...parseDiffResult(diffResult(path, { layers: [{
+          kind: 'working-tree', patch: large,
+          oldSource: { revision: 'index', text: large },
+          newSource: { revision: 'worktree', text: large },
+        }] })),
+        raw: diffResult(path, { layers: [{
+          kind: 'working-tree', patch: large,
+          oldSource: { revision: 'index', text: large },
+          newSource: { revision: 'worktree', text: large },
+        }] }),
+      },
+    })
+    const next = evictCollapsedCaches({
+      'resident.ts': largeEntry('resident.ts', 0),
+      'old.ts': largeEntry('old.ts', 1),
+    }, new Set(['resident.ts']), REVIEW_CACHE_LIMIT, 128)
+
+    expect(next?.['resident.ts']?.cache.kind).toBe('ready')
+    expect(next?.['old.ts']?.cache.kind).toBe('empty')
+  })
 })
 
 describe('diff parsing', () => {

@@ -11,10 +11,12 @@ import type {
 } from '@deepseek-ai/dsh-client-runtime/client'
 import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 import type {
-  ReviewChecksResult, ReviewHistoryResult, ReviewScope, ReviewStatusResult, ReviewUndoTurnResult,
+  ReviewChecksResult, ReviewFileSummary, ReviewHistoryResult, ReviewScope, ReviewStatusResult,
+  ReviewSummaryResult, ReviewUndoTurnResult,
 } from '@ryanyujazz/dsh-review/types'
 import {
-  REVIEW_CACHE_LIMIT, REVIEW_PREFETCH_LIMIT, decodeMutationSignal, encodeMutationSignal,
+  REVIEW_CACHE_BYTES, REVIEW_CACHE_LIMIT, REVIEW_IDLE_PREFETCH_LIMIT, REVIEW_PREFETCH_LIMIT,
+  decodeMutationSignal, encodeMutationSignal,
   evictCollapsedCaches, markStale, matchReviewFile, mergeFileEntries, mutationSignal,
   parseDiffResult, sameDiffResult, type FileEntries, type FileEntry, type MutationSignal, type ReadyCache,
 } from './review-model.ts'
@@ -22,17 +24,22 @@ import {
 type StatusOk = Extract<ReviewStatusResult, { ok: true }>
 type ChecksOk = Extract<ReviewChecksResult, { ok: true }>
 type HistoryOk = Extract<ReviewHistoryResult, { ok: true }>
+type SummaryOk = Extract<ReviewSummaryResult, { ok: true }>
 
 /** The immutable view the panel renders through useSyncExternalStore. */
 export interface ReviewCacheSnapshot {
   status: StatusOk | null
   checks: ChecksOk | null
   history: HistoryOk | null
+  summary: SummaryOk | null
   scope: ReviewScope
   entries: Readonly<FileEntries>
   /** Manual-refresh error surface; background failures stay silent. */
   error: string | null
 }
+
+export type ReviewMetaSnapshot = Pick<ReviewCacheSnapshot, 'status' | 'checks' | 'summary' | 'scope' | 'error'>
+export interface ReviewTotalsSnapshot { added: number; removed: number }
 
 /** A focused refresh must not confuse cancellation or transport failure with a real miss. */
 export type ReviewRefreshOutcome =
@@ -43,14 +50,44 @@ export type ReviewRefreshOutcome =
   | { kind: 'error'; message: string }
 
 const EMPTY_SNAPSHOT: ReviewCacheSnapshot = {
-  status: null, checks: null, history: null, scope: 'uncommitted', entries: {}, error: null,
+  status: null, checks: null, history: null, summary: null, scope: 'uncommitted', entries: {}, error: null,
 }
+
+const EMPTY_META: ReviewMetaSnapshot = {
+  status: null, checks: null, summary: null, scope: 'uncommitted', error: null,
+}
+const EMPTY_TOTALS: ReviewTotalsSnapshot = { added: 0, removed: 0 }
+
+export type ReviewLoadPriority = 'focus' | 'viewport' | 'idle'
+const PRIORITY_RANK: Record<ReviewLoadPriority, number> = { focus: 0, viewport: 1, idle: 2 }
 
 /** Settled mutation tools are coalesced into one invalidation after this long. */
 const MUTATION_DEBOUNCE_MS = 600
 
 function transportError(result: { ok: false; error: { message: string } }): Error {
   return new Error(result.error.message)
+}
+
+function sameHistory(left: HistoryOk | null, right: HistoryOk): boolean {
+  if (left === null || left.repositoryRoot !== right.repositoryRoot || left.head !== right.head || left.turns.length !== right.turns.length) return false
+  return JSON.stringify(left.turns) === JSON.stringify(right.turns)
+}
+
+function sameSummary(left: SummaryOk | null, right: SummaryOk): boolean {
+  return left !== null
+    && left.repositoryRoot === right.repositoryRoot
+    && JSON.stringify(left.scope) === JSON.stringify(right.scope)
+    && left.additions === right.additions
+    && left.deletions === right.deletions
+    && JSON.stringify(left.files) === JSON.stringify(right.files)
+}
+
+function sameStatusFiles(left: StatusOk | null, right: StatusOk): boolean {
+  if (left === null || left.files.length !== right.files.length) return false
+  return left.files.every((file, index) => {
+    const other = right.files[index]
+    return other !== undefined && file.path === other.path && file.oldPath === other.oldPath
+  })
 }
 
 /**
@@ -65,17 +102,25 @@ export class ReviewCacheController {
   private readonly session: ObservableSnapshot<ConversationSnapshot>
   private readonly prefetchLimit: number
   private readonly cacheLimit: number
+  private readonly cacheBytes: number
 
   private state = EMPTY_SNAPSHOT
   private listeners = new Set<() => void>()
+  private meta = EMPTY_META
+  private totals = EMPTY_TOTALS
+  private metaListeners = new Set<() => void>()
+  private totalsListeners = new Set<() => void>()
+  private historyListeners = new Set<() => void>()
+  private fileListeners = new Map<string, Set<() => void>>()
   private generation = 0
   private stamp = 0
   private disposed = false
-  private queue: string[] = []
+  private queues: Record<ReviewLoadPriority, string[]> = { focus: [], viewport: [], idle: [] }
   private draining = false
-  private queued = new Set<string>()
-  private expanded: ReadonlySet<string> = new Set()
-  private visible = true
+  private queued = new Map<string, ReviewLoadPriority>()
+  private resident: ReadonlySet<string> = new Set()
+  private visible = false
+  private initializing = true
   private checksPending = false
   private invalidateTimer: number | null = null
   private seenMutations: MutationSignal = { count: 0, lastSeq: 0, lastName: '', lastPath: null }
@@ -92,19 +137,30 @@ export class ReviewCacheController {
     session: ObservableSnapshot<ConversationSnapshot>
     prefetchLimit?: number
     cacheLimit?: number
+    cacheBytes?: number
   }) {
     this.remote = options.remote
     this.sessionId = options.sessionId
     this.session = options.session
     this.prefetchLimit = options.prefetchLimit ?? REVIEW_PREFETCH_LIMIT
     this.cacheLimit = options.cacheLimit ?? REVIEW_CACHE_LIMIT
+    this.cacheBytes = options.cacheBytes ?? REVIEW_CACHE_BYTES
     // Seed the event baselines from the current snapshot: history that
     // predates this controller must not fire an invalidation.
     const initial = options.session.getSnapshot()
     this.seenMutations = decodeMutationSignal(encodeMutationSignal(mutationSignal(initial.nodes)))
     this.seenTurnEnds = initial.turnEnds.size
     this.unsubscribeSession = options.session.subscribe(() => { this.onSessionSnapshot() })
-    void this.refresh()
+    void this.refresh().finally(() => {
+      this.initializing = false
+      if (!this.disposed && this.visible) {
+        this.prefetchIdle()
+        if (this.checksPending) {
+          this.checksPending = false
+          void this.refresh({ silent: true, runChecks: true })
+        }
+      }
+    })
     if (typeof window !== 'undefined') {
       this.historyTimer = window.setInterval(() => {
         if (!this.disposed && document.visibilityState === 'visible') void this.refreshHistory(true, true)
@@ -120,12 +176,49 @@ export class ReviewCacheController {
 
   readonly getSnapshot = (): ReviewCacheSnapshot => this.state
 
+  readonly subscribeMeta = (listener: () => void): (() => void) => {
+    this.metaListeners.add(listener)
+    return () => { this.metaListeners.delete(listener) }
+  }
+
+  readonly getMetaSnapshot = (): ReviewMetaSnapshot => this.meta
+
+  readonly subscribeTotals = (listener: () => void): (() => void) => {
+    this.totalsListeners.add(listener)
+    return () => { this.totalsListeners.delete(listener) }
+  }
+
+  readonly getTotalsSnapshot = (): ReviewTotalsSnapshot => this.totals
+
+  readonly subscribeHistory = (listener: () => void): (() => void) => {
+    this.historyListeners.add(listener)
+    return () => { this.historyListeners.delete(listener) }
+  }
+
+  readonly getHistorySnapshot = (): HistoryOk | null => this.state.history
+
+  subscribeFile(path: string, listener: () => void): () => void {
+    let listeners = this.fileListeners.get(path)
+    if (listeners === undefined) { listeners = new Set(); this.fileListeners.set(path, listeners) }
+    listeners.add(listener)
+    return () => {
+      listeners?.delete(listener)
+      if (listeners?.size === 0) this.fileListeners.delete(path)
+    }
+  }
+
+  getFileSnapshot(path: string): FileEntry | undefined { return this.state.entries[path] }
+
+  getFileSummary(path: string): ReviewFileSummary | undefined {
+    return this.state.summary?.files.find(file => file.path === path)
+  }
+
   async selectScope(scope: ReviewScope, focusPath?: string): Promise<ReviewRefreshOutcome> {
     const same = JSON.stringify(scope) === JSON.stringify(this.state.scope)
     if (!same) {
-      this.queue = []
-      this.queued.clear()
-      this.publish({ scope, status: null, entries: {}, error: null })
+      this.clearQueues()
+      this.resident = new Set()
+      this.publish({ scope, status: null, summary: null, entries: {}, error: null })
     }
     // Scope selection and file reveal are user gestures: surface a failed
     // status request instead of leaving an unexplained blank panel.
@@ -144,24 +237,30 @@ export class ReviewCacheController {
         const selectedTurn = typeof selectedScope === 'object'
           ? history.turns.find(turn => turn.turn === selectedScope.turn)
           : undefined
-        const clearCompletedTurn = selectedTurn !== undefined && selectedTurn.remainingFiles === 0
+        const previouslySelectedTurn = typeof selectedScope === 'object'
+          ? this.state.history?.turns.find(turn => turn.turn === selectedScope.turn)
+          : undefined
+        const clearCompletedTurn = typeof selectedScope === 'object'
+          && (selectedTurn?.remainingFiles === 0
+            || (selectedTurn === undefined && previouslySelectedTurn !== undefined))
         if (clearCompletedTurn) {
-          // Drop historical source/patch caches as soon as reconciliation says
-          // the selected turn is fully resolved. The completed history record
-          // remains available to gray its conversation card.
+          // Drop historical source/patch caches as soon as reconciliation
+          // removes the fully committed turn (or a legacy Host marks it done).
           this.generation += 1
-          this.queue = []
-          this.queued.clear()
+          this.clearQueues()
+          this.resident = new Set()
           this.publish({
             history,
             scope: 'uncommitted',
             status: null,
+            summary: null,
             entries: {},
             ...(silent ? {} : { error: null }),
           })
           void this.refresh({ silent: true })
         } else {
-          this.publish({ history, ...(silent ? {} : { error: null }) })
+          if (!sameHistory(this.state.history, history)) this.publish({ history, ...(silent ? {} : { error: null }) })
+          else if (!silent && this.state.error !== null) this.publish({ error: null })
         }
         void this.hydrateMissingTurnStats(history)
         if (!clearCompletedTurn && refreshOnHeadChange && previousHead !== undefined && history.head !== previousHead) {
@@ -208,23 +307,36 @@ export class ReviewCacheController {
 
   private async hydrateMissingTurnStats(history: HistoryOk): Promise<void> {
     if (this.turnStatsLoading || this.disposed) return
-    const missing = history.turns.flatMap(turn => turn.remainingFiles === 0
-      ? []
-      : turn.files
-        .filter(file => file.additions === undefined || file.deletions === undefined)
-        .map(file => ({ turn: turn.turn, path: file.path })))
-    if (missing.length === 0) return
+    const missingTurns = history.turns.filter(turn => turn.remainingFiles > 0
+      && turn.files.some(file => file.additions === undefined || file.deletions === undefined))
+    if (missingTurns.length === 0) return
     this.turnStatsLoading = true
     try {
-      for (const file of missing) {
+      for (const turn of missingTurns) {
         if (this.disposed) return
-        const wire = await this.remote.review.diff(this.sessionId, file.path, { turn: file.turn })
-        if (!wire.ok || !wire.value.ok) continue
-        const parsed = parseDiffResult(wire.value)
-        this.turnStats.set(this.turnStatsKey(file.turn, file.path), {
-          additions: parsed.added,
-          deletions: parsed.removed,
-        })
+        let summarized = false
+        try {
+          const wire = await this.remote.review.summary(this.sessionId, { turn: turn.turn })
+          if (wire.ok && wire.value.ok) {
+            for (const file of wire.value.files) {
+              this.turnStats.set(this.turnStatsKey(turn.turn, file.path), {
+                additions: file.additions,
+                deletions: file.deletions,
+              })
+            }
+            summarized = true
+          }
+        } catch { /* Old Host: fall back to its per-file Diff contract. */ }
+        if (summarized) continue
+        for (const file of turn.files.filter(file => file.additions === undefined || file.deletions === undefined)) {
+          const wire = await this.remote.review.diff(this.sessionId, file.path, { turn: turn.turn })
+          if (!wire.ok || !wire.value.ok) continue
+          const parsed = parseDiffResult(wire.value)
+          this.turnStats.set(this.turnStatsKey(turn.turn, file.path), {
+            additions: parsed.added,
+            deletions: parsed.removed,
+          })
+        }
       }
       if (!this.disposed && this.state.history !== null) {
         const merged = this.mergeTurnStats(this.state.history)
@@ -255,9 +367,11 @@ export class ReviewCacheController {
     return turnFile?.state === 'pending' ? 'pending' : 'resolved'
   }
 
-  /** Panel expansion share: exempt from cache eviction. */
-  setExpanded(paths: ReadonlySet<string>): void {
-    this.expanded = paths
+  /** Heavy bodies near the viewport are exempt from weighted cache eviction. */
+  setResident(paths: ReadonlySet<string>): void {
+    this.resident = paths
+    const evicted = evictCollapsedCaches(this.state.entries, this.resident, this.cacheLimit, this.cacheBytes)
+    if (evicted !== null) this.replaceEntries(evicted)
   }
 
   /** Panel visibility: the hidden→visible edge is the catch-all refresh. */
@@ -265,6 +379,10 @@ export class ReviewCacheController {
     const was = this.visible
     this.visible = visible
     if (visible && !was) {
+      // The constructor's metadata request observes `visible` before it
+      // publishes and schedules the first six files itself. Avoid issuing a
+      // duplicate status request when the panel mounts immediately.
+      if (this.initializing) return
       const runChecks = this.checksPending
       this.checksPending = false
       void this.refresh({ silent: true, runChecks })
@@ -272,30 +390,16 @@ export class ReviewCacheController {
   }
 
   /** User gesture on one file: fetch or revalidate it now, ahead of the queue. */
-  ensure(path: string, fresh = false): void {
+  ensure(path: string, priority: ReviewLoadPriority = 'viewport', fresh = false): void {
     const entry = this.state.entries[path]
     if (entry === undefined || entry.fetching) return
+    this.setEntry(path, current => ({ ...current, lastOpened: ++this.stamp }))
     if (entry.cache.kind === 'ready') {
-      if (fresh || entry.stale) void this.loadDiff(path, true)
+      if (fresh && !entry.stale) this.setEntry(path, current => ({ ...current, stale: true }))
+      if (fresh || entry.stale) this.enqueue([path], priority)
       return
     }
-    if (entry.cache.kind === 'empty' || entry.cache.kind === 'error') void this.loadDiff(path, false)
-  }
-
-  /**
-   * Batch gesture (expand-all, expansion restore): every not-ready or stale
-   * entry fetches through the sequential queue instead of firing N concurrent
-   * fetches — the parse-and-warm tail of a burst of responses would each block
-   * the main thread in a row. Ready, current entries need nothing.
-   */
-  loadAll(paths: Iterable<string>): void {
-    const needs: string[] = []
-    for (const path of paths) {
-      const entry = this.state.entries[path]
-      if (entry === undefined || entry.fetching) continue
-      if (entry.cache.kind === 'empty' || entry.cache.kind === 'error' || (entry.cache.kind === 'ready' && entry.stale)) needs.push(path)
-    }
-    this.enqueue(needs)
+    if (entry.cache.kind === 'empty' || entry.cache.kind === 'error') this.enqueue([path], priority)
   }
 
   dispose(): void {
@@ -306,23 +410,94 @@ export class ReviewCacheController {
     if (typeof window !== 'undefined') window.removeEventListener('focus', this.onWindowFocus)
     this.unsubscribeSession()
     this.listeners.clear()
+    this.metaListeners.clear()
+    this.totalsListeners.clear()
+    this.historyListeners.clear()
+    this.fileListeners.clear()
   }
 
   private publish(patch: Partial<ReviewCacheSnapshot>): void {
+    const previous = this.state
     this.state = { ...this.state, ...patch }
+    if (patch.entries !== undefined && patch.entries !== previous.entries) {
+      const paths = new Set([...Object.keys(previous.entries), ...Object.keys(patch.entries)])
+      for (const path of paths) {
+        if (previous.entries[path] === patch.entries[path]) continue
+        for (const listener of this.fileListeners.get(path) ?? []) listener()
+      }
+    }
+    if (patch.history !== undefined && patch.history !== previous.history) {
+      for (const listener of this.historyListeners) listener()
+    }
+    if (patch.status !== undefined || patch.checks !== undefined || patch.summary !== undefined || patch.scope !== undefined || patch.error !== undefined) {
+      const nextMeta: ReviewMetaSnapshot = {
+        status: this.state.status,
+        checks: this.state.checks,
+        summary: this.state.summary,
+        scope: this.state.scope,
+        error: this.state.error,
+      }
+      if (nextMeta.status !== this.meta.status || nextMeta.checks !== this.meta.checks
+        || nextMeta.summary !== this.meta.summary || nextMeta.scope !== this.meta.scope || nextMeta.error !== this.meta.error) {
+        this.meta = nextMeta
+        for (const listener of this.metaListeners) listener()
+      }
+    }
+    if (patch.entries !== undefined || patch.summary !== undefined) this.updateTotals()
     for (const listener of this.listeners) listener()
   }
+
+  private updateTotals(): void {
+    let added = this.state.summary?.additions ?? 0
+    let removed = this.state.summary?.deletions ?? 0
+    if (this.state.summary === null) {
+      for (const entry of Object.values(this.state.entries)) {
+        if (entry.cache.kind !== 'ready') continue
+        added += entry.cache.added
+        removed += entry.cache.removed
+      }
+    }
+    if (added === this.totals.added && removed === this.totals.removed) return
+    this.totals = { added, removed }
+    for (const listener of this.totalsListeners) listener()
+  }
+
+  private replaceEntries(entries: FileEntries): void { this.publish({ entries }) }
 
   private setEntry(path: string, mutate: (entry: FileEntry) => FileEntry): void {
     const existing = this.state.entries[path]
     if (existing === undefined) return
-    this.publish({ entries: { ...this.state.entries, [path]: mutate(existing) } })
+    const next = mutate(existing)
+    if (next === existing) return
+    // Path-level updates keep the compatibility snapshot immutable, but skip
+    // publish()'s bulk key comparison and totals scan. Only this file, totals,
+    // and legacy whole-snapshot subscribers are notified.
+    this.state = { ...this.state, entries: { ...this.state.entries, [path]: next } }
+    for (const listener of this.fileListeners.get(path) ?? []) listener()
+    if (this.state.summary === null) {
+      const contribution = (entry: FileEntry): ReviewTotalsSnapshot => entry.cache.kind === 'ready'
+        ? { added: entry.cache.added, removed: entry.cache.removed }
+        : EMPTY_TOTALS
+      const before = contribution(existing)
+      const after = contribution(next)
+      const totals = {
+        added: this.totals.added - before.added + after.added,
+        removed: this.totals.removed - before.removed + after.removed,
+      }
+      if (totals.added !== this.totals.added || totals.removed !== this.totals.removed) {
+        this.totals = totals
+        for (const listener of this.totalsListeners) listener()
+      }
+    }
+    for (const listener of this.listeners) listener()
   }
 
   private async loadDiff(path: string, revalidate: boolean): Promise<void> {
     const current = this.state.entries[path]
     if (current === undefined || current.fetching) return
     if (revalidate ? current.cache.kind !== 'ready' : (current.cache.kind !== 'empty' && current.cache.kind !== 'error')) return
+    const generation = this.generation
+    const scope = this.state.scope
     this.setEntry(path, entry => ({
       ...entry,
       fetching: true,
@@ -330,11 +505,11 @@ export class ReviewCacheController {
       ...(revalidate ? {} : { cache: { kind: 'loading' } as const }),
     }))
     try {
-      const wire = await this.remote.review.diff(this.sessionId, path, this.state.scope)
+      const wire = await this.remote.review.diff(this.sessionId, path, scope)
       if (!wire.ok) throw transportError(wire)
       if (!wire.value.ok) throw new Error(wire.value.message)
       const result = wire.value
-      if (this.disposed || this.state.entries[path] === undefined) return
+      if (this.disposed || generation !== this.generation || this.state.entries[path] === undefined) return
       // Identical wire content keeps the previous parse object, so a no-op
       // revalidate costs no re-render inside the panel.
       const previous = this.state.entries[path]?.cache
@@ -342,6 +517,8 @@ export class ReviewCacheController {
         ? previous
         : { kind: 'ready', ...parseDiffResult(result), raw: result }
       this.setEntry(path, entry => ({ ...entry, fetching: false, cache, stale: false }))
+      const evicted = evictCollapsedCaches(this.state.entries, this.resident, this.cacheLimit, this.cacheBytes)
+      if (evicted !== null) this.replaceEntries(evicted)
     } catch (reason) {
       if (this.disposed) return
       const message = reason instanceof Error ? reason.message : String(reason)
@@ -355,15 +532,41 @@ export class ReviewCacheController {
     }
   }
 
-  /** Append paths to the sequential background queue (in order, deduped). */
-  private enqueue(paths: Iterable<string>): void {
+  private clearQueues(): void {
+    this.queues = { focus: [], viewport: [], idle: [] }
+    this.queued.clear()
+  }
+
+  private prefetchIdle(): void {
+    if (!this.visible) return
+    const paths = this.state.status?.files.slice(0, REVIEW_IDLE_PREFETCH_LIMIT).map(file => file.path) ?? []
+    this.enqueue(paths, 'idle')
+  }
+
+  /** Append paths to the sequential priority queue (in order, deduped). */
+  private enqueue(paths: Iterable<string>, priority: ReviewLoadPriority): void {
+    let idleQueued = this.queues.idle.length
     for (const path of paths) {
-      if (this.queued.has(path)) continue
-      if (this.queue.length >= this.prefetchLimit) break
-      this.queued.add(path)
-      this.queue.push(path)
+      if (priority === 'idle' && idleQueued >= Math.min(this.prefetchLimit, REVIEW_IDLE_PREFETCH_LIMIT)) break
+      const existing = this.queued.get(path)
+      if (existing !== undefined && PRIORITY_RANK[existing] <= PRIORITY_RANK[priority]) continue
+      this.queued.set(path, priority)
+      this.queues[priority].push(path)
+      if (priority === 'idle') idleQueued += 1
     }
     void this.drain()
+  }
+
+  private takeNext(): string | undefined {
+    for (const priority of ['focus', 'viewport', 'idle'] as const) {
+      while (this.queues[priority].length > 0) {
+        const path = this.queues[priority].shift()
+        if (path === undefined || this.queued.get(path) !== priority) continue
+        this.queued.delete(path)
+        return path
+      }
+    }
+    return undefined
   }
 
   private async drain(): Promise<void> {
@@ -371,9 +574,8 @@ export class ReviewCacheController {
     this.draining = true
     try {
       while (!this.disposed) {
-        const path = this.queue.shift()
+        const path = this.takeNext()
         if (path === undefined) break
-        this.queued.delete(path)
         const entry = this.state.entries[path]
         if (entry === undefined) continue
         if (entry.cache.kind === 'empty' || entry.cache.kind === 'error') await this.loadDiff(path, false)
@@ -385,6 +587,17 @@ export class ReviewCacheController {
       }
     } finally {
       this.draining = false
+    }
+  }
+
+  private async refreshSummary(sequence: number, scope: ReviewScope): Promise<void> {
+    try {
+      const wire = await this.remote.review.summary(this.sessionId, scope)
+      if (!wire.ok || !wire.value.ok || sequence !== this.generation || this.disposed) return
+      if (!sameSummary(this.state.summary, wire.value)) this.publish({ summary: wire.value })
+    } catch {
+      // Older Hosts do not expose summary. Ready file caches progressively
+      // provide the same totals without surfacing a compatibility error.
     }
   }
 
@@ -405,25 +618,23 @@ export class ReviewCacheController {
       if (seq !== this.generation || this.disposed) return { kind: 'superseded' }
       const nextStatus = statusWire.value
       const merged = mergeFileEntries(this.state.entries, nextStatus.files, () => ++this.stamp)
+      const keepSummary = sameStatusFiles(this.state.status, nextStatus)
       let focus: string | undefined
       if (focusPath !== undefined) focus = matchReviewFile(nextStatus.files, focusPath)
       this.publish({
         status: nextStatus,
+        ...(keepSummary ? {} : { summary: null }),
         entries: merged,
         ...(nextChecks !== null ? { checks: nextChecks } : {}),
         error: null,
       })
+      void this.refreshSummary(seq, this.state.scope)
       void this.refreshHistory(true)
       // A reveal focus wants the current content immediately; everything
       // else (new or stale) flows through the sequential background queue.
-      if (focus !== undefined) this.ensure(focus, true)
-      this.enqueue(nextStatus.files
-        .map(file => file.path)
-        .filter(path => {
-          const entry = merged[path]
-          return entry !== undefined && (entry.cache.kind === 'empty' || (entry.cache.kind === 'ready' && entry.stale))
-        }))
-      const evicted = evictCollapsedCaches(merged, this.expanded, this.cacheLimit)
+      if (focus !== undefined) this.ensure(focus, 'focus', true)
+      this.prefetchIdle()
+      const evicted = evictCollapsedCaches(merged, this.resident, this.cacheLimit, this.cacheBytes)
       if (evicted !== null) this.publish({ entries: evicted })
       if (focusPath === undefined) return { kind: 'ready' }
       return focus === undefined ? { kind: 'missing' } : { kind: 'found', path: focus }

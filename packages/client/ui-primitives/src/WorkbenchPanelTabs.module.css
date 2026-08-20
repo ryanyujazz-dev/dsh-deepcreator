@@ -22,6 +22,7 @@
 .tabs::-webkit-scrollbar { display: none; }
 
 .tab {
+  position: relative;
   display: flex;
   align-items: center;
   /* Hug the label: content-sized with no cap, floored by the 56px click
@@ -54,7 +55,7 @@
   flex: 1;
   min-width: 0;
   height: 100%;
-  padding: 0 3px 0 9px;
+  padding: 0 9px;
   border: 0;
   color: inherit;
   background: transparent;
@@ -75,25 +76,33 @@
   top: -1px;
 }
 
-/* A clipped label fades out at its right edge instead of drawing an
- * ellipsis — the same trailing-fade vocabulary the sidebar rows use for
- * overflow, and theme-free (a mask needs no background token). */
-.tab[data-truncated] .tabText {
-  text-overflow: clip;
+/* A clipped resting label fades all the way to the pill's right content edge:
+ * the hidden close control owns no layout slot, so there is no idle safety
+ * gap. Hover (or keyboard focus on the close control itself) moves the fade
+ * left of the overlaid 20px close target without resizing the pill. */
+.tab[data-truncated] .tabLabel {
   -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 16px), transparent 100%);
   mask-image: linear-gradient(to right, #000 calc(100% - 16px), transparent 100%);
 }
 
+.tab[data-truncated] .tabText { text-overflow: clip; }
+
+.tab:hover .tabLabel,
+.tab:has(.tabClose:focus-visible) .tabLabel {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent calc(100% - 24px));
+  mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent calc(100% - 24px));
+}
+
 .tabClose {
+  position: absolute;
+  right: 4px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 20px;
   width: 20px;
   height: 20px;
   /* 4px + the glyph's 3px centering = a 7px optical inset, balancing the
    * label's 9px lead instead of gluing the icon to the pill edge. */
-  margin-right: 4px;
   padding: 0;
   border: 0;
   color: inherit;
@@ -103,8 +112,8 @@
   pointer-events: none;
 }
 
-/* Keep the slot reserved so labels never jump. Pointer hover reveals the
- * close control; keyboard focus is the accessibility-only equivalent. */
+/* The overlaid control does not reserve idle label width. Pointer hover
+ * reveals it; keyboard focus is the accessibility-only equivalent. */
 .tab:hover .tabClose,
 .tabClose:focus-visible { opacity: 1; pointer-events: auto; }
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import clsx from 'clsx'
 import { writeClipboard } from './clipboard.ts'
 import { FileIcon } from './file-icons/FileIcon.tsx'
@@ -6,7 +6,7 @@ import { IconCheckOutline16, IconCopyOutline16 } from './icons/index.tsx'
 import { OverflowFadeText } from './OverflowFadeText.tsx'
 import { Tooltip } from './Tooltip.tsx'
 import {
-  buildCachedDiffHunkModel, buildDiffHunkModel, diffContentLines, diffLanguageFromPath, prioritizeSnapshotHighlights,
+  buildCachedDiffHunkModel, buildDiffHunkModel, cancelSnapshotHighlights, diffLanguageFromPath, prioritizeSnapshotHighlights,
   snapshotHighlightKey, subscribeSnapshotHighlight, type AlignedRow, type DiffHunkInput, type DiffHunkModel, type TextRange,
 } from './diff/model.ts'
 import {
@@ -44,6 +44,9 @@ export interface DiffBlockProps {
   foldResetSignal?: number | undefined
   /** Live count of this block's expanded folds (context folds, gaps, and the cap); host UI shows a re-fold control from it. */
   onFoldStateChange?: ((expandedFolds: number) => void) | undefined
+  /** Optional controlled fold keys. Use this when a heavy body may unmount and later return. */
+  expandedFoldKeys?: ReadonlySet<string> | undefined
+  onExpandedFoldKeysChange?: ((keys: ReadonlySet<string>) => void) | undefined
 }
 
 const DEFAULT_LABELS: DiffBlockLabels = {
@@ -70,7 +73,9 @@ interface OmittedContextGap {
   kind: 'gap'
   key: string
   path: string
-  rows: AlignedRow[]
+  source: string
+  start: number
+  count: number
 }
 
 interface HunkEntry {
@@ -89,7 +94,7 @@ interface FileEntryGroup {
   removed: number
 }
 
-function foldedRows(rows: AlignedRow[], expanded: ReadonlySet<string>): VisibleRow[] {
+function foldedRows(rows: AlignedRow[], expanded: ReadonlySet<string>, prefix: string): VisibleRow[] {
   const output: VisibleRow[] = []
   let index = 0
   while (index < rows.length) {
@@ -98,7 +103,7 @@ function foldedRows(rows: AlignedRow[], expanded: ReadonlySet<string>): VisibleR
     while (rows[index]?.kind === 'context') index += 1
     const run = rows.slice(start, index)
     if (run.length < 15) { output.push(...run); continue }
-    const key = `${start}:${run.length}`
+    const key = `${prefix}:context:${start}:${run.length}`
     if (expanded.has(key)) { output.push(...run); continue }
     output.push(...run.slice(0, 3), { kind: 'fold', hidden: run.slice(3, -3), key }, ...run.slice(-3))
   }
@@ -148,27 +153,50 @@ function omittedContextGap(
   path: string, basis: ContextBasis, start: number, count: number, position: string,
 ): OmittedContextGap | undefined {
   if (count <= 0 || start <= 0) return undefined
-  const sourceLines = diffContentLines(basis.source)
-  const lines = sourceLines.slice(start - 1, start - 1 + count)
-  if (lines.length === 0) return undefined
-  // The explicit terminator preserves a gap consisting solely of blank lines.
-  const text = `${lines.join('\n')}\n`
-  const rows = buildDiffHunkModel({
-    path,
-    oldText: text,
-    newText: text,
-    oldStart: start,
-    newStart: start,
-    oldSource: basis.source,
-    newSource: basis.source,
-  }).rows
-  if (rows.length === 0) return undefined
-  return { kind: 'gap', key: `${path}:${basis.side}:${start}:${rows.length}:${position}`, path, rows }
+  return {
+    kind: 'gap', key: `${path}:${basis.side}:${start}:${count}:${position}`, path,
+    source: basis.source, start, count,
+  }
+}
+
+/** Count source lines without allocating a string for every unchanged line. */
+function sourceLineCount(source: string): number {
+  if (source === '') return 0
+  let count = source.endsWith('\n') ? 0 : 1
+  for (let index = 0; index < source.length; index += 1) if (source.charCodeAt(index) === 10) count += 1
+  return count
+}
+
+/** Materialize only the requested 1-based line range after a fold is opened. */
+function sourceRangeText(source: string, start: number, count: number): string {
+  if (count <= 0 || start <= 0 || source === '') return ''
+  const end = start + count
+  const lines: string[] = []
+  let line = 1
+  let lineStart = 0
+  for (let index = 0; index <= source.length; index += 1) {
+    if (index < source.length && source.charCodeAt(index) !== 10) continue
+    if (line >= start && line < end && !(index === source.length && lineStart === index && source.endsWith('\n'))) {
+      lines.push(source.slice(lineStart, index))
+    }
+    if (line >= end || index === source.length) break
+    line += 1
+    lineStart = index + 1
+  }
+  return lines.length === 0 ? '' : `${lines.join('\n')}\n`
 }
 
 /** Reconstruct Git-omitted head, inter-hunk and tail context from Review snapshots. */
 function reviewEntries(diffs: readonly DiffHunk[], models: readonly DiffHunkModel[]): ReviewEntry[] {
   const entries: ReviewEntry[] = []
+  const lineCounts = new Map<string, number>()
+  const countLines = (source: string): number => {
+    const cached = lineCounts.get(source)
+    if (cached !== undefined) return cached
+    const count = sourceLineCount(source)
+    lineCounts.set(source, count)
+    return count
+  }
   let previous: { path: string; basis: ContextBasis } | undefined
 
   for (let index = 0; index < models.length; index += 1) {
@@ -183,7 +211,7 @@ function reviewEntries(diffs: readonly DiffHunk[], models: readonly DiffHunkMode
         previous.path,
         previous.basis,
         tailStart,
-        diffContentLines(previous.basis.source).length - tailStart + 1,
+        countLines(previous.basis.source) - tailStart + 1,
         'tail',
       )
       if (tail !== undefined) entries.push(tail)
@@ -211,7 +239,7 @@ function reviewEntries(diffs: readonly DiffHunk[], models: readonly DiffHunkMode
       previous.path,
       previous.basis,
       tailStart,
-      diffContentLines(previous.basis.source).length - tailStart + 1,
+      countLines(previous.basis.source) - tailStart + 1,
       'tail',
     )
     if (tail !== undefined) entries.push(tail)
@@ -247,9 +275,9 @@ function renderSegments(text: string, syntax: readonly HighlightSpan[], marks: r
   return result
 }
 
-function AlignedDiffRow({ row, index, labels }: { row: AlignedRow; index: number; labels: DiffBlockLabels }) {
+const AlignedDiffRow = memo(function AlignedDiffRow({ row, index, labels }: { row: AlignedRow; index: number; labels: DiffBlockLabels }) {
   const number = rowLineNumber(row)
-  const segments = renderSegments(row.text, row.syntax, row.marks)
+  const segments = useMemo(() => renderSegments(row.text, row.syntax, row.marks), [row])
   const accessibleLabel = row.kind === 'add'
     ? labels.addedLine(number, row.text)
     : row.kind === 'del'
@@ -278,35 +306,41 @@ function AlignedDiffRow({ row, index, labels }: { row: AlignedRow; index: number
       </span>
     </div>
   )
-}
+})
 
-function OmittedContext({ gap, labels, resetSignal, onStateChange }: {
+function OmittedContext({ gap, labels, expanded, onExpandedChange }: {
   gap: OmittedContextGap
   labels: DiffBlockLabels
-  resetSignal: number
-  onStateChange: (count: number) => void
+  expanded: boolean
+  onExpandedChange: (expanded: boolean) => void
 }) {
-  const [expanded, setExpanded] = useState(false)
-  const lastReset = useRef(resetSignal)
-  useEffect(() => {
-    if (resetSignal === lastReset.current) return
-    lastReset.current = resetSignal
-    setExpanded(false)
-  }, [resetSignal])
-  useEffect(() => { onStateChange(expanded ? 1 : 0) }, [expanded, onStateChange])
+  const rows = useMemo(() => {
+    if (!expanded) return []
+    const text = sourceRangeText(gap.source, gap.start, gap.count)
+    if (text === '') return []
+    return buildDiffHunkModel({
+      path: gap.path,
+      oldText: text,
+      newText: text,
+      oldStart: gap.start,
+      newStart: gap.start,
+      oldSource: gap.source,
+      newSource: gap.source,
+    }).rows
+  }, [expanded, gap])
   if (!expanded) return (
     <button
       type="button"
       className={css.fold}
-      aria-label={labels.expandContext(gap.rows.length)}
-      onClick={() => { setExpanded(true) }}
+      aria-label={labels.expandContext(gap.count)}
+      onClick={() => { onExpandedChange(true) }}
     >
-      {`⋯ ${labels.expandContext(gap.rows.length)}`}
+      {`⋯ ${labels.expandContext(gap.count)}`}
     </button>
   )
   return (
     <>
-      {gap.rows.map((row, index) => <AlignedDiffRow key={`${row.kind}:${rowLineNumber(row) ?? 'x'}:${index}`} row={row} index={index} labels={labels} />)}
+      {rows.map((row, index) => <AlignedDiffRow key={`${row.kind}:${rowLineNumber(row) ?? 'x'}:${index}`} row={row} index={index} labels={labels} />)}
     </>
   )
 }
@@ -326,22 +360,15 @@ function copyText(diffs: readonly DiffHunk[]): string {
 }
 
 function HunkRows({
-  model, labels, resetSignal, onStateChange,
+  entryKey, model, labels, expandedKeys, onExpandedKeysChange,
 }: {
+  entryKey: string
   model: ReturnType<typeof buildDiffHunkModel>
   labels: DiffBlockLabels
-  resetSignal: number
-  onStateChange: (count: number) => void
+  expandedKeys: ReadonlySet<string>
+  onExpandedKeysChange: (keys: ReadonlySet<string>) => void
 }) {
-  const [expandedContext, setExpandedContext] = useState<ReadonlySet<string>>(new Set())
-  const lastReset = useRef(resetSignal)
-  useEffect(() => {
-    if (resetSignal === lastReset.current) return
-    lastReset.current = resetSignal
-    setExpandedContext(new Set())
-  }, [resetSignal])
-  useEffect(() => { onStateChange(expandedContext.size) }, [expandedContext, onStateChange])
-  const visible = foldedRows(model.rows, expandedContext)
+  const visible = useMemo(() => foldedRows(model.rows, expandedKeys, entryKey), [entryKey, expandedKeys, model.rows])
 
   const renderRow = (row: VisibleRow, index: number) => {
     if (row.kind === 'fold') return (
@@ -351,7 +378,7 @@ function HunkRows({
         className={css.fold}
         aria-label={labels.expandContext(row.hidden.length)}
         onClick={() => {
-          setExpandedContext(current => new Set([...current, row.key]))
+          onExpandedKeysChange(new Set([...expandedKeys, row.key]))
         }}
       >
         {`⋯ ${labels.expandContext(row.hidden.length)}`}
@@ -364,13 +391,13 @@ function HunkRows({
 }
 
 function FileCard({
-  group, showPath, labels, resetSignal, reporterFor,
+  group, showPath, labels, expandedKeys, onExpandedKeysChange,
 }: {
   group: FileEntryGroup
   showPath: boolean
   labels: DiffBlockLabels
-  resetSignal: number
-  reporterFor: (key: string) => (count: number) => void
+  expandedKeys: ReadonlySet<string>
+  onExpandedKeysChange: (keys: ReadonlySet<string>) => void
 }) {
   return (
     <section className={css.hunk} data-diff-file="" data-diff-hunk="">
@@ -385,8 +412,15 @@ function FileCard({
       )}
       <div className={css.rows} role="list" aria-label={group.path}>
         {group.entries.map(entry => entry.kind === 'gap'
-          ? <OmittedContext key={entry.key} gap={entry} labels={labels} resetSignal={resetSignal} onStateChange={reporterFor(entry.key)} />
-          : <HunkRows key={entry.key} model={entry.model} labels={labels} resetSignal={resetSignal} onStateChange={reporterFor(entry.key)} />)}
+          ? <OmittedContext
+              key={entry.key} gap={entry} labels={labels}
+              expanded={expandedKeys.has(entry.key)}
+              onExpandedChange={() => { onExpandedKeysChange(new Set([...expandedKeys, entry.key])) }}
+            />
+          : <HunkRows
+              key={entry.key} entryKey={entry.key} model={entry.model} labels={labels}
+              expandedKeys={expandedKeys} onExpandedKeysChange={onExpandedKeysChange}
+            />)}
       </div>
     </section>
   )
@@ -402,6 +436,8 @@ export function DiffBlock({
   labels: labelOverrides,
   foldResetSignal = 0,
   onFoldStateChange,
+  expandedFoldKeys,
+  onExpandedFoldKeysChange,
 }: DiffBlockProps) {
   const loaded = useSyncExternalStore(subscribeGrammarLoaded, grammarLoadCount, grammarLoadCount)
   // Snapshots highlight progressively: a queued snapshot renders plain text,
@@ -419,7 +455,8 @@ export function DiffBlock({
   const [snapshotTick, setSnapshotTick] = useState(0)
   useEffect(() => {
     prioritizeSnapshotHighlights(snapshotKeys)
-    return subscribeSnapshotHighlight(() => { setSnapshotTick(tick => tick + 1) }, snapshotKeys)
+    const unsubscribe = subscribeSnapshotHighlight(() => { setSnapshotTick(tick => tick + 1) }, snapshotKeys)
+    return () => { unsubscribe(); cancelSnapshotHighlights(snapshotKeys) }
   }, [snapshotKeys])
   const models = useMemo(() => diffs.map(buildCachedDiffHunkModel), [diffs, loaded, snapshotTick])
   const entries = useMemo<ReviewEntry[]>(() => variant === 'review'
@@ -428,34 +465,21 @@ export function DiffBlock({
         kind: 'hunk', key: `${model.path}:${model.oldStart ?? 'x'}:${model.newStart ?? 'x'}:${index}`, model,
       })), [diffs, models, variant])
   const fileGroups = useMemo(() => groupEntriesByFile(entries), [entries])
-  const labels = { ...DEFAULT_LABELS, ...labelOverrides }
+  const labels = useMemo(() => ({ ...DEFAULT_LABELS, ...labelOverrides }), [labelOverrides])
   const [copied, setCopied] = useState(false)
-  // Per-child fold counts, aggregated into one parent-visible number. Reporters
-  // are stable per entry key so the children's report effects never re-fire on
-  // identity; keys pruned when their entries leave the window.
-  const foldCounts = useRef(new Map<string, number>())
-  const foldReporters = useRef(new Map<string, (count: number) => void>())
-  const reportTotal = useCallback(() => {
-    if (onFoldStateChange === undefined) return
-    let sum = 0
-    for (const count of foldCounts.current.values()) sum += count
-    onFoldStateChange(sum)
-  }, [onFoldStateChange])
-  const reporterFor = useCallback((key: string): (count: number) => void => {
-    let reporter = foldReporters.current.get(key)
-    if (reporter === undefined) {
-      reporter = (count: number) => {
-        foldCounts.current.set(key, count)
-        reportTotal()
-      }
-      foldReporters.current.set(key, reporter)
-    }
-    return reporter
-  }, [reportTotal])
-  const liveKeys = new Set(entries.map(entry => entry.key))
-  for (const key of foldCounts.current.keys()) {
-    if (!liveKeys.has(key)) { foldCounts.current.delete(key); foldReporters.current.delete(key) }
-  }
+  const [internalExpandedFoldKeys, setInternalExpandedFoldKeys] = useState<ReadonlySet<string>>(new Set())
+  const activeExpandedFoldKeys = expandedFoldKeys ?? internalExpandedFoldKeys
+  const updateExpandedFoldKeys = useCallback((keys: ReadonlySet<string>) => {
+    if (expandedFoldKeys === undefined) setInternalExpandedFoldKeys(keys)
+    onExpandedFoldKeysChange?.(keys)
+  }, [expandedFoldKeys, onExpandedFoldKeysChange])
+  const lastReset = useRef(foldResetSignal)
+  useEffect(() => {
+    if (foldResetSignal === lastReset.current) return
+    lastReset.current = foldResetSignal
+    updateExpandedFoldKeys(new Set())
+  }, [foldResetSignal, updateExpandedFoldKeys])
+  useEffect(() => { onFoldStateChange?.(activeExpandedFoldKeys.size) }, [activeExpandedFoldKeys, onFoldStateChange])
   const total = models.reduce((sum, model) => ({ added: sum.added + model.added, removed: sum.removed + model.removed }), { added: 0, removed: 0 })
   const files = new Set(models.map(model => model.path)).size
   const onCopy = useCallback(() => {
@@ -483,8 +507,8 @@ export function DiffBlock({
             group={group}
             showPath={showPath}
             labels={labels}
-            resetSignal={foldResetSignal}
-            reporterFor={reporterFor}
+            expandedKeys={activeExpandedFoldKeys}
+            onExpandedKeysChange={updateExpandedFoldKeys}
           />
         ))}
       </div>

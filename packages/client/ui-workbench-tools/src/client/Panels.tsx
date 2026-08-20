@@ -1,9 +1,9 @@
 import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import type { FormEvent } from 'react'
+import type { FormEvent, RefObject } from 'react'
 import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@ryanyujazz/dsh-review/remote'
-import type { ReviewScope } from '@ryanyujazz/dsh-review/types'
+import type { ReviewFileStatus, ReviewFileSummary, ReviewScope } from '@ryanyujazz/dsh-review/types'
 import type { TerminalSessionView } from '@ryanyujazz/dsh-terminal-workbench/types'
 import type {} from '@ryanyujazz/dsh-terminal-workbench/remote'
 import type {
@@ -11,9 +11,9 @@ import type {
 } from '@ryanyujazz/dsh-client-ui-workbench/client'
 import {
   DiffBlock, FileIcon, IconChevronDownOutline14, IconPlusOutline16, IconRefreshOutline14, IconUnfoldLessOutline16,
-  IconUnfoldMoreOutline16, Menu, WorkbenchPanelIconButton, type MenuEntry,
+  IconUnfoldMoreOutline16, Menu, OverflowFadeText, WorkbenchPanelIconButton, type MenuEntry,
 } from '@ryanyujazz/dsh-client-ui-primitives'
-import type { FileEntry } from './review-model.ts'
+import { REVIEW_IDLE_PREFETCH_LIMIT } from './review-model.ts'
 import type { ReviewCacheController } from './review-cache.ts'
 import css from './Panels.module.css'
 import { TerminalEmulator } from './TerminalEmulator.tsx'
@@ -77,8 +77,14 @@ function usePanelHeaderActions(
   useEffect(() => contribute(contribution), [contribute, contribution])
 }
 
-/** Mount a file's diff content when it is this close to the viewport. */
-const NEAR_VIEWPORT_MARGIN = 400
+/** Heavy Diff bodies retained at rest; intersecting/focused rows may exceed it. */
+export const REVIEW_BODY_RESIDENT_LIMIT = 16
+
+/** Each successful boundary load unlocks roughly this much vertical content. */
+export const REVIEW_UNLOCK_SCREENS = 2
+
+/** Used only before the Workbench scroll viewport has a measurable height. */
+const REVIEW_FALLBACK_VIEWPORT_HEIGHT = 720
 
 /** A frame gap above this means scrolling paused; heavy bodies fill then. */
 const BODY_FILL_IDLE_MS = 120
@@ -90,7 +96,8 @@ const BODY_FILL_IDLE_MS = 120
  * activity has been quiet for a pause window, one per frame, so a fast scroll
  * never waits on a burst of heavy commits.
  */
-const bodyFillQueue: Array<() => void> = []
+interface BodyFillTask { fill: () => void; cancelled: boolean }
+const bodyFillQueue: BodyFillTask[] = []
 let bodyFillFrame: number | null = null
 /** After this timestamp with no scroll activity, bodies may fill. */
 let bodyFillIdleAt = 0
@@ -100,19 +107,21 @@ function onScrollCapture(): void {
   bodyFillIdleAt = performance.now() + BODY_FILL_IDLE_MS
 }
 
-function requestBodyFill(fill: () => void): void {
+function requestBodyFill(fill: () => void): () => void {
   // jsdom (and other hosts without rAF) fills synchronously: tests observe
   // the fully mounted body without frame machinery.
-  if (typeof requestAnimationFrame === 'undefined') { fill(); return }
+  if (typeof requestAnimationFrame === 'undefined') { fill(); return () => undefined }
   if (!scrollListening && typeof window !== 'undefined') {
     scrollListening = true
     window.addEventListener('scroll', onScrollCapture, true)
   }
-  bodyFillQueue.push(fill)
+  const task: BodyFillTask = { fill, cancelled: false }
+  bodyFillQueue.push(task)
   bodyFillIdleAt = performance.now() + BODY_FILL_IDLE_MS
   if (bodyFillFrame === null) {
     bodyFillFrame = requestAnimationFrame(tickBodyFill)
   }
+  return () => { task.cancelled = true }
 }
 
 function tickBodyFill(now: number): void {
@@ -122,9 +131,10 @@ function tickBodyFill(now: number): void {
     bodyFillFrame = requestAnimationFrame(tickBodyFill)
     return
   }
-  const fill = bodyFillQueue.shift()
-  if (fill === undefined) return
-  fill()
+  let task = bodyFillQueue.shift()
+  while (task?.cancelled === true) task = bodyFillQueue.shift()
+  if (task === undefined) return
+  task.fill()
   if (bodyFillQueue.length > 0) {
     // One heavy commit per frame, then breathe before the next.
     bodyFillIdleAt = now + 40
@@ -133,6 +143,326 @@ function tickBodyFill(now: number): void {
 }
 
 type ReviewPanelProps = WorkbenchPanelProps & PropsLocale<'workbench-tools'> & { controller: ReviewCacheController }
+const EMPTY_REVIEW_FILES: readonly ReviewFileStatus[] = []
+const EMPTY_FOLD_KEYS: ReadonlySet<string> = new Set()
+
+function scrollingParent(node: HTMLElement | null): HTMLElement | null {
+  let current = node?.parentElement ?? null
+  while (current !== null) {
+    const overflow = getComputedStyle(current).overflowY
+    if (overflow === 'auto' || overflow === 'scroll') return current
+    current = current.parentElement
+  }
+  return null
+}
+
+function useReviewResidency(options: {
+  controller: ReviewCacheController
+  files: readonly ReviewFileStatus[]
+  expanded: ReadonlySet<string>
+  eagerPath: string | null
+  listRef: RefObject<HTMLDivElement | null>
+}) {
+  const { controller, files, expanded, eagerPath, listRef } = options
+  const [resident, setResident] = useState<ReadonlySet<string>>(new Set())
+  const [scrollRoot, setScrollRoot] = useState<HTMLElement | null>(null)
+  const [widthBucket, setWidthBucket] = useState(0)
+  const expandedRef = useRef(expanded); expandedRef.current = expanded
+  const eagerRef = useRef(eagerPath); eagerRef.current = eagerPath
+  const near = useRef(new Set<string>())
+  const stamps = useRef(new Map<string, number>())
+  const stamp = useRef(0)
+  const releaseTimers = useRef(new Map<string, number>())
+  const scheduled = useRef(new Map<string, () => void>())
+
+  const hydrate = useCallback((path: string, immediate = false) => {
+    if (!expandedRef.current.has(path)) return
+    const timer = releaseTimers.current.get(path)
+    if (timer !== undefined) { window.clearTimeout(timer); releaseTimers.current.delete(path) }
+    controller.ensure(path, immediate ? 'focus' : 'viewport')
+    const commit = () => {
+      if (!expandedRef.current.has(path) || (!immediate && !near.current.has(path))) return
+      stamps.current.set(path, ++stamp.current)
+      setResident(current => {
+        const next = new Set(current); next.add(path)
+        if (next.size > REVIEW_BODY_RESIDENT_LIMIT) {
+          const removable = [...next]
+            .filter(candidate => !near.current.has(candidate) && candidate !== eagerRef.current)
+            .toSorted((left, right) => (stamps.current.get(left) ?? 0) - (stamps.current.get(right) ?? 0))
+          while (next.size > REVIEW_BODY_RESIDENT_LIMIT && removable.length > 0) {
+            const candidate = removable.shift()
+            if (candidate !== undefined) next.delete(candidate)
+          }
+        }
+        return next
+      })
+    }
+    if (immediate) {
+      scheduled.current.get(path)?.()
+      scheduled.current.delete(path)
+      commit()
+    } else if (!scheduled.current.has(path)) {
+      const cancel = requestBodyFill(() => { scheduled.current.delete(path); commit() })
+      scheduled.current.set(path, cancel)
+    }
+  }, [controller])
+
+  useEffect(() => {
+    const list = listRef.current
+    if (list === null || files.length === 0) return
+    const root = scrollingParent(list)
+    setScrollRoot(root)
+    const updateWidth = () => { setWidthBucket(Math.round((root?.clientWidth ?? list.clientWidth) / 32)) }
+    updateWidth()
+    const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateWidth)
+    resize?.observe(root ?? list)
+    const rows = [...list.querySelectorAll<HTMLElement>('[data-review-path]')]
+    if (typeof IntersectionObserver === 'undefined') {
+      for (const row of rows.slice(0, REVIEW_IDLE_PREFETCH_LIMIT)) {
+        const path = row.dataset.reviewPath ?? ''
+        near.current.add(path)
+        hydrate(path)
+      }
+      return () => { resize?.disconnect() }
+    }
+    const hydration = new IntersectionObserver(entries => {
+      for (const entry of entries) {
+        const path = (entry.target as HTMLElement).dataset.reviewPath
+        if (path === undefined) continue
+        if (entry.isIntersecting) { near.current.add(path); hydrate(path) }
+        else {
+          near.current.delete(path)
+          scheduled.current.get(path)?.()
+          scheduled.current.delete(path)
+        }
+      }
+    }, { root, rootMargin: '200% 0px' })
+    const retention = new IntersectionObserver(entries => {
+      for (const entry of entries) {
+        const path = (entry.target as HTMLElement).dataset.reviewPath
+        if (path === undefined) continue
+        const existing = releaseTimers.current.get(path)
+        if (entry.isIntersecting) {
+          if (existing !== undefined) { window.clearTimeout(existing); releaseTimers.current.delete(path) }
+          continue
+        }
+        if (existing !== undefined || path === eagerRef.current) continue
+        const timer = window.setTimeout(() => {
+          releaseTimers.current.delete(path)
+          if (near.current.has(path) || path === eagerRef.current) return
+          setResident(current => {
+            if (!current.has(path)) return current
+            const next = new Set(current); next.delete(path); return next
+          })
+        }, 500)
+        releaseTimers.current.set(path, timer)
+      }
+    }, { root, rootMargin: '300% 0px' })
+    for (const row of rows) { hydration.observe(row); retention.observe(row) }
+    return () => {
+      hydration.disconnect(); retention.disconnect(); resize?.disconnect()
+      for (const timer of releaseTimers.current.values()) window.clearTimeout(timer)
+      releaseTimers.current.clear()
+      for (const cancel of scheduled.current.values()) cancel()
+      scheduled.current.clear()
+    }
+  }, [files, hydrate, listRef])
+
+  useEffect(() => {
+    if (eagerPath !== null) hydrate(eagerPath, true)
+  }, [eagerPath, hydrate])
+
+  useEffect(() => {
+    const mounted = new Set(files.map(file => file.path))
+    for (const path of near.current) if (!mounted.has(path)) near.current.delete(path)
+    setResident(current => {
+      const next = new Set([...current].filter(path => mounted.has(path)))
+      return next.size === current.size ? current : next
+    })
+  }, [files])
+
+  useEffect(() => {
+    for (const path of near.current) if (expanded.has(path)) hydrate(path)
+    setResident(current => {
+      const next = new Set([...current].filter(path => expanded.has(path)))
+      return next.size === current.size ? current : next
+    })
+  }, [expanded])
+
+  useEffect(() => { controller.setResident(resident) }, [controller, resident])
+  return { resident, scrollRoot, widthBucket }
+}
+
+function reviewRowEstimate(summary: ReviewFileSummary | undefined, expanded: boolean): number {
+  if (!expanded) return 36
+  if (summary?.binary === true) return 156
+  const changed = (summary?.additions ?? 1) + (summary?.deletions ?? 1)
+  const context = Math.min(18, Math.max(6, Math.ceil(changed * 0.6)))
+  return 36 + Math.max(120, Math.min((changed + context) * 20 + 40, 600))
+}
+
+function reviewFileSettled(controller: ReviewCacheController, path: string): boolean {
+  const kind = controller.getFileSnapshot(path)?.cache.kind
+  return kind === 'ready' || kind === 'error'
+}
+
+/**
+ * Keep the scroll range bounded by prepared content. The first six rows are
+ * visible immediately; reaching the sentinel prepares a complete ~2-screen
+ * batch off-DOM and unlocks it atomically. A focused reveal recenters the
+ * window on its target and then grows through independent before/after gates,
+ * so direct navigation never waits on every file that precedes it.
+ */
+function useReviewProgressiveGate(options: {
+  controller: ReviewCacheController
+  files: readonly ReviewFileStatus[]
+  summaries: ReadonlyMap<string, ReviewFileSummary>
+  expanded: ReadonlySet<string>
+  eagerPath: string | null
+  listRef: RefObject<HTMLDivElement | null>
+  scopeKey: string
+}) {
+  const { controller, files, summaries, expanded, eagerPath, listRef, scopeKey } = options
+  const [unlockedStart, setUnlockedStart] = useState(0)
+  const [unlockedEnd, setUnlockedEnd] = useState(() => Math.min(REVIEW_IDLE_PREFETCH_LIMIT, files.length))
+  const [pendingBefore, setPendingBefore] = useState<number | null>(null)
+  const [pendingAfter, setPendingAfter] = useState<number | null>(null)
+  const [rangeSettled, setRangeSettled] = useState(false)
+  const beforeSentinelRef = useRef<HTMLDivElement | null>(null)
+  const afterSentinelRef = useRef<HTMLDivElement | null>(null)
+  const previousScope = useRef(scopeKey)
+
+  useEffect(() => {
+    if (previousScope.current !== scopeKey) {
+      previousScope.current = scopeKey
+      setUnlockedStart(0)
+      setUnlockedEnd(Math.min(REVIEW_IDLE_PREFETCH_LIMIT, files.length))
+      setPendingBefore(null)
+      setPendingAfter(null)
+      setRangeSettled(false)
+      return
+    }
+    setUnlockedStart(current => Math.min(current, Math.max(0, files.length - 1)))
+    setUnlockedEnd(current => Math.min(files.length, Math.max(Math.min(REVIEW_IDLE_PREFETCH_LIMIT, files.length), current)))
+  }, [files, scopeKey])
+
+  useEffect(() => {
+    if (eagerPath === null) return
+    const index = files.findIndex(file => file.path === eagerPath)
+    if (index < 0 || (index >= unlockedStart && index < unlockedEnd)) return
+    // A direct reveal starts a fresh one-file window. Once the focused body is
+    // ready, the independent before/after sentinels unlock two screens in
+    // either direction without fetching every intervening path.
+    setUnlockedStart(index)
+    setUnlockedEnd(index + 1)
+    setPendingBefore(null)
+    setPendingAfter(null)
+    setRangeSettled(false)
+  }, [eagerPath, files, unlockedEnd, unlockedStart])
+
+  const range = useMemo(() => files.slice(unlockedStart, unlockedEnd), [files, unlockedEnd, unlockedStart])
+  const rangeKey = useMemo(() => range.map(file => file.path).join('\n'), [range])
+  useEffect(() => {
+    const paths = range.map(file => file.path)
+    const check = () => { setRangeSettled(paths.every(path => reviewFileSettled(controller, path))) }
+    const off = paths.map(path => controller.subscribeFile(path, check))
+    check()
+    return () => { for (const unsubscribe of off) unsubscribe() }
+  }, [controller, rangeKey])
+
+  useEffect(() => {
+    if (pendingBefore === null) return
+    const paths = files.slice(pendingBefore, unlockedStart).map(file => file.path)
+    const check = () => {
+      if (!paths.every(path => reviewFileSettled(controller, path))) return
+      setUnlockedStart(current => Math.min(current, pendingBefore))
+      setPendingBefore(null)
+    }
+    const off = paths.map(path => controller.subscribeFile(path, check))
+    check()
+    return () => { for (const unsubscribe of off) unsubscribe() }
+  }, [controller, files, pendingBefore, unlockedStart])
+
+  useEffect(() => {
+    if (pendingAfter === null) return
+    const paths = files.slice(unlockedEnd, pendingAfter).map(file => file.path)
+    const check = () => {
+      if (!paths.every(path => reviewFileSettled(controller, path))) return
+      setUnlockedEnd(current => Math.max(current, pendingAfter))
+      setPendingAfter(null)
+    }
+    const off = paths.map(path => controller.subscribeFile(path, check))
+    check()
+    return () => { for (const unsubscribe of off) unsubscribe() }
+  }, [controller, files, pendingAfter, unlockedEnd])
+
+  const batchBudget = useCallback(() => {
+    const root = scrollingParent(listRef.current)
+    const measured = root?.clientHeight ?? 0
+    const viewportHeight = measured > 0 ? measured : REVIEW_FALLBACK_VIEWPORT_HEIGHT
+    return viewportHeight * REVIEW_UNLOCK_SCREENS
+  }, [listRef])
+
+  const beginBeforeBatch = useCallback(() => {
+    if (!rangeSettled || pendingBefore !== null || unlockedStart <= 0) return
+    let height = 0
+    let start = unlockedStart
+    const budget = batchBudget()
+    while (start > 0 && (height < budget || start === unlockedStart)) {
+      const file = files[start - 1]
+      if (file === undefined) break
+      height += reviewRowEstimate(summaries.get(file.path), expanded.has(file.path))
+      start -= 1
+    }
+    if (start === unlockedStart) return
+    setPendingBefore(start)
+    for (const file of files.slice(start, unlockedStart)) controller.ensure(file.path, 'viewport')
+  }, [batchBudget, controller, expanded, files, pendingBefore, rangeSettled, summaries, unlockedStart])
+
+  const beginAfterBatch = useCallback(() => {
+    if (!rangeSettled || pendingAfter !== null || unlockedEnd >= files.length) return
+    let height = 0
+    let end = unlockedEnd
+    const budget = batchBudget()
+    while (end < files.length && (height < budget || end === unlockedEnd)) {
+      const file = files[end]
+      if (file === undefined) break
+      height += reviewRowEstimate(summaries.get(file.path), expanded.has(file.path))
+      end += 1
+    }
+    if (end === unlockedEnd) return
+    setPendingAfter(end)
+    for (const file of files.slice(unlockedEnd, end)) controller.ensure(file.path, 'viewport')
+  }, [batchBudget, controller, expanded, files, pendingAfter, rangeSettled, summaries, unlockedEnd])
+
+  useEffect(() => {
+    const sentinel = beforeSentinelRef.current
+    if (sentinel === null || unlockedStart <= 0 || typeof IntersectionObserver === 'undefined') return
+    const observer = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) beginBeforeBatch()
+    }, { root: scrollingParent(listRef.current), rootMargin: '200% 0px 0px 0px' })
+    observer.observe(sentinel)
+    return () => { observer.disconnect() }
+  }, [beginBeforeBatch, listRef, unlockedStart])
+
+  useEffect(() => {
+    const sentinel = afterSentinelRef.current
+    if (sentinel === null || unlockedEnd >= files.length || typeof IntersectionObserver === 'undefined') return
+    const observer = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) beginAfterBatch()
+    }, { root: scrollingParent(listRef.current), rootMargin: '0px 0px 200% 0px' })
+    observer.observe(sentinel)
+    return () => { observer.disconnect() }
+  }, [beginAfterBatch, files.length, listRef, unlockedEnd])
+
+  return {
+    files: range,
+    beforeSentinelRef,
+    afterSentinelRef,
+    hasBeforeBoundary: unlockedStart > 0,
+    hasAfterBoundary: unlockedEnd < files.length,
+  }
+}
 
 /**
  * One file row: header + expanded body. All props are stable references
@@ -144,19 +474,26 @@ type ReviewPanelProps = WorkbenchPanelProps & PropsLocale<'workbench-tools'> & {
  * the viewport mounts a light skeleton (an estimated-height box, ~1 ms);
  * the real DiffBlock mounts either immediately for a single-file expand
  * gesture, or through the pause-detecting body-fill queue after a batch
- * expand-all. Once mounted the body stays mounted: collapsing only hides it,
- * so a collapse→expand cycle is a pure CSS flip with zero rebuild.
+ * expand-all. Far bodies unmount behind an equal-height placeholder while
+ * their logical expansion and controlled fold state remain intact.
  */
 const ReviewFileRow = memo(function ReviewFileRow({
-  entry, expanded, eager, onToggle, t,
+  file, summary, controller, expanded, resident, scrollRoot, widthBucket, onToggle, t,
 }: {
-  entry: FileEntry
+  file: ReviewFileStatus
+  summary: ReviewFileSummary | undefined
+  controller: ReviewCacheController
   expanded: boolean
-  eager: boolean
+  resident: boolean
+  scrollRoot: HTMLElement | null
+  widthBucket: number
   onToggle: (path: string) => void
   t: RemoteProps['t']
 }) {
-  const file = entry.status
+  const subscribe = useCallback((listener: () => void) => controller.subscribeFile(file.path, listener), [controller, file.path])
+  const getSnapshot = useCallback(() => controller.getFileSnapshot(file.path), [controller, file.path])
+  const entry = useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
+  if (entry === undefined) throw new Error(`Review entry is missing for ${file.path}`)
   const ready = entry.cache.kind === 'ready' ? entry.cache : null
   // Parent-driven fold control, scoped per layer: each layer's DiffBlocks
   // report their expanded-fold counts, the layer title bar grows a re-fold
@@ -164,6 +501,7 @@ const ReviewFileRow = memo(function ReviewFileRow({
   // click re-folds that layer's hunks and gaps only.
   const [foldSignals, setFoldSignals] = useState<Record<string, number>>({})
   const [layerFolds, setLayerFolds] = useState<Record<string, number>>({})
+  const [expandedFoldKeys, setExpandedFoldKeys] = useState<Record<string, ReadonlySet<string>>>({})
   const foldCounts = useRef(new Map<string, number>())
   const onFoldState = useCallback((layer: string, key: string, count: number) => {
     foldCounts.current.set(`${layer}:${key}`, count)
@@ -177,6 +515,9 @@ const ReviewFileRow = memo(function ReviewFileRow({
   }, [])
   const layerRefold = useCallback((layer: string) => {
     setFoldSignals(current => ({ ...current, [layer]: (current[layer] ?? 0) + 1 }))
+    setExpandedFoldKeys(current => Object.fromEntries(
+      Object.entries(current).map(([key, value]) => [key, key.startsWith(`${layer}:`) ? EMPTY_FOLD_KEYS : value]),
+    ))
     for (const mapKey of [...foldCounts.current.keys()]) {
       if (mapKey.startsWith(`${layer}:`)) foldCounts.current.delete(mapKey)
     }
@@ -196,56 +537,42 @@ const ReviewFileRow = memo(function ReviewFileRow({
   const failed = entry.cache.kind === 'error' ? entry.cache.message : null
   const oldPath = ready?.raw.oldPath ?? file.oldPath
   const label = oldPath !== undefined && oldPath !== file.path ? `${oldPath} → ${file.path}` : file.path
-  const [skeletonMounted, setSkeletonMounted] = useState(false)
-  const [bodyMounted, setBodyMounted] = useState(false)
   const anchorRef = useRef<HTMLElement | null>(null)
-  // A conversation file reveal is a direct user gesture. Mount its complete
-  // body before the focus scroll instead of leaving a transient skeleton at
-  // the destination while the batch pause queue catches up.
-  useEffect(() => {
-    if (!eager || !expanded) return
-    setSkeletonMounted(true)
-    setBodyMounted(true)
-  }, [eager, expanded])
-  // Approaching the viewport mounts only the light skeleton — a scrolling
-  // frame must never commit a full diff body.
-  useEffect(() => {
-    if (skeletonMounted || !expanded) return
-    const node = anchorRef.current
-    if (node === null) return
-    // jsdom (and any host without IntersectionObserver) mounts immediately;
-    // browsers mount near the viewport now and observe the rest.
-    if (typeof IntersectionObserver === 'undefined') { setSkeletonMounted(true); return }
-    const rect = node.getBoundingClientRect()
-    const viewport = window.innerHeight || 0
-    if (rect.top <= viewport + NEAR_VIEWPORT_MARGIN && rect.bottom >= -NEAR_VIEWPORT_MARGIN) {
-      setSkeletonMounted(true)
-      return
-    }
-    const observer = new IntersectionObserver(entries => {
-      if (entries.some(entry => entry.isIntersecting)) {
-        setSkeletonMounted(true)
-        observer.disconnect()
-      }
-    }, { rootMargin: `${NEAR_VIEWPORT_MARGIN}px 0px` })
-    observer.observe(node)
-    return () => { observer.disconnect() }
-  }, [expanded, skeletonMounted])
-  // The skeleton waits for a scroll pause, then the real body fills in.
-  useEffect(() => {
-    if (!skeletonMounted || bodyMounted) return
-    requestBodyFill(() => { setBodyMounted(true) })
-  }, [bodyMounted, skeletonMounted])
-  // A single-file expand is a user gesture: mount the body immediately
-  // instead of waiting for the pause detector.
-  const onHeaderClick = useCallback(() => {
-    if (!expanded) setBodyMounted(true)
-    onToggle(file.path)
-  }, [expanded, file.path, onToggle])
+  const bodyRef = useRef<HTMLDivElement | null>(null)
+  const measuredHeights = useRef(new Map<number, number>())
   const hunks = useMemo(() => ready?.layers.reduce((sum, layer) => sum + layer.files.reduce((files, parsed) => (
     files + (parsed.binary ? 0 : parsed.hunks.length)
   ), 0), 0) ?? 0, [ready])
-  const skeletonHeight = Math.max(120, Math.min(hunks * 16 + 40, 600))
+  const estimate = Math.max(120, Math.min(hunks * 16 + 40, 600))
+  const [bodyHeight, setBodyHeight] = useState(estimate)
+  useEffect(() => { setBodyHeight(measuredHeights.current.get(widthBucket) ?? estimate) }, [estimate, widthBucket])
+  useEffect(() => {
+    const node = bodyRef.current
+    if (!resident || !expanded || node === null || typeof ResizeObserver === 'undefined') return
+    const measure = () => {
+      const next = Math.max(1, Math.ceil(node.getBoundingClientRect().height))
+      const previous = measuredHeights.current.get(widthBucket) ?? bodyHeight
+      measuredHeights.current.set(widthBucket, next)
+      if (next === bodyHeight) return
+      const article = anchorRef.current
+      if (scrollRoot !== null && article !== null && article.getBoundingClientRect().top < scrollRoot.getBoundingClientRect().top) {
+        scrollRoot.scrollTop += next - previous
+      }
+      setBodyHeight(next)
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(node)
+    return () => { observer.disconnect() }
+  }, [bodyHeight, expanded, resident, scrollRoot, widthBucket])
+
+  const onHeaderClick = useCallback(() => {
+    if (!expanded) controller.ensure(file.path, 'focus')
+    onToggle(file.path)
+  }, [controller, expanded, file.path, onToggle])
+  const additions = summary?.additions ?? ready?.added
+  const deletions = summary?.deletions ?? ready?.removed
+  const showCounts = summary?.binary !== true && additions !== undefined && deletions !== undefined
   return (
     <article ref={anchorRef} className={css.reviewFile} data-review-path={file.path}>
       <button
@@ -256,18 +583,18 @@ const ReviewFileRow = memo(function ReviewFileRow({
       >
         <IconChevronDownOutline14 className={expanded ? undefined : css.reviewFileChevronCollapsed} />
         <FileIcon path={file.path} />
-        <span className={css.reviewFilePath}>{label}</span>
-        {pending
+        <OverflowFadeText className={css.reviewFilePath} text={label} fade="left" />
+        {pending && summary === undefined
           ? <span className={css.reviewFileLoading}>{t('loading')}</span>
-          : ready !== null && <span className={css.reviewCounts}><b>{`+${ready.added}`}</b><i>{`-${ready.removed}`}</i></span>}
+          : showCounts && <span className={css.reviewCounts}><b>{`+${additions}`}</b><i>{`-${deletions}`}</i></span>}
       </button>
-      {expanded && skeletonMounted && !bodyMounted && (
-        <div className={css.reviewFileSkeleton} style={{ height: skeletonHeight }} aria-hidden>
+      {expanded && !resident && (
+        <div className={css.reviewFileSkeleton} style={{ height: bodyHeight }} aria-hidden>
           {t('loading')}
         </div>
       )}
-      {bodyMounted && (
-        <div className={expanded ? css.reviewFileContent : css.reviewFileContentCollapsed} aria-hidden={!expanded}>
+      {resident && expanded && (
+        <div ref={bodyRef} className={css.reviewFileContent}>
           {pending && <div className={css.reviewFileMessage}>{t('loading')}</div>}
           {failed !== null && <div className={css.reviewFileError}>{failed}</div>}
           {ready !== null && ready.layers.map(layer => (
@@ -303,6 +630,10 @@ const ReviewFileRow = memo(function ReviewFileRow({
                     variant="review"
                     foldResetSignal={foldSignals[layer.kind] ?? 0}
                     onFoldStateChange={foldReporterFor(layer.kind, parsed.key)}
+                    expandedFoldKeys={expandedFoldKeys[`${layer.kind}:${parsed.key}`] ?? EMPTY_FOLD_KEYS}
+                    onExpandedFoldKeysChange={keys => {
+                      setExpandedFoldKeys(current => ({ ...current, [`${layer.kind}:${parsed.key}`]: keys }))
+                    }}
                   />
               ))}
             </section>
@@ -313,8 +644,15 @@ const ReviewFileRow = memo(function ReviewFileRow({
   )
 })
 
+function ReviewTotals({ controller }: { controller: ReviewCacheController }) {
+  const totals = useSyncExternalStore(controller.subscribeTotals, controller.getTotalsSnapshot, controller.getTotalsSnapshot)
+  if (totals.added === 0 && totals.removed === 0) return <>—</>
+  return <span className={css.reviewCounts}><b>{`+${totals.added}`}</b><i>{`-${totals.removed}`}</i></span>
+}
+
 export function ReviewPanel({ controller, reveal, visible, contributeHeaderActions, t }: ReviewPanelProps) {
-  const cache = useSyncExternalStore(controller.subscribe, controller.getSnapshot)
+  const meta = useSyncExternalStore(controller.subscribeMeta, controller.getMetaSnapshot, controller.getMetaSnapshot)
+  const history = useSyncExternalStore(controller.subscribeHistory, controller.getHistorySnapshot, controller.getHistorySnapshot)
   const [expandedPaths, setExpandedPaths] = useState<ReadonlySet<string>>(new Set())
   const [eagerPath, setEagerPath] = useState<string | null>(null)
   const [missedPath, setMissedPath] = useState<string | null>(null)
@@ -324,6 +662,13 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
   const prevVisible = useRef(false)
   /** Whether the current open has already been handled (expand-all or reveal). */
   const openHandled = useRef(false)
+  const files = meta.status?.files ?? EMPTY_REVIEW_FILES
+  const summaries = useMemo(() => new Map(meta.summary?.files.map(file => [file.path, file]) ?? []), [meta.summary])
+  const scopeId = typeof meta.scope === 'string' ? meta.scope : `turn:${meta.scope.turn}`
+  const gate = useReviewProgressiveGate({
+    controller, files, summaries, expanded: expandedPaths, eagerPath, listRef, scopeKey: scopeId,
+  })
+  const residency = useReviewResidency({ controller, files: gate.files, expanded: expandedPaths, eagerPath, listRef })
 
   // Opening the panel (first mount visible, or hidden→visible) means
   // expand-all with the list focused at the top — unless this open is driven
@@ -340,21 +685,18 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
   // and scrolls the list back to its top.
   useEffect(() => {
     if (openHandled.current || reveal !== undefined || !(visible !== false)) return
-    const files = cache.status?.files ?? []
+    const files = meta.status?.files ?? []
     if (files.length === 0) return
     openHandled.current = true
     const next = new Set(files.map(file => file.path))
     expandedRef.current = next
     startTransition(() => { setExpandedPaths(next) })
-    // Batch open loads through the sequential queue; ready files mount
-    // immediately from the warm caches.
-    controller.loadAll(next)
     // Focus the top after the expansion joins the layout.
     requestAnimationFrame(() => {
       listRef.current?.querySelector<HTMLElement>('[data-review-path]')
         ?.scrollIntoView({ block: 'start' })
     })
-  }, [cache.status, controller, reveal, visible])
+  }, [meta.status, reveal, visible])
 
   // Publish the hidden→visible edge before processing its presentation. The
   // controller's visibility catch-all may start a status refresh; running it
@@ -377,7 +719,7 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
     const turn = turnValue === undefined ? Number.NaN : Number(turnValue)
     const requested: ReviewScope = scopeValue === 'unstaged' || scopeValue === 'staged' || scopeValue === 'uncommitted'
       ? scopeValue
-      : Number.isSafeInteger(turn) && turn >= 0 ? { turn } : cache.scope
+      : Number.isSafeInteger(turn) && turn >= 0 ? { turn } : meta.scope
     // Every Review presentation is expand-all by contract. Parameters still
     // spell it out for self-documenting entry points, but this provider-side
     // default prevents a future or fallback reveal from silently regressing.
@@ -393,13 +735,13 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
         const focus = outcome.kind === 'found' ? outcome.path : null
         setEagerPath(focus)
         setExpandedPaths(next)
-        controller.loadAll(next)
         requestAnimationFrame(() => {
           const rows = [...(listRef.current?.querySelectorAll<HTMLElement>('[data-review-path]') ?? [])]
           const row = focus === null
             ? rows[0]
             : rows.find(node => node.dataset.reviewPath === focus)
           row?.scrollIntoView(focus === null ? { block: 'start' } : { behavior: 'smooth', block: 'start' })
+          if (focus !== null) window.setTimeout(() => { setEagerPath(current => current === focus ? null : current) }, 500)
         })
       }
     }).catch(() => {
@@ -407,9 +749,6 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
       // expansion above already pointed the user at the file.
     })
   }, [reveal, controller])
-
-  // Expansion exempts entries from the controller's cache eviction.
-  useEffect(() => { controller.setExpanded(expandedPaths) }, [controller, expandedPaths])
 
   const toggleFile = useCallback((path: string): void => {
     const opening = !expandedRef.current.has(path)
@@ -419,19 +758,22 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
     expandedRef.current = next
     setExpandedPaths(next)
     // SWR on expand: a stale cache displays immediately and revalidates.
-    if (opening) controller.ensure(path)
+    if (opening) {
+      controller.ensure(path, 'focus')
+      setEagerPath(path)
+      window.setTimeout(() => { setEagerPath(current => current === path ? null : current) }, 500)
+    }
   }, [controller])
 
   // One header action left of the refresh button: expand-all when nothing is
   // expanded, collapse-all otherwise — the icon states swap with the action.
   const anyExpanded = expandedPaths.size > 0
-  const scopeId = typeof cache.scope === 'string' ? cache.scope : `turn:${cache.scope.turn}`
-  const scopeLabel = typeof cache.scope === 'string'
-    ? t(`review.scope.${cache.scope}`)
-    : t('review.scope.turn', { turn: cache.scope.turn })
-  const historyTurns = useMemo(() => cache.history?.turns
+  const scopeLabel = typeof meta.scope === 'string'
+    ? t(`review.scope.${meta.scope}`)
+    : t('review.scope.turn', { turn: meta.scope.turn })
+  const historyTurns = useMemo(() => history?.turns
     .filter(turn => turn.remainingFiles > 0)
-    .toSorted((a, b) => b.turn - a.turn) ?? [], [cache.history])
+    .toSorted((a, b) => b.turn - a.turn) ?? [], [history])
   const scopeItems = useMemo<MenuEntry[]>(() => [
     { id: 'unstaged', label: t('review.scope.unstaged') },
     { id: 'staged', label: t('review.scope.staged') },
@@ -459,7 +801,6 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
           const expanded = new Set(paths)
           expandedRef.current = expanded
           setExpandedPaths(expanded)
-          controller.loadAll(expanded)
           requestAnimationFrame(() => {
             listRef.current?.querySelector<HTMLElement>('[data-review-path]')
               ?.scrollIntoView({ block: 'start' })
@@ -480,71 +821,72 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
       <WorkbenchPanelIconButton
         label={anyExpanded ? t('review.collapseAll') : t('review.expandAll')}
         className={css.reviewBulkToggle}
-        disabled={(cache.status?.files.length ?? 0) === 0}
+        disabled={(meta.status?.files.length ?? 0) === 0}
         onClick={() => {
-          const paths = cache.status?.files.map(file => file.path) ?? []
+          const paths = meta.status?.files.map(file => file.path) ?? []
           const next = anyExpanded ? new Set<string>() : new Set(paths)
           expandedRef.current = next
           // Mounting many warmed DiffBlocks is still a large render: mark the
           // expansion as a transition so the UI keeps answering input.
           if (anyExpanded) setExpandedPaths(next)
           else startTransition(() => { setExpandedPaths(next) })
-          // Anything not already ready revalidates through the sequential
-          // queue — never N concurrent fetches whose sync warm-ups would
-          // freeze the frame.
-          controller.loadAll(next)
         }}
       >
         {anyExpanded ? <IconUnfoldLessOutline16 /> : <IconUnfoldMoreOutline16 />}
       </WorkbenchPanelIconButton>
       <WorkbenchPanelIconButton label={t('refresh')} onClick={() => { void controller.refresh({ runChecks: true }) }}><IconRefreshOutline14 /></WorkbenchPanelIconButton>
     </>
-  }), [anyExpanded, cache.status, controller, scopeId, scopeItems, scopeLabel, scopeMenuOpen, t])
+  }), [anyExpanded, meta.status, controller, scopeId, scopeItems, scopeLabel, scopeMenuOpen, t])
   usePanelHeaderActions(contributeHeaderActions, headerActions)
-
-  const reviewTotals = (() => {
-    let added = 0
-    let removed = 0
-    for (const entry of Object.values(cache.entries)) {
-      if (entry.cache.kind === 'ready') { added += entry.cache.added; removed += entry.cache.removed }
-    }
-    return { added, removed }
-  })()
 
   return (
     <div className={css.review}>
-      {cache.error !== null && <div className={css.error}>{cache.error}</div>}
+      {meta.error !== null && <div className={css.error}>{meta.error}</div>}
       <div className={css.reviewBody}>
         <div className={css.reviewStatus}>
-          <strong>{cache.status?.branch || t('review.title')} → {scopeLabel}</strong>
-          <span>{cache.checks !== null && !cache.checks.clean
+          <strong>{meta.status?.branch || t('review.title')} → {scopeLabel}</strong>
+          <span>{meta.checks !== null && !meta.checks.clean
             ? t('review.checks.failed')
-            : reviewTotals.added > 0 || reviewTotals.removed > 0
-              ? <span className={css.reviewCounts}><b>{`+${reviewTotals.added}`}</b><i>{`-${reviewTotals.removed}`}</i></span>
-              : '—'}</span>
+            : <ReviewTotals controller={controller} />}</span>
         </div>
         {missedPath !== null && (
           <div className={css.reviewMissed} role="status">{t('review.missedFile')}<FileIcon path={missedPath} /><code>{missedPath}</code></div>
         )}
-        {cache.status === null
-          ? <div className={css.reviewPlaceholder}>{cache.error === null ? t('loading') : t('review.loadFailed')}</div>
-          : cache.status.files.length === 0
+        {meta.status === null
+          ? <div className={css.reviewPlaceholder}>{meta.error === null ? t('loading') : t('review.loadFailed')}</div>
+          : meta.status.files.length === 0
             ? <div className={css.reviewPlaceholder}>{t('review.clean')}</div>
             : <div ref={listRef} className={css.fileList} role="list" aria-label={t('review.files')}>
-              {cache.status.files.map(file => {
-                const entry = cache.entries[file.path]
-                if (entry === undefined) return null
-                return (
-                  <ReviewFileRow
-                    key={file.path}
-                    entry={entry}
-                    expanded={expandedPaths.has(file.path)}
-                    eager={eagerPath === file.path}
-                    onToggle={toggleFile}
-                    t={t}
-                  />
-                )
-              })}
+              {gate.hasBeforeBoundary && (
+                <div
+                  ref={gate.beforeSentinelRef}
+                  className={css.reviewLoadBoundary}
+                  data-review-boundary="before"
+                  role="status"
+                >{t('loading')}</div>
+              )}
+              {gate.files.map(file => (
+                <ReviewFileRow
+                  key={file.path}
+                  file={file}
+                  summary={summaries.get(file.path)}
+                  controller={controller}
+                  expanded={expandedPaths.has(file.path)}
+                  resident={residency.resident.has(file.path)}
+                  scrollRoot={residency.scrollRoot}
+                  widthBucket={residency.widthBucket}
+                  onToggle={toggleFile}
+                  t={t}
+                />
+              ))}
+              {gate.hasAfterBoundary && (
+                <div
+                  ref={gate.afterSentinelRef}
+                  className={css.reviewLoadBoundary}
+                  data-review-boundary="after"
+                  role="status"
+                >{t('loading')}</div>
+              )}
             </div>}
       </div>
     </div>

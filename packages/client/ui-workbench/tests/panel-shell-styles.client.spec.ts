@@ -90,7 +90,7 @@ describe('Workbench PanelShell geometry', () => {
     expect(tabs).not.toContain('max-width')
     expect(tabs).toContain('min-width: 56px')
     expect(tabs).toContain('mask-image: linear-gradient(to right, #000 calc(100% - 16px), transparent 100%)')
-    expect(tabs).toContain('margin-right: 4px')
+    expect(tabs).toContain('right: 4px')
     // Label ink sits ~1px below the em-box center; lift it optically onto
     // the close glyph's centerline (line-height cannot shift it).
     const spanRule = tabs.match(/\.tabText \{([^}]*)\}/)?.[1] ?? ''

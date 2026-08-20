@@ -8,6 +8,7 @@
 // only its DOM consequence is asserted here.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { useState } from 'react'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
@@ -226,6 +227,29 @@ describe('DiffBlock context folding', () => {
     expect(expandedFolds).toHaveBeenLastCalledWith(0)
   })
 
+  it('restores controlled fold keys after the heavy body unmounts', () => {
+    const stable = Array.from({ length: 20 }, (_value, index) => `stable ${index + 1}`).join('\n')
+    function Harness() {
+      const [shown, setShown] = useState(true)
+      const [keys, setKeys] = useState<ReadonlySet<string>>(new Set())
+      return <>
+        <button type="button" onClick={() => { setShown(value => !value) }}>body</button>
+        {shown && <DiffBlock
+          diffs={[{ path: 'stable.ts', oldText: stable, newText: stable }]}
+          expandedFoldKeys={keys}
+          onExpandedFoldKeysChange={setKeys}
+        />}
+      </>
+    }
+    const { container } = render(<Harness />)
+    fireEvent.click(screen.getByRole('button', { name: '展开 14 行' }))
+    fireEvent.click(screen.getByRole('button', { name: 'body' }))
+    fireEvent.click(screen.getByRole('button', { name: 'body' }))
+
+    expect(screen.queryByRole('button', { name: '展开 14 行' })).toBeNull()
+    expect(bodyRows(container)).toContainEqual(expect.stringContaining('stable 10'))
+  })
+
   it('reconstructs Review head, inter-hunk, and tail gaps as local FoldRows', () => {
     const oldLines = Array.from({ length: 30 }, (_value, index) => `line ${index + 1}`)
     const newLines = [...oldLines]
@@ -257,6 +281,30 @@ describe('DiffBlock context folding', () => {
     expect(container.textContent).toContain('line 12')
     expect(screen.getByRole('button', { name: '展开 2 行' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '展开 3 行' })).toBeTruthy()
+  })
+
+  it('keeps a 50k-line omitted source as lightweight ranges until a fold opens', () => {
+    const lines = Array.from({ length: 50_000 }, (_value, index) => `line ${index + 1}`)
+    const changed = [...lines]
+    changed[24_999] = 'line 25000 changed'
+    const oldSource = `${lines.join('\n')}\n`
+    const newSource = `${changed.join('\n')}\n`
+    const { container } = render(<DiffBlock
+      diffs={[{
+        path: 'huge.ts', oldStart: 24_998, newStart: 24_998,
+        oldText: lines.slice(24_997, 25_002).join('\n'),
+        newText: changed.slice(24_997, 25_002).join('\n'),
+        oldSource, newSource,
+      }]}
+      variant="review"
+      showPath={false}
+      showFooter={false}
+    />)
+
+    expect(screen.getByRole('button', { name: '展开 24997 行' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '展开 24998 行' })).toBeTruthy()
+    expect(bodyRows(container).length).toBeLessThan(10)
+    expect(container.textContent).not.toContain('line 10000')
   })
 })
 
