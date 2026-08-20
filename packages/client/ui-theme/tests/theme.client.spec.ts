@@ -108,16 +108,16 @@ describe('ThemeRuntime', () => {
 
   it('persists independent light/dark syntax themes and the shared code font', () => {
     const { theme, host } = make()
-    theme.setLightCodeTheme('github-light')
+    theme.setLightCodeTheme('tokyo-night-light')
     theme.setDarkCodeTheme('one-dark')
     theme.setCodeFont('jetbrains-mono')
     expect(theme.getTheme().codeAppearance).toMatchObject({
-      activeThemeId: 'github-light', lightThemeId: 'github-light', darkThemeId: 'one-dark', fontId: 'jetbrains-mono',
+      activeThemeId: 'tokyo-night-light', lightThemeId: 'tokyo-night-light', darkThemeId: 'one-dark', fontId: 'jetbrains-mono',
     })
     expect(theme.getTheme().active.tokens['--ds-font-family-code']).toContain('JetBrains Mono')
     theme.setTheme('dark')
     expect(theme.getTheme().codeAppearance.activeThemeId).toBe('one-dark')
-    expect(host.set).toHaveBeenCalledWith('lightCodeTheme', 'github-light')
+    expect(host.set).toHaveBeenCalledWith('lightCodeTheme', 'tokyo-night-light')
     expect(host.set).toHaveBeenCalledWith('darkCodeTheme', 'one-dark')
     expect(host.set).toHaveBeenCalledWith('codeFont', 'jetbrains-mono')
   })

@@ -5,6 +5,7 @@ export const zh = {
   'empty.body': '模型写入或编辑的文件会实时出现在这里。',
   'loading': '正在加载…',
   'refresh': '刷新',
+  'openFolder': '打开所在文件夹',
 } as const
 export type ArtifactKey = keyof typeof zh
 export const en: Record<ArtifactKey, string> = {
@@ -13,4 +14,5 @@ export const en: Record<ArtifactKey, string> = {
   'empty.body': 'Files the model writes or edits appear here in real time.',
   'loading': 'Loading…',
   'refresh': 'Refresh',
+  'openFolder': 'Open containing folder',
 }

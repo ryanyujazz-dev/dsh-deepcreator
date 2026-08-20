@@ -39,9 +39,15 @@
 
 .label {
   /* Body weight, not the settled row's 500 title weight: the drafting row is
-   * live transcript accompaniment, and a heavier label reads as a larger font
-   * next to the streaming body text. */
+   * live transcript accompaniment. Pin the split transcript tokens on the
+   * actual text node as well: a drafting header can be layered during its
+   * transition, and inheriting only the parent's font shorthand allowed the
+   * exported 16px body fallback to win in that state. */
+  font-family: var(--dsw-font-family);
+  font-size: var(--dsw-font-markdown-base-font-size, 14px);
+  line-height: var(--dsw-font-markdown-base-line-height, 22px);
   font-weight: 400;
+  font-style: normal;
 }
 
 /* Target-path fragment: ToolRow's summary geometry (separator dot + FILL
@@ -56,6 +62,9 @@
 }
 
 .target {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
@@ -63,6 +72,13 @@
   white-space: nowrap;
   font: inherit;
   color: var(--dsw-alias-label-tertiary);
+}
+
+.target > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Leading glyph seat: same 14px box the settled row's icon occupies, with

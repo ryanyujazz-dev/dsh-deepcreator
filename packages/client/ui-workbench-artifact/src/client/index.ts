@@ -12,13 +12,14 @@ import { ArtifactPanel } from './ArtifactPanel.tsx'
 import { ArtifactCodeRenderer } from './ArtifactCodeRenderer.tsx'
 import { registerArtifactNodeDefinition } from './artifact-node-definition.ts'
 import { registerArtifactsConversationView } from './artifacts-snapshot-builder.ts'
+import { artifactParentDirectory } from './artifact-view-model.ts'
 import { en, NS, zh, type ArtifactKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' { interface LocaleNamespaceMap { 'workbench-artifact': ArtifactKey } }
 
 /** Required services: Workbench panel Slots, the locale service, the mounted artifacts remote, and the conversation projection registries. */
 export const inject = [
-  'slots', 'workbench', 'locale', 'remote', 'remote.artifacts',
+  'slots', 'workbench', 'workspaces', 'locale', 'remote', 'remote.artifacts',
   'conversationEvents', 'conversationViews',
 ]
 
@@ -32,8 +33,13 @@ export function apply(ctx: ClientContext): void {
   // Capture this namespace once: using remote['artifacts'] inside a React
   // render would invalidate every Artifact effect on every render.
   const artifacts = remote['artifacts']
+  const openContainingFolder = (path: string) => {
+    void ctx.workspaces.openPath(artifactParentDirectory(path)).catch((reason: unknown) => {
+      console.warn('artifact containing folder open rejected:', reason)
+    })
+  }
   const panel = (props: WorkbenchPanelProps & PropsLocale<'workbench-artifact'>): ReactNode =>
-    createElement(ArtifactPanel, { ...props, artifacts })
+    createElement(ArtifactPanel, { ...props, artifacts, openContainingFolder })
   const definition: PanelTypeDefinition = {
     id: 'artifact', label: () => t('type'), scope: 'session', order: 3, supportsHome: true, supportsCreate: false,
     supportsMultipleInstances: true, minWidth: 150, minHeight: 260, preferredWidth: 520, initialWidthRatio: 1 / 3, closePolicy: 'detach',

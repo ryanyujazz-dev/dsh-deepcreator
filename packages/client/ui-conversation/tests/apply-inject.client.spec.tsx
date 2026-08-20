@@ -230,7 +230,18 @@ describe('conversation slot inject API', () => {
     await b.runtime.dispose()
   })
 
-  it('openFile (chat view face) resolves against session cwd and calls workspaces.openPath', async () => {
+  it('openFile resolves against session cwd and activates an Artifact tab when composed', async () => {
+    const b = await bench()
+    const activate = vi.fn()
+    b.runtime.provide('workbench', { types: { list: () => [{ id: 'artifact' }] }, activate })
+    const { injected } = b.chatViewApi(ROOT)
+    injected.openFile('src/a.ts')
+    expect(activate).toHaveBeenCalledWith('artifact', '/proj/src/a.ts')
+    expect(b.runtime.workspaces.calls.some(call => call.method === 'openPath')).toBe(false)
+    await b.runtime.dispose()
+  })
+
+  it('openFile falls back to workspaces.openPath when Artifact is not composed', async () => {
     const b = await bench()
     const { injected } = b.chatViewApi(ROOT)
     injected.openFile('src/a.ts')

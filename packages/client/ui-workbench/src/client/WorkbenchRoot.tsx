@@ -136,6 +136,7 @@ function Group({
       route={group.activeRoute}
       tabs={group.tabs}
       tabLabels={panelInfo.tabLabels}
+      tabFilePaths={panelInfo.tabFilePaths}
       titleSuffix={panelInfo.titleSuffix}
       {...(group.activeInstanceId === undefined ? {} : { activeInstanceId: group.activeInstanceId })}
       supportsHome={definition?.supportsHome === true}
@@ -171,12 +172,20 @@ export function WorkbenchRoot({
   const focusedTypeId = useStore(state => state.focusedTypeId)
   const definitions = controller.types.list()
   const definitionById = useMemo(() => new Map(definitions.map(def => [def.id, def])), [definitions])
+  // Commands are edge-triggered events, even though the controller retains
+  // the latest one as a useSyncExternalStore snapshot. A new session-scoped
+  // root starts at the current sequence watermark so it never replays the
+  // previous session's final panel action during first-message activation.
+  const commandFloor = useRef(command?.sequence ?? 0)
+  const processed = useRef(commandFloor.current)
   // The reveal target rides the latest command into render: panels consume it
   // from an effect keyed on the nonce, so it does not need store persistence.
-  const revealCommand = command !== null && command.action.kind === 'present' && command.action.request.target !== undefined
+  const revealCommand = command !== null
+    && command.sequence > commandFloor.current
+    && command.action.kind === 'present'
+    && command.action.request.target !== undefined
     ? { typeId: command.action.request.typeId, target: command.action.request.target, nonce: command.sequence }
     : null
-  const processed = useRef(0)
   const dragStart = useRef<number | null>(null)
   const tracksRef = useRef<HTMLDivElement | null>(null)
   const responsiveTrackCount = visibleTrackCount(tracks.length, width)

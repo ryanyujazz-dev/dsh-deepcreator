@@ -36,6 +36,7 @@ const COPY: Record<string, string> = {
   'appearance.code.theme.githubDark': 'GitHub Dark',
   'appearance.code.theme.oneLight': 'One Light',
   'appearance.code.theme.oneDark': 'One Dark',
+  'appearance.code.theme.tokyoNightLight': 'Tokyo Light',
   'appearance.code.font.title': 'Code font',
   'appearance.code.font.description': 'Shared code and terminal font.',
   'appearance.code.font.system': 'System Mono',
@@ -134,7 +135,10 @@ describe('AppearanceRow', () => {
 
   it('keeps the light and dark selectors independent and writes the shared code font', () => {
     const b = mount()
+    expect(screen.getByLabelText('Light code diff preview').hasAttribute('data-code-theme-isolate')).toBe(true)
+    expect(screen.getByLabelText('Dark code diff preview').hasAttribute('data-code-theme-isolate')).toBe(true)
     fireEvent.click(screen.getByRole('button', { name: 'Light code theme' }))
+    expect(screen.getByRole('menuitem', { name: 'Tokyo Light' })).toBeDefined()
     fireEvent.click(screen.getByRole('menuitem', { name: 'GitHub Light' }))
     fireEvent.click(screen.getByRole('button', { name: 'Dark code theme' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'One Dark' }))

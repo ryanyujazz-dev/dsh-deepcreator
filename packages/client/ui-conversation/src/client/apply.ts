@@ -9,8 +9,8 @@ import {
 import type {} from '@ryanyujazz/dsh-client-ui-settings/client'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@ryanyujazz/dsh-client-locale/client'
-// Type-only: the ctx.workbench Context merge — the change-reveal handoff reads
-// the optional service; ui-workbench stays an undirected runtime collaborator.
+// Type-only: the ctx.workbench Context merge — file opening and change reveal
+// read the optional service; ui-workbench stays an undirected collaborator.
 import type {} from '@ryanyujazz/dsh-client-ui-workbench/client'
 import type { ViewTab } from './contract/views.ts'
 import type {
@@ -442,7 +442,13 @@ export function apply(ctx: Context): void {
         fileMentions: owner => ctx.get('chatFileMentions')?.forClosing(owner),
         openFile: (path) => {
           const cwd = sessions.list.getSnapshot().byId[sessionId]?.cwd
-          void workspaces.openPath(resolveWorkspacePath(cwd, path)).catch(() => {
+          const resolved = resolveWorkspacePath(cwd, path)
+          const workbench = ctx.get('workbench')
+          if (workbench !== undefined && workbench.types.list().some(definition => definition.id === 'artifact')) {
+            workbench.activate('artifact', resolved)
+            return
+          }
+          void workspaces.openPath(resolved).catch(() => {
             // Host/OS open failures stay silent in the chat row; the native
             // app surfaces its own error dialog when the path is unusable.
           })

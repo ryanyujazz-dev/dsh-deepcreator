@@ -12,9 +12,9 @@ declare module '@deepseek-ai/cordis' {
 
 /**
  * Read-only workspace file reader for the Workbench Artifact panel. The panel
- * list comes from the Client session-event projection; this service only
- * serves instance content for a produced path. Paths arrive as the absolute
- * paths the official mutation tools publish; every read is sandboxed to the
+ * list comes from the Client session-event projection; this service serves
+ * instance content for produced paths and conversation-opened Read paths.
+ * Paths may be absolute or workspace-relative; every read is sandboxed to the
  * session workspace.
  */
 export class ArtifactReader extends TypertRemoteService {

@@ -12,6 +12,7 @@ import { resolveDesktopDshLaunch, resolveDesktopWorkspace } from './dsh-launch.t
 import { startDesktopHost, type DesktopHost } from './host-process.ts'
 import { nativeWindowChromeOptions } from './window-options.ts'
 import { BrowserViewManager } from './browser-views.ts'
+import { WindowStateBridge } from './window-state.ts'
 
 const require = createRequire(import.meta.url)
 const APP_NAME = 'DeepCreator'
@@ -23,6 +24,7 @@ let mainWindow: BrowserWindow | undefined
 let host: DesktopHost | undefined
 let shutdownStarted = false
 let browserViews: BrowserViewManager | undefined
+let windowState: WindowStateBridge | undefined
 
 /** Restrict renderer navigation to the exact loopback origin that became ready. */
 function guardNavigation(window: BrowserWindow, trusted: URL): void {
@@ -74,12 +76,16 @@ async function createWindow(activeHost: DesktopHost): Promise<BrowserWindow> {
   guardNavigation(window, activeHost.url)
   browserViews = new BrowserViewManager(window)
   browserViews.install()
+  windowState = new WindowStateBridge(window)
+  windowState.install()
   window.webContents.on('page-title-updated', (event, title) => {
     event.preventDefault()
     window.setTitle(title.replace(/DeepSeek Harness$/, APP_NAME))
   })
   window.once('ready-to-show', () => { window.show() })
   window.on('closed', () => {
+    windowState?.dispose()
+    windowState = undefined
     browserViews?.dispose()
     browserViews = undefined
     if (mainWindow === window) mainWindow = undefined

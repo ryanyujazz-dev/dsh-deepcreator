@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import clsx from 'clsx'
 import { writeClipboard } from './clipboard.ts'
+import { FileIcon } from './file-icons/FileIcon.tsx'
 import {
   buildCachedDiffHunkModel, buildDiffHunkModel, diffContentLines, diffLanguageFromPath, prioritizeSnapshotHighlights,
   snapshotHighlightKey, subscribeSnapshotHighlight, type AlignedRow, type DiffHunkInput, type DiffHunkModel, type TextRange,
@@ -363,7 +364,7 @@ function HunkCard({
     <section className={css.hunk} data-diff-hunk="">
       {showPath && (
         <header className={css.path}>
-          <span>{model.path}</span>
+          <span className={css.pathLabel}><FileIcon path={model.path} /><span>{model.path}</span></span>
           <span className={css.counts}><b>{`+${model.added}`}</b><i>{`-${model.removed}`}</i></span>
         </header>
       )}

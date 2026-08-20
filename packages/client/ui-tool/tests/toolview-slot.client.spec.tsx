@@ -128,14 +128,15 @@ describe('keyed toolview hole through the real machinery', () => {
     await b.runtime.dispose()
   })
 
-  it('file-path clicks travel owner openFile → chat inject → workspaces.openPath', async () => {
+  it('Read file clicks travel owner openFile → chat inject → Artifact tab activation', async () => {
     const b = await bench([toolResult(3, 'c1', 'read', '{"path":"src/a.ts"}')])
+    const activate = vi.fn()
+    b.runtime.provide('workbench', { types: { list: () => [{ id: 'artifact' }] }, activate })
     const view = b.runtime.renderRoot()
     view.getByText('a.ts').click()
     expect(b.layout.openDetails).not.toHaveBeenCalled()
-    await vi.waitFor(() => {
-      expect(b.runtime.workspaces.calls).toContainEqual({ method: 'openPath', args: ['src/a.ts'] })
-    })
+    expect(activate).toHaveBeenCalledWith('artifact', 'src/a.ts')
+    expect(b.runtime.workspaces.calls.some(call => call.method === 'openPath')).toBe(false)
     await b.runtime.dispose()
   })
 

@@ -22,6 +22,7 @@ import type * as Md from 'mdast'
 import type {} from 'mdast-util-math'
 import { normalizeUri } from 'micromark-util-sanitize-uri'
 import { CodeBlock } from './CodeBlock.tsx'
+import { FileIcon } from '../file-icons/FileIcon.tsx'
 import { renderTexToReact } from './katex.tsx'
 import type { PositionedBlock } from './incremental.ts'
 import css from './MarkdownText.module.css'
@@ -111,7 +112,7 @@ export interface MarkdownFileMentions {
    * @returns The opener with its accessible label and full-path title, or
    * undefined when the token names no known file — it then stays inert code.
    */
-  resolve(value: string): { open: () => void; label: string; title: string } | undefined
+  resolve(value: string): { open: () => void; label: string; title: string; path?: string } | undefined
 }
 
 /**
@@ -251,7 +252,8 @@ function renderNode(node: Md.RootContent, key: Key, context: MarkdownRenderConte
               aria-label={mention.label}
               onClick={mention.open}
             >
-              {value}
+              <FileIcon path={mention.path ?? mention.title} size={13} />
+              <span>{value}</span>
             </button>
           </code>
         )

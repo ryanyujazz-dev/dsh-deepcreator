@@ -242,6 +242,9 @@
    hover/focus. An underline at rest reads badly inside the code chip, where
    it collides with monospace descenders and the pill background. */
 .fileMention {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   margin: 0;
   padding: 0;
   border: none;

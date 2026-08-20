@@ -50,12 +50,24 @@ const LIGHT_CODE_THEME_OPTIONS: readonly { id: LightCodeTheme; labelKey: ThemeKe
   { id: 'deepcreator-light', labelKey: 'appearance.code.theme.deepcreatorLight' },
   { id: 'github-light', labelKey: 'appearance.code.theme.githubLight' },
   { id: 'one-light', labelKey: 'appearance.code.theme.oneLight' },
+  { id: 'catppuccin-light', labelKey: 'appearance.code.theme.catppuccinLight' },
+  { id: 'rose-pine-light', labelKey: 'appearance.code.theme.rosePineLight' },
+  { id: 'vitesse-light', labelKey: 'appearance.code.theme.vitesseLight' },
+  { id: 'kanagawa-light', labelKey: 'appearance.code.theme.kanagawaLight' },
+  { id: 'everforest-light', labelKey: 'appearance.code.theme.everforestLight' },
+  { id: 'tokyo-night-light', labelKey: 'appearance.code.theme.tokyoNightLight' },
 ]
 
 const DARK_CODE_THEME_OPTIONS: readonly { id: DarkCodeTheme; labelKey: ThemeKey }[] = [
   { id: 'deepcreator-dark', labelKey: 'appearance.code.theme.deepcreatorDark' },
   { id: 'github-dark', labelKey: 'appearance.code.theme.githubDark' },
   { id: 'one-dark', labelKey: 'appearance.code.theme.oneDark' },
+  { id: 'catppuccin-dark', labelKey: 'appearance.code.theme.catppuccinDark' },
+  { id: 'rose-pine-dark', labelKey: 'appearance.code.theme.rosePineDark' },
+  { id: 'vitesse-dark', labelKey: 'appearance.code.theme.vitesseDark' },
+  { id: 'kanagawa-dark', labelKey: 'appearance.code.theme.kanagawaDark' },
+  { id: 'everforest-dark', labelKey: 'appearance.code.theme.everforestDark' },
+  { id: 'tokyo-night-dark', labelKey: 'appearance.code.theme.tokyoNightDark' },
 ]
 
 const CODE_FONT_OPTIONS: readonly { id: CodeFont; labelKey: ThemeKey }[] = [
@@ -75,7 +87,7 @@ const PREVIEW_DIFF: DiffHunk[] = [{
 
 function CodeThemePreview({ themeId, label }: { themeId: LightCodeTheme | DarkCodeTheme; label: string }) {
   return (
-    <div className={css.preview} data-code-theme={themeId} aria-label={label}>
+    <div className={css.preview} data-code-theme={themeId} data-code-theme-isolate aria-label={label}>
       <DiffBlock
         diffs={PREVIEW_DIFF}
         maxLines={8}

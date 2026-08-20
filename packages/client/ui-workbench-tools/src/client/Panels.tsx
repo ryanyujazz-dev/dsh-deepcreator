@@ -9,7 +9,7 @@ import type {
   WorkbenchPanelHeaderContribution, WorkbenchPanelInfoContribution, WorkbenchPanelProps,
 } from '@ryanyujazz/dsh-client-ui-workbench/client'
 import {
-  DiffBlock, IconChevronDownOutline14, IconPlusOutline16, IconRefreshOutline14, IconUnfoldLessOutline16,
+  DiffBlock, FileIcon, IconChevronDownOutline14, IconPlusOutline16, IconRefreshOutline14, IconUnfoldLessOutline16,
   IconUnfoldMoreOutline16, WorkbenchPanelIconButton,
 } from '@ryanyujazz/dsh-client-ui-primitives'
 import {
@@ -248,6 +248,7 @@ const ReviewFileRow = memo(function ReviewFileRow({
       >
         <IconChevronDownOutline14 className={expanded ? undefined : css.reviewFileChevronCollapsed} />
         <code className={css.reviewFileState}>{file.index}{file.workingTree}</code>
+        <FileIcon path={file.path} />
         <span className={css.reviewFilePath}>{label}</span>
         {pending
           ? <span className={css.reviewFileLoading}>{t('loading')}</span>
@@ -441,7 +442,7 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
               : '—'}</span>
         </div>
         {missedPath !== null && (
-          <div className={css.reviewMissed} role="status">{t('review.missedFile')}<code>{missedPath}</code></div>
+          <div className={css.reviewMissed} role="status">{t('review.missedFile')}<FileIcon path={missedPath} /><code>{missedPath}</code></div>
         )}
         {cache.status?.files.length === 0
           ? <div className={css.reviewPlaceholder}>{t('review.clean')}</div>

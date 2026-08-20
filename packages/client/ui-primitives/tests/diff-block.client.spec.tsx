@@ -8,6 +8,8 @@
 // only its DOM consequence is asserted here.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import {
   buildDiffHunkModel, DEFAULT_DIFF_MAX_LINES, DiffBlock, parseUnifiedDiff, type DiffHunk,
@@ -36,6 +38,13 @@ function added(count: number): string {
 }
 
 describe('DiffBlock structure', () => {
+  it('lets only the Review variant reveal its app-owned panel surface', () => {
+    const stylesheet = readFileSync(resolve(process.cwd(), 'packages/client/ui-primitives/src/DiffBlock.module.css'), 'utf8')
+
+    expect(stylesheet).toMatch(/\.hunk\s*\{[^}]*background:\s*var\(--ds-code-background/)
+    expect(stylesheet).toMatch(/\.review\s+\.hunk\s*\{[^}]*background:\s*transparent;/)
+  })
+
   it('advances absolute old/new line numbers independently and marks changed words', () => {
     const model = buildDiffHunkModel({
       path: 'a.ts', oldStart: 40, newStart: 40,

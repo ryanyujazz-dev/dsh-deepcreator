@@ -262,6 +262,7 @@ describe('ToolRow', () => {
       <ToolRow {...rowProps} variant="read" title="Read" summary="src/a.ts" filePath="src/a.ts" onOpenFile={open} />,
     )
     const row = view.getByRole('button', { name: /Read/ })
+    expect(view.getByText('src/a.ts').closest('button')?.querySelector('[data-file-icon="typescript"]')).not.toBeNull()
     // Path click opens the file and leaves the row collapsed.
     fireEvent.click(view.getByText('src/a.ts'))
     expect(open).toHaveBeenCalledWith('src/a.ts')
@@ -277,6 +278,7 @@ describe('ToolRow', () => {
       <ToolRow {...rowProps} variant="write" title="Write" summary="作文.md" filePath="作文.md" />,
     )
     expect(view.container.querySelector('button')).toBeNull()
+    expect(view.container.querySelector('[data-file-icon="markdown"]')).not.toBeNull()
     const row = view.getByRole('button')
     fireEvent.click(row)
     expect(row.getAttribute('aria-expanded')).toBe('true')

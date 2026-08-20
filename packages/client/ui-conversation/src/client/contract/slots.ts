@@ -351,7 +351,7 @@ declare module '@deepseek-ai/cordis' {
 /**
  * Owner currency of the chat view's turn-tail hole: the engine-owned Turn and
  * the closing assistant's anchor. Registrants read their own typed Turn data
- * and open files through the same opener the tool rows use.
+ * and open files through the same Artifact-first opener the tool rows use.
  */
 export interface TurnTailOwnerProps {
   /** Engine-owned closing Turn boundary. */
@@ -359,8 +359,8 @@ export interface TurnTailOwnerProps {
   /** The closing assistant's seq — the anchor the tail renders under. */
   seq: number
   /**
-   * Open a filesystem path through the Host (tool-row semantics; the chat
-   * view resolves relative paths against the session cwd).
+   * Open a filesystem path in the Artifact Workbench when composed, falling
+   * back to the Host; the chat view resolves it against the session cwd.
    */
   openFile: (path: string) => void
 }
@@ -450,12 +450,13 @@ export interface ChatNodeOwnerProps {
   selectedCallId?: CallId | undefined
   /** Session workspace root; Tool summaries display paths relative to it. */
   cwd?: string | undefined
+  /** Activate the file as an Artifact tab when available, else use the Host opener. */
   openFile: (path: string) => void
   /**
    * Focus a tool-arg path's change in the review surface when one is
    * composed (relative paths resolve against the session cwd); absent = the
-   * file rows keep the `openFile` host behavior. Consumed by the mutation
-   * rows' path links.
+   * mutation link keeps its Host fallback. Other file rows use the
+   * Artifact-first `openFile` path.
    */
   revealChange?: ((path: string) => void) | undefined
   inspectCall: (callId: CallId) => void
@@ -795,14 +796,14 @@ export interface ChatRenderOwnerProps {
   /** Selection write + details panel opening in one gesture (store action + layout orchestration). */
   openDetails: (target: SelectionTarget) => void
   /**
-   * Open a tool-arg filesystem path with the host OS default application
-   * (relative paths resolve against the session cwd).
+   * Activate a filesystem path as an Artifact tab when that Workbench type is
+   * composed, otherwise use the Host opener; relative paths resolve via cwd.
    */
   openFile: (path: string) => void
   /**
    * Focus a tool-arg path's change in the review surface when one is
    * composed (relative paths resolve against the session cwd); absent = the
-   * file rows keep the `openFile` host behavior.
+   * mutation link keeps its Host fallback.
    */
   revealChange?: ((path: string) => void) | undefined
   loadOlder: () => void
@@ -849,14 +850,14 @@ export interface ChatViewInjected {
   /** Selection write + details panel opening in one gesture (store action + layout orchestration). */
   openDetails: (target: SelectionTarget) => void
   /**
-   * Open a tool-arg filesystem path with the host OS default application
-   * (relative paths resolve against the session cwd).
+   * Activate a filesystem path as an Artifact tab when that Workbench type is
+   * composed, otherwise use the Host opener; relative paths resolve via cwd.
    */
   openFile: (path: string) => void
   /**
    * Focus a tool-arg path's change in the review surface when one is
    * composed (relative paths resolve against the session cwd); absent = the
-   * file rows keep the `openFile` host behavior.
+   * mutation link keeps its Host fallback.
    */
   revealChange?: ((path: string) => void) | undefined
   loadOlder: () => void

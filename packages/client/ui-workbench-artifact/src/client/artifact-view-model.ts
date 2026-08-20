@@ -11,16 +11,48 @@ export function basename(path: string): string {
  * counter, mirroring the terminal project-name pattern. A later production
  * of the same path keeps its pill identity.
  */
-export function artifactTabLabels(records: readonly FileArtifactRecord[]): Record<string, string> {
+function artifactTabPaths(records: readonly FileArtifactRecord[], tabs: readonly string[]): string[] {
+  const paths = records.map(record => record.path)
+  const seen = new Set(paths)
+  for (const path of tabs) {
+    if (seen.has(path)) continue
+    seen.add(path)
+    paths.push(path)
+  }
+  return paths
+}
+
+export function artifactTabLabels(records: readonly FileArtifactRecord[], tabs: readonly string[] = []): Record<string, string> {
   const counts = new Map<string, number>()
   const labels: Record<string, string> = {}
-  for (const record of records) {
-    const name = basename(record.path)
+  for (const path of artifactTabPaths(records, tabs)) {
+    const name = basename(path)
     const seen = (counts.get(name) ?? 0) + 1
     counts.set(name, seen)
-    labels[record.path] = seen === 1 ? name : `${name} ${seen}`
+    labels[path] = seen === 1 ? name : `${name} ${seen}`
   }
   return labels
+}
+
+/** Artifact instance ids are the real file paths used to resolve tab glyphs. */
+export function artifactTabFilePaths(records: readonly FileArtifactRecord[], tabs: readonly string[] = []): Record<string, string> {
+  return Object.fromEntries(artifactTabPaths(records, tabs).map(path => [path, path]))
+}
+
+/** Visible breadcrumb segments; absolute slash roots stay in the accessible full path only. */
+export function artifactPathSegments(path: string): string[] {
+  const normalized = path.replaceAll('\\', '/')
+  const segments = normalized.split('/').filter(Boolean)
+  return segments.length > 0 ? segments : [path]
+}
+
+/** Parent directory passed to the official Host path opener. */
+export function artifactParentDirectory(path: string): string {
+  const separator = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'))
+  if (separator === -1) return '.'
+  if (separator === 0) return path.slice(0, 1)
+  if (separator === 2 && path[1] === ':') return path.slice(0, 3)
+  return path.slice(0, separator)
 }
 
 /** Compact locale-neutral age, e.g. `45s`, `3m`, `2h`, `5d`. */

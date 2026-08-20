@@ -18,13 +18,14 @@ const definitions: PanelTypeDefinition[] = [
 
 /** The framework supplies useStore/actions from the declared store; the test
  *  synthesizes the same selector-hook + baked-actions pair from one instance. */
-function mountRoot() {
+function mountRoot(beforeRender?: (controller: WorkbenchController) => void) {
   const layout = {
     toggleSidebar: vi.fn(), openDetails: vi.fn(), closeDetails: vi.fn(),
     setWorkbenchWidth: vi.fn(), setWorkbenchFocused: vi.fn(),
   }
   const controller = new WorkbenchController(new Context(), layout as never)
   for (const definition of definitions) controller.registerType(definition)
+  beforeRender?.(controller)
   const instance = createWorkbenchStore().create('spec')
   const owners = new Map<string, WorkbenchPanelOwnerProps>()
   const useStore = (selector: (state: unknown) => unknown) => useSyncExternalStore(
@@ -48,6 +49,19 @@ function mountRoot() {
 }
 
 describe('WorkbenchRoot reveal delivery', () => {
+  it('does not replay a panel command retained from before this session root mounted', async () => {
+    const { controller, owners } = mountRoot(controller => { controller.activate('review') })
+
+    // The controller keeps its latest command for useSyncExternalStore, but a
+    // freshly mounted session treats that sequence as its initial watermark.
+    expect(owners.get('review')).toBeUndefined()
+
+    // Commands published after mount still behave normally.
+    await act(() => { controller.activate('artifact') })
+    expect(owners.get('artifact')).toBeDefined()
+    expect(owners.get('review')).toBeUndefined()
+  })
+
   it('presents the panel and carries the target only to the addressed type', async () => {
     const { controller, owners } = mountRoot()
     await act(() => { controller.activate('review') })

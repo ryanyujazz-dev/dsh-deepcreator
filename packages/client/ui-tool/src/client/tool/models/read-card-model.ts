@@ -33,7 +33,7 @@ export const CHAT_READ_MAX_LINES = 8
  * props so the two stay in step; `maxLines`/`className` belong to each render
  * site.
  */
-export type ReadCardModel = Pick<ReadBlockProps, 'label' | 'lines' | 'totalLines' | 'lang'>
+export type ReadCardModel = Pick<ReadBlockProps, 'label' | 'filePath' | 'lines' | 'totalLines' | 'lang'>
 
 /**
  * Derive the read-card props for a tool call, or null when this call is not a
@@ -69,6 +69,7 @@ export function readCardModel(block: ToolCallBlock, sessionCwd?: string): ReadCa
   const lines: ReadBlockLine[] = result.lines.map(line => ({ number: line.number, text: line.text }))
   return {
     label: result.title ?? relativizeToCwd(result.path, sessionCwd),
+    filePath: result.path,
     lines,
     totalLines: result.totalLines,
     lang: result.lang,

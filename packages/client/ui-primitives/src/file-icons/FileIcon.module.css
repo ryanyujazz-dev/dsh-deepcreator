@@ -1,0 +1,52 @@
+.icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  overflow: hidden;
+  vertical-align: -0.18em;
+}
+
+.image,
+.dark,
+.light,
+.forcedColors {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.dark,
+.light {
+  position: absolute;
+  inset: 0;
+}
+
+:global(body:not([data-ds-dark-theme])) .dark { display: none; }
+:global(body[data-ds-dark-theme]) .light { display: none; }
+
+.forcedColors { display: none; }
+
+.label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (forced-colors: active) {
+  .image,
+  .dark,
+  .light { display: none; }
+  .forcedColors { display: block; forced-color-adjust: auto; }
+}

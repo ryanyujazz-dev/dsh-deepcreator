@@ -1,7 +1,7 @@
 .frame {
   --dsh-sidebar-toggle-left: 16px;
   --dsh-collapsed-title-leading: 32px;
-  position: relative; /* anchors the drag handles, which straddle column borders */
+  position: relative; /* anchors drag handles to the rendered column borders */
   display: grid;
   grid-template-rows: 100%;
   height: 100%;
@@ -15,8 +15,10 @@
 /* The red light begins at x=20, aligned with the New Session icon below. The
    reopen button's 28px box starts at x=82, so its centered 14px glyph begins
    at x=89 — the expanded whale's exact leading edge. Native controls, glyph,
-   and header content share y=24, the center of the 48px header. */
-.frame[data-native-window-chrome='macos'] {
+   and header content share y=24, the center of the 48px header. The macOS
+   window hides its traffic lights once maximized or fullscreen, so the
+   avoidance applies only to the un-zoomed window. */
+.frame[data-native-window-chrome='macos']:not([data-window-maximized]):not([data-window-fullscreen]) {
   --dsh-sidebar-toggle-left: 82px;
   --dsh-collapsed-title-leading: 98px;
 }
@@ -91,9 +93,13 @@
   background: var(--dsw-alias-bg-base);
 }
 
-/* Drag handles are frame children (columns clip overflow): an 8px hit strip
-   centered on the column border via inline left, above column content. Both
-   sides stay invisible — the Workbench owns every visible edge. */
+/* Drag handles are frame children because columns clip overflow. The common
+   8px strip straddles its inline-left border; details overrides that offset so
+   its complete hit area sits inside the Workbench root. The sidebar border is
+   painted by its column; the details boundary stays blank until the pointer
+   touches it — the strip then reveals a 1px line in the sidebar's border ink,
+   and the line rides the moving border during collapse/expand (paused while
+   dragging, frame rule below). */
 .handle {
   position: absolute;
   top: 0;
@@ -103,17 +109,46 @@
   cursor: col-resize;
   z-index: 2;
   touch-action: none;
-  /* Rides the same curve as the tracks so the pill stays on the moving
-     border during collapse/expand; paused while dragging (frame rule). */
   transition: left var(--ds-transition-duration-slow) var(--ds-ease-in-out);
+}
+
+/* The Workbench boundary owns x=0..8px inside details. This exactly fills the
+   root's 4px padding plus the shell's 4px margin without covering the card. */
+.handle[data-side='details'] {
+  margin-left: 0;
 }
 
 .frame[data-dragging] .handle {
   transition: none;
 }
 
+/* The details left edge paints nothing at rest: a full-height 1px line in
+   the sidebar's border color fades in while the strip is hovered or a drag
+   holds it, and fades back out after the pointer leaves. */
+.handle[data-side='details']::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 1px;
+  transform: translateX(-50%);
+  background: var(--dsw-alias-border-l1);
+  opacity: 0;
+  transition: opacity var(--ds-transition-duration) var(--ds-ease-in-out);
+}
+
+.handle[data-side='details']:hover::after,
+.handle[data-side='details'][data-dragging]::after {
+  opacity: 1;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .handle {
+    transition: none;
+  }
+
+  .handle[data-side='details']::after {
     transition: none;
   }
 }
