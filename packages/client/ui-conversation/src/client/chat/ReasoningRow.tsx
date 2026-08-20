@@ -23,16 +23,22 @@ function latestLine(text: string): string {
  * @param props.text - complete or streaming reasoning text.
  * @param props.running - whether this block is the streaming tail.
  * @param props.defaultExpanded - initial open state (Think form opens rows).
+ * @param props.onActivate - optional replacement action for the collapsed row.
+ * @param props.activationLabel - accessible name for that replacement action.
  * @param props.t - conversation locale seat for the running status.
  * @returns the reasoning disclosure.
  */
-export function ReasoningRow({ text, running, defaultExpanded = false, t }: {
+export function ReasoningRow({ text, running, defaultExpanded = false, onActivate, activationLabel, t }: {
   text: string
   running: boolean
   defaultExpanded?: boolean
+  onActivate?: (() => void) | undefined
+  activationLabel?: string | undefined
   t: ChatViewSlotProps['t']
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded)
+  const actionLabel = onActivate === undefined ? undefined : activationLabel ?? 'Think'
+  const open = onActivate === undefined && expanded
   const [full, setFull] = useState(false)
   const [overflowing, setOverflowing] = useState(false)
   const [canScrollUp, setCanScrollUp] = useState(false)
@@ -67,7 +73,7 @@ export function ReasoningRow({ text, running, defaultExpanded = false, t }: {
       element.scrollTop = element.scrollHeight
     }
     probeWindow()
-  }, [text, running, full, expanded])
+  }, [text, running, full, open])
 
   return (
     <div className={css.root} data-variant="think" data-state={running ? 'running' : 'ok'}>
@@ -79,10 +85,14 @@ export function ReasoningRow({ text, running, defaultExpanded = false, t }: {
         chevronClassName={css.chevron}
         icon={<IconThinkOutline14 size={14} />}
         title="Think"
-        open={expanded}
+        open={open}
         expandable
-        expandOnRowClick
-        onToggle={() => { setExpanded(value => !value) }}
+        expandOnRowClick={onActivate === undefined}
+        actionLabel={actionLabel}
+        onToggle={() => {
+          if (onActivate !== undefined) onActivate()
+          else setExpanded(value => !value)
+        }}
         collapsedContent={(
           <>
             <span className={css.separator} aria-hidden />

@@ -510,8 +510,8 @@ export function apply(ctx: Context): void {
 
   // The execflow render modes share one body with a fixed think form:
   // classic hides reasoning (runs aggregate across steps), think shows it
-  // expanded in the flow (runs stay step-scoped). The Thinking chip in the
-  // running-turn status switches between them via the sibling id.
+  // expanded in the flow (runs stay step-scoped). Classic's live Think row
+  // enters the sibling Think mode; inline mode needs no duplicate shortcut.
   const execflowMode = (id: 'classic' | 'think', thinkForm: 'compact' | 'inline', order: number) =>
     slots.register({
       name: 'conversation.chat.render',

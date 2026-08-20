@@ -1,9 +1,9 @@
 ﻿/**
  * ExecDisclosureRow: vendored DisclosureRow for the execflow tab with ONE
- * behavior change — the leading glyph keeps showing the row's own icon in
- * EVERY state (collapsed and expanded alike); the chevron appears only on
- * hover, exactly as it does when collapsed. (The primitive hard-codes
- * `open ? chevron : icon`; here the hover-preview leading is the only form.)
+ * visual behavior change — the leading glyph keeps showing the row's own
+ * icon in EVERY state (collapsed and expanded alike); the chevron appears
+ * only on hover, exactly as it does when collapsed. It also exposes a
+ * non-disclosure row-action seam so the identical chrome can navigate.
  */
 import { type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import clsx from 'clsx'
@@ -19,6 +19,8 @@ export interface ExecDisclosureRowProps {
   onToggle: () => void
   /** Makes the complete title row the disclosure target. */
   expandOnRowClick?: boolean | undefined
+  /** Makes the complete row a non-disclosure action with this accessible name. */
+  actionLabel?: string | undefined
   /** Keeps `collapsedContent` inline while open. */
   keepContentWhenOpen?: boolean | undefined
   collapsedContent?: ReactNode
@@ -42,6 +44,7 @@ export function ExecDisclosureRow({
   expandable,
   onToggle,
   expandOnRowClick = false,
+  actionLabel,
   keepContentWhenOpen = false,
   collapsedContent,
   children,
@@ -52,12 +55,14 @@ export function ExecDisclosureRow({
   titleClassName,
 }: ExecDisclosureRowProps) {
   const rowExpands = expandable && expandOnRowClick
+  const rowActs = actionLabel !== undefined
+  const rowInteractive = rowExpands || rowActs
   const toggleFromLeading = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation()
     onToggle()
   }
   const toggleFromKeyboard = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (!rowExpands || (event.key !== 'Enter' && event.key !== ' ')) return
+    if (!rowInteractive || (event.key !== 'Enter' && event.key !== ' ')) return
     event.preventDefault()
     onToggle()
   }
@@ -82,14 +87,15 @@ export function ExecDisclosureRow({
       <div
         className={clsx(css.row, rowClassName)}
         data-disclosure-row
-        data-expandable={rowExpands || undefined}
-        role={rowExpands ? 'button' : undefined}
-        tabIndex={rowExpands ? 0 : undefined}
+        data-interactive={rowInteractive || undefined}
+        role={rowInteractive ? 'button' : undefined}
+        tabIndex={rowInteractive ? 0 : undefined}
         aria-expanded={rowExpands ? open : undefined}
-        onClick={rowExpands ? onToggle : undefined}
-        onKeyDown={rowExpands ? toggleFromKeyboard : undefined}
+        aria-label={actionLabel}
+        onClick={rowInteractive ? onToggle : undefined}
+        onKeyDown={rowInteractive ? toggleFromKeyboard : undefined}
       >
-        {expandable && !rowExpands ? (
+        {expandable && !rowInteractive ? (
           <button
             type="button"
             className={clsx(css.leading, leadingClassName)}
