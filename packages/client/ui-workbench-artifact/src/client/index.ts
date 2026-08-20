@@ -1,8 +1,6 @@
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
-import type { MarkdownFileMentions } from '@ryanyujazz/dsh-client-ui-primitives'
-import type { ChatFileMentions } from '@ryanyujazz/dsh-client-ui-conversation/client'
 import { createElement, type ReactNode } from 'react'
 import type {} from '@ryanyujazz/dsh-artifacts/remote'
 import type {} from '@ryanyujazz/dsh-client-locale/client'
@@ -15,7 +13,6 @@ import { ArtifactCodeRenderer } from './ArtifactCodeRenderer.tsx'
 import { registerArtifactNodeDefinition } from './artifact-node-definition.ts'
 import { registerArtifactsConversationView } from './artifacts-snapshot-builder.ts'
 import { artifactParentDirectory } from './artifact-view-model.ts'
-import type { ArtifactTurnData } from './artifact-contract.ts'
 import { en, NS, zh, type ArtifactKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' { interface LocaleNamespaceMap { 'workbench-artifact': ArtifactKey } }
@@ -47,29 +44,6 @@ export function apply(ctx: ClientContext): void {
     id: 'artifact', label: () => t('type'), scope: 'session', order: 3, supportsHome: true, supportsCreate: false,
     supportsMultipleInstances: true, minWidth: 150, minHeight: 260, preferredWidth: 520, initialWidthRatio: 1 / 3, closePolicy: 'detach',
   }
-  const basename = (path: string): string => path.split(/[\\/]/).at(-1) ?? path
-  const chatFileMentions: ChatFileMentions = {
-    forClosing(owner): MarkdownFileMentions | undefined {
-      const data = owner.turn.data.get('workbench-artifact') as ArtifactTurnData | undefined
-      const paths = [...new Set(data?.produced.filter(item => item.seq <= owner.seq).map(item => item.path) ?? [])]
-      if (paths.length === 0) return undefined
-      return {
-        resolve(value) {
-          const exact = paths.find(path => path === value)
-          const basenameMatches = exact === undefined ? paths.filter(path => basename(path) === value) : []
-          const path = exact ?? (basenameMatches.length === 1 ? basenameMatches[0] : undefined)
-          if (path === undefined) return undefined
-          return {
-            path,
-            title: path,
-            label: t('openMention', { path }),
-            open: () => { owner.openFile(path) },
-          }
-        },
-      }
-    },
-  }
-  if (typeof ctx.provide === 'function') ctx.provide('chatFileMentions', chatFileMentions)
   ctx.effect(() => {
     const disposers: Array<() => void> = []
     try {

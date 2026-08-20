@@ -6,7 +6,6 @@ export const zh = {
   'loading': '正在加载…',
   'refresh': '刷新',
   'openFolder': '打开所在文件夹',
-  'openMention': '打开文件 {path}',
 } as const
 export type ArtifactKey = keyof typeof zh
 export const en: Record<ArtifactKey, string> = {
@@ -16,5 +15,4 @@ export const en: Record<ArtifactKey, string> = {
   'loading': 'Loading…',
   'refresh': 'Refresh',
   'openFolder': 'Open containing folder',
-  'openMention': 'Open file {path}',
 }
