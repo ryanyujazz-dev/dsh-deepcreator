@@ -59,9 +59,10 @@
   color: inherit;
   background: transparent;
   cursor: pointer;
+  gap: 5px;
 }
 
-.tabLabel span {
+.tabText {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -79,7 +80,7 @@
 /* A clipped label fades out at its right edge instead of drawing an
  * ellipsis — the same trailing-fade vocabulary the sidebar rows use for
  * overflow, and theme-free (a mask needs no background token). */
-.tab[data-truncated] .tabLabel span {
+.tab[data-truncated] .tabText {
   text-overflow: clip;
   -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 16px), transparent 100%);
   mask-image: linear-gradient(to right, #000 calc(100% - 16px), transparent 100%);
@@ -100,7 +101,14 @@
   color: inherit;
   background: transparent;
   cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
 }
+
+/* Keep the slot reserved so labels never jump. Pointer hover reveals the
+ * close control; keyboard focus is the accessibility-only equivalent. */
+.tab:hover .tabClose,
+.tabClose:focus-visible { opacity: 1; pointer-events: auto; }
 
 /* Hover highlights the glyph only — no circular fill inside the flat tab. */
 .tabClose:hover { color: var(--dsw-alias-label-primary); }

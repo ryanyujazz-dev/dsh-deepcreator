@@ -43,6 +43,9 @@
   overflow-wrap: anywhere;
 }
 
+.pathLabel { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
+.pathLabel > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+
 .counts { display: inline-flex; gap: 5px; white-space: nowrap; font-style: normal; font-weight: 400; }
 .counts b { color: var(--dsw-alias-state-success-primary); font-weight: 500; }
 .counts i { color: var(--dsw-alias-state-error-primary); font-style: normal; }
@@ -99,7 +102,7 @@
 .review { margin: 0; }
 .review .body { gap: 0; }
 .review .copyButton { display: none; }
-.review .hunk { border: 0; border-radius: 0; }
+.review .hunk { border: 0; border-radius: 0; background: transparent; }
 .review .hunk + .hunk { border-top: 1px solid var(--dsw-alias-border-l1); }
 .preview { margin: 0; }
 .preview .copyButton, .preview .footer { display: none; }

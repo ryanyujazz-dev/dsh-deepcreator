@@ -12,6 +12,7 @@
 import { useCallback, useMemo, useState, useSyncExternalStore } from 'react'
 import clsx from 'clsx'
 import { writeClipboard } from './clipboard.ts'
+import { FileLabel } from './file-icons/FileIcon.tsx'
 import {
   grammarLoadCount,
   highlightLines,
@@ -38,6 +39,8 @@ export interface ReadBlockLine {
 export interface ReadBlockProps {
   /** Banner label (the file path, or a tool-supplied replacement title); omitted draws no label. */
   label?: string | undefined
+  /** Real file identity kept separate from a replacement display title. */
+  filePath?: string | undefined
   /** The returned window's lines, in file order, each keeping its file line number. */
   lines: readonly ReadBlockLine[]
   /** Exact total line count in the file, for the "showing N of M" note when the read is a window. */
@@ -69,6 +72,7 @@ function renderSpans(spans: readonly HighlightSpan[]) {
  */
 export function ReadBlock({
   label,
+  filePath,
   lines,
   totalLines,
   lang,
@@ -135,7 +139,9 @@ export function ReadBlock({
   return (
     <div className={clsx(css.block, className)} data-read="">
       <div className={css.banner}>
-        <div className={css.label}>{label ?? ''}</div>
+        <div className={css.label}>
+          {label === undefined ? '' : filePath === undefined ? label : <FileLabel path={filePath} label={label} />}
+        </div>
         <div className={css.action}>
           {windowed && (
             <span className={css.count}>{`显示 ${lines.length} / ${totalLines} 行`}</span>

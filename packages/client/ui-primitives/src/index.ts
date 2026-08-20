@@ -26,6 +26,10 @@ export { FishLogo } from './FishLogo.tsx'
 export { BrandWordmark } from './BrandWordmark.tsx'
 export { Tooltip } from './Tooltip.tsx'
 export type { TooltipSide } from './Tooltip.tsx'
+export { FileIcon, FileLabel } from './file-icons/FileIcon.tsx'
+export type { FileIconProps, FileLabelProps } from './file-icons/FileIcon.tsx'
+export { resolveFileIcon } from './file-icons/file-icon.ts'
+export type { ResolvedFileIcon } from './file-icons/file-icon.ts'
 export {
   WorkbenchPanelIconButton, WorkbenchPanelShell,
 } from './WorkbenchPanelShell.tsx'

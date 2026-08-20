@@ -191,6 +191,16 @@ describe('Review Panel file stream', () => {
     expect(stylesheet).not.toMatch(/\.reviewBody\s*\{[^}]*grid-template-columns:/)
   })
 
+  it('keeps Review surfaces on app chrome instead of the selected code-theme background', () => {
+    const stylesheet = readFileSync(resolve(process.cwd(), 'packages/client/ui-workbench-tools/src/client/Panels.module.css'), 'utf8')
+
+    expect(stylesheet).toMatch(/\.review\s*\{[^}]*--dsh-review-surface:\s*var\(--dsw-alias-bg-base\);/)
+    expect(stylesheet).toMatch(/body\[data-ds-dark-theme\][^}]*\.review\s*\{[^}]*--dsh-review-surface:\s*var\(--dsw-specific-sidebar-fill\);/)
+    expect(stylesheet).toContain('--dsw-diff-fold-bg: color-mix(in srgb, var(--dsw-alias-label-primary) 2.5%, var(--dsh-review-surface))')
+    expect(stylesheet).not.toContain('--ds-code-background')
+    expect(stylesheet).not.toContain('--ds-code-foreground')
+  })
+
   it('keeps expanded content mounted across collapse, so re-expanding never rebuilds', async () => {
     const input = props()
     const view = render(<ReviewPanel {...input} />)
@@ -229,8 +239,14 @@ describe('Review Panel file stream', () => {
     // The focus wants current content: exactly one fresh re-fetch of b.
     expect(input.remote.review.diff).toHaveBeenLastCalledWith('session-1', 'src/b.ts')
     expect(input.remote.review.diff).toHaveBeenCalledTimes(3)
-    await waitFor(() => { expect(scrollIntoView).toHaveBeenCalled() })
     // The reveal scroll lands last: the open's top-focus scroll preceded it.
+    // Heavy renders (multi-theme token payloads) can stretch the reveal's
+    // expansion frame, so wait until ITS scroll is the latest one.
+    await waitFor(() => {
+      expect(scrollIntoView).toHaveBeenCalled()
+      const latest = scrollIntoView.mock.instances[scrollIntoView.mock.instances.length - 1] as HTMLElement
+      expect(latest.dataset.reviewPath).toBe('src/b.ts')
+    })
     const last = scrollIntoView.mock.instances[scrollIntoView.mock.instances.length - 1] as HTMLElement
     expect(last.dataset.reviewPath).toBe('src/b.ts')
     expect(view.queryByText('review.missedFile')).toBeNull()
@@ -244,6 +260,7 @@ describe('Review Panel file stream', () => {
     view.rerender(<ReviewPanel {...input} reveal={{ target: '/workspace/src/gone.ts', nonce: 1 }} />)
 
     await waitFor(() => { expect(view.getByText('review.missedFile')).toBeTruthy() })
+    expect(view.getByText('review.missedFile').parentElement?.querySelector('[data-file-icon="typescript"]')).not.toBeNull()
     expect(view.container.textContent).toContain('/workspace/src/gone.ts')
     expect(first.getAttribute('aria-expanded')).toBe('true')
   })

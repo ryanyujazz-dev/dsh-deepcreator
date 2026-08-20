@@ -1,14 +1,23 @@
 .panel { display: flex; min-height: 100%; flex-direction: column; }
 .error { padding: 6px 10px; color: var(--dsw-alias-label-error); background: var(--dsw-alias-fill-error); font-size: 11px; line-height: 16px; }
+.pathBar { min-width: 0; min-height: 30px; flex: none; display: flex; align-items: center; gap: 6px; box-sizing: border-box; overflow: hidden; border-bottom: 1px solid var(--dsw-alias-border-l1); padding: 0 6px 0 10px; color: var(--dsw-alias-label-tertiary); font-size: 10px; line-height: 16px; white-space: nowrap; }
+.pathViewport { min-width: 0; flex: 1; overflow: hidden; display: flex; justify-content: flex-start; }
+.pathViewport[data-truncated] { justify-content: flex-end; -webkit-mask-image: linear-gradient(to right, transparent 0, #000 16px, #000 100%); mask-image: linear-gradient(to right, transparent 0, #000 16px, #000 100%); }
+.pathTrail { min-width: max-content; display: inline-flex; align-items: center; }
+.pathCrumb { display: inline-flex; align-items: center; gap: 4px; }
+.pathSeparator { flex: none; color: var(--dsw-alias-label-tertiary); opacity: .72; }
+.pathFile { color: var(--dsw-alias-label-secondary); font-family: var(--ds-font-family-code); }
+.pathAction { flex: none; --dsh-icon-toolbar-button-size: 24px; --dsh-icon-toolbar-glyph-size: 16px; }
 .content { min-height: 0; flex: 1; overflow: auto; }
 .content > pre { box-sizing: border-box; min-height: 100%; margin: 0; padding: 16px; white-space: pre-wrap; color: var(--dsw-alias-label-primary); font: 12px/1.65 var(--dsw-font-mono); }
 .list { min-height: 0; overflow: auto; padding: 6px; }
 .list > button { width: 100%; min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 0; border-radius: 8px; padding: 8px 10px; color: var(--dsw-alias-label-primary); background: transparent; text-align: left; cursor: pointer; }
 .list > button:hover { background: color-mix(in srgb, var(--dsw-alias-label-primary) 6%, var(--dsw-alias-bg-base)); }
 .list > button:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: -2px; }
+.list .identity { min-width: 0; display: flex; align-items: center; gap: 7px; }
 .list .copy { min-width: 0; display: grid; gap: 3px; }
 .list strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 500; }
 .list .meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dsw-alias-label-tertiary); font-size: 10px; line-height: 14px; }
 .list time { flex: none; color: var(--dsw-alias-label-tertiary); font-size: 10px; line-height: 14px; }
-.empty { min-height: 100%; display: grid; place-content: center; gap: 5px; padding: 24px; box-sizing: border-box; color: var(--dsw-alias-label-tertiary); text-align: center; font-size: 12px; line-height: 18px; }
+.empty { min-height: 0; flex: 1; display: grid; place-content: center; gap: 5px; padding: 24px; box-sizing: border-box; color: var(--dsw-alias-label-tertiary); text-align: center; font-size: 12px; line-height: 18px; }
 .empty strong { color: var(--dsw-alias-label-secondary); font-size: 13px; font-weight: 500; }

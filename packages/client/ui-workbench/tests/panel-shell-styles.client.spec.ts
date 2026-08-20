@@ -74,7 +74,7 @@ describe('Workbench PanelShell geometry', () => {
     expect(tabs).toContain('margin-right: 4px')
     // Label ink sits ~1px below the em-box center; lift it optically onto
     // the close glyph's centerline (line-height cannot shift it).
-    const spanRule = tabs.match(/\.tabLabel span \{([^}]*)\}/)?.[1] ?? ''
+    const spanRule = tabs.match(/\.tabText \{([^}]*)\}/)?.[1] ?? ''
     expect(spanRule).toContain('top: -1px')
   })
 

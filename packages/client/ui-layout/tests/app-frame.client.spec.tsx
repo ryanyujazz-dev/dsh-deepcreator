@@ -411,3 +411,72 @@ describe('AppFrame — unmount with an in-flight resize frame', () => {
     expect(tracks(frame)).toEqual([280, 610])
   })
 })
+
+describe('AppFrame — macOS window-state avoidance markers', () => {
+  interface BridgeState { maximized: boolean; fullscreen: boolean }
+  interface Bridge { getState: ReturnType<typeof vi.fn>; onStateChange: ReturnType<typeof vi.fn> }
+  type Listener = (state: BridgeState) => void
+
+  const originalUserAgent = window.navigator.userAgent
+  const MACOS_ELECTRON_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Electron/43.4.0 Safari/537.36'
+
+  afterEach(() => {
+    Object.defineProperty(window.navigator, 'userAgent', { value: originalUserAgent, configurable: true })
+    Reflect.deleteProperty(window, 'deepcreatorWindow')
+  })
+
+  /** Stub the preload bridge and the macOS Electron UA it implies. */
+  function installDesktopBridge(initial: BridgeState = { maximized: false, fullscreen: false }): { bridge: Bridge; listeners: Listener[] } {
+    const listeners: Listener[] = []
+    const bridge: Bridge = {
+      getState: vi.fn().mockResolvedValue(initial),
+      onStateChange: vi.fn((listener: Listener) => {
+        listeners.push(listener)
+        return () => { const index = listeners.indexOf(listener); if (index !== -1) listeners.splice(index, 1) }
+      }),
+    }
+    Object.defineProperty(window.navigator, 'userAgent', { value: MACOS_ELECTRON_UA, configurable: true })
+    Object.defineProperty(window, 'deepcreatorWindow', { value: bridge, configurable: true })
+    return { bridge, listeners }
+  }
+
+  it('emits no markers while the un-zoomed window is reported', async () => {
+    const { bridge } = installDesktopBridge()
+    const { frame } = mountFrame()
+    await act(async () => {})
+    expect(bridge.getState).toHaveBeenCalledTimes(1)
+    expect(frame.hasAttribute('data-window-maximized')).toBe(false)
+    expect(frame.hasAttribute('data-window-fullscreen')).toBe(false)
+  })
+
+  it('emits the maximized marker from the initial bridge state', async () => {
+    installDesktopBridge({ maximized: true, fullscreen: false })
+    const { frame } = mountFrame()
+    await act(async () => {})
+    expect(frame.hasAttribute('data-window-maximized')).toBe(true)
+    expect(frame.hasAttribute('data-window-fullscreen')).toBe(false)
+  })
+
+  it('tracks live maximize and fullscreen pushes from the main process', async () => {
+    const { listeners } = installDesktopBridge()
+    const { frame } = mountFrame()
+    await act(async () => {})
+    act(() => { listeners[0]!({ maximized: true, fullscreen: false }) })
+    expect(frame.hasAttribute('data-window-maximized')).toBe(true)
+    act(() => { listeners[0]!({ maximized: false, fullscreen: true }) })
+    expect(frame.hasAttribute('data-window-maximized')).toBe(false)
+    expect(frame.hasAttribute('data-window-fullscreen')).toBe(true)
+    act(() => { listeners[0]!({ maximized: false, fullscreen: false }) })
+    expect(frame.hasAttribute('data-window-fullscreen')).toBe(false)
+  })
+
+  it('does not consult the bridge outside a macOS Electron renderer', async () => {
+    const { bridge } = installDesktopBridge()
+    // The jsdom UA carries no Electron token, so the platform gate bails.
+    Object.defineProperty(window.navigator, 'userAgent', { value: originalUserAgent, configurable: true })
+    const { frame } = mountFrame()
+    await act(async () => {})
+    expect(bridge.getState).not.toHaveBeenCalled()
+    expect(frame.hasAttribute('data-window-maximized')).toBe(false)
+  })
+})

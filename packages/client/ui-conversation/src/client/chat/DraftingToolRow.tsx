@@ -19,7 +19,7 @@
 
 import type { ReactNode } from 'react'
 import {
-  IconChecklistOutline14, IconCodeOutline16, IconEditOutline16, IconListPenOutline16,
+  FileIcon, IconChecklistOutline14, IconCodeOutline16, IconEditOutline16, IconListPenOutline16,
 } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { ChatViewSlotProps } from '../contract/slots.ts'
 import css from './DraftingToolRow.module.css'
@@ -67,7 +67,7 @@ export function DraftingToolRow({ label, icon, target }: {
       {target !== undefined && target !== null && target !== '' && (
         <>
           <span className={css.sep} aria-hidden />
-          <span className={css.target}>{target}</span>
+          <span className={css.target}><FileIcon path={target} /><span>{target}</span></span>
         </>
       )}
     </div>

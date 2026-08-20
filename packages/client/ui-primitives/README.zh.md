@@ -2,11 +2,13 @@
 
 [English](README.md) | 中文
 
-纯 React 原子组件（零 cordis）：StateDot、DisclosureRow、官方兼容 `ic_ds_*` 图标、独立持有的 `DeepCreatorIcon*` 产品图标、Button/Pill/Menu/Modal/Input、Toast 短时横幅、OnboardingSurface 首次使用接管层（portal 到 body 的遮罩加不透明展示层，在且仅在自身生命周期内保持 `#root` 为 `inert`）、markdown 家族（MessageText/MarkdownText/JsonBlock）、只读 JsonTree 检查器、`useAnchoredMaxHeight` 钩子（把底部锚定的浮层高度收敛到锚点上方的视口空间，并在 resize、scroll 与调用方提供的依赖变化时重新测量）、TerminalBlock、DiffBlock、ReadBlock、SearchBlock，以及 WebBlock。官方与 Harness／Figma 派生资源保留在 `src/icons/index.tsx`；自绘和产品资源放在 `src/icons/deepcreator.tsx`，使两套图标可以独立演进。
+纯 React 原子组件（零 cordis）：StateDot、DisclosureRow、官方兼容 `ic_ds_*` 图标、独立持有的 `DeepCreatorIcon*` 产品图标、Material 支撑的 `FileIcon`／`FileLabel`、Button/Pill/Menu/Modal/Input、Toast 短时横幅、OnboardingSurface 首次使用接管层（portal 到 body 的遮罩加不透明展示层，在且仅在自身生命周期内保持 `#root` 为 `inert`）、markdown 家族（MessageText/MarkdownText/JsonBlock）、只读 JsonTree 检查器、`useAnchoredMaxHeight` 钩子（把底部锚定的浮层高度收敛到锚点上方的视口空间，并在 resize、scroll 与调用方提供的依赖变化时重新测量）、TerminalBlock、DiffBlock、ReadBlock、SearchBlock，以及 WebBlock。官方与 Harness／Figma 派生资源保留在 `src/icons/index.tsx`；自绘和产品资源放在 `src/icons/deepcreator.tsx`，使各套图标可以独立演进。
 
-`WorkbenchPanelShell` 是 Workbench 宿主与独立 bundle Provider 共用的、无业务状态的面板框架，统一拥有内缩圆角表面、紧凑 Header、公共导航与 Body 边界。`WorkbenchPanelTabs` 是所有 Panel 类型共用的公共 pill 标签条，统一处理标签键盘导航、常显关闭按钮，以及紧跟最新标签的新建操作位置。pill 宽度贴合标签文字、无固定上限，仅在标签条空间不足时压缩；真实截断的标签文字以右侧渐消（`mask-image`，逐标签测量）替代省略号，且每个标签的完整名称通过 hover Tooltip 提供。Workbench owner 通过 shell 的 `leftActions` 与 `rightActions` props 传入 Provider 操作，`WorkbenchPanelIconButton` 保持统一的工具栏命中框与 Tooltip 语义。所有标签、状态和回调都来自 props；这些原语不会读取 Cordis 或功能 store。
+`FileIcon` 按 Material Icon Theme 原生的精确文件名、路径特例和最长复合扩展名规则解析真实路径，并统一桌面平台的分隔符与大小写；`FileLabel` 将这个装饰图标和可访问文字配对。仓库内的构建期生成器读取上游 VS Code manifest，只把文件映射实际引用的 SVG 生成为本地 data image；浏览器 bundle 不包含 VS Code runtime，也不会发起网络请求。浅色 SVG 变体只跟随应用的 `body[data-ds-dark-theme]`，与代码主题选择相互独立。
 
-`CodeSurface` 是面板级的只读文件表层：采用 DiffBlock 的对齐行网格（行号 gutter＋内容列，无符号列）以全尺寸正文形态呈现，shiki 逐行 token 走共享 `data-code-theme` 配色链，并以软换行（`pre-wrap`＋安全断词）替代 ReadBlock 的横向滚动——面板产物偏散文，长行应折叠。它不自涂底色，透出面板 shell 表面。
+`WorkbenchPanelShell` 是 Workbench 宿主与独立 bundle Provider 共用的、无业务状态的面板框架，统一拥有内缩圆角表面、紧凑 Header、公共导航与 Body 边界。`WorkbenchPanelTabs` 是所有 Panel 类型共用的公共 pill 标签条，统一处理标签键盘导航、悬浮显现的关闭按钮，以及紧跟最新标签的新建操作位置。关闭槽位始终预留，避免标题重排；键盘聚焦关闭按钮时同样显现。pill 宽度贴合标签文字、无固定上限，仅在标签条空间不足时压缩；真实截断的标签文字以右侧渐消（`mask-image`，逐标签测量）替代省略号，且每个标签的完整名称通过 hover Tooltip 提供。Provider 可经 `filePaths` 将 tab id 与真实文件路径配对；只有这些文件型 tabs 绘制 `FileIcon`，Terminal 等语义标签保持无文件图标。Workbench owner 通过 shell 的 `leftActions` 与 `rightActions` props 传入 Provider 操作，`WorkbenchPanelIconButton` 保持统一的工具栏命中框与 Tooltip 语义。所有标签、状态和回调都来自 props；这些原语不会读取 Cordis 或功能 store。
+
+`CodeSurface` 是面板级的只读文件表层：采用 DiffBlock 的对齐行网格（行号 gutter＋内容列，无符号列）以全尺寸正文形态呈现，shiki 逐行 token 走共享 `data-code-theme` 配色链，并以软换行（`pre-wrap`＋安全断词）替代 ReadBlock 的横向滚动——面板产物偏散文，长行应折叠。它不自涂底色，透出面板 shell 表面。持久化的 GitHub 代码主题 id 映射到 Shiki 的 GitHub Default 注册，同时保留较短的产品 id 以兼容已有设置。
 
 `SIDEBAR_ICON_SIZE` 是侧边栏操作控件在展开和轨道布局中共用的 14px 图标规格。`BrandWordmark` 渲染由鲸鱼标记和文字组成的 DeepCreator 组合字标，其中鲸鱼以 16px 做视觉放大并与操作图标共用中轴，文字由当前产品字体 token 驱动。
 
@@ -34,7 +36,7 @@
 
 ## Diff 渲染
 
-`DiffBlock` 通过共享的 `jsdiff` 行模型渲染上下文 hunk。聊天里每个远距离 hunk 都是独立圆角卡片，显示完整路径与准确的 `+A -R`；Review 可关闭该头部，在多个 hunk 外只绘制一次文件头。单行号槽在删除行显示旧行号，在新增与上下文行显示新行号；独立符号列保持 `+`／`-` 对齐。内容使用 `pre-wrap` 和安全断词，窄面板软换行时不会重复 gutter。替换行通过 `diffWordsWithSpace()` 生成词级 mark，同时保留 Shiki token；超大替换块只跳过词级细化。绝对起始行可选，旧回放缺失时行号有意留空。长上下文按前后各三行折叠，并在原位置插入「⋯ 展开 N 行」FoldRow。Review 会用完整文件快照重建 unified patch 省略的上下文，因此文件头、hunk 间隔和文件尾也显示为同一种可展开 FoldRow；通用 head/tail 高度上限同样使用它，不再在底部放展开操作。每个 FoldRow 通过组件本地状态只展开其代表的全部行。命名代码主题同时提供语法前景和半透明的行级／词级 Diff 表面；强制颜色与高对比覆盖始终最后生效。
+`DiffBlock` 通过共享的 `jsdiff` 行模型渲染上下文 hunk。聊天里每个远距离 hunk 都是独立圆角卡片，显示完整路径与准确的 `+A -R`；Review 可关闭该头部，在多个 hunk 外只绘制一次文件头。单行号槽在删除行显示旧行号，在新增与上下文行显示新行号；独立符号列保持 `+`／`-` 对齐。内容使用 `pre-wrap` 和安全断词，窄面板软换行时不会重复 gutter。替换行通过 `diffWordsWithSpace()` 生成词级 mark，同时保留 Shiki token；超大替换块只跳过词级细化。绝对起始行可选，旧回放缺失时行号有意留空。长上下文按前后各三行折叠，并在原位置插入「⋯ 展开 N 行」FoldRow。Review 会用完整文件快照重建 unified patch 省略的上下文，因此文件头、hunk 间隔和文件尾也显示为同一种可展开 FoldRow；通用 head/tail 高度上限同样使用它，不再在底部放展开操作。每个 FoldRow 通过组件本地状态只展开其代表的全部行。命名代码主题同时提供语法前景和半透明的行级／词级 Diff 表面；Review 变体保持 hunk 基础背景透明，以透出 Workbench 自身的应用表面。强制颜色与高对比覆盖始终最后生效。
 
 ## 搜索结果
 

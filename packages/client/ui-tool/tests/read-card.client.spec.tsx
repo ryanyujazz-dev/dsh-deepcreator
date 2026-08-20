@@ -74,7 +74,7 @@ const settled = (over?: Partial<ToolResultNode>): ToolResultNode => ({
 describe('readCardModel', () => {
   it('derives the card from a settled read result view', () => {
     expect(readCardModel(settled())).toEqual({
-      label: 'src/a.ts', lines: sampleLines, totalLines: 180, lang: 'ts',
+      label: 'src/a.ts', filePath: 'src/a.ts', lines: sampleLines, totalLines: 180, lang: 'ts',
     })
   })
 
@@ -255,4 +255,3 @@ describe('ReadRow keyed toolview', () => {
     expect(readToolview.inject).toEqual(['slots'])
   })
 })
-

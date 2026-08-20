@@ -24,6 +24,8 @@ export interface WorkbenchPanelInfoContribution {
   titleSuffix?: string
   /** Display label per tab instance id; unmapped tabs keep showing their id. */
   tabLabels?: Readonly<Record<string, string>>
+  /** Real file path per file-backed tab id; non-file tabs stay icon-free. */
+  tabFilePaths?: Readonly<Record<string, string>>
 }
 
 export interface PanelTypeDefinition {

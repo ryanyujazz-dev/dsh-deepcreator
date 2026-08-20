@@ -72,8 +72,10 @@
 /* The main process fixes the red macOS traffic light at x=20, aligned with
    the New Session icon; 77px inside the padded row starts the wordmark at x=89, one native-button gap past
    the final native button. Closed-state chrome is frame-owned. The ancestor
-   marker exists only in Electron on macOS; browser geometry is unchanged. */
-[data-native-window-chrome='macos'] .logoRow {
+   marker exists only in Electron on macOS; browser geometry is unchanged.
+   Maximized or fullscreen windows hide the traffic lights, so the drag and
+   the 77px safe spacing apply only to the un-zoomed window. */
+[data-native-window-chrome='macos']:not([data-window-maximized]):not([data-window-fullscreen]) .logoRow {
   padding-left: 77px;
   -webkit-app-region: drag;
 }

@@ -41,6 +41,7 @@ describe('SearchBlock matches kind', () => {
       { path: 'b.ts', matches: [{ lineNumber: 7, line: 'const b = 2' }] },
     ]} />)
     expect(fileHeaders(view.container)).toEqual(['a.ts2', 'b.ts1'])
+    expect(view.container.querySelectorAll('[data-file-icon="typescript"]')).toHaveLength(2)
     expect(lines(view.container)).toEqual(['12: const a = 1', '40: return a', '7: const b = 2'])
     // The summary counts matches and files, with no folded pre-cap total below the cap.
     expect(view.getByText('3 处匹配 · 2 个文件')).toBeTruthy()
@@ -72,6 +73,7 @@ describe('SearchBlock paths kind', () => {
   it('renders a flat path list with a path-count summary', () => {
     const view = render(<SearchBlock kind="paths" truncated={false} total={2} paths={['src/a.ts', 'src/b.ts']} />)
     expect(lines(view.container)).toEqual(['src/a.ts', 'src/b.ts'])
+    expect(view.container.querySelectorAll('[data-file-icon="typescript"]')).toHaveLength(2)
     expect(view.getByText('2 个路径')).toBeTruthy()
     // No file-group headers in the paths shape.
     expect(fileHeaders(view.container)).toEqual([])

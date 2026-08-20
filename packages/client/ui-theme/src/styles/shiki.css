@@ -46,21 +46,21 @@ body[data-ds-dark-theme] {
 }
 
 [data-code-theme='github-light'] {
-  --ds-code-background: #fff;
-  --ds-code-foreground: #24292e;
-  --dsw-diff-line-inserted-bg: #34d05818;
-  --dsw-diff-word-inserted-bg: #34d05830;
-  --dsw-diff-line-removed-bg: #d73a4918;
-  --dsw-diff-word-removed-bg: #d73a4930;
+  --ds-code-background: #ffffff;
+  --ds-code-foreground: #1f2328;
+  --dsw-diff-line-inserted-bg: #aceebb4d;
+  --dsw-diff-word-inserted-bg: #6fdd8b80;
+  --dsw-diff-line-removed-bg: #ffcecb4d;
+  --dsw-diff-word-removed-bg: #ff818266;
 }
 
 [data-code-theme='github-dark'] {
-  --ds-code-background: #24292e;
-  --ds-code-foreground: #e1e4e8;
-  --dsw-diff-line-inserted-bg: #28a74520;
-  --dsw-diff-word-inserted-bg: #28a74540;
-  --dsw-diff-line-removed-bg: #d73a4920;
-  --dsw-diff-word-removed-bg: #d73a4940;
+  --ds-code-background: #0d1117;
+  --ds-code-foreground: #e6edf3;
+  --dsw-diff-line-inserted-bg: #23863626;
+  --dsw-diff-word-inserted-bg: #3fb9504d;
+  --dsw-diff-line-removed-bg: #da363326;
+  --dsw-diff-word-removed-bg: #ff7b724d;
 }
 
 [data-code-theme='one-light'] {
@@ -76,51 +76,266 @@ body[data-ds-dark-theme] {
   --ds-code-background: #282c34;
   --ds-code-foreground: #abb2bf;
   --dsw-diff-line-inserted-bg: #00809b20;
-  --dsw-diff-word-inserted-bg: #00809b40;
+  --dsw-diff-word-inserted-bg: #00809b33;
   --dsw-diff-line-removed-bg: #e06c7520;
   --dsw-diff-word-removed-bg: #e06c7540;
 }
 
-[data-code-theme='deepcreator-light'] :where(.shiki span, [data-code-token]) {
+/* Third-party open-source sets. Diff variables use each upstream theme's
+   matching diffEditor line/text colors verbatim. A theme that omits one of
+   those optional VS Code fields keeps the existing product fallback for that
+   single role; the fallback is never substituted for a native value. */
+
+[data-code-theme='catppuccin-light'] {
+  --ds-code-background: #eff1f5;
+  --ds-code-foreground: #4c4f69;
+  --dsw-diff-line-inserted-bg: #40a02b26;
+  --dsw-diff-word-inserted-bg: #40a02b33;
+  --dsw-diff-line-removed-bg: #d20f3926;
+  --dsw-diff-word-removed-bg: #d20f3933;
+}
+
+[data-code-theme='catppuccin-dark'] {
+  --ds-code-background: #1e1e2e;
+  --ds-code-foreground: #cdd6f4;
+  --dsw-diff-line-inserted-bg: #a6e3a126;
+  --dsw-diff-word-inserted-bg: #a6e3a133;
+  --dsw-diff-line-removed-bg: #f38ba826;
+  --dsw-diff-word-removed-bg: #f38ba833;
+}
+
+[data-code-theme='rose-pine-light'] {
+  --ds-code-background: #faf4ed;
+  --ds-code-foreground: #575279;
+  --dsw-diff-line-inserted-bg: #56949f26;
+  --dsw-diff-word-inserted-bg: #56949f26;
+  --dsw-diff-line-removed-bg: #b4637a26;
+  --dsw-diff-word-removed-bg: #b4637a26;
+}
+
+[data-code-theme='rose-pine-dark'] {
+  --ds-code-background: #232136;
+  --ds-code-foreground: #e0def4;
+  --dsw-diff-line-inserted-bg: #9ccfd826;
+  --dsw-diff-word-inserted-bg: #9ccfd826;
+  --dsw-diff-line-removed-bg: #eb6f9226;
+  --dsw-diff-word-removed-bg: #eb6f9226;
+}
+
+[data-code-theme='vitesse-light'] {
+  --ds-code-background: #ffffff;
+  --ds-code-foreground: #393a34;
+  --dsw-diff-line-inserted-bg: #1e754f18;
+  --dsw-diff-word-inserted-bg: #1c6b4830;
+  --dsw-diff-line-removed-bg: #b5695918;
+  --dsw-diff-word-removed-bg: #ab595940;
+}
+
+[data-code-theme='vitesse-dark'] {
+  --ds-code-background: #121212;
+  --ds-code-foreground: #dbd7ca;
+  --dsw-diff-line-inserted-bg: #4d937520;
+  --dsw-diff-word-inserted-bg: #4d937550;
+  --dsw-diff-line-removed-bg: #c98a7d20;
+  --dsw-diff-word-removed-bg: #ab595950;
+}
+
+[data-code-theme='kanagawa-light'] {
+  --ds-code-background: #f2ecbc;
+  --ds-code-foreground: #545464;
+  --dsw-diff-line-inserted-bg: #6f894e18;
+  --dsw-diff-word-inserted-bg: #b7d0ae80;
+  --dsw-diff-line-removed-bg: #c843a118;
+  --dsw-diff-word-removed-bg: #c843a130;
+}
+
+[data-code-theme='kanagawa-dark'] {
+  --ds-code-background: #1f1f28;
+  --ds-code-foreground: #dcd7ba;
+  --dsw-diff-line-inserted-bg: #98bb6c20;
+  --dsw-diff-word-inserted-bg: #2b332880;
+  --dsw-diff-line-removed-bg: #e4687620;
+  --dsw-diff-word-removed-bg: #e4687640;
+}
+
+[data-code-theme='everforest-light'] {
+  --ds-code-background: #fdf6e3;
+  --ds-code-foreground: #5c6a72;
+  --dsw-diff-line-inserted-bg: #8da10118;
+  --dsw-diff-word-inserted-bg: #6ec39830;
+  --dsw-diff-line-removed-bg: #f8555218;
+  --dsw-diff-word-removed-bg: #f1706f30;
+}
+
+[data-code-theme='everforest-dark'] {
+  --ds-code-background: #2d353b;
+  --ds-code-foreground: #d3c6aa;
+  --dsw-diff-line-inserted-bg: #a7c08020;
+  --dsw-diff-word-inserted-bg: #569d7930;
+  --dsw-diff-line-removed-bg: #e67e8020;
+  --dsw-diff-word-removed-bg: #da636230;
+}
+
+[data-code-theme='tokyo-night-light'] {
+  --ds-code-background: #e6e7ed;
+  --ds-code-foreground: #343b59;
+  --dsw-diff-line-inserted-bg: #2d9c9120;
+  --dsw-diff-word-inserted-bg: #2d9c9120;
+  --dsw-diff-line-removed-bg: #e8686812;
+  --dsw-diff-word-removed-bg: #e8686812;
+}
+
+[data-code-theme='tokyo-night-dark'] {
+  --ds-code-background: #1a1b26;
+  --ds-code-foreground: #a9b1d6;
+  --dsw-diff-line-inserted-bg: #41a6b520;
+  --dsw-diff-word-inserted-bg: #41a6b520;
+  --dsw-diff-line-removed-bg: #db4b4b22;
+  --dsw-diff-word-removed-bg: #db4b4b22;
+}
+
+body[data-code-theme='deepcreator-light'] :where(.shiki span, [data-code-token]):not([data-code-theme-isolate] *),
+[data-code-theme-isolate][data-code-theme='deepcreator-light'] :where(.shiki span, [data-code-token]) {
   color: var(--shiki-deepcreator-light, var(--ds-code-foreground));
   font-style: var(--shiki-deepcreator-light-font-style, normal);
   font-weight: var(--shiki-deepcreator-light-font-weight, 400);
   text-decoration: var(--shiki-deepcreator-light-text-decoration, none);
 }
 
-[data-code-theme='deepcreator-dark'] :where(.shiki span, [data-code-token]) {
+body[data-code-theme='deepcreator-dark'] :where(.shiki span, [data-code-token]):not([data-code-theme-isolate] *),
+[data-code-theme-isolate][data-code-theme='deepcreator-dark'] :where(.shiki span, [data-code-token]) {
   color: var(--shiki-deepcreator-dark, var(--ds-code-foreground));
   font-style: var(--shiki-deepcreator-dark-font-style, normal);
   font-weight: var(--shiki-deepcreator-dark-font-weight, 400);
   text-decoration: var(--shiki-deepcreator-dark-text-decoration, none);
 }
 
-[data-code-theme='github-light'] :where(.shiki span, [data-code-token]) {
+body[data-code-theme='github-light'] :where(.shiki span, [data-code-token]):not([data-code-theme-isolate] *),
+[data-code-theme-isolate][data-code-theme='github-light'] :where(.shiki span, [data-code-token]) {
   color: var(--shiki-github-light, var(--ds-code-foreground));
   font-style: var(--shiki-github-light-font-style, normal);
   font-weight: var(--shiki-github-light-font-weight, 400);
   text-decoration: var(--shiki-github-light-text-decoration, none);
 }
 
-[data-code-theme='github-dark'] :where(.shiki span, [data-code-token]) {
+body[data-code-theme='github-dark'] :where(.shiki span, [data-code-token]):not([data-code-theme-isolate] *),
+[data-code-theme-isolate][data-code-theme='github-dark'] :where(.shiki span, [data-code-token]) {
   color: var(--shiki-github-dark, var(--ds-code-foreground));
   font-style: var(--shiki-github-dark-font-style, normal);
   font-weight: var(--shiki-github-dark-font-weight, 400);
   text-decoration: var(--shiki-github-dark-text-decoration, none);
 }
 
-[data-code-theme='one-light'] :where(.shiki span, [data-code-token]) {
+body[data-code-theme='one-light'] :where(.shiki span, [data-code-token]):not([data-code-theme-isolate] *),
+[data-code-theme-isolate][data-code-theme='one-light'] :where(.shiki span, [data-code-token]) {
   color: var(--shiki-one-light, var(--ds-code-foreground));
   font-style: var(--shiki-one-light-font-style, normal);
   font-weight: var(--shiki-one-light-font-weight, 400);
   text-decoration: var(--shiki-one-light-text-decoration, none);
 }
 
-[data-code-theme='one-dark'] :where(.shiki span, [data-code-token]) {
+body[data-code-theme='one-dark'] :where(.shiki span, [data-code-token]):not([data-code-theme-isolate] *),
+[data-code-theme-isolate][data-code-theme='one-dark'] :where(.shiki span, [data-code-token]) {
   color: var(--shiki-one-dark, var(--ds-code-foreground));
   font-style: var(--shiki-one-dark-font-style, normal);
   font-weight: var(--shiki-one-dark-font-weight, 400);
   text-decoration: var(--shiki-one-dark-text-decoration, none);
+}
+
+body[data-code-theme='catppuccin-light'] :where(.shiki span, [data-code-token]):not([data-code-theme-isolate] *),
+[data-code-theme-isolate][data-code-theme='catppuccin-light'] :where(.shiki span, [data-code-token]) {
+  color: var(--shiki-catppuccin-light, var(--ds-code-foreground));
+  font-style: var(--shiki-catppuccin-light-font-style, normal);
+  font-weight: var(--shiki-catppuccin-light-font-weight, 400);
+  text-decoration: var(--shiki-catppuccin-light-text-decoration, none);
+}
+
+body[data-code-theme='catppuccin-dark'] :where(.shiki span, [data-code-token]):not([data-code-theme-isolate] *),
+[data-code-theme-isolate][data-code-theme='catppuccin-dark'] :where(.shiki span, [data-code-token]) {
+  color: var(--shiki-catppuccin-dark, var(--ds-code-foreground));
+  font-style: var(--shiki-catppuccin-dark-font-style, normal);
+  font-weight: var(--shiki-catppuccin-dark-font-weight, 400);
+  text-decoration: var(--shiki-catppuccin-dark-text-decoration, none);
+}
+
+body[data-code-theme='rose-pine-light'] :where(.shiki span, [data-code-token]):not([data-code-theme-isolate] *),
+[data-code-theme-isolate][data-code-theme='rose-pine-light'] :where(.shiki span, [data-code-token]) {
+  color: var(--shiki-rose-pine-light, var(--ds-code-foreground));
+  font-style: var(--shiki-rose-pine-light-font-style, normal);
+  font-weight: var(--shiki-rose-pine-light-font-weight, 400);
+  text-decoration: var(--shiki-rose-pine-light-text-decoration, none);
+}
+
+body[data-code-theme='rose-pine-dark'] :where(.shiki span, [data-code-token]):not([data-code-theme-isolate] *),
+[data-code-theme-isolate][data-code-theme='rose-pine-dark'] :where(.shiki span, [data-code-token]) {
+  color: var(--shiki-rose-pine-dark, var(--ds-code-foreground));
+  font-style: var(--shiki-rose-pine-dark-font-style, normal);
+  font-weight: var(--shiki-rose-pine-dark-font-weight, 400);
+  text-decoration: var(--shiki-rose-pine-dark-text-decoration, none);
+}
+
+body[data-code-theme='vitesse-light'] :where(.shiki span, [data-code-token]):not([data-code-theme-isolate] *),
+[data-code-theme-isolate][data-code-theme='vitesse-light'] :where(.shiki span, [data-code-token]) {
+  color: var(--shiki-vitesse-light, var(--ds-code-foreground));
+  font-style: var(--shiki-vitesse-light-font-style, normal);
+  font-weight: var(--shiki-vitesse-light-font-weight, 400);
+  text-decoration: var(--shiki-vitesse-light-text-decoration, none);
+}
+
+body[data-code-theme='vitesse-dark'] :where(.shiki span, [data-code-token]):not([data-code-theme-isolate] *),
+[data-code-theme-isolate][data-code-theme='vitesse-dark'] :where(.shiki span, [data-code-token]) {
+  color: var(--shiki-vitesse-dark, var(--ds-code-foreground));
+  font-style: var(--shiki-vitesse-dark-font-style, normal);
+  font-weight: var(--shiki-vitesse-dark-font-weight, 400);
+  text-decoration: var(--shiki-vitesse-dark-text-decoration, none);
+}
+
+body[data-code-theme='kanagawa-light'] :where(.shiki span, [data-code-token]):not([data-code-theme-isolate] *),
+[data-code-theme-isolate][data-code-theme='kanagawa-light'] :where(.shiki span, [data-code-token]) {
+  color: var(--shiki-kanagawa-light, var(--ds-code-foreground));
+  font-style: var(--shiki-kanagawa-light-font-style, normal);
+  font-weight: var(--shiki-kanagawa-light-font-weight, 400);
+  text-decoration: var(--shiki-kanagawa-light-text-decoration, none);
+}
+
+body[data-code-theme='kanagawa-dark'] :where(.shiki span, [data-code-token]):not([data-code-theme-isolate] *),
+[data-code-theme-isolate][data-code-theme='kanagawa-dark'] :where(.shiki span, [data-code-token]) {
+  color: var(--shiki-kanagawa-dark, var(--ds-code-foreground));
+  font-style: var(--shiki-kanagawa-dark-font-style, normal);
+  font-weight: var(--shiki-kanagawa-dark-font-weight, 400);
+  text-decoration: var(--shiki-kanagawa-dark-text-decoration, none);
+}
+
+body[data-code-theme='everforest-light'] :where(.shiki span, [data-code-token]):not([data-code-theme-isolate] *),
+[data-code-theme-isolate][data-code-theme='everforest-light'] :where(.shiki span, [data-code-token]) {
+  color: var(--shiki-everforest-light, var(--ds-code-foreground));
+  font-style: var(--shiki-everforest-light-font-style, normal);
+  font-weight: var(--shiki-everforest-light-font-weight, 400);
+  text-decoration: var(--shiki-everforest-light-text-decoration, none);
+}
+
+body[data-code-theme='everforest-dark'] :where(.shiki span, [data-code-token]):not([data-code-theme-isolate] *),
+[data-code-theme-isolate][data-code-theme='everforest-dark'] :where(.shiki span, [data-code-token]) {
+  color: var(--shiki-everforest-dark, var(--ds-code-foreground));
+  font-style: var(--shiki-everforest-dark-font-style, normal);
+  font-weight: var(--shiki-everforest-dark-font-weight, 400);
+  text-decoration: var(--shiki-everforest-dark-text-decoration, none);
+}
+
+body[data-code-theme='tokyo-night-light'] :where(.shiki span, [data-code-token]):not([data-code-theme-isolate] *),
+[data-code-theme-isolate][data-code-theme='tokyo-night-light'] :where(.shiki span, [data-code-token]) {
+  color: var(--shiki-tokyo-night-light, var(--ds-code-foreground));
+  font-style: var(--shiki-tokyo-night-light-font-style, normal);
+  font-weight: var(--shiki-tokyo-night-light-font-weight, 400);
+  text-decoration: var(--shiki-tokyo-night-light-text-decoration, none);
+}
+
+body[data-code-theme='tokyo-night-dark'] :where(.shiki span, [data-code-token]):not([data-code-theme-isolate] *),
+[data-code-theme-isolate][data-code-theme='tokyo-night-dark'] :where(.shiki span, [data-code-token]) {
+  color: var(--shiki-tokyo-night-dark, var(--ds-code-foreground));
+  font-style: var(--shiki-tokyo-night-dark-font-style, normal);
+  font-weight: var(--shiki-tokyo-night-dark-font-weight, 400);
+  text-decoration: var(--shiki-tokyo-night-dark-text-decoration, none);
 }
 
 [data-code-theme] :where(.shiki) {

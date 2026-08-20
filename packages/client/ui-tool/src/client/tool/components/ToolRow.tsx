@@ -22,7 +22,7 @@
 import { useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import clsx from 'clsx'
 import {
-  CodeBlock, DeepCreatorIconInspectOutline12, DiffBlock, DisclosureRow, ReadBlock, SearchBlock, StateDot, TerminalBlock, Tooltip, WebBlock,
+  CodeBlock, DeepCreatorIconInspectOutline12, DiffBlock, DisclosureRow, FileIcon, ReadBlock, SearchBlock, StateDot, TerminalBlock, Tooltip, WebBlock,
 } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { WebBlockProps } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
@@ -188,6 +188,7 @@ export function ToolRow({
   // The failure line is error prose, not the path: no file affordance.
   const activateFile = onRevealChange ?? onOpenFile
   const fileLink = filePath !== undefined && activateFile !== undefined && failureLine === null
+  const fileSummary = filePath !== undefined && failureLine === null
   const revealLink = fileLink && onRevealChange !== undefined
   const toggleExpand = () => {
     setExpanded(v => !v)
@@ -210,7 +211,8 @@ export function ToolRow({
       onClick={openFile}
       onKeyDown={fileLinkKeyDown}
     >
-      {summaryText}
+      <FileIcon path={filePath ?? summaryText} />
+      <span className={css.fileLinkText}>{summaryText}</span>
     </button>
   )
   // The code variant's program renders through CodeBlock (shiki), so only its
@@ -243,6 +245,11 @@ export function ToolRow({
               revealLink ? (
                 <Tooltip label={t('row.revealChange')} side="bottom">{fileLinkButton}</Tooltip>
               ) : fileLinkButton
+            ) : fileSummary ? (
+              <span className={clsx(css.summary, css.fileSummary)}>
+                <FileIcon path={filePath} />
+                <span className={css.fileLinkText}>{summaryText}</span>
+              </span>
             ) : (
               <span
                 className={clsx(css.summary, failureLine !== null && css.errorSummary)}

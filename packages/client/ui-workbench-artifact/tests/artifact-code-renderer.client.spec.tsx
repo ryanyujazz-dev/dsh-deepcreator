@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-// ArtifactCodeRenderer: code-known paths (markdown included) render through
-// the line-numbered CodeSurface; unknown extensions keep the panel's plain
-// <pre> fallback verbatim.
+// ArtifactCodeRenderer: every text artifact renders through the line-numbered
+// CodeSurface. Known languages add syntax tokens; unknown extensions keep the
+// same Review-like row geometry with plain text content.
 
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, render } from '@testing-library/react'
@@ -28,12 +28,15 @@ describe('ArtifactCodeRenderer', () => {
     expect(container.querySelector('[data-code-surface]')?.getAttribute('data-code-surface-variant')).toBe('panel')
   })
 
-  it('keeps the plain pre fallback for unknown extensions', () => {
+  it('keeps Review-like numbered rows for unknown extensions without syntax tokens', () => {
     const { container } = render(
       <ArtifactCodeRenderer artifactId="build/logo.svg.txt" content={'raw\nbytes'} />,
     )
-    expect(container.querySelector('[data-code-surface]')).toBeNull()
-    const pre = container.querySelector('pre')
-    expect(pre?.textContent).toBe('raw\nbytes')
+    const surface = container.querySelector('[data-code-surface]')
+    expect(surface?.getAttribute('data-code-surface-variant')).toBe('panel')
+    expect(container.querySelector('pre')).toBeNull()
+    expect(container.querySelector('[data-code-token]')).toBeNull()
+    const gutters = [...container.querySelectorAll('[class*="_gutter_"]')]
+    expect(gutters.map(cell => cell.textContent)).toEqual(['1', '2'])
   })
 })

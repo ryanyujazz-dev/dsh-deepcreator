@@ -131,8 +131,9 @@ describe('ReadBlock rows', () => {
 
 describe('ReadBlock banner', () => {
   it('shows the label, the language, and the count note when the read is a window', () => {
-    const view = render(<ReadBlock label="src/a.ts" lang="ts" lines={lines(3, 41)} totalLines={180} />)
+    const view = render(<ReadBlock label="src/a.ts" filePath="/repo/src/a.ts" lang="ts" lines={lines(3, 41)} totalLines={180} />)
     expect(view.getByText('src/a.ts')).toBeTruthy()
+    expect(view.container.querySelector('[data-file-icon="typescript"]')).not.toBeNull()
     expect(view.getByText('ts')).toBeTruthy()
     expect(view.getByText('显示 3 / 180 行')).toBeTruthy()
   })

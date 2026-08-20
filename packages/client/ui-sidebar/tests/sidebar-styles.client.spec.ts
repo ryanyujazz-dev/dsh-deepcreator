@@ -34,11 +34,11 @@ describe('SidebarRoot.module.css', () => {
     expect(logoRow?.get('justify-content')).toBe('space-between')
     expect(logoRow?.get('padding')).toBe('0 0 0 7px')
     expect(logoRow?.get('margin')).toBe('0')
-    expect(declarations("[data-native-window-chrome='macos'] .logoRow")?.get('padding-left')).toBe('77px')
+    expect(declarations("[data-native-window-chrome='macos']:not([data-window-maximized]):not([data-window-fullscreen]) .logoRow")?.get('padding-left')).toBe('77px')
   })
 
   it('uses blank macOS brand-row space for dragging without swallowing its controls', () => {
-    expect(declarations("[data-native-window-chrome='macos'] .logoRow")?.get('-webkit-app-region'))
+    expect(declarations("[data-native-window-chrome='macos']:not([data-window-maximized]):not([data-window-fullscreen]) .logoRow")?.get('-webkit-app-region'))
       .toBe('drag')
     expect(declarations('.brand')?.get('flex')).toBe('0 1 auto')
     expect(declarations("[data-native-window-chrome='macos'] .brand")?.get('-webkit-app-region'))

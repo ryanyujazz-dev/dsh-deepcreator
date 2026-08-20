@@ -40,6 +40,8 @@ export interface WorkbenchPanelShellProps {
   tabs: readonly string[]
   /** Provider display names per tab id; unmapped tabs show their id. */
   tabLabels?: Readonly<Record<string, string>> | undefined
+  /** Provider file paths per tab id; only file-backed tabs receive file glyphs. */
+  tabFilePaths?: Readonly<Record<string, string>> | undefined
   /** Appended to the accessible name, e.g. "终端 · PowerShell". */
   titleSuffix?: string | undefined
   activeInstanceId?: string
@@ -67,7 +69,7 @@ export interface WorkbenchPanelShellProps {
  * geometry; margins, outline, Header, tabs, actions and Body live here.
  */
 export function WorkbenchPanelShell({
-  typeId, label, route, tabs, tabLabels, titleSuffix, activeInstanceId, supportsHome, focused,
+  typeId, label, route, tabs, tabLabels, tabFilePaths, titleSuffix, activeInstanceId, supportsHome, focused,
   backLabel, focusLabel, restoreLabel, closeGroupLabel, closeTabLabel,
   onShowHome, onActivateTab, onCloseTab, onHide, onFocus, onRestore,
   leftActions, rightActions, children, disconnected,
@@ -84,6 +86,7 @@ export function WorkbenchPanelShell({
           : <WorkbenchPanelTabs
               tabs={tabs}
               labels={tabLabels}
+              filePaths={tabFilePaths}
               {...(route === 'instance' && activeInstanceId !== undefined ? { activeTab: activeInstanceId } : {})}
               closeTabLabel={closeTabLabel}
               onActivateTab={onActivateTab}

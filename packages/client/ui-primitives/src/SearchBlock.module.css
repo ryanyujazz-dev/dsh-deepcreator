@@ -63,6 +63,8 @@
   white-space: pre;
 }
 
+.pathLine { display: flex; align-items: center; gap: 5px; }
+
 /* The 1-based line number ahead of a grep match line, dimmed so the match text
    stays the salient content. */
 .lineNumber {
@@ -73,7 +75,7 @@
    the collapse control. */
 .fileHeader {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
   width: 100%;
   min-height: var(--dsl-search-line-height);

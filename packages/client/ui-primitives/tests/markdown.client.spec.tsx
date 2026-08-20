@@ -173,6 +173,7 @@ describe('MarkdownText', () => {
     expect(mention.closest('code')).not.toBeNull()
     // The full path rides title, the same disambiguator the row's chips carry.
     expect(mention.getAttribute('title')).toBe('out/index.html')
+    expect(mention.querySelector('[data-file-icon="html"]')).not.toBeNull()
     fireEvent.click(mention)
     expect(opened).toEqual(['index.html'])
     // Exactly one live mention: the two inside anchors declined, and an

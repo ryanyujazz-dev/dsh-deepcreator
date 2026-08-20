@@ -1,10 +1,16 @@
 .empty { min-height: 100%; display: grid; place-content: center; gap: 5px; padding: 24px; box-sizing: border-box; color: var(--dsw-alias-label-tertiary); text-align: center; font-size: 12px; line-height: 18px; }
 .empty strong { color: var(--dsw-alias-label-secondary); font-size: 13px; font-weight: 500; }
 .tool, .browser, .review { display: flex; min-height: 100%; flex-direction: column; }
-.reviewBody { min-height: 0; flex: 1; overflow: visible; color: var(--dsw-alias-label-primary); background: var(--ds-code-background, var(--dsw-alias-bg-base)); }
-.reviewStatus { min-height: 34px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 10px; border-bottom: 1px solid var(--dsw-alias-border-l1); color: var(--dsw-alias-label-tertiary); background: var(--dsw-alias-bg-base); font-size: 10px; }
+.review {
+  --dsh-review-surface: var(--dsw-alias-bg-base);
+  --dsw-diff-fold-bg: color-mix(in srgb, var(--dsw-alias-label-primary) 2.5%, var(--dsh-review-surface));
+  background: var(--dsh-review-surface);
+}
+:global(body[data-ds-dark-theme]) .review { --dsh-review-surface: var(--dsw-specific-sidebar-fill); }
+.reviewBody { min-height: 0; flex: 1; overflow: visible; color: var(--dsw-alias-label-primary); background: var(--dsh-review-surface); }
+.reviewStatus { min-height: 34px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 10px; border-bottom: 1px solid var(--dsw-alias-border-l1); color: var(--dsw-alias-label-tertiary); background: var(--dsh-review-surface); font-size: 10px; }
 .reviewStatus strong { min-width: 0; overflow: hidden; color: var(--dsw-alias-label-secondary); font-size: 11px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
-.reviewMissed { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--dsw-alias-border-l1); background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-tertiary); font-size: 10px; line-height: 16px; }
+.reviewMissed { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--dsw-alias-border-l1); background: var(--dsh-review-surface); color: var(--dsw-alias-label-tertiary); font-size: 10px; line-height: 16px; }
 .reviewMissed code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--ds-font-family-code); font-style: normal; }
 .reviewBulkToggle.reviewBulkToggle > svg { width: 16px; height: 16px; }
 .fileList { min-width: 0; }
@@ -12,8 +18,8 @@
 .reviewFileContentCollapsed { display: none; }
 .reviewFileSkeleton { box-sizing: border-box; display: grid; place-items: center; border-bottom: 1px solid var(--dsw-alias-border-l1); color: var(--dsw-alias-label-tertiary); font-size: 10px; }
 .reviewFile + .reviewFile { border-top: 1px solid var(--dsw-alias-border-l1); }
-.reviewFileHeader { position: sticky; z-index: 3; top: 0; width: 100%; min-height: 36px; box-sizing: border-box; display: flex; align-items: center; gap: 5px; border: 0; border-bottom: 1px solid var(--dsw-alias-border-l1); padding: 0 10px; color: var(--dsw-alias-label-secondary); background: color-mix(in srgb, var(--ds-code-foreground, var(--dsw-alias-label-primary)) 5%, var(--ds-code-background, var(--dsw-alias-bg-base))); text-align: left; cursor: pointer; font-size: 11px; }
-.reviewFileHeader:hover { background: color-mix(in srgb, var(--ds-code-foreground, var(--dsw-alias-label-primary)) 8%, var(--ds-code-background, var(--dsw-alias-bg-base))); }
+.reviewFileHeader { position: sticky; z-index: 3; top: 0; width: 100%; min-height: 36px; box-sizing: border-box; display: flex; align-items: center; gap: 5px; border: 0; border-bottom: 1px solid var(--dsw-alias-border-l1); padding: 0 10px; color: var(--dsw-alias-label-secondary); background: color-mix(in srgb, var(--dsw-alias-label-primary) 5%, var(--dsh-review-surface)); text-align: left; cursor: pointer; font-size: 11px; }
+.reviewFileHeader:hover { background: color-mix(in srgb, var(--dsw-alias-label-primary) 8%, var(--dsh-review-surface)); }
 .reviewFileHeader:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: -2px; }
 .reviewFileHeader svg { flex: none; transition: transform 120ms ease; }
 .reviewFileChevronCollapsed { transform: rotate(-90deg); }
@@ -25,7 +31,7 @@
 .reviewFileError { color: var(--dsw-alias-label-error); }
 .diffLayer { min-width: 0; }
 .diffLayer + .diffLayer { border-top: 1px solid var(--dsw-alias-border-l1); }
-.diffLayerTitle { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 10px 5px 28px; border-bottom: 1px solid var(--dsw-alias-border-l1); background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-tertiary); font-size: 10px; line-height: 16px; text-transform: uppercase; letter-spacing: .04em; }
+.diffLayerTitle { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 10px 5px 28px; border-bottom: 1px solid var(--dsw-alias-border-l1); background: var(--dsh-review-surface); color: var(--dsw-alias-label-tertiary); font-size: 10px; line-height: 16px; text-transform: uppercase; letter-spacing: .04em; }
 .layerRefold { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; color: var(--dsw-alias-label-tertiary); background: transparent; cursor: pointer; }
 .layerRefold:hover { color: var(--dsw-alias-label-primary); background: transparent; }
 .reviewCounts { display: inline-flex; flex: none; gap: 5px; font-family: var(--ds-font-family-code); font-style: normal; }

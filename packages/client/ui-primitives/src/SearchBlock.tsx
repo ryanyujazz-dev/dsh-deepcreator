@@ -10,6 +10,7 @@
 
 import { useCallback, useState, type ReactNode } from 'react'
 import clsx from 'clsx'
+import { FileIcon } from './file-icons/FileIcon.tsx'
 import { headTailCap } from './head-tail-cap.ts'
 import { useCopyFeedback } from './use-copy-feedback.ts'
 import css from './SearchBlock.module.css'
@@ -214,7 +215,7 @@ export function SearchBlock(props: SearchBlockProps) {
   const tail = tailHeader === undefined ? naturalTail : naturalTail.slice(1)
 
   const renderRow = (row: SearchRow): ReactNode => {
-    if (row.type === 'path') return <div className={css.line}>{row.path}</div>
+    if (row.type === 'path') return <div className={clsx(css.line, css.pathLine)}><FileIcon path={row.path} /><span>{row.path}</span></div>
     if (row.type === 'match') {
       return (
         <div className={css.line}>
@@ -230,6 +231,7 @@ export function SearchBlock(props: SearchBlockProps) {
         aria-expanded={!row.collapsed}
         onClick={() => { toggleFile(row.index) }}
       >
+        <FileIcon path={row.path} />
         <span className={css.filePath}>{row.path}</span>
         <span className={css.fileCount}>{row.count}</span>
       </button>

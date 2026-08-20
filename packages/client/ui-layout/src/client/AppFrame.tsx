@@ -18,6 +18,14 @@ import { detectNativeWindowChrome } from './native-window-chrome.ts'
 import type { createLayoutStore } from './stores.ts'
 import css from './AppFrame.module.css'
 
+/** Zoom/fullscreen flags pushed by the macOS Electron main process. */
+interface DesktopWindowState { maximized: boolean; fullscreen: boolean }
+interface DesktopWindowBridge {
+  getState(): Promise<DesktopWindowState>
+  onStateChange(listener: (state: DesktopWindowState) => void): () => void
+}
+declare global { interface Window { deepcreatorWindow?: DesktopWindowBridge } }
+
 /** Full composed props: runtime share + child-slot render share + store share. */
 export type AppFrameProps =
   & PropsRuntime<'root'>
@@ -93,6 +101,22 @@ export function AppFrame({
 }: AppFrameProps) {
   const panels = useStore(s => s)
   const nativeWindowChrome = detectNativeWindowChrome(window.navigator.userAgent)
+  // macOS hides the traffic lights on a maximized or fullscreen window; the
+  // frame drops its fixed safe-area avoidance while either flag is set
+  // (AppFrame.module.css gates the macOS overrides with these markers).
+  const [windowState, setWindowState] = useState<DesktopWindowState>({ maximized: false, fullscreen: false })
+  useEffect(() => {
+    if (nativeWindowChrome !== 'macos') return
+    const bridge = window.deepcreatorWindow
+    if (bridge === undefined) return
+    let alive = true
+    void bridge.getState().then((state) => { if (alive) setWindowState(state) })
+    const off = bridge.onStateChange((state) => {
+      setWindowState(previous =>
+        previous.maximized === state.maximized && previous.fullscreen === state.fullscreen ? previous : state)
+    })
+    return () => { alive = false; off() }
+  }, [nativeWindowChrome])
   const detailsSession = useSessions((s) => {
     const current = s.current
     return current !== undefined && s.byId[current]?.blank === false ? current : undefined
@@ -176,6 +200,8 @@ export function AppFrame({
       data-dragging={dragging || undefined}
       data-details-focused={panels.detailsFocused || undefined}
       data-native-window-chrome={nativeWindowChrome}
+      data-window-maximized={windowState.maximized || undefined}
+      data-window-fullscreen={windowState.fullscreen || undefined}
     >
       <div className={css.sidebarCol}>
         {/* Render-site slot call with live concession output. The subtree

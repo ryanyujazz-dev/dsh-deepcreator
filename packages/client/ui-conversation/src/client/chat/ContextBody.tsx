@@ -6,7 +6,7 @@
 
 import type { ReactNode } from 'react'
 import type { ContextMessageNode, KnownContextForm } from '@deepseek-ai/dsh-client-runtime/client'
-import { JsonBlock } from '@ryanyujazz/dsh-client-ui-primitives'
+import { FileIcon, JsonBlock } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { ChatViewSlotProps } from '../contract/slots.ts'
 import css from './ContextBody.module.css'
 
@@ -256,6 +256,7 @@ export function InstructionsBody({ content, source, t }: {
       <ul className={css.files} data-context-files>
         {changes.map(change => (
           <li key={change.path} className={css.file} title={change.digest}>
+            <FileIcon path={change.path} />
             <span className={css.filePath}>{change.path}</span>
             <span className={css.fileAction}>
               {t(instructionAction(change.action, baseline))}

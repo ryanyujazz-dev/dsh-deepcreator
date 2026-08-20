@@ -7,8 +7,14 @@ export const THEME_PREFERENCES = ['light', 'dark', 'system'] as const
 
 /** Transcript typography sizes exposed by the Appearance settings row. */
 export const TRANSCRIPT_TEXT_SIZES = ['small', 'standard', 'large'] as const
-export const LIGHT_CODE_THEMES = ['deepcreator-light', 'github-light', 'one-light'] as const
-export const DARK_CODE_THEMES = ['deepcreator-dark', 'github-dark', 'one-dark'] as const
+export const LIGHT_CODE_THEMES = [
+  'deepcreator-light', 'github-light', 'one-light',
+  'catppuccin-light', 'rose-pine-light', 'vitesse-light', 'kanagawa-light', 'everforest-light', 'tokyo-night-light',
+] as const
+export const DARK_CODE_THEMES = [
+  'deepcreator-dark', 'github-dark', 'one-dark',
+  'catppuccin-dark', 'rose-pine-dark', 'vitesse-dark', 'kanagawa-dark', 'everforest-dark', 'tokyo-night-dark',
+] as const
 export const CODE_FONTS = ['system', 'jetbrains-mono', 'fira-code', 'source-code-pro'] as const
 
 /** Settings namespace owned by the theme plugin. */

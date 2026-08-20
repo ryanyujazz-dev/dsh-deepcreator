@@ -58,6 +58,13 @@ describe('conversation typography', () => {
     }
   })
 
+  it('pins drafting status text to the active transcript size instead of the exported 16px fallback', () => {
+    const drafting = css('DraftingToolRow.module.css')
+    expect(drafting).toContain('font-size: var(--dsw-font-markdown-base-font-size, 14px);')
+    expect(drafting).toContain('line-height: var(--dsw-font-markdown-base-line-height, 22px);')
+    expect(drafting).toContain('font-weight: 400;')
+  })
+
   it('keeps expanded structured context on the compact detail role', () => {
     expect(css('ContextInjectionRow.module.css')).toContain(
       'font: var(--dsw-font-markdown-code-block-small);',
