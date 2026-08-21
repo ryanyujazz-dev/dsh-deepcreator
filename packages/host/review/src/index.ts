@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
-import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { access, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { homedir, tmpdir } from 'node:os'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -8,14 +8,14 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Session } from '@deepseek-ai/dsh-session'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {
-  ReviewChecksResult, ReviewDiffResult, ReviewHistoryResult, ReviewPatchLayer, ReviewScope,
+  ReviewChecksResult, ReviewDiffResult, ReviewHistoryResult, ReviewPatchLayer, ReviewScope, ReviewWorkspaceKind,
   ReviewStatusResult, ReviewSummaryResult, ReviewTurnFile, ReviewTurnHistory, ReviewUndoTurnResult,
 } from './types.ts'
 
 export type {
   ReviewChecksResult, ReviewDiffResult, ReviewFileStatus, ReviewFileSummary, ReviewHistoryResult,
   ReviewPatchLayer, ReviewScope, ReviewSourceSnapshot, ReviewStatusResult, ReviewSummaryResult,
-  ReviewTurnFile, ReviewTurnFileState, ReviewTurnHistory, ReviewUndoTurnResult,
+  ReviewTurnFile, ReviewTurnFileState, ReviewTurnHistory, ReviewUndoTurnResult, ReviewWorkspaceKind,
 } from './types.ts'
 
 const exec = promisify(execFile)
@@ -32,6 +32,15 @@ interface TurnManifest {
   files: ReviewTurnFile[]
 }
 interface StoredTurn { ref: string; commit: string; tree: string; parent?: string; manifest: TurnManifest }
+interface ReviewRepository {
+  kind: ReviewWorkspaceKind
+  /** Path exposed to the Client and used as the file-path boundary. */
+  root: string
+  /** Git object database root: the real repository or a DSH-owned bare repository. */
+  repository: string
+  /** Worktree used by filesystem snapshots; equal to root for both backends. */
+  workspace: string
+}
 
 declare module '@deepseek-ai/cordis' { interface Context { review: ReviewService } }
 
@@ -44,18 +53,32 @@ function isWithin(parent: string, child: string): boolean {
   return rel === '' || (!isAbsolute(rel) && rel !== '..' && !rel.startsWith(`..${sep}`))
 }
 
-async function repositoryFor(session: Session): Promise<{ workspace: string; repository: string }> {
+function filesystemRepositoryPath(session: Session): string {
+  const id = String(session.id)
+  if (!/^[A-Za-z0-9._-]+$/.test(id)) throw new Error('Invalid session identity.')
+  return resolve(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'deepcreator', 'review', id, 'repo.git')
+}
+
+async function repositoryFor(session: Session): Promise<ReviewRepository> {
   const cwd = session.header.cwd
   if (cwd === undefined) throw new ReviewBoundaryError('NO_WORKSPACE', 'This session has no workspace.')
   const workspace = await realpath(cwd)
   let stdout: string
-  try { ({ stdout } = await exec('git', ['-C', workspace, 'rev-parse', '--show-toplevel'], { encoding: 'utf8' })) }
-  catch { throw new ReviewBoundaryError('NOT_REPOSITORY', 'The session workspace is not inside a Git repository.') }
-  const repository = await realpath(stdout.trim())
-  if (!isWithin(repository, workspace) && !isWithin(workspace, repository)) {
-    throw new ReviewBoundaryError('OUTSIDE_WORKSPACE', 'Repository root is unrelated to the session workspace.')
+  try {
+    ({ stdout } = await exec('git', ['-C', workspace, 'rev-parse', '--show-toplevel'], { encoding: 'utf8' }))
+    const repository = await realpath(stdout.trim())
+    if (!isWithin(repository, workspace) && !isWithin(workspace, repository)) {
+      throw new ReviewBoundaryError('OUTSIDE_WORKSPACE', 'Repository root is unrelated to the session workspace.')
+    }
+    return { kind: 'git', root: repository, repository, workspace: repository }
+  } catch (error) {
+    if (error instanceof ReviewBoundaryError) throw error
   }
-  return { workspace, repository }
+  const repository = filesystemRepositoryPath(session)
+  await mkdir(resolve(repository, '..'), { recursive: true })
+  try { await access(join(repository, 'HEAD')) }
+  catch { await exec('git', ['init', '--bare', repository], { encoding: 'utf8', maxBuffer: MAX_BUFFER }) }
+  return { kind: 'filesystem', root: workspace, repository, workspace }
 }
 
 function boundaryFailure(error: unknown): { ok: false; code: 'NO_WORKSPACE' | 'NOT_REPOSITORY' | 'OUTSIDE_WORKSPACE'; message: string } {
@@ -63,18 +86,24 @@ function boundaryFailure(error: unknown): { ok: false; code: 'NO_WORKSPACE' | 'N
   return { ok: false, code: 'NOT_REPOSITORY', message: error instanceof Error ? error.message : String(error) }
 }
 
-async function git(repository: string, args: string[], options: { env?: NodeJS.ProcessEnv } = {}): Promise<string> {
-  const { stdout } = await exec('git', ['-C', repository, ...args], {
+function gitPrefix(repository: ReviewRepository): string[] {
+  return repository.kind === 'git'
+    ? ['-C', repository.repository]
+    : [`--git-dir=${repository.repository}`, `--work-tree=${repository.workspace}`]
+}
+
+async function git(repository: ReviewRepository, args: string[], options: { env?: NodeJS.ProcessEnv } = {}): Promise<string> {
+  const { stdout } = await exec('git', [...gitPrefix(repository), ...args], {
     encoding: 'utf8', maxBuffer: MAX_BUFFER, ...(options.env === undefined ? {} : { env: options.env }),
   })
   return stdout
 }
 
-async function gitMaybe(repository: string, args: string[]): Promise<string | null> {
+async function gitMaybe(repository: ReviewRepository, args: string[]): Promise<string | null> {
   try { return await git(repository, args) } catch { return null }
 }
 
-async function gitDiff(repository: string, args: string[]): Promise<string> {
+async function gitDiff(repository: ReviewRepository, args: string[]): Promise<string> {
   try { return await git(repository, ['--literal-pathspecs', 'diff', ...args]) }
   catch (error) {
     const failure = error as { code?: number; stdout?: string }
@@ -165,23 +194,38 @@ function safeRef(session: Session, turn: number): string {
   return `${REF_ROOT}/${id}/${turn}`
 }
 
-async function head(repository: string): Promise<string | null> {
+async function head(repository: ReviewRepository): Promise<string | null> {
+  if (repository.kind === 'filesystem') return null
   return (await gitMaybe(repository, ['rev-parse', '--verify', 'HEAD']))?.trim() || null
 }
 
-async function snapshotWorktree(repository: string): Promise<string> {
+async function snapshotWorktree(repository: ReviewRepository): Promise<string> {
   const temporary = await mkdtemp(join(tmpdir(), 'dsh-review-index-'))
   const indexPath = join(temporary, 'index')
   const env = { ...process.env, GIT_INDEX_FILE: indexPath }
   try {
-    if (await head(repository) === null) await git(repository, ['read-tree', '--empty'], { env })
+    if (repository.kind === 'filesystem' || await head(repository) === null) await git(repository, ['read-tree', '--empty'], { env })
     else await git(repository, ['read-tree', 'HEAD'], { env })
-    await git(repository, ['add', '-A', '--', '.'], { env })
+    const paths = ['.']
+    if (repository.kind === 'filesystem') {
+      const configuredHome = resolve(process.env.DSH_HOME ?? join(homedir(), '.dsh'))
+      const dshHome = await realpath(configuredHome).catch(() => configuredHome)
+      // A workspace may be the user's home (or even DSH_HOME itself). Never
+      // let the snapshot ingest its own persistent object database.
+      const privateState = isWithin(repository.root, dshHome) && relative(repository.root, dshHome) !== ''
+        ? dshHome
+        : resolve(dshHome, 'deepcreator', 'review')
+      if (isWithin(repository.root, privateState)) {
+        const ignored = relative(repository.root, privateState).split(sep).join('/')
+        if (ignored !== '') paths.push(`:(exclude)${ignored}`, `:(exclude)${ignored}/**`)
+      }
+    }
+    await git(repository, ['add', '-A', '--', ...paths], { env })
     return (await git(repository, ['write-tree'], { env })).trim()
   } finally { await rm(temporary, { recursive: true, force: true }) }
 }
 
-async function emptyTree(repository: string): Promise<string> {
+async function emptyTree(repository: ReviewRepository): Promise<string> {
   const temporary = await mkdtemp(join(tmpdir(), 'dsh-review-empty-index-'))
   const env = { ...process.env, GIT_INDEX_FILE: join(temporary, 'index') }
   try {
@@ -190,11 +234,11 @@ async function emptyTree(repository: string): Promise<string> {
   } finally { await rm(temporary, { recursive: true, force: true }) }
 }
 
-async function indexTree(repository: string): Promise<string> {
+async function indexTree(repository: ReviewRepository): Promise<string> {
   return (await git(repository, ['write-tree'])).trim()
 }
 
-async function partialReverseTree(repository: string, startTree: string, endTree: string, paths: string[]): Promise<string> {
+async function partialReverseTree(repository: ReviewRepository, startTree: string, endTree: string, paths: string[]): Promise<string> {
   const patch = await gitDiff(repository, ['--binary', '--full-index', startTree, endTree, '--', ...paths])
   if (patch === '') return endTree
   const temporary = await mkdtemp(join(tmpdir(), 'dsh-review-reverse-index-'))
@@ -209,7 +253,7 @@ async function partialReverseTree(repository: string, startTree: string, endTree
   } finally { await rm(temporary, { recursive: true, force: true }) }
 }
 
-async function mergeTrees(repository: string, base: string, current: string, target: string): Promise<string | null> {
+async function mergeTrees(repository: ReviewRepository, base: string, current: string, target: string): Promise<string | null> {
   try {
     const output = await git(repository, ['merge-tree', '--write-tree', '--merge-base', base, current, target])
     const tree = output.trim().split('\n')[0]
@@ -225,7 +269,7 @@ function commitEnvironment(): NodeJS.ProcessEnv {
   }
 }
 
-async function writeTurn(repository: string, ref: string, tree: string, manifest: TurnManifest, parent?: string): Promise<string> {
+async function writeTurn(repository: ReviewRepository, ref: string, tree: string, manifest: TurnManifest, parent?: string): Promise<string> {
   const args = ['commit-tree', tree, '-m', JSON.stringify(manifest)]
   if (parent !== undefined) args.push('-p', parent)
   const commit = (await git(repository, args, { env: commitEnvironment() })).trim()
@@ -240,7 +284,7 @@ function isManifest(value: unknown): value is TurnManifest {
     && (row.phase === 'start' || row.phase === 'end') && Array.isArray(row.files)
 }
 
-async function readTurn(repository: string, ref: string): Promise<StoredTurn | null> {
+async function readTurn(repository: ReviewRepository, ref: string): Promise<StoredTurn | null> {
   const commit = (await gitMaybe(repository, ['rev-parse', '--verify', ref]))?.trim()
   if (commit === undefined || commit === null || commit === '') return null
   const raw = await git(repository, ['cat-file', '-p', commit])
@@ -255,19 +299,19 @@ async function readTurn(repository: string, ref: string): Promise<StoredTurn | n
   return isManifest(decoded) ? { ref, commit, tree, ...(parent === undefined ? {} : { parent }), manifest: decoded } : null
 }
 
-async function treeText(repository: string, tree: string, path: string): Promise<string | null> {
+async function treeText(repository: ReviewRepository, tree: string, path: string): Promise<string | null> {
   return await gitMaybe(repository, ['show', `${tree}:${path}`])
 }
 
-async function gitText(repository: string, revision: 'HEAD' | ':', path: string): Promise<string | null> {
+async function gitText(repository: ReviewRepository, revision: 'HEAD' | ':', path: string): Promise<string | null> {
   return await gitMaybe(repository, ['show', revision === ':' ? `:${path}` : `${revision}:${path}`])
 }
 
-async function worktreeText(repository: string, path: string): Promise<string | null> {
-  const target = resolve(repository, path)
+async function worktreeText(repository: ReviewRepository, path: string): Promise<string | null> {
+  const target = resolve(repository.root, path)
   try {
     const canonical = await realpath(target)
-    if (!isWithin(repository, canonical)) throw new ReviewBoundaryError('OUTSIDE_WORKSPACE', 'Review path resolves outside the repository.')
+    if (!isWithin(repository.root, canonical)) throw new ReviewBoundaryError('OUTSIDE_WORKSPACE', 'Review path resolves outside the workspace.')
     return await readFile(canonical, 'utf8')
   } catch (error) {
     if (error instanceof ReviewBoundaryError) throw error
@@ -286,6 +330,8 @@ function turnState(files: readonly ReviewTurnFile[]): ReviewTurnHistory['state']
 export class ReviewService extends TypertRemoteService {
   static inject = ['sessions']
   private pendingSnapshots = new Map<string, Promise<void>>()
+  /** One UI refresh fans out to history/status/summary/diff; share its live tree. */
+  private liveSnapshots = new Map<string, { expires: number; value: StoredTurn | null }>()
 
   constructor(ctx: Context) {
     super(ctx, 'review')
@@ -297,8 +343,14 @@ export class ReviewService extends TypertRemoteService {
       await this.captureEnd(agent.session, turn)
     })
     ctx.on('session/event', (session, event) => {
+      this.invalidateLiveSnapshots(session)
       if (event.type === 'turn/end') void this.captureEnd(session, event.data.turn)
     })
+  }
+
+  private invalidateLiveSnapshots(session: Session): void {
+    const prefix = `${REF_ROOT}/${String(session.id)}/`
+    for (const ref of this.liveSnapshots.keys()) if (ref.startsWith(prefix)) this.liveSnapshots.delete(ref)
   }
 
   private enqueue(key: string, task: () => Promise<void>): Promise<void> {
@@ -311,8 +363,8 @@ export class ReviewService extends TypertRemoteService {
   }
 
   private async captureStart(session: Session, turn: number): Promise<void> {
-    let repository: string
-    try { ({ repository } = await repositoryFor(session)) } catch { return }
+    let repository: ReviewRepository
+    try { repository = await repositoryFor(session) } catch { return }
     const ref = safeRef(session, turn)
     await this.enqueue(ref, async () => {
       if (await readTurn(repository, ref) !== null) return
@@ -324,8 +376,8 @@ export class ReviewService extends TypertRemoteService {
   }
 
   private async captureEnd(session: Session, turn: number): Promise<void> {
-    let repository: string
-    try { ({ repository } = await repositoryFor(session)) } catch { return }
+    let repository: ReviewRepository
+    try { repository = await repositoryFor(session) } catch { return }
     const ref = safeRef(session, turn)
     await this.enqueue(ref, async () => {
       let start = await readTurn(repository, ref)
@@ -352,28 +404,30 @@ export class ReviewService extends TypertRemoteService {
         version: 1, sessionId: String(session.id), turn, phase: 'end', head: start.manifest.head, files: measured,
       }, start.commit)
       const completed = await readTurn(repository, ref)
-      if (completed !== null) await this.reconcile(repository, completed)
+      if (completed !== null && repository.kind === 'git') await this.reconcile(repository, completed)
     })
   }
 
-  private async storedTurns(session: Session, repository: string): Promise<StoredTurn[]> {
+  private async storedTurns(session: Session, repository: ReviewRepository): Promise<StoredTurn[]> {
     const prefix = `${REF_ROOT}/${String(session.id)}/`
     const refs = (await gitMaybe(repository, ['for-each-ref', '--format=%(refname)', prefix]))?.trim().split('\n').filter(Boolean) ?? []
     const turns = (await Promise.all(refs.map(ref => readTurn(repository, ref))))
-      .filter((turn): turn is StoredTurn => turn !== null && turn.manifest.phase === 'end')
+      .filter((turn): turn is StoredTurn => turn !== null)
     turns.sort((left, right) => right.manifest.turn - left.manifest.turn)
     return turns
   }
 
   /** Remove every private snapshot ref owned by a deleted session. */
   async deleteSessionSnapshots(session: Session): Promise<void> {
-    const { repository } = await repositoryFor(session)
+    const repository = await repositoryFor(session)
     const prefix = `${REF_ROOT}/${String(session.id)}/`
     const refs = (await gitMaybe(repository, ['for-each-ref', '--format=%(refname)', prefix]))?.trim().split('\n').filter(Boolean) ?? []
     for (const ref of refs) await git(repository, ['update-ref', '-d', ref])
+    await rm(resolve(filesystemRepositoryPath(session), '..'), { recursive: true, force: true })
   }
 
-  private async reconcile(repository: string, input: StoredTurn): Promise<StoredTurn | null> {
+  private async reconcile(repository: ReviewRepository, input: StoredTurn): Promise<StoredTurn | null> {
+    if (repository.kind === 'filesystem') return input
     let stored = input
     if (stored.parent !== undefined && stored.manifest.files.some(file => file.additions === undefined || file.deletions === undefined)) {
       // Active refs from versions before line-count persistence still retain
@@ -437,24 +491,66 @@ export class ReviewService extends TypertRemoteService {
     return { ...stored, commit, manifest }
   }
 
+  /** Compare an open turn's retained start tree with the live worktree. */
+  private async materializeCurrent(repository: ReviewRepository, start: StoredTurn): Promise<StoredTurn | null> {
+    if (start.manifest.phase !== 'start') return start
+    const cached = this.liveSnapshots.get(start.ref)
+    if (cached !== undefined && cached.expires > Date.now()) return cached.value
+    const endTree = await snapshotWorktree(repository)
+    const files = parseNameStatus(await gitDiff(repository, ['--name-status', '-z', '--find-renames', start.tree, endTree]))
+    if (files.length === 0) {
+      this.liveSnapshots.set(start.ref, { expires: Date.now() + 750, value: null })
+      return null
+    }
+    const stats = parseNumstat(await gitDiff(repository, ['--numstat', '-z', '--find-renames', start.tree, endTree]))
+    const value: StoredTurn = {
+      ...start,
+      tree: endTree,
+      parent: start.commit,
+      manifest: { ...start.manifest, phase: 'end', files: attachNumstat(files, stats) },
+    }
+    this.liveSnapshots.set(start.ref, { expires: Date.now() + 750, value })
+    return value
+  }
+
+  private async selectedTurn(session: Session, repository: ReviewRepository, turn: number): Promise<{ stored: StoredTurn; current: boolean } | null> {
+    const retained = (await this.storedTurns(session, repository)).find(row => row.manifest.turn === turn)
+    if (retained === undefined) return null
+    if (retained.manifest.phase === 'start') {
+      const current = await this.materializeCurrent(repository, retained)
+      return current === null ? null : { stored: current, current: true }
+    }
+    const stored = await this.reconcile(repository, retained)
+    return stored === null ? null : { stored, current: false }
+  }
+
   @Remote('history')
   async history(session: Session): Promise<ReviewHistoryResult> {
-    let repository: string
-    try { ({ repository } = await repositoryFor(session)) } catch (error) { return boundaryFailure(error) }
+    let repository: ReviewRepository
+    try { repository = await repositoryFor(session) } catch (error) { return boundaryFailure(error) }
     try {
-      const turns = (await Promise.all((await this.storedTurns(session, repository)).map(turn => this.reconcile(repository, turn))))
-        .filter((turn): turn is StoredTurn => turn !== null)
-      const latestActive = turns.find(turn => turn.manifest.files.some(file => file.state === 'pending'))?.manifest.turn
+      const turns = (await Promise.all((await this.storedTurns(session, repository)).map(async retained => {
+        if (retained.manifest.phase === 'start') {
+          const current = await this.materializeCurrent(repository, retained)
+          return current === null ? null : { stored: current, current: true }
+        }
+        const stored = await this.reconcile(repository, retained)
+        return stored === null ? null : { stored, current: false }
+      }))).filter((turn): turn is { stored: StoredTurn; current: boolean } => turn !== null)
+      const latestActive = repository.kind === 'git'
+        ? turns.find(turn => !turn.current && turn.stored.manifest.files.some(file => file.state === 'pending'))?.stored.manifest.turn
+        : undefined
       return {
-        ok: true, repositoryRoot: repository, head: await head(repository),
-        turns: turns.map(({ manifest }) => ({
+        ok: true, repositoryRoot: repository.root, workspaceKind: repository.kind, head: await head(repository),
+        turns: turns.map(({ stored: { manifest }, current }) => ({
           turn: manifest.turn,
+          ...(current ? { current: true } : {}),
           totalFiles: manifest.files.length,
           remainingFiles: manifest.files.filter(file => file.state === 'pending').length,
           additions: manifest.files.reduce((sum, file) => sum + (file.additions ?? 0), 0),
           deletions: manifest.files.reduce((sum, file) => sum + (file.deletions ?? 0), 0),
           state: turnState(manifest.files),
-          undoable: manifest.turn === latestActive,
+          undoable: repository.kind === 'git' && !current && manifest.turn === latestActive,
           files: manifest.files,
         })),
       }
@@ -463,39 +559,50 @@ export class ReviewService extends TypertRemoteService {
 
   @Remote('status')
   async status(session: Session, scope?: ReviewScope): Promise<ReviewStatusResult> {
-    let repository: string
-    try { ({ repository } = await repositoryFor(session)) } catch (error) { return boundaryFailure(error) }
+    let repository: ReviewRepository
+    try { repository = await repositoryFor(session) } catch (error) { return boundaryFailure(error) }
     try {
       const selected: ReviewScope = scope ?? 'uncommitted'
-      const raw = parsePorcelainStatus(await git(repository, ['status', '--porcelain=v1', '--branch', '-z']))
+      if (repository.kind === 'filesystem' && typeof selected === 'string') {
+        return { ok: true, repositoryRoot: repository.root, workspaceKind: repository.kind, branch: '', scope: selected, files: [] }
+      }
+      const raw = repository.kind === 'git'
+        ? parsePorcelainStatus(await git(repository, ['status', '--porcelain=v1', '--branch', '-z']))
+        : { branch: '', files: [] }
       if (typeof selected === 'object') {
-        const retained = (await this.storedTurns(session, repository)).find(row => row.manifest.turn === selected.turn)
-        const stored = retained === undefined ? undefined : await this.reconcile(repository, retained)
-        if (stored === undefined || stored === null) return { ok: false, code: 'TURN_NOT_FOUND', message: `Turn ${selected.turn} has no retained changes.` }
+        const selectedTurn = await this.selectedTurn(session, repository, selected.turn)
+        if (selectedTurn === null) return { ok: false, code: 'TURN_NOT_FOUND', message: `Turn ${selected.turn} has no retained changes.` }
+        const { stored } = selectedTurn
         const files = stored.manifest.files.filter(file => file.state === 'pending').map(file => ({
           path: file.path, ...(file.oldPath === undefined ? {} : { oldPath: file.oldPath }), index: ' ', workingTree: 'M',
         }))
-        return { ok: true, repositoryRoot: repository, branch: raw.branch, scope: selected, files }
+        return { ok: true, repositoryRoot: repository.root, workspaceKind: repository.kind, branch: raw.branch, scope: selected, files }
       }
       const files = raw.files.filter(file => selected === 'uncommitted'
         || (selected === 'staged' ? file.index !== ' ' && file.index !== '?' : file.workingTree !== ' ' || file.index === '?'))
-      return { ok: true, repositoryRoot: repository, branch: raw.branch, scope: selected, files }
+      return { ok: true, repositoryRoot: repository.root, workspaceKind: repository.kind, branch: raw.branch, scope: selected, files }
     } catch (error) { return { ok: false, code: 'READ_FAILED', message: error instanceof Error ? error.message : String(error) } }
   }
 
   @Remote('summary')
   async summary(session: Session, scope?: ReviewScope): Promise<ReviewSummaryResult> {
-    let repository: string
-    try { ({ repository } = await repositoryFor(session)) } catch (error) { return boundaryFailure(error) }
+    let repository: ReviewRepository
+    try { repository = await repositoryFor(session) } catch (error) { return boundaryFailure(error) }
     try {
       const selected: ReviewScope = scope ?? 'uncommitted'
+      if (repository.kind === 'filesystem' && typeof selected === 'string') {
+        return {
+          ok: true, repositoryRoot: repository.root, workspaceKind: repository.kind,
+          scope: selected, additions: 0, deletions: 0, files: [],
+        }
+      }
       let startTree: string
       let endTree: string
       let files: Array<{ path: string; oldPath?: string }>
       if (typeof selected === 'object') {
-        const retained = (await this.storedTurns(session, repository)).find(row => row.manifest.turn === selected.turn)
-        const stored = retained === undefined ? undefined : await this.reconcile(repository, retained)
-        if (stored === undefined || stored === null || stored.parent === undefined) {
+        const selectedTurn = await this.selectedTurn(session, repository, selected.turn)
+        const stored = selectedTurn?.stored
+        if (stored === undefined || stored.parent === undefined) {
           return { ok: false, code: 'TURN_NOT_FOUND', message: `Turn ${selected.turn} has no retained changes.` }
         }
         startTree = (await git(repository, ['show', '-s', '--format=%T', stored.parent])).trim()
@@ -522,7 +629,10 @@ export class ReviewService extends TypertRemoteService {
         }
       }
       if (files.length === 0) {
-        return { ok: true, repositoryRoot: repository, scope: selected, additions: 0, deletions: 0, files: [] }
+        return {
+          ok: true, repositoryRoot: repository.root, workspaceKind: repository.kind,
+          scope: selected, additions: 0, deletions: 0, files: [],
+        }
       }
       const paths = files.flatMap(file => [file.oldPath, file.path].filter((path): path is string => path !== undefined))
       const stats = parseNumstat(await gitDiff(repository, ['--numstat', '-z', '--find-renames', startTree, endTree, '--', ...paths]))
@@ -532,7 +642,8 @@ export class ReviewService extends TypertRemoteService {
       })
       return {
         ok: true,
-        repositoryRoot: repository,
+        repositoryRoot: repository.root,
+        workspaceKind: repository.kind,
         scope: selected,
         additions: summarized.reduce((sum, file) => sum + file.additions, 0),
         deletions: summarized.reduce((sum, file) => sum + file.deletions, 0),
@@ -543,26 +654,40 @@ export class ReviewService extends TypertRemoteService {
 
   @Remote('diff')
   async diff(session: Session, path: string, scope?: ReviewScope): Promise<ReviewDiffResult> {
-    let repository: string
-    try { ({ repository } = await repositoryFor(session)) } catch (error) { return boundaryFailure(error) }
+    let repository: ReviewRepository
+    try { repository = await repositoryFor(session) } catch (error) { return boundaryFailure(error) }
     try {
       const selected: ReviewScope = scope ?? 'uncommitted'
       if (isAbsolute(path)) return { ok: false, code: 'OUTSIDE_REPOSITORY', message: 'Review path must be repository-relative.' }
-      const target = resolve(repository, path)
-      const rel = relative(repository, target)
-      if (!isWithin(repository, target)) return { ok: false, code: 'OUTSIDE_REPOSITORY', message: 'Review path is outside the repository.' }
+      const target = resolve(repository.root, path)
+      const rel = relative(repository.root, target)
+      if (!isWithin(repository.root, target)) return { ok: false, code: 'OUTSIDE_REPOSITORY', message: 'Review path is outside the workspace.' }
+      if (repository.kind === 'filesystem' && typeof selected === 'string') {
+        return {
+          ok: true, repositoryRoot: repository.root, workspaceKind: repository.kind,
+          scope: selected, path: rel, layers: [],
+        }
+      }
       if (typeof selected === 'object') {
-        const retained = (await this.storedTurns(session, repository)).find(row => row.manifest.turn === selected.turn)
-        const stored = retained === undefined ? undefined : await this.reconcile(repository, retained)
-        if (stored === undefined || stored === null) return { ok: false, code: 'TURN_NOT_FOUND', message: `Turn ${selected.turn} has no retained changes.` }
+        const selectedTurn = await this.selectedTurn(session, repository, selected.turn)
+        const stored = selectedTurn?.stored
+        if (stored === undefined) return { ok: false, code: 'TURN_NOT_FOUND', message: `Turn ${selected.turn} has no retained changes.` }
         // A parentless record is a reverted tombstone. Its heavy start/end
         // snapshots have already been released, so the historical scope is
         // intentionally empty rather than an unavailable/error state.
         if (stored.parent === undefined) {
-          return { ok: true, repositoryRoot: repository, scope: selected, path: rel, layers: [] }
+          return {
+            ok: true, repositoryRoot: repository.root, workspaceKind: repository.kind,
+            scope: selected, path: rel, layers: [],
+          }
         }
         const file = stored.manifest.files.find(file => file.path === rel || file.oldPath === rel)
-        if (file === undefined || file.state !== 'pending') return { ok: true, repositoryRoot: repository, scope: selected, path: rel, layers: [] }
+        if (file === undefined || file.state !== 'pending') {
+          return {
+            ok: true, repositoryRoot: repository.root, workspaceKind: repository.kind,
+            scope: selected, path: rel, layers: [],
+          }
+        }
         const oldPath = file.oldPath ?? file.path
         const startTree = (await git(repository, ['show', '-s', '--format=%T', stored.parent])).trim()
         const patch = await gitDiff(repository, ['--find-renames', '--find-copies', '--unified=3', startTree, stored.tree, '--', oldPath, file.path])
@@ -571,7 +696,10 @@ export class ReviewService extends TypertRemoteService {
           oldSource: { revision: 'turn-start', text: await treeText(repository, startTree, oldPath) },
           newSource: { revision: 'turn-end', text: await treeText(repository, stored.tree, file.path) },
         }]
-        return { ok: true, repositoryRoot: repository, scope: selected, path: file.path, ...(file.oldPath === undefined ? {} : { oldPath: file.oldPath }), layers }
+        return {
+          ok: true, repositoryRoot: repository.root, workspaceKind: repository.kind,
+          scope: selected, path: file.path, ...(file.oldPath === undefined ? {} : { oldPath: file.oldPath }), layers,
+        }
       }
       const raw = parsePorcelainStatus(await git(repository, ['status', '--porcelain=v1', '--branch', '-z']))
       const status = raw.files.find(file => file.path === rel || file.oldPath === rel)
@@ -596,16 +724,23 @@ export class ReviewService extends TypertRemoteService {
           : await gitDiff(repository, [baseline, '--find-renames', '--find-copies', '--unified=3', '--', oldPath, rel])
         if (patch !== '') layer = { kind: 'uncommitted', patch, oldSource: { revision: 'head', text: headSource }, newSource: { revision: 'worktree', text: worktree } }
       }
-      return { ok: true, repositoryRoot: repository, scope: selected, path: rel, ...(oldPath === rel ? {} : { oldPath }), layers: layer === undefined ? [] : [layer] }
+      return {
+        ok: true, repositoryRoot: repository.root, workspaceKind: repository.kind,
+        scope: selected, path: rel, ...(oldPath === rel ? {} : { oldPath }), layers: layer === undefined ? [] : [layer],
+      }
     } catch (error) { return { ok: false, code: 'READ_FAILED', message: error instanceof Error ? error.message : String(error) } }
   }
 
   @Remote('undoTurn')
   async undoTurn(session: Session, turn: number): Promise<ReviewUndoTurnResult> {
-    let repository: string
-    try { ({ repository } = await repositoryFor(session)) } catch (error) { return boundaryFailure(error) }
+    let repository: ReviewRepository
+    try { repository = await repositoryFor(session) } catch (error) { return boundaryFailure(error) }
+    if (repository.kind === 'filesystem') {
+      return { ok: false, code: 'NOT_REPOSITORY', message: 'Undo requires a Git workspace.' }
+    }
     try {
-      const turns = (await Promise.all((await this.storedTurns(session, repository)).map(row => this.reconcile(repository, row))))
+      const completed = (await this.storedTurns(session, repository)).filter(row => row.manifest.phase === 'end')
+      const turns = (await Promise.all(completed.map(row => this.reconcile(repository, row))))
         .filter((turn): turn is StoredTurn => turn !== null)
       const latest = turns.find(row => row.manifest.files.some(file => file.state === 'pending'))
       const stored = turns.find(row => row.manifest.turn === turn)
@@ -651,20 +786,26 @@ export class ReviewService extends TypertRemoteService {
       const files = stored.manifest.files.map(file => file.state === 'pending' ? { ...file, state: 'reverted' as const } : file)
       const tree = await emptyTree(repository)
       await writeTurn(repository, stored.ref, tree, { ...stored.manifest, head: await head(repository), files })
-      return { ok: true, repositoryRoot: repository, turn, revertedFiles: pending.map(file => file.path) }
+      return { ok: true, repositoryRoot: repository.root, turn, revertedFiles: pending.map(file => file.path) }
     } catch (error) { return { ok: false, code: 'APPLY_FAILED', message: error instanceof Error ? error.message : String(error) } }
   }
 
   @Remote('checks')
   async checks(session: Session): Promise<ReviewChecksResult> {
     try {
-      const { repository } = await repositoryFor(session)
+      const repository = await repositoryFor(session)
+      if (repository.kind === 'filesystem') {
+        return { ok: true, repositoryRoot: repository.root, workspaceKind: repository.kind, clean: true, output: '' }
+      }
       try {
         const output = await git(repository, ['diff', '--check'])
-        return { ok: true, repositoryRoot: repository, clean: true, output }
+        return { ok: true, repositoryRoot: repository.root, workspaceKind: repository.kind, clean: true, output }
       } catch (error) {
         const failure = error as { stdout?: string; stderr?: string }
-        return { ok: true, repositoryRoot: repository, clean: false, output: `${failure.stdout ?? ''}${failure.stderr ?? ''}` }
+        return {
+          ok: true, repositoryRoot: repository.root, workspaceKind: repository.kind,
+          clean: false, output: `${failure.stdout ?? ''}${failure.stderr ?? ''}`,
+        }
       }
     } catch (error) { return boundaryFailure(error) }
   }

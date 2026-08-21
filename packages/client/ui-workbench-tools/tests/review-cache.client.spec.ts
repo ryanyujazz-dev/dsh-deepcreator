@@ -439,6 +439,64 @@ describe('ReviewCacheController', () => {
     cache.dispose()
   })
 
+  it('does not mistake missing turn metadata for a resolved file', async () => {
+    const remote = remoteMock(['src/a.ts'])
+    const cache = new ReviewCacheController({ remote: remote as never, sessionId: SID, session: sessionStub().session })
+    await flush(); await flush()
+
+    await expect(cache.resolveTurnFile(12, '/workspace/src/a.ts')).resolves.toBe('unknown')
+    cache.dispose()
+  })
+
+  it('defaults a filesystem workspace to its newest live turn instead of a Git scope', async () => {
+    const remote = remoteMock(['notes.md'])
+    remote.review.history.mockResolvedValue({
+      ok: true,
+      value: {
+        ok: true, repositoryRoot: '/workspace', workspaceKind: 'filesystem',
+        turns: [
+          { turn: 7, current: true, totalFiles: 1, remainingFiles: 1, state: 'active', undoable: false, files: [{ path: 'notes.md', state: 'pending' }] },
+          { turn: 6, totalFiles: 1, remainingFiles: 1, state: 'active', undoable: false, files: [{ path: 'old.md', state: 'pending' }] },
+        ],
+      },
+    })
+    remote.review.status.mockImplementation(async (_sessionId: string, scope: unknown) => ({
+      ok: true,
+      value: {
+        ok: true, repositoryRoot: '/workspace', workspaceKind: 'filesystem', branch: '', scope,
+        files: [{ path: 'notes.md', index: ' ', workingTree: 'M' }],
+      },
+    }))
+    const cache = new ReviewCacheController({ remote: remote as never, sessionId: SID, session: sessionStub().session })
+    await flush(); await flush()
+
+    expect(cache.getSnapshot().scope).toEqual({ turn: 7 })
+    expect(remote.review.status).toHaveBeenCalledWith(SID, { turn: 7 })
+    await cache.selectScope('uncommitted')
+    expect(cache.getSnapshot().scope).toEqual({ turn: 7 })
+    cache.dispose()
+  })
+
+  it('does not poll filesystem history when there is no external HEAD to reconcile', async () => {
+    vi.useFakeTimers()
+    const remote = remoteMock(['notes.md'])
+    remote.review.history.mockResolvedValue({
+      ok: true,
+      value: {
+        ok: true, repositoryRoot: '/workspace', workspaceKind: 'filesystem',
+        turns: [{ turn: 7, current: true, totalFiles: 1, remainingFiles: 1, state: 'active', undoable: false, files: [{ path: 'notes.md', state: 'pending' }] }],
+      },
+    })
+    const cache = new ReviewCacheController({ remote: remote as never, sessionId: SID, session: sessionStub().session })
+    await advance()
+    const initializedCalls = remote.review.history.mock.calls.length
+
+    await vi.advanceTimersByTimeAsync(6_000)
+
+    expect(remote.review.history).toHaveBeenCalledTimes(initializedCalls)
+    cache.dispose()
+  })
+
   it('notifies only the changed file subscription when one body finishes', async () => {
     const remote = remoteMock()
     const cache = new ReviewCacheController({ remote: remote as never, sessionId: SID, session: sessionStub().session })

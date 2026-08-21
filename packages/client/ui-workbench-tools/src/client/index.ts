@@ -74,6 +74,15 @@ export function apply(ctx: ClientContext): void {
           })
           return
         }
+        if (state === 'unknown') {
+          // Missing history is not proof that a mutation was resolved. The
+          // turn-start snapshot may still be settling; keep the click on its
+          // owning Turn so a subsequent Host read cannot drift to a Git scope.
+          ctx.workbench.present({
+            typeId: 'review', target: path, parameters: { scope: 'turn', turn: String(turn), expand: 'all' }, reveal: true, reason: 'user',
+          })
+          return
+        }
         if (ctx.workbench.types.list().some(definition => definition.id === 'artifact')) {
           ctx.workbench.activate('artifact', path)
           return

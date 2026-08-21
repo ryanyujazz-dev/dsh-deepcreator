@@ -69,7 +69,8 @@ function transportError(result: { ok: false; error: { message: string } }): Erro
 }
 
 function sameHistory(left: HistoryOk | null, right: HistoryOk): boolean {
-  if (left === null || left.repositoryRoot !== right.repositoryRoot || left.head !== right.head || left.turns.length !== right.turns.length) return false
+  if (left === null || left.repositoryRoot !== right.repositoryRoot || left.workspaceKind !== right.workspaceKind
+    || left.head !== right.head || left.turns.length !== right.turns.length) return false
   return JSON.stringify(left.turns) === JSON.stringify(right.turns)
 }
 
@@ -151,7 +152,7 @@ export class ReviewCacheController {
     this.seenMutations = decodeMutationSignal(encodeMutationSignal(mutationSignal(initial.nodes)))
     this.seenTurnEnds = initial.turnEnds.size
     this.unsubscribeSession = options.session.subscribe(() => { this.onSessionSnapshot() })
-    void this.refresh().finally(() => {
+    void this.initialize().finally(() => {
       this.initializing = false
       if (!this.disposed && this.visible) {
         this.prefetchIdle()
@@ -163,10 +164,28 @@ export class ReviewCacheController {
     })
     if (typeof window !== 'undefined') {
       this.historyTimer = window.setInterval(() => {
-        if (!this.disposed && document.visibilityState === 'visible') void this.refreshHistory(true, true)
+        // Filesystem workspaces have no external HEAD to reconcile. Their
+        // session mutation/turn events already invalidate Review; polling
+        // would only rebuild a full temporary tree every two seconds.
+        if (!this.disposed && document.visibilityState === 'visible'
+          && this.state.history?.workspaceKind !== 'filesystem') void this.refreshHistory(true, true)
       }, 2_000)
       window.addEventListener('focus', this.onWindowFocus)
     }
+  }
+
+  private async initialize(): Promise<void> {
+    const generation = this.generation
+    await this.refreshHistory(true)
+    // An explicit presentation/scope selection may arrive while the initial
+    // history request is in flight. It owns initialization from that point;
+    // do not issue a second refresh that can supersede its focused request.
+    if (this.disposed || generation !== this.generation) return
+    if (this.state.history?.workspaceKind === 'filesystem') {
+      const latest = this.state.history.turns.find(turn => turn.remainingFiles > 0)
+      if (latest !== undefined) this.publish({ scope: { turn: latest.turn } })
+    }
+    await this.refresh()
   }
 
   readonly subscribe = (listener: () => void): (() => void) => {
@@ -214,11 +233,17 @@ export class ReviewCacheController {
   }
 
   async selectScope(scope: ReviewScope, focusPath?: string): Promise<ReviewRefreshOutcome> {
-    const same = JSON.stringify(scope) === JSON.stringify(this.state.scope)
+    const selected = this.state.history?.workspaceKind === 'filesystem' && typeof scope === 'string'
+      ? (() => {
+          const latest = this.state.history?.turns.find(turn => turn.remainingFiles > 0)
+          return latest === undefined ? scope : { turn: latest.turn } as ReviewScope
+        })()
+      : scope
+    const same = JSON.stringify(selected) === JSON.stringify(this.state.scope)
     if (!same) {
       this.clearQueues()
       this.resident = new Set()
-      this.publish({ scope, status: null, summary: null, entries: {}, error: null })
+      this.publish({ scope: selected, status: null, summary: null, entries: {}, error: null })
     }
     // Scope selection and file reveal are user gestures: surface a failed
     // status request instead of leaving an unexplained blank panel.
@@ -356,15 +381,17 @@ export class ReviewCacheController {
   }
 
   /** Resolve a chat file click against freshly reconciled turn history. */
-  async resolveTurnFile(turn: number, path: string): Promise<'pending' | 'resolved'> {
+  async resolveTurnFile(turn: number, path: string): Promise<'pending' | 'resolved' | 'unknown'> {
     await this.refreshHistory(true)
     const record = this.state.history?.turns.find(item => item.turn === turn)
+    if (record === undefined) return 'unknown'
     const normalized = path.replaceAll('\\', '/')
     const turnFile = record?.files.find(file => {
       const candidates = [file.path, file.oldPath].filter((item): item is string => item !== undefined)
       return candidates.some(candidate => normalized === candidate || normalized.endsWith(`/${candidate}`))
     })
-    return turnFile?.state === 'pending' ? 'pending' : 'resolved'
+    if (turnFile === undefined) return 'unknown'
+    return turnFile.state === 'pending' ? 'pending' : 'resolved'
   }
 
   /** Heavy bodies near the viewport are exempt from weighted cache eviction. */

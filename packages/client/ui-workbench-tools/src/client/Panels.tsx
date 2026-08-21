@@ -861,15 +861,24 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
   const historyTurns = useMemo(() => history?.turns
     .filter(turn => turn.remainingFiles > 0)
     .toSorted((a, b) => b.turn - a.turn) ?? [], [history])
+  const currentTurns = useMemo(() => historyTurns.filter(turn => turn.current === true), [historyTurns])
+  const completedTurns = useMemo(() => historyTurns.filter(turn => turn.current !== true), [historyTurns])
+  const workspaceKind = history?.workspaceKind ?? meta.status?.workspaceKind ?? 'git'
   const scopeItems = useMemo<MenuEntry[]>(() => [
-    { id: 'unstaged', label: t('review.scope.unstaged') },
-    { id: 'staged', label: t('review.scope.staged') },
-    { id: 'uncommitted', label: t('review.scope.uncommitted') },
-    ...(historyTurns.length > 0
+    ...(workspaceKind === 'git' ? [
+      { id: 'unstaged', label: t('review.scope.unstaged') },
+      { id: 'staged', label: t('review.scope.staged') },
+      { id: 'uncommitted', label: t('review.scope.uncommitted') },
+    ] : []),
+    ...(currentTurns.length > 0
+      ? [{ type: 'label' as const, id: 'current-label', text: t('review.scope.current') }]
+      : []),
+    ...currentTurns.map(turn => ({ id: `turn:${turn.turn}`, label: t('review.scope.turn.current', { turn: turn.turn }) })),
+    ...(completedTurns.length > 0
       ? [{ type: 'label' as const, id: 'history-label', text: t('review.scope.history') }]
       : []),
-    ...historyTurns.map(turn => ({ id: `turn:${turn.turn}`, label: t('review.scope.turn', { turn: turn.turn }) })),
-  ], [historyTurns, t])
+    ...completedTurns.map(turn => ({ id: `turn:${turn.turn}`, label: t('review.scope.turn', { turn: turn.turn }) })),
+  ], [completedTurns, currentTurns, t, workspaceKind])
   const headerActions = useMemo<WorkbenchPanelHeaderContribution>(() => ({
     left: <Menu
       open={scopeMenuOpen}
