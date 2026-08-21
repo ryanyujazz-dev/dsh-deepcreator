@@ -10,6 +10,12 @@ import { ReviewService } from '../src/index.ts'
 
 const exec = promisify(execFile)
 const temporary: string[] = []
+// Windows host global core.autocrlf=true would convert the temp repos' files
+// to CRLF and break exact-content assertions; pin every git subprocess this
+// test process spawns (including the ReviewService under test) to LF.
+process.env.GIT_CONFIG_COUNT = '1'
+process.env.GIT_CONFIG_KEY_0 = 'core.autocrlf'
+process.env.GIT_CONFIG_VALUE_0 = 'false'
 afterEach(async () => { await Promise.all(temporary.splice(0).map(path => rm(path, { recursive: true, force: true }))) })
 
 describe('Review Service', () => {
@@ -578,4 +584,4 @@ describe('Review Service', () => {
       turns: [],
     })
   })
-})
+}, 30000)

@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { resolveDesktopDshLaunch, resolveDesktopWorkspace } from '../src/dsh-launch.ts'
 import { parseDesktopHostUrl, startDesktopHost } from '../src/host-process.ts'
 
@@ -61,39 +63,44 @@ describe('startDesktopHost', () => {
 })
 
 describe('desktop DSH launch', () => {
+  // A real absolute base built with the same path operations the launcher
+  // uses, so the expected values hold on every platform (Windows would
+  // otherwise drive-prefix the POSIX-style literals the test previously
+  // hardcoded).
+  const root = resolve(process.cwd(), 'host-process-spec')
   const resolver = (source: boolean) => ({
     exists: () => source,
-    resolveTsx: () => '/repo/node_modules/tsx/dist/esm/index.mjs',
+    resolveTsx: (repoRoot: string) => join(repoRoot, 'node_modules', 'tsx', 'dist', 'esm', 'index.mjs'),
   })
 
   it('uses system Node and tsx for a source checkout', () => {
     const launch = resolveDesktopDshLaunch(
-      '/repo/apps/cli/package.json',
-      { NODE: '/node' },
+      join(root, 'apps', 'cli', 'package.json'),
+      { NODE: 'node-bin' },
       resolver(true),
     )
     expect(launch).toEqual({
-      command: '/node',
+      command: 'node-bin',
       args: [
         '--import',
-        'file:///repo/node_modules/tsx/dist/esm/index.mjs',
-        '/repo/apps/cli/src/bin.ts',
+        pathToFileURL(join(root, 'node_modules', 'tsx', 'dist', 'esm', 'index.mjs')).href,
+        join(root, 'apps', 'cli', 'src', 'bin.ts'),
         '--profile', 'deepcreator', '--port', '0',
       ],
-      env: { NODE: '/node', TSX_TSCONFIG_PATH: '/repo/tsconfig.json' },
+      env: { NODE: 'node-bin', TSX_TSCONFIG_PATH: join(root, 'tsconfig.json') },
     })
   })
 
   it('uses system Node for an installed CLI', () => {
     const launch = resolveDesktopDshLaunch(
-      '/install/node_modules/@deepseek-ai/dsh/package.json',
+      join(root, 'install', 'node_modules', '@deepseek-ai', 'dsh', 'package.json'),
       {},
       resolver(false),
     )
     expect(launch).toEqual({
       command: 'node',
       args: [
-        '/install/node_modules/@deepseek-ai/dsh/lib/bin.js',
+        join(root, 'install', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js'),
         '--profile', 'deepcreator', '--port', '0',
       ],
       env: {},
@@ -101,9 +108,12 @@ describe('desktop DSH launch', () => {
   })
 
   it('preserves the explicit command origin as the Workspace', () => {
-    expect(resolveDesktopWorkspace({ DSH_DESKTOP_WORKSPACE: '/chosen', INIT_CWD: '/package' }, '/current'))
-      .toBe('/chosen')
-    expect(resolveDesktopWorkspace({ INIT_CWD: '/package' }, '/current')).toBe('/package')
-    expect(resolveDesktopWorkspace({}, '/current')).toBe('/current')
+    const chosen = join(root, 'chosen')
+    const packageDir = join(root, 'package')
+    const current = join(root, 'current')
+    expect(resolveDesktopWorkspace({ DSH_DESKTOP_WORKSPACE: chosen, INIT_CWD: packageDir }, current))
+      .toBe(chosen)
+    expect(resolveDesktopWorkspace({ INIT_CWD: packageDir }, current)).toBe(packageDir)
+    expect(resolveDesktopWorkspace({}, current)).toBe(current)
   })
 })
