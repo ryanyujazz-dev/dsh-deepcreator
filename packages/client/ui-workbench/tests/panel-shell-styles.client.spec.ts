@@ -25,6 +25,13 @@ describe('Workbench PanelShell geometry', () => {
     expect(mosaic).toContain('inset: 4px')
   })
 
+  it('reserves the frame-chrome lane only when a collapsed-sidebar Workbench is focused', () => {
+    expect(shell).toContain('padding: 0 7px 0 var(--dsh-workbench-header-leading, 3px)')
+    expect(mosaic).toContain(':global([data-sidebar-collapsed][data-details-focused]) .root')
+    expect(mosaic).toContain('--dsh-workbench-header-leading: calc(')
+    expect(mosaic).toContain('var(--dsh-collapsed-title-leading, 32px) + var(--dsh-icon-toolbar-gap, 4px)')
+  })
+
   it('shrinks provider titles before the fixed right-side action group', () => {
     const leadingRule = shell.match(/\.leading\s*\{([^}]*)\}/)?.[1] ?? ''
     const leftActionsRule = shell.match(/\.leftActions\s*\{([^}]*)\}/)?.[1] ?? ''
@@ -79,7 +86,7 @@ describe('Workbench PanelShell geometry', () => {
     // 1px border + 3px centering (26px tab in the 32px header) + 6px
     // vertically. Plain titles keep their optical 10px inset through
     // .leading's own 7px.
-    expect(shell).toContain('padding: 0 7px 0 3px')
+    expect(shell).toContain('padding: 0 7px 0 var(--dsh-workbench-header-leading, 3px)')
     expect(shell).toContain('padding-left: 7px')
     // Tabs hug their label instead of resting at a fixed width; the close
     // glyph keeps a 7px optical inset instead of touching the pill edge.

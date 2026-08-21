@@ -30,7 +30,7 @@
   /* 3px seats the first tab's 6px corner concentric with the card's 10px
    * border-radius (1px border + 3px + 6px = 10px). Plain titles restore their
    * optical inset through .leading's own 7px. */
-  padding: 0 7px 0 3px;
+  padding: 0 7px 0 var(--dsh-workbench-header-leading, 3px);
   box-sizing: border-box;
   -webkit-app-region: drag;
 }

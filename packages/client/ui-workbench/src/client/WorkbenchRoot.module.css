@@ -9,6 +9,17 @@
   background: var(--dsw-alias-bg-base);
 }
 
+/* A focused Workbench covers the whole Stage. If the Sidebar is closed at
+ * the same time, its first Header control reaches the native window-chrome
+ * lane, so inherit the frame's platform-aware traffic-light/toggle clearance
+ * plus the shared toolbar gap. Ordinary right-column panels keep their
+ * compact 3px shell inset. */
+:global([data-sidebar-collapsed][data-details-focused]) .root {
+  --dsh-workbench-header-leading: calc(
+    var(--dsh-collapsed-title-leading, 32px) + var(--dsh-icon-toolbar-gap, 4px)
+  );
+}
+
 .tracks {
   position: absolute;
   inset: 4px;
