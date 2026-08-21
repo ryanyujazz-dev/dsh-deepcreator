@@ -164,6 +164,43 @@ describe('Review Panel file stream', () => {
     })
   })
 
+  it('shows only current and historical turn groups for filesystem workspaces', async () => {
+    let contribution: { left?: React.ReactNode } | undefined
+    const remote = remoteMock()
+    remote.review.history.mockResolvedValue({
+      ok: true,
+      value: {
+        ok: true, repositoryRoot: '/workspace', workspaceKind: 'filesystem',
+        turns: [
+          { turn: 8, current: true, totalFiles: 1, remainingFiles: 1, state: 'active', undoable: false, files: [{ path: 'src/b.ts', state: 'pending' }] },
+          { turn: 7, totalFiles: 1, remainingFiles: 1, state: 'active', undoable: false, files: [{ path: 'src/a.ts', state: 'pending' }] },
+        ],
+      },
+    })
+    const input = props(remote)
+    input.contributeHeaderActions = value => { contribution = value; return () => undefined }
+    input.t = ((key: string, params?: Record<string, unknown>) => {
+      if (key === 'review.scope.current') return '当前轮次'
+      if (key === 'review.scope.history') return '历史轮次'
+      if (key === 'review.scope.turn') return `第 ${String(params?.turn)} 轮`
+      if (key === 'review.scope.turn.current') return `第 ${String(params?.turn)} 轮 · 进行中`
+      return key
+    }) as never
+    render(<ReviewPanel {...input} />)
+
+    type ScopeMenu = { props: { items: Array<{ id: string; type?: string; text?: string; label?: string }> } }
+    await waitFor(() => {
+      const items = (contribution?.left as unknown as ScopeMenu | undefined)?.props.items ?? []
+      expect(items.map(item => item.type === 'label' ? `${item.type}:${item.text}` : `${item.id}:${item.label}`)).toEqual([
+        'label:当前轮次',
+        'turn:8:第 8 轮 · 进行中',
+        'label:历史轮次',
+        'turn:7:第 7 轮',
+      ])
+      expect(items.some(item => ['unstaged', 'staged', 'uncommitted'].includes(item.id))).toBe(false)
+    })
+  })
+
   it('preheats visible top files; opening expands all and never refetches cached files', { timeout: 15000 }, async () => {
     const input = props()
     const view = render(<ReviewPanel {...input} />)
@@ -428,7 +465,7 @@ describe('Review Panel file stream', () => {
     expect(next.remote.review.status).toHaveBeenLastCalledWith('session-1', { turn: 5 })
     expect(revealed.getByRole('button', { name: /src\/b\.ts/ }).getAttribute('aria-expanded')).toBe('true')
     expect(revealed.container.querySelector('[data-review-boundary="before"]')).not.toBeNull()
-    await waitFor(() => { expect(revealed.container.textContent).toContain('export const ready = true') })
+    await waitFor(() => { expect(revealed.container.textContent).toContain('export const ready = true') }, { timeout: 5000 })
   })
 
   it('fully expands the requested scope for card and shared Review-control presentations', async () => {

@@ -1,4 +1,5 @@
 export type ReviewScope = 'unstaged' | 'staged' | 'uncommitted' | { turn: number }
+export type ReviewWorkspaceKind = 'git' | 'filesystem'
 
 export interface ReviewFileStatus {
   path: string
@@ -41,6 +42,8 @@ export interface ReviewTurnFile {
 
 export interface ReviewTurnHistory {
   turn: number
+  /** True while the official turn is still open and end is a live worktree snapshot. */
+  current?: boolean
   totalFiles: number
   remainingFiles: number
   additions?: number
@@ -51,17 +54,18 @@ export interface ReviewTurnHistory {
 }
 
 export type ReviewHistoryResult =
-  | { ok: true; repositoryRoot: string; head?: string | null; turns: ReviewTurnHistory[] }
+  | { ok: true; repositoryRoot: string; workspaceKind: ReviewWorkspaceKind; head?: string | null; turns: ReviewTurnHistory[] }
   | { ok: false; code: 'NO_WORKSPACE' | 'NOT_REPOSITORY' | 'OUTSIDE_WORKSPACE' | 'READ_FAILED'; message: string }
 
 export type ReviewStatusResult =
-  | { ok: true; repositoryRoot: string; branch: string; scope: ReviewScope; files: ReviewFileStatus[] }
+  | { ok: true; repositoryRoot: string; workspaceKind: ReviewWorkspaceKind; branch: string; scope: ReviewScope; files: ReviewFileStatus[] }
   | { ok: false; code: 'NO_WORKSPACE' | 'NOT_REPOSITORY' | 'OUTSIDE_WORKSPACE' | 'TURN_NOT_FOUND' | 'READ_FAILED'; message: string }
 
 export type ReviewSummaryResult =
   | {
     ok: true
     repositoryRoot: string
+    workspaceKind: ReviewWorkspaceKind
     scope: ReviewScope
     additions: number
     deletions: number
@@ -70,11 +74,11 @@ export type ReviewSummaryResult =
   | { ok: false; code: 'NO_WORKSPACE' | 'NOT_REPOSITORY' | 'OUTSIDE_WORKSPACE' | 'TURN_NOT_FOUND' | 'READ_FAILED'; message: string }
 
 export type ReviewDiffResult =
-  | { ok: true; repositoryRoot: string; scope: ReviewScope; path: string; oldPath?: string; layers: ReviewPatchLayer[] }
+  | { ok: true; repositoryRoot: string; workspaceKind: ReviewWorkspaceKind; scope: ReviewScope; path: string; oldPath?: string; layers: ReviewPatchLayer[] }
   | { ok: false; code: 'NO_WORKSPACE' | 'NOT_REPOSITORY' | 'OUTSIDE_WORKSPACE' | 'OUTSIDE_REPOSITORY' | 'TURN_NOT_FOUND' | 'READ_FAILED'; message: string }
 
 export type ReviewChecksResult =
-  | { ok: true; repositoryRoot: string; clean: boolean; output: string }
+  | { ok: true; repositoryRoot: string; workspaceKind: ReviewWorkspaceKind; clean: boolean; output: string }
   | { ok: false; code: 'NO_WORKSPACE' | 'NOT_REPOSITORY' | 'OUTSIDE_WORKSPACE'; message: string }
 
 export type ReviewUndoTurnResult =

@@ -4,9 +4,9 @@
 
 Provider 视图只渲染 Body 内容。刷新、Terminal 控制和新建 Tab 操作都贡献到公共 Workbench Panel Header；Review 状态与 Preview URL 输入属于内容，不得形成第二层副标题工具栏。
 
-Review 标题旁的范围菜单固定提供「未暂存」「已暂存」「未提交」，其后以「历史轮次」小标题分组仍有待处理的轮次；中文项与选择器值显示「第 N 轮」，英文显示「TURN N」，并按新到旧排列，首次打开缺省为「未提交」。内容区是单一纵向滚动、可折叠文件列表；文件头不显示 `M` 等 Git 状态字母。范围与文件定位通过 Workbench presentation 的 `{ scope, turn, path }` 参数传递，历史文件可直接展开并滚动聚焦。Review 的基础表面始终跟随 Workbench shell；第三方代码主题只贡献语法色与 Diff 高亮，不改变画布底色。
+Review 标题旁的范围菜单在 Git 工作区提供「未暂存」「已暂存」「未提交」，随后按需显示「当前轮次」与「历史轮次」两个小标题；非 Git 工作区只显示这两个 Turn 分组，并缺省选择最新的当前／历史轮次。轮次按新到旧排列，中文选择器值只显示「第 N 轮」，英文只显示「TURN N」。内容区是单一纵向滚动、可折叠文件列表；文件头不显示 `M` 等 Git 状态字母。范围与文件定位通过 Workbench presentation 的 `{ scope, turn, path }` 参数传递，工具变更文件可直接切入所属轮次、全量展开并滚动聚焦。Review 的基础表面始终跟随 Workbench shell；第三方代码主题只贡献语法色与 Diff 高亮，不改变画布底色。
 
-每会话一个 `ReviewCacheController` 同时服务 Review 与对话尾部变更卡。变更卡注册到 `deepcreator.conversation.chat.turnChanges`，固定排在官方产物 selector chain 之后；它与产物卡共用 `ConversationFileCard` chrome，但不合并文件或导航。Review 的任何打开、reveal 或范围切换入口都必须全量展开当前范围的全部文件；仍有待处理文件的 Turn 卡片显示总 `+N -N`，点击主区在对话内展开带逐文件计数的清单，「审查」打开所属 Turn，具体 mutation／清单文件会在全量展开所属 Turn 后立即挂载并滚动聚焦目标文件，对话 Header 的 Review 类型入口固定打开「未暂存」。旧 Host 返回的活跃历史若缺少计数，Controller 会通过对应 Turn Diff 后台补算并缓存，不把未知值显示成 `0/0`。当轮内已全部提交时不生成卡片；外部提交核对完成后，该历史轮次和卡片一起消失，若正在查看该轮则同步清空 Diff/源码缓存并返回「未提交」。只有最新未解决 Turn 可撤销；撤销先经确认 Modal，失败使用公共 Toast。页面可见时约两秒轻量刷新历史与外部 HEAD 状态。
+每会话一个 `ReviewCacheController` 同时服务 Review 与对话尾部变更卡。变更卡注册到 `deepcreator.conversation.chat.turnChanges`，固定排在官方产物 selector chain 之后；它与产物卡共用 `ConversationFileCard` chrome，但不合并文件或导航。Review 的任何打开、reveal 或范围切换入口都必须全量展开当前范围的全部文件；仍有待处理文件的 Turn 卡片显示总 `+N -N`，点击主区在对话内展开带逐文件计数的清单，「审查」打开所属 Turn，具体 mutation／清单文件会在全量展开所属 Turn 后立即挂载并滚动聚焦目标文件。缺失或仍在落盘的轮次元数据不能作为“文件已解决”的依据：这类点击仍进入 Review，非 Git 工作区也一样；只有明确提交／撤销的文件才打开 Artifact。Git 工作区的对话 Header Review 入口固定打开「未暂存」。旧 Host 返回的活跃历史若缺少计数，Controller 会通过对应 Turn Diff 后台补算并缓存，不把未知值显示成 `0/0`。当轮内已全部提交时不生成卡片；外部提交核对完成后，该历史轮次和卡片一起消失，若正在查看该轮则同步清空 Diff/源码缓存并返回「未提交」。只有最新未解决的 Git Turn 可撤销；撤销先经确认 Modal，失败使用公共 Toast。页面可见时约两秒轻量刷新历史与外部 HEAD 状态。
 
 「未暂存」与「历史轮次」是不同 Diff 基线：前者为 Index → Worktree，后者为 Turn start → end；同一文件在两个范围中的增删内容和计数可以不同，这不是渲染缓存复用。隐藏面板重新打开时，可见性兜底刷新必须先于显式 presentation 执行，确保入口指定的范围刷新最终胜出并驱动全量展开。
 

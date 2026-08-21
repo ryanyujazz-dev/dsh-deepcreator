@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -13,6 +13,61 @@ const temporary: string[] = []
 afterEach(async () => { await Promise.all(temporary.splice(0).map(path => rm(path, { recursive: true, force: true }))) })
 
 describe('Review Service', () => {
+  it('captures current and completed turn diffs for a non-Git workspace without creating .git', async () => {
+    const workspace = await mkdtemp(join(tmpdir(), 'dsh-review-filesystem-')); temporary.push(workspace)
+    const dshHome = await mkdtemp(join(tmpdir(), 'dsh-review-home-')); temporary.push(dshHome)
+    const previousHome = process.env.DSH_HOME
+    process.env.DSH_HOME = dshHome
+    try {
+      const canonicalWorkspace = await realpath(workspace)
+      const session = { id: 'filesystem-session', header: { cwd: workspace } } as unknown as Session
+      const review = new ReviewService(new Context())
+      const capture = review as unknown as {
+        captureStart(session: Session, turn: number): Promise<void>
+        captureEnd(session: Session, turn: number): Promise<void>
+      }
+
+      await capture.captureStart(session, 4)
+      await writeFile(join(workspace, 'notes.md'), '# live\n')
+
+      await expect(review.history(session)).resolves.toMatchObject({
+        ok: true,
+        repositoryRoot: canonicalWorkspace,
+        workspaceKind: 'filesystem',
+        turns: [{ turn: 4, current: true, remainingFiles: 1, undoable: false }],
+      })
+      await expect(review.status(session, { turn: 4 })).resolves.toMatchObject({
+        ok: true, workspaceKind: 'filesystem', files: [{ path: 'notes.md' }],
+      })
+      await expect(review.diff(session, 'notes.md', { turn: 4 })).resolves.toMatchObject({
+        ok: true,
+        workspaceKind: 'filesystem',
+        layers: [{
+          kind: 'turn',
+          oldSource: { revision: 'turn-start', text: null },
+          newSource: { revision: 'turn-end', text: '# live\n' },
+        }],
+      })
+
+      await capture.captureEnd(session, 4)
+      const restarted = new ReviewService(new Context())
+      await expect(restarted.history(session)).resolves.toMatchObject({
+        ok: true,
+        workspaceKind: 'filesystem',
+        turns: [{ turn: 4, remainingFiles: 1, undoable: false }],
+      })
+      const completed = await restarted.history(session)
+      expect(completed.ok && completed.turns[0]?.current).toBeUndefined()
+      await expect(restarted.status(session, 'uncommitted')).resolves.toMatchObject({
+        ok: true, workspaceKind: 'filesystem', files: [],
+      })
+      await expect(readFile(join(workspace, '.git'), 'utf8')).rejects.toBeDefined()
+    } finally {
+      if (previousHome === undefined) delete process.env.DSH_HOME
+      else process.env.DSH_HOME = previousHome
+    }
+  })
+
   it('projects read-only status and fences diff paths to the canonical repository', async () => {
     const repository = await mkdtemp(join(tmpdir(), 'dsh-review-')); temporary.push(repository)
     await exec('git', ['init', '-q', repository])
