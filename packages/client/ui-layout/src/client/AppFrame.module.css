@@ -128,6 +128,16 @@
   inset: 0 0 0 var(--dsh-stage-left);
   z-index: 18;
   background: var(--dsw-alias-bg-base);
+  /* Keep the focused Stage edge on the opening/closing Sidebar edge. Without
+   * the matching transition, left jumps to the target width before the grid
+   * track arrives and briefly exposes the mounted Conversation underneath. */
+  transition: left var(--ds-transition-duration-slow) var(--ds-ease-in-out);
+}
+
+/* Pointer resizing writes the Stage edge at pointer cadence; a transition
+ * here would make the focused panel trail the Sidebar resize handle. */
+.frame[data-dragging][data-details-focused] .detailsCol {
+  transition: none;
 }
 
 /* Drag handles are frame children because columns clip overflow. The common
@@ -181,6 +191,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .frame[data-details-focused] .detailsCol {
+    transition: none;
+  }
+
   .handle {
     transition: none;
   }

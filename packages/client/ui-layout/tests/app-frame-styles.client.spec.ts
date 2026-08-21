@@ -24,6 +24,12 @@ describe('AppFrame native title-bar drag region', () => {
     expect(css).toContain(".frame[data-native-window-chrome='macos']:not([data-window-maximized]):not([data-window-fullscreen])")
   })
 
+  it('moves a focused details panel in lockstep with the animated Sidebar track', () => {
+    expect(css).toMatch(/\.frame\[data-details-focused\] \.detailsCol\s*\{[\s\S]*?inset: 0 0 0 var\(--dsh-stage-left\);[\s\S]*?transition: left var\(--ds-transition-duration-slow\) var\(--ds-ease-in-out\);/)
+    expect(css).toMatch(/\.frame\[data-dragging\]\[data-details-focused\] \.detailsCol\s*\{[\s\S]*?transition: none;/)
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*?\.frame\[data-details-focused\] \.detailsCol\s*\{[\s\S]*?transition: none;/)
+  })
+
   it('reveals a full-height left-edge line on the details strip hover or drag', () => {
     expect(css).toMatch(/\.handle\[data-side='details'\]\s*\{[\s\S]*?margin-left: 0;/)
     expect(css).toMatch(/\.handle\[data-side='details'\]::after\s*\{[\s\S]*?width: 1px;[\s\S]*?background: var\(--dsw-alias-border-l1\);[\s\S]*?opacity: 0;/)
