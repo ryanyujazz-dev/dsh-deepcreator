@@ -105,7 +105,9 @@
   align-items: baseline;
   flex: none;
   gap: 5px;
-  margin-left: 4px;
+  /* One full text space after the file name (wider than the +N/-N internal
+     gap so the block reads as a separate word, per UI_STYLE_GUIDE). */
+  margin-left: 6px;
   white-space: nowrap;
   font: var(--dsw-font-markdown-code-block-small);
   line-height: inherit;
