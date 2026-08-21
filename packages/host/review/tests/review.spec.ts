@@ -68,6 +68,31 @@ describe('Review Service', () => {
     }
   })
 
+  it('excludes private DSH snapshot state when it lives inside a filesystem workspace', async () => {
+    const workspace = await mkdtemp(join(tmpdir(), 'dsh-review-contained-home-')); temporary.push(workspace)
+    const dshHome = join(workspace, '.dsh-state')
+    const previousHome = process.env.DSH_HOME
+    process.env.DSH_HOME = dshHome
+    try {
+      const session = { id: 'contained-home-session', header: { cwd: workspace } } as unknown as Session
+      const review = new ReviewService(new Context())
+      const capture = review as unknown as { captureStart(session: Session, turn: number): Promise<void> }
+
+      await capture.captureStart(session, 2)
+      await writeFile(join(workspace, 'notes.md'), '# safe\n')
+
+      await expect(review.status(session, { turn: 2 })).resolves.toMatchObject({
+        ok: true,
+        files: [{ path: 'notes.md' }],
+      })
+      const history = await review.history(session)
+      expect(history.ok && history.turns[0]?.files.map(file => file.path)).toEqual(['notes.md'])
+    } finally {
+      if (previousHome === undefined) delete process.env.DSH_HOME
+      else process.env.DSH_HOME = previousHome
+    }
+  })
+
   it('projects read-only status and fences diff paths to the canonical repository', async () => {
     const repository = await mkdtemp(join(tmpdir(), 'dsh-review-')); temporary.push(repository)
     await exec('git', ['init', '-q', repository])

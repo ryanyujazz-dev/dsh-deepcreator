@@ -206,7 +206,21 @@ async function snapshotWorktree(repository: ReviewRepository): Promise<string> {
   try {
     if (repository.kind === 'filesystem' || await head(repository) === null) await git(repository, ['read-tree', '--empty'], { env })
     else await git(repository, ['read-tree', 'HEAD'], { env })
-    await git(repository, ['add', '-A', '--', '.'], { env })
+    const paths = ['.']
+    if (repository.kind === 'filesystem') {
+      const configuredHome = resolve(process.env.DSH_HOME ?? join(homedir(), '.dsh'))
+      const dshHome = await realpath(configuredHome).catch(() => configuredHome)
+      // A workspace may be the user's home (or even DSH_HOME itself). Never
+      // let the snapshot ingest its own persistent object database.
+      const privateState = isWithin(repository.root, dshHome) && relative(repository.root, dshHome) !== ''
+        ? dshHome
+        : resolve(dshHome, 'deepcreator', 'review')
+      if (isWithin(repository.root, privateState)) {
+        const ignored = relative(repository.root, privateState).split(sep).join('/')
+        if (ignored !== '') paths.push(`:(exclude)${ignored}`, `:(exclude)${ignored}/**`)
+      }
+    }
+    await git(repository, ['add', '-A', '--', ...paths], { env })
     return (await git(repository, ['write-tree'], { env })).trim()
   } finally { await rm(temporary, { recursive: true, force: true }) }
 }
