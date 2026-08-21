@@ -23,7 +23,9 @@ describe('ArtifactReader', () => {
     const workspace = await mkdtemp(join(tmpdir(), 'dsh-artifacts-workspace-')); temporary.push(workspace)
     const linkedRoot = await mkdtemp(join(tmpdir(), 'dsh-artifacts-linked-')); temporary.push(linkedRoot)
     const linked = join(linkedRoot, 'link')
-    await symlink(workspace, linked)
+    // Windows directory symlinks need Developer Mode or admin; junctions do
+    // not, and resolve to the same canonical target the reader must accept.
+    await symlink(workspace, linked, process.platform === 'win32' ? 'junction' : undefined)
     await writeFile(join(workspace, 'plan.md'), '# plan')
     const session = { id: 's1', header: { cwd: linked } } as unknown as Session
     const reader = new ArtifactReader(new Context())

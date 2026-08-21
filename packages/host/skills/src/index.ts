@@ -40,8 +40,10 @@ interface SkillMeta {
 
 /** Parse `---`-delimited frontmatter: `key: value` scalar lines. Returns
  *  undefined for a missing fence or required fields, mirroring the official
- *  filesystem provider's contract. */
+ *  filesystem provider's contract. Line endings are normalized first so a
+ *  CRLF checkout (Windows autocrlf) parses identically to LF. */
 function parseFrontmatter(raw: string): { meta: SkillMeta; body: string } | undefined {
+  raw = raw.replace(/\r\n/g, '\n')
   if (!raw.startsWith('---\n')) return undefined
   const end = raw.indexOf('\n---', 4)
   if (end === -1) return undefined

@@ -35,6 +35,7 @@ afterEach(() => {
 describe('DeepCreatorIconAnimatedFolder16', () => {
   it('corrects the source composition padding without enlarging the layout box', () => {
     const stylesheet = readFileSync(resolve(process.cwd(), 'packages/client/ui-primitives/src/icons/AnimatedFolderIcon.module.css'), 'utf8')
+      .replace(/\r\n/g, '\n')
     expect(stylesheet).toContain('.opticalScale > :global(div) {\n  transform: scale(1.3);')
     expect(stylesheet).not.toContain('.root :global(svg) {\n  transform:')
   })
