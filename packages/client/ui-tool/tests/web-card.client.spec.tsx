@@ -221,9 +221,9 @@ describe('web toolview registration', () => {
       },
     } as unknown as import('@deepseek-ai/cordis').Context
     webToolview.apply(ctx)
-    expect(registered.map(r => r.key)).toEqual(['web_search', 'web_fetch', 'web_search', 'web_fetch'])
+    expect(registered.map(r => r.key)).toEqual(['web_search', 'web_fetch'])
     // Both keys claim the conversation locale seat ToolRow's body copy needs.
-    expect(registered.map(r => r.locale)).toEqual(['conversation', 'conversation', 'conversation', 'conversation'])
+    expect(registered.map(r => r.locale)).toEqual(['conversation', 'conversation'])
     // One component under both keys, not two thin rows.
     expect(registered[0]?.component).toBe(WebRow)
     expect(registered[1]?.component).toBe(WebRow)

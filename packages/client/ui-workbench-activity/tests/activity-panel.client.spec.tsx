@@ -49,7 +49,6 @@ function panelProps(state: ListState, injected: Partial<ActivityInjected> = {}, 
     useSessions: makeUseSessions(state),
     visible: true,
     stopJob: vi.fn(async () => ({ ok: true as const })),
-    subagentEvents: vi.fn(async () => ({ ok: true as const, events: [], totalSeq: -1, queue: [] })),
     subagentOverview: vi.fn(async () => ({ ok: true as const, children: [] })),
     renderSlot: Object.assign((key: string, owner: unknown) => ({ key, owner }), { subscribe: () => () => {}, version: () => 0 }),
     openInConversation: vi.fn(),
@@ -247,14 +246,15 @@ describe('ActivityPanel home route', () => {
 })
 
 describe('ActivityPanel instance route', () => {
-  beforeEach(() => { vi.useFakeTimers() })
-  afterEach(() => { cleanup(); vi.useRealTimers(); vi.clearAllTimers() })
+  beforeEach(() => { vi.useFakeTimers(); embedCalls.length = 0 })
+  afterEach(() => {
+    cleanup()
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+    vi.useRealTimers()
+    vi.clearAllTimers()
+  })
 
   const childId = 'session-child-1'
-  const events = [
-    { type: 'user/message', seq: 0, time: 0, data: {} },
-    { type: 'assistant/message', seq: 1, time: 0, data: {} },
-  ]
 
   const state = () => ({
     byId: {},
@@ -271,84 +271,62 @@ describe('ActivityPanel instance route', () => {
     { subscribe: () => () => {}, version: () => 0 },
   )
 
-  it('feeds the embed slot and jumps to the conversation area on demand', async () => {
-    const props = panelProps(state(), {
-      subagentEvents: vi.fn(async () => ({ ok: true as const, events, totalSeq: 1, queue: [
-        { id: 'q1', placement: 'queued', message: { content: [{ type: 'text', text: '排队指令' }] } },
-      ] })),
-    }, { route: 'instance', activeInstanceId: childId })
+  it('mounts the explicit child surface without copying transcript data', () => {
+    const props = panelProps(state(), {}, { route: 'instance', activeInstanceId: childId })
+    props.renderSlot = renderEmbedProp() as never
+    render(<ActivityPanel {...props} />)
+    expect(embedCalls.length).toBeGreaterThan(0)
+    const [key, owner] = embedCalls[embedCalls.length - 1] as [string, Record<string, unknown>]
+    expect(key).toBe('deepcreator.conversation.embed')
+    expect(owner).toEqual({ childSessionId: childId })
+  })
+
+  it('keeps the jump action in the instance body instead of the Workbench header', () => {
+    const contributeHeaderActions = vi.fn(() => () => undefined)
+    const props = panelProps(state(), {}, { route: 'instance', activeInstanceId: childId })
+    props.contributeHeaderActions = contributeHeaderActions
     props.renderSlot = renderEmbedProp() as never
     const view = render(<ActivityPanel {...props} />)
-    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
-    expect(embedCalls.length).toBeGreaterThan(0)
-    const [key, owner] = embedCalls[embedCalls.length - 1] as [string, {
-      childSessionId: string
-      events: unknown[]
-      queue: { id: string }[]
-      running: boolean
-    }]
-    expect(key).toBe('deepcreator.conversation.embed')
-    expect(owner.childSessionId).toBe(childId)
-    expect(owner.events).toEqual(events)
-    expect(owner.queue.map(row => row.id)).toEqual(['q1'])
-    expect(owner.running).toBe(true)
-    void view
-    fireEvent.click(screen.getByRole('button', { name: 'subagent.open' }))
+    expect(contributeHeaderActions).not.toHaveBeenCalled()
+    fireEvent.click(view.getByRole('button', { name: 'subagent.open' }))
     expect(props.openInConversation).toHaveBeenCalledExactlyOnceWith({
       parentSessionId: SESSION, childSessionId: childId, mode: 'continuable',
     })
-    // The jump hands the panel back to its home route.
     expect(props.showHome).toHaveBeenCalledOnce()
   })
 
-  it('polls deltas while running and stops once idle', async () => {
-    const subagentEvents = vi.fn(async () => ({ ok: true as const, events, totalSeq: 1, queue: [] }))
-    const props = panelProps(state(), { subagentEvents }, { route: 'instance', activeInstanceId: childId })
+  it('creates no polling timers while a running child remains visible', async () => {
+    const props = panelProps(state(), {}, { route: 'instance', activeInstanceId: childId })
     props.renderSlot = renderEmbedProp() as never
     render(<ActivityPanel {...props} />)
-    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
-    expect(subagentEvents).toHaveBeenCalledTimes(1)
-    expect(subagentEvents).toHaveBeenNthCalledWith(1, SESSION, childId, undefined)
-    await act(async () => { await vi.advanceTimersByTimeAsync(2600) })
-    expect(subagentEvents.mock.calls.length).toBeGreaterThanOrEqual(2)
-    expect(subagentEvents).toHaveBeenLastCalledWith(SESSION, childId, 1)
-
-    const idle = state()
-    idle.subagentsByParent[SESSION] = catalog([
-      { kind: 'child', id: childId as SessionId, activity: 'inactive', hasChildren: false, mode: 'continuable', label: '调研子代理' },
-    ])
-    const idleEvents = vi.fn(async () => ({ ok: true as const, events, totalSeq: 1, queue: [] }))
-    const idleProps = panelProps(idle, { subagentEvents: idleEvents }, { route: 'instance', activeInstanceId: childId })
-    idleProps.renderSlot = renderEmbedProp() as never
-    const view = render(<ActivityPanel {...idleProps} />)
-    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
-    expect(view.container.textContent).toContain('subagent.idle')
-    const callsAfterFirst = idleEvents.mock.calls.length
-    await act(async () => { await vi.advanceTimersByTimeAsync(6000) })
-    expect(idleEvents.mock.calls.length).toBe(callsAfterFirst)
+    expect(vi.getTimerCount()).toBe(0)
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000) })
+    expect(vi.getTimerCount()).toBe(0)
   })
 
-  it('keeps an unlisted child readable but disables the jump', async () => {
+  it('keeps an unlisted child readable but disables the jump', () => {
     const gone = state()
     gone.subagentsByParent[SESSION] = catalog([])
-    const props = panelProps(gone, {
-      subagentEvents: vi.fn(async () => ({ ok: true as const, events, totalSeq: -1, queue: [] })),
-    }, { route: 'instance', activeInstanceId: childId })
+    const props = panelProps(gone, {}, { route: 'instance', activeInstanceId: childId })
     props.renderSlot = renderEmbedProp() as never
     const view = render(<ActivityPanel {...props} />)
-    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
     expect(view.container.textContent).toContain('subagent.gone')
-    expect(screen.getByRole('button', { name: 'subagent.open' }).hasAttribute('disabled')).toBe(true)
+    expect(embedCalls.at(-1)?.[1]).toEqual({ childSessionId: childId })
+    expect(view.getByRole('button', { name: 'subagent.open' }).hasAttribute('disabled')).toBe(true)
   })
 
-  it('surfaces read failures', async () => {
-    const props = panelProps(state(), {
-      subagentEvents: vi.fn(async () => ({ ok: false as const, code: 'FORBIDDEN' as const, message: 'no' })),
-    }, { route: 'instance', activeInstanceId: childId })
+  it('releases the child surface while the document is hidden and remounts on return', () => {
+    const props = panelProps(state(), {}, { route: 'instance', activeInstanceId: childId })
     props.renderSlot = renderEmbedProp() as never
-    const view = render(<ActivityPanel {...props} />)
-    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
-    expect(view.container.textContent).toContain('events.error')
-    expect(view.container.textContent).toContain('FORBIDDEN')
+    render(<ActivityPanel {...props} />)
+    const visibleCalls = embedCalls.length
+
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
+    act(() => { document.dispatchEvent(new Event('visibilitychange')) })
+    expect(document.querySelector('[class*="embedBody"]')?.childElementCount).toBe(0)
+
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+    act(() => { document.dispatchEvent(new Event('visibilitychange')) })
+    expect(embedCalls.length).toBeGreaterThan(visibleCalls)
   })
 })

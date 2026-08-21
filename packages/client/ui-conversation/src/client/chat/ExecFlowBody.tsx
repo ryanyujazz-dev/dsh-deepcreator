@@ -19,7 +19,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { IconChevronDownOutline14 } from '@ryanyujazz/dsh-client-ui-primitives'
-import type { ChatRenderSlotProps, EmbedNodeDispatch, ThinkMode } from '../contract/slots.ts'
+import type { ChatRenderSlotProps, ThinkMode } from '../contract/slots.ts'
 import { PendingSteeringBubble } from './MessageItem.tsx'
 import { ChatNodeSeat } from './ChatNodeSeat.tsx'
 import { ReasoningRow } from './ReasoningRow.tsx'
@@ -27,6 +27,7 @@ import { ExecutionSlot, type SlotDrafting, type SlotMember } from './ExecutionSl
 import { formatRunDuration } from './message-chrome.ts'
 import css from './ChatView.module.css'
 import { flowTop, pagingAnchor, runningTurnStartTime, scrollPosition } from './scroll-anchor.ts'
+import { useProgressiveTail } from './progressive-tail.ts'
 
 const FOLLOW_THRESHOLD = 24
 const EMPTY_DRAFTING: readonly SlotDrafting[] = []
@@ -140,21 +141,7 @@ export interface ExecFlowBodyInjected {
 }
 
 /** Full props of the execflow mode body. */
-export type ExecFlowBodyProps = ChatRenderSlotProps & ExecFlowBodyInjected & ExecFlowBodyEmbedProps
-
-/** Embed extras: mirror-seat dispatch and the fixed-classic presentation lock. */
-export interface ExecFlowBodyEmbedProps {
-  /** When present, node dispatch crosses the Activity embed's mirror seat. */
-  embedNodeSeat?: { readonly dispatch: EmbedNodeDispatch } | undefined
-  /** True in the embed: the classic form is fixed, so its live Think link never shows. */
-  lockThinkForm?: boolean | undefined
-  /**
-   * Full bottom padding (px) for the scroll container, replacing the base
-   * 16px: the embed's floating queue card reserves this safe area so the flow
-   * can scroll its tail clear of the card.
-   */
-  scrollPaddingBottom?: number | undefined
-}
+export type ExecFlowBodyProps = ChatRenderSlotProps & ExecFlowBodyInjected
 
 /**
  * The classic/think render-mode body: pure component over the composed
@@ -163,10 +150,16 @@ export interface ExecFlowBodyEmbedProps {
  */
 export function ExecFlowBody({
   useSession, useSessions, useStore, sessionId, openFile, revealChange, loadOlder, loadImage, inspectCall, chatScroll, forkAt,
-  fileMentions, selectRenderMode, renderSlot, t, actions, thinkForm, siblingId, embedNodeSeat, lockThinkForm, scrollPaddingBottom,
+  fileMentions, selectRenderMode, renderSlot, t, actions, thinkForm, siblingId, surfaceId = 'main',
 }: ExecFlowBodyProps) {
   const order = useSession(s => s.chat.order)
   const nodeStore = useSession(s => s.chat.nodes)
+  // ChatNodeStore is identity-stable across content-only upserts. Its values
+  // snapshot is the invalidation face: a tool/result replaces a running node
+  // without changing either the store or order reference, but values() then
+  // publishes a new list. Keep the flow partition subscribed to that list so
+  // aggregate running/settled facts update on the result itself.
+  const nodeValues = useSession(s => s.chat.nodes.values())
   const timeline = useSession(s => s.chat.timeline)
   const inbox = useSession(s => s.queue)
   // Workspace root off the session list row: path summaries display relative to it.
@@ -315,7 +308,8 @@ export function ExecFlowBody({
       }
     }
     return { entries, drafting: draftingForLastRun ? draftingList : [] }
-  }, [order, nodeStore, thinkForm, draftingList, draftingTurn])
+  }, [order, nodeStore, nodeValues, thinkForm, draftingList, draftingTurn])
+  const progressiveEntries = useProgressiveTail(flow.entries, surfaceId)
 
   /** One member's full row through the node seat (running or settled styling). */
   const renderMember = useCallback((nodeKey: string) => (
@@ -332,10 +326,9 @@ export function ExecFlowBody({
       loadImage={loadImage}
       fileMentions={fileMentions}
       renderSlot={renderSlot}
-      embedRender={embedNodeSeat === undefined ? undefined : { dispatch: embedNodeSeat.dispatch }}
       t={t}
     />
-  ), [useSession, thinkForm, selectedCallId, cwd, openFile, revealChange, inspectCall, forkAt, loadImage, fileMentions, renderSlot, embedNodeSeat, t])
+  ), [useSession, thinkForm, selectedCallId, cwd, openFile, revealChange, inspectCall, forkAt, loadImage, fileMentions, renderSlot, t])
 
   const listRef = useRef<HTMLDivElement | null>(null)
   const columnRef = useRef<HTMLDivElement | null>(null)
@@ -531,12 +524,13 @@ export function ExecFlowBody({
         }
       }
     }
-    loadOlder()
+    if (progressiveEntries.complete) loadOlder()
+    else progressiveEntries.revealOlder()
   }
 
   return (
     <div className={css.root}>
-      <div ref={listRef} className={css.scroll} style={scrollPaddingBottom === undefined ? undefined : { paddingBottom: `${scrollPaddingBottom}px` }}>
+      <div ref={listRef} className={css.scroll}>
         <div ref={columnRef} className={css.column} data-chat-flow="">
           {openState === 'loading' && <div className={css.hint}>{t('chat.loadingHistory')}</div>}
           {openState === 'error' && openError !== null && (
@@ -544,14 +538,14 @@ export function ExecFlowBody({
               {t('chat.loadError', { message: openError.message, code: openError.code })}
             </div>
           )}
-          {hasMore && (
+          {(hasMore || !progressiveEntries.complete) && (
             <div className={css.older}>
-              <button type="button" disabled={loadingOlder} onClick={loadOlderAnchored}>
-                {loadingOlder ? t('loading') : t('chat.loadOlder')}
+              <button type="button" disabled={progressiveEntries.complete && loadingOlder} onClick={loadOlderAnchored}>
+                {progressiveEntries.complete && loadingOlder ? t('loading') : t('chat.loadOlder')}
               </button>
             </div>
           )}
-          {flow.entries.map((entry, index) => entry.kind === 'node' ? (
+          {progressiveEntries.items.map(entry => entry.kind === 'node' ? (
             <ChatNodeSeat
               key={entry.nodeKey}
               nodeKey={entry.nodeKey}
@@ -566,7 +560,6 @@ export function ExecFlowBody({
               loadImage={loadImage}
               fileMentions={fileMentions}
               renderSlot={renderSlot}
-              embedRender={embedNodeSeat === undefined ? undefined : { dispatch: embedNodeSeat.dispatch }}
               t={t}
             />
           ) : (
@@ -582,7 +575,7 @@ export function ExecFlowBody({
                  the trailing run or created a pending run for it). Feeding
                  them to earlier slots turned every aggregate head into the
                  drafting row while a call was being composed. */
-              drafting={index === flow.entries.length - 1 ? flow.drafting : []}
+              drafting={entry === flow.entries.at(-1) ? flow.drafting : []}
               renderMember={renderMember}
               t={t}
             />
@@ -598,7 +591,7 @@ export function ExecFlowBody({
             <TurnStatus
               startTime={runningTurnStart}
               t={t}
-              thinkingText={!lockThinkForm && thinkForm === 'compact' ? streamingReasoning : null}
+              thinkingText={thinkForm === 'compact' ? streamingReasoning : null}
               onShowThinking={() => { selectRenderMode(sessionId, siblingId, actions.setRenderMode) }}
             />
           )}

@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import type { WorkspaceId } from '@deepseek-ai/dsh-client-runtime/client'
-import type { ConversationSlotProps, InputZone } from '../contract/slots.ts'
+import type { ConversationSessionOwnerProps, ConversationSlotProps, InputZone } from '../contract/slots.ts'
 import { HeroGlow, HeroShell, WorkspaceChip, workspaceLabel } from './EmptyHero.tsx'
 import css from './ConversationRoot.module.css'
 
@@ -14,7 +14,7 @@ export type ConversationRootProps = ConversationSlotProps
 
 export function ConversationRoot({
   sessionId, useSession, useSessions, useWorkspaces, useInput, useComposerBlock,
-  renderSlot, renderSlotChain, selectWorkspace, t,
+  renderSlot, renderSlotChain, selectWorkspace, publishSessionRenderer, t,
 }: ConversationRootProps) {
   const openState = useSession(s => s.openState)
   const composerPhase = useSession(s => s.composerPhase)
@@ -33,6 +33,20 @@ export function ConversationRoot({
   const pickerAnchor = useRef<HTMLButtonElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [scrollEdges, setScrollEdges] = useState({ top: false, bottom: false })
+
+  // The capability published to secondary surfaces must not churn when the
+  // root occurrence receives a fresh slot-binding closure. Keep one renderer
+  // identity and forward through the latest binding instead.
+  const renderSlotRef = useRef(renderSlot)
+  renderSlotRef.current = renderSlot
+  const renderSession = useCallback(
+    (owner: ConversationSessionOwnerProps) => renderSlotRef.current('conversation.session', owner),
+    [],
+  )
+  useLayoutEffect(
+    () => publishSessionRenderer(renderSession),
+    [publishSessionRenderer, renderSession],
+  )
 
   // Main-flow masks use the same edge rule as the Think window: no overflow
   // paints nothing; each gradient appears only while content remains hidden
@@ -234,7 +248,7 @@ export function ConversationRoot({
             aria-hidden
           />
         )}
-        {renderSlot('conversation.session', {})}
+        {renderSession({ surfaceId: 'main' })}
         {phase === 'active' && scrollEdges.bottom && (
           <div
             className={clsx(css.scrollMask, css.scrollMaskBottom)}

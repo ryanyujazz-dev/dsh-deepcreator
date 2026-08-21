@@ -11,18 +11,24 @@
 
 /* Clock before icons (user figma 388:20051) / after (assistant 43:32997). */
 .timeStart {
+  min-width: 0;
+  overflow: hidden;
   padding-right: 12px;
   font-size: 12px;
   line-height: 24px;
   color: var(--dsw-alias-label-tertiary);
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .timeEnd {
+  min-width: 0;
+  overflow: hidden;
   padding-left: 12px;
   font-size: 12px;
   line-height: 24px;
   color: var(--dsw-alias-label-tertiary);
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 

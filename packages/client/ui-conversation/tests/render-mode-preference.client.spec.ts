@@ -44,6 +44,41 @@ describe('RenderModePreference', () => {
     expect(write).toHaveBeenCalledOnce()
   })
 
+  it('keeps every mounted surface for one session bound independently', () => {
+    const preference = new RenderModePreference()
+    const mainWrite = vi.fn()
+    const activityWrite = vi.fn()
+    const sessionId = 'shared' as SessionId
+    const disposeMain = preference.bindSession(sessionId, mainWrite)
+    const disposeActivity = preference.bindSession(sessionId, activityWrite)
+
+    preference.set('think', sessionId)
+    expect(mainWrite).toHaveBeenCalledWith('think')
+    expect(activityWrite).toHaveBeenCalledWith('think')
+
+    disposeActivity()
+    preference.set('classic', sessionId)
+    expect(mainWrite).toHaveBeenLastCalledWith('classic')
+    expect(activityWrite).toHaveBeenCalledOnce()
+    disposeMain()
+  })
+
+  it('reference-counts the same stable writer across two surfaces', () => {
+    const preference = new RenderModePreference()
+    const write = vi.fn()
+    const sessionId = 'shared' as SessionId
+    const disposeMain = preference.bindSession(sessionId, write)
+    const disposeActivity = preference.bindSession(sessionId, write)
+
+    disposeActivity()
+    preference.set('think', sessionId)
+    expect(write).toHaveBeenCalledOnce()
+
+    disposeMain()
+    preference.set('classic', sessionId)
+    expect(write).toHaveBeenCalledOnce()
+  })
+
   it('mirrors a conversation control selection back to Settings', () => {
     const host = stubSettingsScope<ConversationSettings>()
     const preference = new RenderModePreference(host.scope)

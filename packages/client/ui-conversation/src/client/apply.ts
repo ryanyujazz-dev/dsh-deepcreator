@@ -2,7 +2,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { resolveSlotLabel, type BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
 import {
-  resolveWorkspacePath, type ConversationSnapshot, type ConversationTurnDataMap, type ISessions, type SessionId,
+  resolveWorkspacePath, type ISessions, type SessionId,
 } from '@deepseek-ai/dsh-client-runtime/client'
 // Type-only: the ctx.settingsScope Context merge. Cross-plugin collaboration
 // goes through the service, never a value import (client bundle purity gate).
@@ -33,8 +33,9 @@ import { DefaultRenderModeRow } from './settings/DefaultRenderModeRow.tsx'
 import type { DefaultRenderModeRowInjected } from './settings/DefaultRenderModeRow.tsx'
 import { ChatView } from './chat/ChatView.tsx'
 import { ChatRenderStandard } from './chat/ChatRenderStandard.tsx'
-import { ConversationEmbed, type ConversationEmbedInjected } from './chat/ConversationEmbed.tsx'
-import { ConversationEmbedEngine } from './chat/embed-engine.ts'
+import {
+  ConversationEmbed, ConversationEmbedSurface, type ConversationEmbedSurfaceInjected,
+} from './chat/ConversationEmbed.tsx'
 import { ExecFlowBody, type ExecFlowBodyInjected } from './chat/ExecFlowBody.tsx'
 import { StatsLine } from './chat/StatsLine.tsx'
 import { ApprovalPanel } from './skeleton/ApprovalPanel.tsx'
@@ -44,7 +45,8 @@ import { ConversationRoot } from './skeleton/ConversationRoot.tsx'
 import { ConversationSession, ConversationSessionHeader } from './skeleton/ConversationSession.tsx'
 import { en, NS, zh, type ConversationKey } from './locales.ts'
 import { registerConversationNodes } from './conversation-nodes/register.ts'
-import { registerChatNodeRenderers, registerEmbedNodeRenderers } from './chat/register-node-renderers.ts'
+import { registerChatNodeRenderers } from './chat/register-node-renderers.ts'
+import { ConversationSurfaceRegistry } from './surface-registry.ts'
 import { CONVERSATION_SETTINGS_NAMESPACE, type ConversationSettings } from '../submission-settings.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -126,7 +128,6 @@ export function apply(ctx: Context): void {
 
   registerConversationNodes(ctx)
   registerChatNodeRenderers(ctx)
-  registerEmbedNodeRenderers(ctx)
 
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-conversation: dictionaries')
 
@@ -170,7 +171,9 @@ export function apply(ctx: Context): void {
   // Chat semantic reader positions by session, surviving view switches and
   // width reflow when the tab ring remounts the view. Deliberately not
   // persisted: a fresh page load keeps the open-jump-to-bottom default.
-  const chatScrollPositions = new Map<SessionId, ChatScrollPosition>()
+  const chatScrollPositions = new Map<string, ChatScrollPosition>()
+  const chatScrollFaces = new Map<string, ReturnType<ChatViewInjected['chatScrollFor']>>()
+  const surfaces = new ConversationSurfaceRegistry()
 
   const viewTabs = (): ViewTab[] => {
     const tabs: ViewTab[] = []
@@ -258,6 +261,7 @@ export function apply(ctx: Context): void {
     },
     inject: (sessionId: SessionId | undefined): ConversationInjected => ({
       hooks: { composerBlock: sessionId === undefined ? ABSENT_BLOCK : composerBlocks.storeFor(sessionId) },
+      publishSessionRenderer: renderer => surfaces.register(renderer),
       selectWorkspace: async (workspaceId) => {
         const nextId = await workspaces.connectWorkspace(workspaceId)
         if (sessionId !== undefined && nextId !== sessionId) {
@@ -293,7 +297,7 @@ export function apply(ctx: Context): void {
       const conversation = concreteConversation(ctx)
       return {
         views,
-        releaseSessionImages: (id) => { conversation.releaseSessionImages(id) },
+        retainSessionImages: (id) => conversation.retainSessionImages(id),
         bindDraftMirror: write => inputHub.shell(sessionId).bindMirror(write),
       }
     },
@@ -475,12 +479,19 @@ export function apply(ctx: Context): void {
           actions.setInspect({ callId })
           actions.setView('trajectory')
         },
-        chatScroll: {
-          save: (position) => {
-            if (position === null) chatScrollPositions.delete(sessionId)
-            else chatScrollPositions.set(sessionId, position)
-          },
-          read: () => chatScrollPositions.get(sessionId) ?? null,
+        chatScrollFor: (surfaceId) => {
+          const key = `${sessionId}\u0000${surfaceId}`
+          const existing = chatScrollFaces.get(key)
+          if (existing !== undefined) return existing
+          const face = {
+            save: (position: ChatScrollPosition | null) => {
+              if (position === null) chatScrollPositions.delete(key)
+              else chatScrollPositions.set(key, position)
+            },
+            read: () => chatScrollPositions.get(key) ?? null,
+          }
+          chatScrollFaces.set(key, face)
+          return face
         },
         forkAt: (seq) => {
           sessions.fork({ sessionId, atSeq: seq, increaseTitle: true })
@@ -528,50 +539,31 @@ export function apply(ctx: Context): void {
   execflowMode('classic', 'compact', 10)
   execflowMode('think', 'inline', 20)
 
-  // The embeddable child execution flow (Activity panel subagent tabs): one
-  // engine per child drives the OFFICIAL assembler over the polled event
-  // window, and the fixed classic-mode body renders through the mirror node
-  // seat whose turn-data Hook reads the child's own snapshot from the
-  // occurrence context (the standard kit follows the CURRENT session). The
-  // slot itself is declared by the Activity panel entry's children table;
-  // inject waits for that declaration.
-  const embedEngines = new Map<SessionId, ConversationEmbedEngine>()
-  ctx.effect(() => () => {
-    for (const engine of embedEngines.values()) engine.dispose()
-    embedEngines.clear()
-  }, 'ui-conversation: embed engines')
-  ctx.slots.inject('deepcreator.conversation.embed', () => slots.register({
-    name: 'deepcreator.conversation.embed',
-    locale: NS,
-    children: {
-      'deepcreator.conversation.embed.node': {
-        kind: 'keyed',
-        scope: 'session',
-        inject: {
-          hooks: {
-            turnData: (_standard: object, occurrence: import('./contract/slots.ts').EmbedNodeOccurrence) =>
-              function useTurnData<K extends Extract<keyof ConversationTurnDataMap, string>>(key: K) {
-                return occurrence.useSession((snapshot: ConversationSnapshot) => {
-                  const location = snapshot.chat.nodes.get(occurrence.nodeKey)?.location
-                  return location?.kind === 'turn' || location?.kind === 'step'
-                    ? location.turn.data.get(key)
-                    : undefined
-                })
-              },
-          },
-        },
+  // Activity's root adapter mounts an explicit non-navigating SessionProvider.
+  // Its strict child surface then invokes the main conversation root's already
+  // authorized session outlet, so data, pagination and every downstream
+  // renderer are shared instead of mirrored.
+  ctx.slots.inject('deepcreator.conversation.embed', () => {
+    const disposeRoot = slots.register({
+      name: 'deepcreator.conversation.embed',
+      children: {
+        'deepcreator.conversation.embed.surface': { kind: 'single', scope: 'session' },
       },
-    },
-    inject: (): ConversationEmbedInjected => ({
-      engineFor: childId => {
-        const existing = embedEngines.get(childId)
-        if (existing !== undefined) return existing
-        const engine = new ConversationEmbedEngine(ctx.conversationEvents, ctx.conversationViews, childId)
-        embedEngines.set(childId, engine)
-        return engine
-      },
-    }),
-  }, ConversationEmbed))
+    }, ConversationEmbed)
+    try {
+      const disposeSurface = slots.register({
+        name: 'deepcreator.conversation.embed.surface',
+        inject: (): ConversationEmbedSurfaceInjected => ({ surfaces }),
+      }, ConversationEmbedSurface)
+      return () => {
+        disposeSurface()
+        disposeRoot()
+      }
+    } catch (error) {
+      disposeRoot()
+      throw error
+    }
+  })
 
   // Session stats stick with the composer (composer.dock = stats-line family).
   slots.register({ name: 'conversation.composer.dock', id: 'stats', order: 0, locale: NS }, StatsLine)

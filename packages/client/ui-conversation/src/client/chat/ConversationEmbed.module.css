@@ -1,39 +1,31 @@
-/* ConversationEmbed: the classic-mode flow fills the tab body; the pending
-   queue card floats above the flow tail (QueueDock row visuals, read-only). */
+/* Secondary transcript occurrence: the main conversation root supplies all
+   type variables; this file owns only the alternate region's geometry. */
 
-.root { position: relative; display: flex; min-height: 0; height: 100%; flex-direction: column; }
-.root > :global(.frame), .root > div:first-child { flex: 1 1 auto; min-height: 0; }
-
-.queueFloat {
-  position: absolute;
-  left: 50%;
-  bottom: 14px;
-  transform: translateX(-50%);
-  z-index: 5;
-  max-width: calc(100% - 24px);
-  pointer-events: none;
-}
-
-/* The float is a detached card, not the composer's dock: all four corners
-   round, the inset border closes underneath it, and a soft shadow lifts it
-   off the flow. Inner rows still reuse the QueueDock classes. */
-.queueCard {
-  position: relative;
-  overflow: hidden;
+.root {
+  flex: 1 1 auto;
   width: 100%;
-  padding: 2px 0;
-  border-radius: 12px;
-  background: var(--dsw-specific-tip);
-  box-shadow: 0 6px 20px color-mix(in srgb, rgb(0 0 0) 14%, transparent);
-  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
-  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  /* Activity has no composer to align with. Keep the shared renderer's base
+     16px transcript inset without inheriting the main column's extra 16px
+     composer clearance. */
+  --dsh-composer-side-clearance: 0px;
 }
 
-.queueCard::after {
-  position: absolute;
-  inset: 0;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: inherit;
-  content: '';
-  pointer-events: none;
+.body {
+  display: flex;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.body > :global([data-slot='conversation.session']) {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
 }

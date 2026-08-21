@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-每个 toolview 注册体现在同时在两个分发座位注册——`tool.call.toolview`(对话流)与 `deepcreator.conversation.embed.toolview`(活动面板的内嵌子代理流)——工具树经 `EmbedToolCallTree` 适配器在镜像节点座渲染,内嵌经典模式流因此呈现与对话区一致的工具行。
+Activity 子会话直接调用主对话区的 `conversation.session` renderer，因此每个 toolview 只在 `tool.call.toolview` 注册一次，不再存在镜像分发座或适配器。
 
 
 Client 工具展示插件。`ui-conversation` 通过 `conversation.chat.node` 的匹配 key 分发每个已排序的 `tool-call` Conversation Node；本包渲染其中的 root 及其 Code Dispatch 子调用，并把每个原子调用通过 keyed slot `tool.call.toolview` 分发。没有注册的工具名称使用通用卡片。

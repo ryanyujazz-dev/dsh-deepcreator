@@ -2,23 +2,24 @@
 // vertical page — this session's subagent catalog (grouped by participation
 // in the current turn) plus running/finished background jobs (live-ticking,
 // stoppable); each subagent opens as a real Workbench tab (a panel instance
-// keyed by the child session id) carrying the embedded classic-mode execution
-// flow and its floating queue card. The panel anchors to the conversation's
+// keyed by the child session id) carrying a non-navigating occurrence of the
+// shared conversation surface. The panel anchors to the conversation's
 // home session: while a subagent is opened in the conversation area, Home
 // keeps showing the PARENT's activity instead of re-scoping to the child.
 
 import { useEffect, useMemo, useState } from 'react'
-import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import type {
-  JobView, SessionId, SubagentAddress, SubagentCatalogSnapshot, SessionSummary,
+  JobView, SessionId, SessionProjectionMap, SubagentAddress, SubagentCatalogSnapshot, SessionSummary,
 } from '@deepseek-ai/dsh-client-runtime/client'
 import type { SubagentOverviewOk } from '@ryanyujazz/dsh-jobs-admin'
-import type { PropsLocale, PropsRenderSlots, SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
+import type {} from '@deepseek-ai/dsh-token-meter/client'
+import type { PropsLocale, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: merges the conversation embed slot into the SlotMap.
 import type {} from '@ryanyujazz/dsh-client-ui-conversation/client'
 import { StateDot } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { WorkbenchPanelProps } from '@ryanyujazz/dsh-client-ui-workbench/client'
-import { SubagentTab, type SubagentTabProps } from './SubagentTab.tsx'
+import { formatTokens, SubagentTab, tokenTotal, type SubagentTabProps } from './SubagentTab.tsx'
 import type { ActivityInjected } from './injected.ts'
 import type { ActivityKey } from './locales.ts'
 import css from './ActivityPanel.module.css'
@@ -36,6 +37,32 @@ type T = PropsLocale<'workbench-activity'>['t']
 
 const EMPTY_JOBS = [] as const
 const EMPTY_ENTRIES = [] as const
+
+interface SelectedChildState {
+  listed: boolean
+  mode: 'one-shot' | 'continuable' | undefined
+  running: boolean
+}
+
+const equalSelectedChild = (left: SelectedChildState, right: SelectedChildState): boolean => (
+  left.listed === right.listed && left.mode === right.mode && left.running === right.running
+)
+
+const equalLabels = (left: Readonly<Record<string, string>>, right: Readonly<Record<string, string>>): boolean => {
+  const keys = Object.keys(left)
+  return keys.length === Object.keys(right).length && keys.every(key => left[key] === right[key])
+}
+
+const equalUsage = (
+  left: SessionProjectionMap['tokenUsage'] | undefined,
+  right: SessionProjectionMap['tokenUsage'] | undefined,
+): boolean => left === right || (
+  left !== undefined && right !== undefined
+  && left.uncachedInputTokens === right.uncachedInputTokens
+  && left.outputTokens === right.outputTokens
+  && left.cacheReadTokens === right.cacheReadTokens
+  && left.cacheWriteTokens === right.cacheWriteTokens
+)
 
 export function stateDot(status: string): 'ongoing' | 'warning' | 'done' | 'error' {
   if (status === 'running') return 'ongoing'
@@ -143,11 +170,18 @@ export function groupSubagents(
 }
 
 export function ActivityPanel(props: Props) {
-  const { sessionId, useSessions, route, activeInstanceId, openInstance } = props
-  const address = useSessions((snapshot: SessionsListState) => snapshot.currentAddress)
+  const address = props.useSessions((snapshot: SessionsListState) => snapshot.currentAddress)
   // Anchor to the conversation's home session: while an addressed subagent is
   // current, the Activity panel keeps showing the PARENT's catalog and jobs.
-  const homeId = address?.parentSessionId ?? sessionId
+  const homeId = address?.parentSessionId ?? props.sessionId
+  if (props.route === 'instance' && props.activeInstanceId !== undefined) {
+    return <ActivityInstance {...props} homeId={homeId} childId={props.activeInstanceId as SessionId} />
+  }
+  return <ActivityHome {...props} homeId={homeId} addressedId={address?.childSessionId} />
+}
+
+function ActivityHome(props: Props & { homeId: SessionId; addressedId: SessionId | undefined }) {
+  const { homeId, addressedId, useSessions, openInstance } = props
   const jobs = useSessions((snapshot: SessionsListState) => snapshot.jobsBySession[homeId]) ?? EMPTY_JOBS
   const catalog = useSessions((snapshot: SessionsListState) => snapshot.subagentsByParent[homeId])
   const byId = useSessions((snapshot: SessionsListState) => snapshot.byId)
@@ -168,49 +202,99 @@ export function ActivityPanel(props: Props) {
     }).catch(() => {})
     return () => { cancelled = true }
   }, [homeId, visible, catalog, jobs, subagentOverview])
-  const renderEmbed = useMemo<(owner: SubagentTabProps['renderEmbed'] extends (o: infer O) => ReactNode ? O : never) => ReactNode>(
-    () => owner => props.renderSlot('deepcreator.conversation.embed', owner),
-    [props.renderSlot],
-  )
-
   // Tab pills carry the catalog label; the instance id stays the child id.
+  const contributePanelInfo = props.contributePanelInfo
   useEffect(() => {
     const tabLabels: Record<string, string> = {}
     for (const row of subagents) tabLabels[row.id] = row.label
-    return props.contributePanelInfo({ tabLabels })
-  }, [props, subagents])
+    return contributePanelInfo({ tabLabels })
+  }, [contributePanelInfo, subagents])
 
-  if (route === 'instance' && activeInstanceId !== undefined) {
-    const row = subagents.find(candidate => candidate.id === activeInstanceId)
-    return (
-      <SubagentTab
-        parentSessionId={homeId}
-        childId={activeInstanceId as SessionId}
-        label={row?.label}
-        mode={row?.mode}
-        activity={row?.activity}
-        listed={row !== undefined}
-        useSessions={useSessions as SnapshotSelectorHook<SessionsListState>}
-        visible={visible}
-        subagentEvents={props.subagentEvents}
-        openInConversation={props.openInConversation}
-        showHome={props.showHome}
-        renderEmbed={renderEmbed}
-        t={props.t}
-      />
-    )
-  }
   return <TasksPage
     sessionId={homeId}
     jobs={jobs}
     cohort={cohort}
     subagentCount={subagents.length}
-    addressedId={address?.childSessionId}
+    addressedId={addressedId}
     openInstance={openInstance}
     closeFromConversation={props.closeFromConversation}
     stopJob={props.stopJob}
     t={props.t}
   />
+}
+
+function ActivityInstance(props: Props & { homeId: SessionId; childId: SessionId }) {
+  const { homeId, childId, useSessions } = props
+  const child = useSessions((snapshot: SessionsListState): SelectedChildState => {
+    const entry = snapshot.subagentsByParent[homeId]?.entries.find(
+      candidate => candidate.kind === 'child' && candidate.id === childId,
+    )
+    return entry?.kind === 'child'
+      ? { listed: true, mode: entry.mode, running: entry.activity === 'running' }
+      : { listed: false, mode: undefined, running: false }
+  }, equalSelectedChild)
+  const summaryRunning = useSessions((snapshot: SessionsListState) => snapshot.byId[childId]?.running === true)
+  const usage = useSessions(
+    (snapshot: SessionsListState) => snapshot.byId[childId]?.projectionValues?.tokenUsage as
+      SessionProjectionMap['tokenUsage'] | undefined,
+    equalUsage,
+  )
+  const tabLabels = useSessions((snapshot: SessionsListState) => {
+    const labels: Record<string, string> = {}
+    for (const candidate of snapshot.subagentsByParent[homeId]?.entries ?? EMPTY_ENTRIES) {
+      if (candidate.kind === 'child') labels[candidate.id] = candidate.label ?? candidate.id
+    }
+    return labels
+  }, equalLabels)
+  const { listed, mode } = child
+  const running = child.running || summaryRunning
+  const visible = props.visible !== false
+  const contributePanelInfo = props.contributePanelInfo
+  useEffect(() => contributePanelInfo({ tabLabels }), [contributePanelInfo, tabLabels])
+
+  const openInConversation = props.openInConversation
+  const showHome = props.showHome
+  const t = props.t
+  const toolbar = useMemo(() => (
+    <div className={css.instanceActions}>
+      <StateDot state={running ? 'ongoing' : 'done'} />
+      <span className={css.instanceMeta}>
+        {mode === undefined
+          ? (running ? t('subagent.running') : t('subagent.idle'))
+          : `${mode === 'continuable' ? t('subagent.mode.continuable') : t('subagent.mode.one-shot')} · ${running ? t('subagent.running') : t('subagent.idle')}`}
+        {usage === undefined ? '' : ` · ${formatTokens(tokenTotal(usage) ?? 0)} tokens`}
+      </span>
+      <button
+        type="button"
+        className={css.openButton}
+        disabled={!listed}
+        title={listed ? undefined : t('subagent.gone')}
+        onClick={() => {
+          showHome()
+          openInConversation({ parentSessionId: homeId, childSessionId: childId, mode: mode ?? 'one-shot' })
+        }}
+      >
+        {t('subagent.open')}
+      </button>
+    </div>
+  ), [childId, homeId, listed, mode, openInConversation, running, showHome, t, usage])
+
+  const renderSlot = props.renderSlot
+  const renderEmbed = useMemo<SubagentTabProps['renderEmbed']>(
+    () => owner => renderSlot('deepcreator.conversation.embed', owner),
+    [renderSlot],
+  )
+
+  return (
+    <SubagentTab
+      childId={childId}
+      listed={listed}
+      visible={visible}
+      toolbar={toolbar}
+      renderEmbed={renderEmbed}
+      t={t}
+    />
+  )
 }
 
 interface TasksPageProps {

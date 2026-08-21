@@ -2,8 +2,8 @@
  * Activity panel provider. Home route: this session's background jobs (live
  * timers, stoppable through the `jobs-admin` Host remote) plus its subagent
  * catalog. Each subagent opens as a real Workbench tab — a panel instance
- * keyed by the child session id — whose body is the host-folded execution
- * tail plus the official jump into the conversation area. Views receive the
+ * keyed by the child session id — whose body mounts the real child Session
+ * transcript without changing the current conversation. Views receive the
  * Host actions as plain callbacks through the slot inject; no React
  * component touches Cordis context or the RPC surface.
  */
@@ -44,10 +44,6 @@ export function apply(ctx: ClientContext): void {
         stopJob: async (sessionId, jobId) => {
           const wire = await jobsAdmin.stop(sessionId, jobId)
           return wire.ok ? wire.value : { ok: false, code: 'KILL_FAILED', message: wire.error.message }
-        },
-        subagentEvents: async (parentSessionId, childSessionId, afterSeq) => {
-          const wire = await jobsAdmin.subagentEvents(parentSessionId, childSessionId, afterSeq)
-          return wire.ok ? wire.value : { ok: false, code: 'READ_FAILED', message: wire.error.message }
         },
         subagentOverview: async parentSessionId => {
           const wire = await jobsAdmin.subagentOverview(parentSessionId)

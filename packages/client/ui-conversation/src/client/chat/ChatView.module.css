@@ -14,6 +14,8 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
+  width: 100%;
   flex: 1 1 auto;
 }
 
@@ -28,12 +30,17 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
+  width: 100%;
   flex: 1 1 auto;
 }
 
 .scroll {
   flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
   min-height: 0;
+  box-sizing: border-box;
   overflow-y: auto;
   /* Sides = composer clearance + 16px: on narrow viewports the transcript
      stays exactly 32px narrower than the input card (the shared width rule). */
@@ -58,6 +65,8 @@
 .column {
   max-width: var(--dsh-chat-content-width);
   width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   margin: 0 auto;
   display: flex;
   flex-direction: column;

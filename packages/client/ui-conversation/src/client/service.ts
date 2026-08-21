@@ -96,6 +96,7 @@ export class ConversationController extends Service implements IConversation {
   private readonly draftAttachments = new Map<DraftAttachmentId, ComposerAttachment>()
   private readonly imageUrls = new Map<string, ImageUrlEntry>()
   private readonly imageGenerations = new Map<SessionId, number>()
+  private readonly imageLeases = new Map<SessionId, number>()
   private readonly createdImageUrls = new Set<string>()
   private disposed = false
 
@@ -117,6 +118,7 @@ export class ConversationController extends Service implements IConversation {
       this.draftAttachments.clear()
       this.imageUrls.clear()
       this.imageGenerations.clear()
+      this.imageLeases.clear()
     }, 'conversation attachment URL cache')
   }
 
@@ -259,6 +261,27 @@ export class ConversationController extends Service implements IConversation {
       }, () => {
         // A failed or invalidated load owns no object URL.
       })
+    }
+  }
+
+  /**
+   * Retain one rendered occurrence's historical-image cache. The final
+   * release invalidates pending loads and revokes URLs; simultaneous main and
+   * Activity surfaces therefore cannot release each other's images.
+   */
+  retainSessionImages(sessionId: SessionId): () => void {
+    this.imageLeases.set(sessionId, (this.imageLeases.get(sessionId) ?? 0) + 1)
+    let released = false
+    return () => {
+      if (released) return
+      released = true
+      const next = (this.imageLeases.get(sessionId) ?? 1) - 1
+      if (next > 0) {
+        this.imageLeases.set(sessionId, next)
+        return
+      }
+      this.imageLeases.delete(sessionId)
+      this.releaseSessionImages(sessionId)
     }
   }
 

@@ -23,6 +23,7 @@ import { ChatNodeSeat } from './ChatNodeSeat.tsx'
 import { formatRunDuration } from './message-chrome.ts'
 import css from './ChatView.module.css'
 import { flowTop, pagingAnchor, runningTurnStartTime, scrollPosition } from './scroll-anchor.ts'
+import { useProgressiveTail } from './progressive-tail.ts'
 
 const FOLLOW_THRESHOLD = 24
 
@@ -90,7 +91,7 @@ function TurnStatus({ startTime, t }: {
  */
 export function ChatRenderStandard({
   useSession, useSessions, useStore, sessionId, openFile, revealChange, loadOlder, loadImage, inspectCall, chatScroll, forkAt,
-  fileMentions, renderSlot, t,
+  fileMentions, renderSlot, t, surfaceId = 'main',
 }: ChatRenderSlotProps) {
   const order = useSession(s => s.chat.order)
   const nodeStore = useSession(s => s.chat.nodes)
@@ -135,6 +136,7 @@ export function ChatRenderStandard({
   const lastNode = lastKey === null ? undefined : nodeStore.get(lastKey)
   const lastSteeringId = pendingSteering[pendingSteering.length - 1]?.id ?? null
   const followSig = `${openState}:${firstSeq}:${lastKey}:${order.length}:${running ? 1 : 0}:${lastSteeringId ?? ''}`
+  const progressiveOrder = useProgressiveTail(order, surfaceId)
 
   const toBottom = (el: HTMLElement): void => {
     anchorRef.current = null
@@ -305,7 +307,8 @@ export function ChatRenderStandard({
         }
       }
     }
-    loadOlder()
+    if (progressiveOrder.complete) loadOlder()
+    else progressiveOrder.revealOlder()
   }
 
   return (
@@ -318,14 +321,14 @@ export function ChatRenderStandard({
               {t('chat.loadError', { message: openError.message, code: openError.code })}
             </div>
           )}
-          {hasMore && (
+          {(hasMore || !progressiveOrder.complete) && (
             <div className={css.older}>
-              <button type="button" disabled={loadingOlder} onClick={loadOlderAnchored}>
-                {loadingOlder ? t('loading') : t('chat.loadOlder')}
+              <button type="button" disabled={progressiveOrder.complete && loadingOlder} onClick={loadOlderAnchored}>
+                {progressiveOrder.complete && loadingOlder ? t('loading') : t('chat.loadOlder')}
               </button>
             </div>
           )}
-          {order.map(nodeKey => (
+          {progressiveOrder.items.map(nodeKey => (
             <ChatNodeSeat
               key={nodeKey}
               nodeKey={nodeKey}

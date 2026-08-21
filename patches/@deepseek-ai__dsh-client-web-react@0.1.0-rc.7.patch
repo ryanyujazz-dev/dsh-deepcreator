@@ -1,0 +1,30 @@
+diff --git a/lib/index.js b/lib/index.js
+index 9096d3c67a9298a3cdfe772801e0492d61a0a9bd..ef473b039f216272a1a19daad481044a733a7226 100644
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -122,8 +122,10 @@ function SessionMaybeProvider({ children }) {
+ * string ids; `PropsRuntime` applies the branded type at the component
+ * boundary.
+ */
+-function SessionProvider({ empty, children }) {
+-	const info = observableHook(useHost().sessions.provideInfo)((s) => s);
++function SessionProvider({ sessionId, empty, children }) {
++	const sessions = useHost().sessions;
++	const source = sessionId === void 0 ? sessions.provideInfo : sessions.provideInfoFor(sessionId);
++	const info = observableHook(source)((s) => s);
+ 	const id = info.sessionId;
+ 	if (id === void 0) return jsx(Fragment, { children: empty?.() ?? null });
+ 	return jsx(BindingContext.Provider, {
+diff --git a/lib/types/session-provider.d.ts b/lib/types/session-provider.d.ts
+index a49274b98908c46223769afd74ae7c77b34fb27c..37d02a7c995a2a61d1b3fe9e48f0ce66f99018da 100644
+--- a/lib/types/session-provider.d.ts
++++ b/lib/types/session-provider.d.ts
+@@ -57,6 +57,8 @@ export declare function SessionMaybeProvider({ children }: {
+ }): import("react").JSX.Element;
+ /** SessionProvider API: render-prop body plus the no-session branch. */
+ export interface SessionProviderProps {
++    /** Explicit session to render without changing current selection. */
++    sessionId?: string | undefined;
+     /** No-session body (also covers a current id whose session cannot be resolved). */
+     empty?: (() => ReactNode) | undefined;
+     /** Session body; remounted per session via key={sessionId}. */

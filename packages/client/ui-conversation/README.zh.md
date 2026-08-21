@@ -26,7 +26,11 @@ Think 行默认保持折叠，并在不展开思维链的情况下暴露实时�
 
 经典模式正在接收 reasoning 时，`Deep diving...` 右侧会直接挂载原生模式折叠态的 `ReasoningRow`，而不是复刻其外观。图标、`Think · 最新非空行`、扫光动画和流式行尾跟随因此始终只有一份实现。每一段单次 reasoning 只在它作为当前流式尾部时出现；block 结束并进入正文或工具阶段后立即消失，不等待整个 Turn 结束。原生模式点击后就地展开；这里点击同一行则进入思考模式，让完整 reasoning 回到行内展示，其悬浮预览使用向上折角。所有模式下对话流内的普通 Think 仍保留展开项方向：折叠时向右，展开时向下。思考模式不重复提供该入口，变化中的摘要也不进入活动状态的 live region。
 
+经典和思考模式的执行槽会把工具生命周期结算视为一次消息流更新，即使带 key 的节点顺序没有变化也一样。`tool/result` 一旦把运行中节点变为已结算，聚合标题就会立即推进并播放正常的完成过渡，不再等待下一条工具草稿、后续调用或 Turn 尾部来使消息流失效。
+
 会话流中所有可见正文共享框架级 `--dsh-conversation-flow-font`，并映射到 Host 主题的 `--dsw-font-markdown-base`：assistant 正文、用户气泡、Think、上下文注入、折叠工具行、执行聚合摘要、压缩、重试和终态错误因此会在所有渲染模式中跟随同一个 transcript 字号偏好。InputBar 会把同一个 Host 角色应用到 textarea、placeholder、装饰 backdrop 与高度 mirror，因此输入文字和提示文字会随正文偏好一起改变字号、行高与常规字重。展开后的工具载荷与结构化上下文是刻意保留的紧凑例外，使用 `--dsw-font-markdown-code-block-small`。按 key 注册的 renderer 继承公开的框架变量，不再各自声明 transcript 字号。
+
+**内嵌子会话。** `deepcreator.conversation.embed` 现在只是几何适配层：它把子会话 id 交给 Runtime 的显式非导航 `SessionProvider`，再由严格会话 surface 以 `{ transcriptOnly: true, surfaceId }` 调用主对话区同一个已授权 `conversation.session` outlet。两个区域共享同一个 Session、官方尾页／open promise、assembler、实时流、分页、主对话区的渲染模式偏好、节点／工具 renderer 与 Host 排版变量；Activity 不挂载 composer、不提供第二个模式切换入口，也不维护事件镜像。滚动位置按会话和 surface 分开保存，历史图片 URL 则使用引用计数租约，任一区域卸载都不会让另一区域资源失效。Activity 冷挂载只物化已组装尾页的最后四个 renderer 行；公共「加载更早」先每次揭示四个驻留行，全部揭示后才委托 Runtime 的真实 `loadOlder`，所以标签切换后没有后台 transcript commit。非当前会话最后一个观察者退出时 Runtime 停止实时处理但保留有界的已组装尾页；重进仍会重取官方尾页，仅当事件序列未变化时复用展示快照。根区域只发布 renderer capability，从不复制 Session 数据；Activity 仅在标签激活、面板可见且页面可见时持有观察租约。
 
 聊天视图保留工具的消息流位置，但委托其展示。每个已排序的 `tool-call` Conversation Node 都通过 `conversation.chat.node` 的同名 key 分发；`conversation.details.tool` 连同已退役的 DetailsPanel 展示器与契约类型一并移除。组装后的 Web bundle 为该 Chat Node key 注册 [`ui-tool`](../ui-tool/README.md)，由后者渲染运行时已投影的递归 root/child 树，并负责按名称分发、通用展示和 render-intent 卡片。
 

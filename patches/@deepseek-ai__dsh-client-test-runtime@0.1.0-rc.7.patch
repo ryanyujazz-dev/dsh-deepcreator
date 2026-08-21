@@ -1,0 +1,58 @@
+diff --git a/lib/index.js b/lib/index.js
+index ca1875bab434e3462f85c292e6d2dc776439d229..b89dfc749c2e39fc1eedaf67bfa9cb9a3b8ccff2 100644
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -268,6 +268,7 @@ var TestSessions = class {
+ 	* renderer's SessionProvider.
+ 	*/
+ 	currentProvideInfo;
++	explicitProvideSources = /* @__PURE__ */ new Map();
+ 	records = /* @__PURE__ */ new Map();
+ 	/** The production provide channel (roster, materialization rules, current projection) — no test-side mirror. */
+ 	channel;
+@@ -425,6 +426,24 @@ var TestSessions = class {
+ 		record.provideInfo ??= this.channel.materializeInfo(this.bindingOf(id, record));
+ 		return record.provideInfo;
+ 	}
++	/** Explicit session source used by non-navigating SessionProvider tests. */
++	provideInfoFor(id) {
++		const existing = this.explicitProvideSources.get(id);
++		if (existing !== void 0) return existing;
++		const source = {
++			getSnapshot: () => this.maybeProvideInfo(id),
++			subscribe: (fn) => {
++				const unlist = this.list.subscribe(fn);
++				const unprovide = this.currentProvideInfo.subscribe(fn);
++				return () => {
++					unlist();
++					unprovide();
++				};
++			}
++		};
++		this.explicitProvideSources.set(id, source);
++		return source;
++	}
+ 	/**
+ 	* Resolve the current-session-optional standard kit (host face member):
+ 	* unknown or absent ids return the static no-session projection.
+diff --git a/lib/types/sessions.d.ts b/lib/types/sessions.d.ts
+index 2a1062c1a3749770195d6998f3729c4deb0084f1..c639d89529d59204b406389db8a4d17bc17435fd 100644
+--- a/lib/types/sessions.d.ts
++++ b/lib/types/sessions.d.ts
+@@ -101,6 +101,7 @@ export declare class TestSessions implements ISessions {
+      * renderer's SessionProvider.
+      */
+     readonly currentProvideInfo: HostObservable<SessionMaybeProvideInfo>;
++    private readonly explicitProvideSources;
+     private readonly records;
+     /** The production provide channel (roster, materialization rules, current projection) — no test-side mirror. */
+     private readonly channel;
+@@ -167,6 +168,8 @@ export declare class TestSessions implements ISessions {
+      * @returns the identity-stable bundle, or undefined for unknown sessions.
+      */
+     provideInfo(id: string): SessionProvideInfo | undefined;
++    /** Explicit session source used by non-navigating SessionProvider tests. */
++    provideInfoFor(id: SessionId): HostObservable<SessionMaybeProvideInfo>;
+     /**
+      * Resolve the current-session-optional standard kit (host face member):
+      * unknown or absent ids return the static no-session projection.

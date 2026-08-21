@@ -419,7 +419,8 @@ describe('ExecFlow partition and slot forms', () => {
     })
     expect(container.querySelector('[class*="aggregate"][role="button"]')?.textContent).toContain('运行 1 条命令')
 
-    // call-2 settles (turn stays open so the order identity also changes).
+    // call-2 settles while the turn stays open. The tool keeps the same keyed
+    // position: only its node content changes from running to settled.
     act(() => {
       h.set({
         nodes: [
@@ -428,10 +429,6 @@ describe('ExecFlow partition and slot forms', () => {
           { ...toolResult(3, 'call-2'), turn: 1 } as never,
         ],
         runningCalls: [],
-        // turnEnds appends the turn-tail so the fixture's order identity
-        // changes (the settled key sequence alone is unchanged — the phased
-        // source needs a fresh identity to re-render).
-        turnEnds: new Map([[1, 4]]),
       })
     })
     // The beat: the exiting layer carries the OLD title, the entering layer
@@ -486,11 +483,6 @@ describe('ExecFlow partition and slot forms', () => {
         ],
         runningCalls: [],
         running: false,
-        // The turn closes when its last tool settles (production logs
-        // turn/end); the turn-tail node it appends also gives the fixture
-        // a fresh order identity, which the phased source needs to
-        // re-render (the store's key sequence alone is unchanged here).
-        turnEnds: new Map([[2, 4]]),
       })
     })
     await waitFor(() => {

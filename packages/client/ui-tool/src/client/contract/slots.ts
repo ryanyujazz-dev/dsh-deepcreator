@@ -21,15 +21,6 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * function of what the turn already knows.
      */
     'tool.call.toolview': { kind: 'keyed'; scope: 'session'; owner: ToolCallOwnerProps }
-    /**
-     * Mirror of the toolview seat for the Activity embed's child flow: the
-     * same keyed rows, double-registered by each toolview registrant. The
-     * session-scope prop shape matches the original seat because the rows are
-     * the SAME components; no row reads the session kit (owner share +
-     * `useSessions` only), so the CURRENT-session values the framework
-     * supplies here are inert.
-     */
-    'deepcreator.conversation.embed.toolview': { kind: 'keyed'; scope: 'session'; owner: ToolCallOwnerProps }
   }
 }
 
@@ -66,21 +57,12 @@ export interface ToolCallOwnerProps {
 export type ToolCallViewProps = PropsRuntime<'tool.call.toolview'>
 
 /**
- * The two toolview dispatch seats: the conversation chat flow's original and
- * the Activity embed's mirror (this package declares both specs; the embed
- * registration injects its own seat key).
+ * Toolview dispatch seats owned by this package.
  */
-export const TOOLVIEW_SEATS = ['tool.call.toolview', 'deepcreator.conversation.embed.toolview'] as const
+export const TOOLVIEW_SEATS = ['tool.call.toolview'] as const
 export type ToolviewSeat = typeof TOOLVIEW_SEATS[number]
 
 /** Full props of the Tool call-tree renderer registered as a `tool-call` Chat Node. */
-export type ToolTreeProps = PropsRuntime<'conversation.chat.node' | 'deepcreator.conversation.embed.node', 'tool-call'>
+export type ToolTreeProps = PropsRuntime<'conversation.chat.node', 'tool-call'>
   & PropsRenderSlots<'tool.call.toolview'>
   & PropsLocale<'conversation'>
-  & { toolviewSeat?: ToolviewSeat | undefined }
-
-/** The embed-mirror registration's props: same share over the embed seats. */
-export type EmbedToolTreeProps = PropsRuntime<'deepcreator.conversation.embed.node', 'tool-call'>
-  & PropsRenderSlots<'deepcreator.conversation.embed.toolview'>
-  & PropsLocale<'conversation'>
-
