@@ -155,8 +155,9 @@ export function ConversationSessionHeader({
  * @returns the active view area, or null while the Session remains blank.
  */
 export function ConversationSession({
+  surfaceId, transcriptOnly = false,
   sessionId, useSession, useInput, inputActions, useStore, actions,
-  renderSlot, views, bindDraftMirror, releaseSessionImages,
+  renderSlot, views, bindDraftMirror, retainSessionImages,
 }: ConversationSessionProps) {
   useSyncExternalStore(views.subscribe, views.version)
   const tabs = views.list()
@@ -164,10 +165,41 @@ export function ConversationSession({
   const active = resolveActiveView(tabs, selectedId)
   const composerPhase = useSession(s => s.composerPhase)
   const blank = useSession(s => s.blank)
-  const inputState = useInput(s => s)
-  const storedDraft = useStore(s => s.draft)
   // `?? null`: persisted snapshots from before the inspect field rehydrate without it.
   const inspect = useStore(s => s.inspect ?? null)
+
+  useEffect(() => retainSessionImages(sessionId), [retainSessionImages, sessionId])
+
+  return (
+    <>
+      {!transcriptOnly && (
+        <ConversationSessionInteractiveBridge
+          useInput={useInput}
+          inputActions={inputActions}
+          useStore={useStore}
+          actions={actions}
+          bindDraftMirror={bindDraftMirror}
+        />
+      )}
+      {!(blank && composerPhase === 'blank') && (
+        <div className={css.viewArea} data-session-id={sessionId} data-transcript-surface-id={surfaceId}>
+          {active !== undefined && renderSlot('conversation.view', {
+            surfaceId,
+            inspect,
+            onInspectDone: () => { actions.setInspect(null) },
+          }, { only: active.id })}
+        </div>
+      )}
+    </>
+  )
+}
+
+/** Composer-only draft bridge omitted by transcript-only secondary surfaces. */
+function ConversationSessionInteractiveBridge({
+  useInput, inputActions, useStore, actions, bindDraftMirror,
+}: Pick<ConversationSessionProps, 'useInput' | 'inputActions' | 'useStore' | 'actions' | 'bindDraftMirror'>) {
+  const inputState = useInput(s => s)
+  const storedDraft = useStore(s => s.draft)
 
   useEffect(() => {
     if (inputState.draft === '' && storedDraft !== '') inputActions.setDraft(storedDraft)
@@ -177,17 +209,5 @@ export function ConversationSession({
     // the machine mirror, not this seed effect.
   }, [inputActions])
 
-  useEffect(() => () => {
-    releaseSessionImages(sessionId)
-  }, [releaseSessionImages, sessionId])
-
-  if (blank && composerPhase === 'blank') return null
-  return (
-    <div className={css.viewArea}>
-      {active !== undefined && renderSlot('conversation.view', {
-        inspect,
-        onInspectDone: () => { actions.setInspect(null) },
-      }, { only: active.id })}
-    </div>
-  )
+  return null
 }

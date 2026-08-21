@@ -129,6 +129,43 @@ describe('ConversationController', () => {
     await b.runtime.dispose()
   })
 
+  it('keeps shared historical images alive until the final surface releases its lease', async () => {
+    const b = await bench(() => Promise.resolve({
+      ok: true,
+      value: {
+        attachment: {
+          attachmentId: AttachmentId('image-shared'), mediaType: 'image/png', bytes: 1, width: 1, height: 1,
+        },
+        data: Uint8Array.of(1),
+      },
+    }))
+    const created = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:shared-image')
+    const revoked = vi.spyOn(URL, 'revokeObjectURL').mockReturnValue(undefined)
+    try {
+      const sessionId = b.runtime.sessions.behavior('s1').sessionId
+      const releaseMain = b.root.retainSessionImages(sessionId)
+      const releaseActivity = b.root.retainSessionImages(sessionId)
+      const url = await b.root.resolveImage(sessionId, {
+        attachmentId: AttachmentId('image-shared'), mediaType: 'image/png', bytes: 1, width: 1, height: 1,
+      })
+      expect(url).toBe('blob:shared-image')
+
+      releaseActivity()
+      expect(revoked).not.toHaveBeenCalled()
+      expect(await b.root.resolveImage(sessionId, {
+        attachmentId: AttachmentId('image-shared'), mediaType: 'image/png', bytes: 1, width: 1, height: 1,
+      })).toBe('blob:shared-image')
+
+      releaseMain()
+      await Promise.resolve()
+      expect(revoked).toHaveBeenCalledExactlyOnceWith('blob:shared-image')
+    } finally {
+      created.mockRestore()
+      revoked.mockRestore()
+    }
+    await b.runtime.dispose()
+  })
+
   it('fails loudly from the root scope, on an unbound session, or without SessionRuntime', async () => {
     const b = await bench()
     await expect(b.root.send('x')).rejects.toThrow(/requires a session scope/)

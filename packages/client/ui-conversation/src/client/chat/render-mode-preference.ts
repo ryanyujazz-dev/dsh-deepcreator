@@ -12,7 +12,7 @@ import {
 export class RenderModePreference {
   /** Reactive preference source. */
   readonly value: SnapshotStore<ConversationRenderMode> = createSnapshotStore(DEFAULT_RENDER_MODE)
-  private readonly sessionWriters = new Map<SessionId, (mode: string) => void>()
+  private readonly sessionWriters = new Map<SessionId, Map<(mode: string) => void, number>>()
 
   /**
    * @param host - Durable conversation settings scope; absent compositions remain process-local.
@@ -30,23 +30,24 @@ export class RenderModePreference {
    */
   set(mode: ConversationRenderMode, currentSessionId?: SessionId): void {
     this.publish(mode)
-    if (currentSessionId !== undefined) this.sessionWriters.get(currentSessionId)?.(mode)
+    if (currentSessionId !== undefined) {
+      for (const write of this.sessionWriters.get(currentSessionId)?.keys() ?? []) write(mode)
+    }
   }
 
   /**
    * Select a mode from conversation chrome and mirror it to the durable preference.
-   * @param sessionId - Session whose renderer is being changed.
+   * @param _sessionId - Session whose renderer is being changed (kept in the shared mode API).
    * @param mode - Built-in renderer selected by the user.
    * @param write - Session-store action used by the mounted control.
    */
   select(
-    sessionId: SessionId,
+    _sessionId: SessionId,
     mode: string,
     write: (mode: string) => void,
   ): void {
     if (mode === 'normal' || mode === 'classic' || mode === 'think') this.publish(mode)
     write(mode)
-    this.sessionWriters.set(sessionId, write)
   }
 
   /**
@@ -56,9 +57,16 @@ export class RenderModePreference {
    * @returns disposer that removes only this binding.
    */
   bindSession(sessionId: SessionId, write: (mode: string) => void): () => void {
-    this.sessionWriters.set(sessionId, write)
+    const writers = this.sessionWriters.get(sessionId) ?? new Map<(mode: string) => void, number>()
+    writers.set(write, (writers.get(write) ?? 0) + 1)
+    this.sessionWriters.set(sessionId, writers)
     return () => {
-      if (this.sessionWriters.get(sessionId) === write) this.sessionWriters.delete(sessionId)
+      const leases = writers.get(write) ?? 0
+      if (leases <= 1) writers.delete(write)
+      else writers.set(write, leases - 1)
+      if (writers.size === 0 && this.sessionWriters.get(sessionId) === writers) {
+        this.sessionWriters.delete(sessionId)
+      }
     }
   }
 

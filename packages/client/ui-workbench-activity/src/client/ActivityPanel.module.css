@@ -1,5 +1,5 @@
 /* Activity panel: one vertical page on the Home route (the subagent catalog
-   grouped by turn participation + job sections) and the embedded-flow tab
+   grouped by turn participation + job sections) and the child transcript tab
    route. Subagent cards follow the content-card rule: no border, background
    fills distinguish resting, hover, open, and addressed states. */
 
@@ -51,21 +51,19 @@
 
 /* --- Subagent instance route --- */
 
-.tabRoot { display: flex; height: 100%; min-height: 0; flex-direction: column; }
-.tabHeader { display: flex; flex: none; align-items: center; gap: 8px; padding: 10px; border-bottom: 1px solid var(--dsw-alias-border-l1); }
-.tabHeader .stateDot { margin-top: 0; }
-.tabCopy { display: flex; min-width: 0; flex: 1 1 auto; flex-direction: column; gap: 1px; }
-.tabCopy strong { overflow: hidden; color: var(--dsw-alias-label-primary); font-size: 13px; line-height: 18px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
-.tabCopy span { overflow: hidden; color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
-.openButton { flex: none; min-height: 24px; padding: 3px 10px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 6px; background: var(--dsw-alias-fill-l1); color: var(--dsw-alias-label-secondary); font-size: 11px; line-height: 16px; cursor: pointer; white-space: nowrap; }
+.tabRoot { display: flex; width: 100%; height: 100%; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden; }
+.instanceToolbar { display: flex; flex: none; width: 100%; min-width: 0; min-height: 36px; align-items: center; padding: 5px 10px; border-bottom: 1px solid var(--dsw-alias-border-l1); box-sizing: border-box; }
+.instanceActions { display: flex; width: 100%; min-width: 0; align-items: center; gap: 6px; }
+.instanceMeta { flex: 1 1 auto; min-width: 0; overflow: hidden; color: var(--dsw-alias-label-tertiary); font-size: var(--dsw-font-sidebar-font-size, 12px); line-height: var(--dsw-font-sidebar-line-height, 18px); text-overflow: ellipsis; white-space: nowrap; }
+.openButton { flex: none; min-height: 24px; padding: 3px 10px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 6px; background: var(--dsw-alias-fill-l1); color: var(--dsw-alias-label-secondary); font-size: var(--dsw-font-sidebar-font-size, 12px); line-height: var(--dsw-font-sidebar-line-height, 18px); cursor: pointer; white-space: nowrap; }
 .openButton:hover:not(:disabled) { color: var(--dsw-alias-label-primary); background: var(--dsw-alias-fill-l2); }
 .openButton:disabled { color: var(--dsw-alias-label-caption); cursor: default; }
 
 .tabRoot .notice { margin: 10px 10px 0; }
 
-/* The embedded classic-mode flow fills the tab body, inset from the panel
-   edges the way the conversation column insets from the window. */
-.embedBody { display: flex; min-height: 0; flex: 1 1 auto; flex-direction: column; padding: 0 12px; box-sizing: border-box; }
+/* The explicit transcript is the conversation surface itself; it owns all
+   content width and typography, so Activity adds no secondary inset. */
+.embedBody { display: flex; width: 100%; min-width: 0; min-height: 0; flex: 1 1 auto; flex-direction: column; overflow: hidden; }
 
 @keyframes activity-tail-pulse {
   0%, 100% { opacity: 1; }

@@ -1,0 +1,26 @@
+diff --git a/lib/types/index.d.ts b/lib/types/index.d.ts
+index 9b11dcbcb7ac41ca5c3765fceeebace4ccdc4efe..5d092490a9e4a6456e3c854215f282c403ffae03 100644
+--- a/lib/types/index.d.ts
++++ b/lib/types/index.d.ts
+@@ -257,6 +257,8 @@ export type MatchedShare<E extends SlotEntryDef, M> = E['kind'] extends 'chain'
+ export type UseSession<Snap extends object = object> = SnapshotSelectorHook<Snap>;
+ /** Props of the standard-kit SessionProvider seat (render-prop form). */
+ export interface SessionAreaProps {
++    /** Explicit session to render without changing current selection. */
++    sessionId?: SessionIdOf | undefined;
+     /** No-session body (also covers a current id whose session cannot be resolved). */
+     empty?: (() => ReactNode) | undefined;
+     /** Session body; the framework remounts it per session (key=sessionId). */
+diff --git a/lib/types/renderer.d.ts b/lib/types/renderer.d.ts
+index 4f97d3791452ee34db2bfd39ec007681140e022b..9262a21675c0418b680ae374a218473a6c51c4f9 100644
+--- a/lib/types/renderer.d.ts
++++ b/lib/types/renderer.d.ts
+@@ -170,6 +170,8 @@ export interface SlotRendererHost {
+          * undefined while no current session resolves.
+          */
+         provideInfo: HostObservable<SessionMaybeProvideInfo>;
++        /** Session-id-addressed provide source whose subscription owns a non-navigating view lease. */
++        provideInfoFor(id: string): HostObservable<SessionMaybeProvideInfo>;
+     };
+     /** Workspace-side standard-kit sources. */
+     workspaces: {

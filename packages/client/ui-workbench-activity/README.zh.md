@@ -15,19 +15,15 @@
   路径 `sessions.open(parent)`);点击卡片仍进入其标签页。
 - **Instance** —— 每个子代理一个标签页(复用 Workbench 公共
   `WorkbenchPanelTabs`;实例 id 即子会话 id,显示名走
-  `contributePanelInfo`)。标签页主体是**经典模式执行流**,经
-  `deepcreator.conversation.embed` 槽渲染:子代理原始事件
-  (`jobs-admin` → `subagentEvents`,先整窗后按 `afterSeq` 增量,子代理
-  运行中且分组可见时 120–400ms 自适应追逐轮询)由官方
-  `ConversationNodeAssembler` 折叠,以同一套节点/工具渲染器只读呈现
-  (经典形态固定——无模式环、无输入框、无 Think 切换)。起草指示
-  ("Deep diving…" 状态行与 "Creating" 等草稿行)按目录活动位、会话摘要
-  running 位与事件流动三者的并集点亮(仅增量算流动,初始历史窗口不算)。
-  子代理生命周期内标签内容持久保留:嵌入引擎按 seq 去重,重挂载的全量
-  窗口退化为增量。父级追加的挂起消息在流尾悬浮一张只读排队卡片——
-  独立四角圆角卡片(完整描边、轻投影),卡片实时高度在流下方退让出安全区
-  (滚动底部可完全越过卡片);干预走官方 `sessions.openSubagent` 跳转,跳转
-  后面板路由回到首页。关闭标签仅是查看态——子代理继续运行。
+  `contributePanelInfo`)。主体挂载显式且不导航的 `SessionProvider`，再以
+  `transcriptOnly` 形态调用主对话区已授权的 `conversation.session`
+  renderer。因此它与主对话区共享官方 50 条消息尾页、按需揭示驻留行后的 `hasMore/loadOlder`
+  分页、assembler、实时流、Markdown、工具／文件／详情操作、排版变量和
+  渲染模式偏好，但不挂载输入框，也不提供第二个模式切换入口。实例正文顶部的局部工具条
+  承载状态与「在对话中打开」，Workbench 公共标题栏只保留标签与面板
+  控件，正文不再重复子代理标题。只有标签激活、面板可见且
+  页面可见时才持有子会话观察租约；隐藏标签不创建 Session、不组装消息，
+  也不触发 transcript React commit。关闭标签仅是查看态——子代理继续运行。
 
-插件只持有可丢弃的渲染状态(计时时钟、乐观停止集、轮询结果、overview
-快照);Job 与 Session 生命周期始终归官方 Runtime store 所有。
+插件只持有可丢弃的渲染状态(计时时钟、乐观停止集与 overview 快照)；
+Job 与 Session 生命周期始终归官方 Runtime store 所有。

@@ -16,18 +16,20 @@ import css from './ChatView.module.css'
  * their scrollports; this frame only hosts whichever body is active.
  */
 export function ChatView({
-  useStore, modes, renderSlot,
-  openDetails, openFile, revealChange, loadOlder, loadImage, inspectCall, chatScroll, forkAt, fileMentions,
+  surfaceId = 'main', useStore, modes, renderSlot,
+  openDetails, openFile, revealChange, loadOlder, loadImage, inspectCall, chatScrollFor, forkAt, fileMentions,
 }: ChatViewSlotProps) {
   useSyncExternalStore(modes.subscribe, modes.version)
   const defaultMode = useSyncExternalStore(modes.defaultMode.subscribe, modes.defaultMode.getSnapshot)
   const modeTabs = modes.list()
   const selectedMode = useStore(s => s.renderMode)
   const active = resolveActiveMode(modeTabs, selectedMode, defaultMode)
+  const chatScroll = chatScrollFor(surfaceId)
 
   return (
     <div className={css.frame}>
       {active !== undefined && renderSlot('conversation.chat.render', {
+        surfaceId,
         renderSlot,
         openDetails,
         openFile,

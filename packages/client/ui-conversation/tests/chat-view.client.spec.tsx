@@ -17,7 +17,8 @@ import {
 } from '@deepseek-ai/dsh-client-runtime/client'
 import { RpcId } from '@deepseek-ai/dsh-client-connection/client'
 import type {
-  ChatNode, ChatNodeOwnerProps, ChatNodeViewProps, ChatViewSlotProps, SelectionTarget, UseChatNodeTurnData,
+  ChatNode, ChatNodeOwnerProps, ChatNodeViewProps, ChatRenderOwnerProps, ChatViewSlotProps, SelectionTarget,
+  UseChatNodeTurnData,
 } from '@ryanyujazz/dsh-client-ui-conversation/client'
 import type { ChatRenderSlotProps } from '../src/client/contract/slots.ts'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
@@ -183,11 +184,12 @@ function makeHarness(
   const loadOlder = vi.fn()
   const inspectCall = vi.fn<(callId: string) => void>()
   // In-memory scroll memory matching the apply.ts per-session map contract.
-  let savedScroll: ReturnType<ChatViewSlotProps['chatScroll']['read']> = null
-  const chatScroll: ChatViewSlotProps['chatScroll'] = {
+  let savedScroll: ReturnType<ChatRenderOwnerProps['chatScroll']['read']> = null
+  const chatScroll: ChatRenderOwnerProps['chatScroll'] = {
     save: (position) => { savedScroll = position },
     read: () => savedScroll,
   }
+  const chatScrollFor = vi.fn(() => chatScroll)
   const forkAt = vi.fn()
   // The mode id ChatView dispatched at the last render (the ring's `only`).
   let renderedOnly: string | undefined
@@ -324,7 +326,7 @@ function makeHarness(
     loadOlder,
     loadImage: vi.fn(() => Promise.reject(new Error('not used'))),
     inspectCall,
-    chatScroll,
+    chatScrollFor,
     forkAt,
     // Absent-service default; mention tests override with a real resolver.
     fileMentions: () => undefined,
@@ -344,7 +346,7 @@ function makeHarness(
   const setSelection = (next: SelectionTarget | null): void => { chat.actions.select(next) }
   return {
     set, ChatView, props, openDetails, openFile, loadOlder, inspectCall,
-    chatScroll, forkAt, setSelection, toolOwners, renderedOnly: () => renderedOnly,
+    chatScroll, chatScrollFor, forkAt, setSelection, toolOwners, renderedOnly: () => renderedOnly,
     snapshot: () => chat.getSnapshot(),
   }
 }
@@ -442,6 +444,30 @@ describe('Chat node rendering', () => {
 })
 
 describe('ChatView', () => {
+  it('resolves scroll memory by render surface instead of by session alone', () => {
+    const h = makeHarness()
+    render(<h.ChatView {...h.props} surfaceId="activity:child" />)
+    expect(h.chatScrollFor).toHaveBeenCalledExactlyOnceWith('activity:child')
+  })
+
+  it('keeps a cold Activity tail bounded and reveals assembled rows only on demand', async () => {
+    const nodes = Array.from({ length: 10 }, (_, index) => user(index + 1, `row-${index + 1}`))
+    const h = makeHarness({ nodes })
+    const view = render(<h.ChatView {...h.props} surfaceId="activity:child" />)
+    expect(view.container.querySelectorAll('[data-chat-flow-key]')).toHaveLength(4)
+    expect(view.getByRole('button', { name: '加载更早' })).toBeTruthy()
+    fireEvent.click(view.getByRole('button', { name: '加载更早' }))
+    expect(view.container.querySelectorAll('[data-chat-flow-key]')).toHaveLength(8)
+    fireEvent.click(view.getByRole('button', { name: '加载更早' }))
+    expect(view.container.querySelectorAll('[data-chat-flow-key]')).toHaveLength(10)
+    expect(view.queryByRole('button', { name: '加载更早' })).toBeNull()
+
+    view.unmount()
+    const mainHarness = makeHarness({ nodes })
+    const mainView = render(<mainHarness.ChatView {...mainHarness.props} />)
+    expect(mainView.container.querySelectorAll('[data-chat-flow-key]')).toHaveLength(10)
+  })
+
   it('hands a windowless tool result to the Tool seat with an empty tool name', () => {
     const h = makeHarness({
       nodes: [{ ...toolResult(3, 'w1'), call: null }],

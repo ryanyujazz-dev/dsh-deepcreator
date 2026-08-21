@@ -1,7 +1,7 @@
 import { memo, useMemo } from 'react'
 import { JsonBlock } from '@ryanyujazz/dsh-client-ui-primitives'
 import type {
-  ChatNodeOwnerProps, ChatNodeRenderSlot, ChatViewSlotProps, EmbedNodeDispatch, ThinkMode,
+  ChatNodeOwnerProps, ChatNodeRenderSlot, ChatViewSlotProps, ThinkMode,
 } from '../contract/slots.ts'
 import type { ChatNode } from '../contract/chat-nodes.ts'
 import css from './ChatView.module.css'
@@ -13,12 +13,6 @@ interface ChatNodeSeatProps extends ChatNodeOwnerProps {
   readonly useSession: ChatViewSlotProps['useSession']
   readonly renderSlot: ChatNodeRenderSlot
   readonly t: ChatViewSlotProps['t']
-  /**
-   * Embed mirror: when present, dispatches through the embed node seat
-   * (authorization key and occurrence context differ; the owner share is
-   * identical). The main chat path never sets it.
-   */
-  readonly embedRender?: { readonly dispatch: EmbedNodeDispatch } | undefined
 }
 
 type RoutedChatNodeOwner = {
@@ -28,7 +22,7 @@ type RoutedChatNodeOwner = {
 /** Subscribe and dispatch one stable Context key without observing sibling Nodes. */
 export const ChatNodeSeat = memo(function ChatNodeSeat({
   nodeKey, thinkMode, selectedCallId, cwd, openFile, revealChange, inspectCall, forkAt,
-  loadImage, fileMentions, useSession, renderSlot, embedRender, t,
+  loadImage, fileMentions, useSession, renderSlot, t,
 }: ChatNodeSeatProps) {
   const node = useSession(snapshot => snapshot.chat.nodes.get(nodeKey))
   const routedNode = node as ChatNode | undefined
@@ -56,22 +50,6 @@ export const ChatNodeSeat = memo(function ChatNodeSeat({
   // keyed-slot entry passed alongside that same Node. TypeScript does not
   // distribute an object containing a union into a union of objects itself.
   const routedOwner = { ...owner, node: routedNode } as RoutedChatNodeOwner
-  if (embedRender !== undefined) {
-    return (
-      <div
-        className={css.flowItem}
-        data-chat-anchor-key={routedNode.key}
-        data-chat-flow-key={routedNode.key}
-        data-chat-flow-kind={routedNode.kind}
-      >
-        {embedRender.dispatch(routedOwner, {
-          entryKey: routedNode.kind,
-          hookContext: { nodeKey, useSession },
-          fallback: null,
-        })}
-      </div>
-    )
-  }
   return (
     <div
       className={css.flowItem}

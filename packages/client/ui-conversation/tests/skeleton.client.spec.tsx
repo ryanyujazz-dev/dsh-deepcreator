@@ -187,8 +187,10 @@ function mount(
       )
     }
     if (key === 'conversation.session') {
+      const sessionOwner = owner as { surfaceId: string; transcriptOnly?: boolean }
       return (
         <ConversationSession
+          {...sessionOwner}
           sessionId={SID}
           SessionProvider={({ children }) => children(SID)}
           useSession={useSession}
@@ -201,7 +203,7 @@ function mount(
           actions={chat.actions}
           renderSlot={renderSlot as never}
           views={views}
-          releaseSessionImages={vi.fn()}
+          retainSessionImages={() => () => {}}
           bindDraftMirror={write => wiring.bindMirror(write)}
         />
       )
@@ -269,6 +271,7 @@ function mount(
     renderSlot,
     renderSlotChain,
     selectWorkspace: retargetWorkspace,
+    publishSessionRenderer: () => () => {},
     t,
   }
   const view = render(<ConversationRoot {...props} />)

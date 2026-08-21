@@ -301,7 +301,7 @@ function mount(slots: SlotRegistry, nodes: ConversationSnapshot['nodes'] = NODES
         actions={chat.actions}
         renderSlot={renderSlot}
         views={views}
-        releaseSessionImages={vi.fn()}
+        retainSessionImages={() => () => {}}
         useInput={useInput}
         inputActions={inputActions}
         bindDraftMirror={() => () => {}}

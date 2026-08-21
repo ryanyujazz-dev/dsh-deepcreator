@@ -52,7 +52,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * flow instead: `conversation.view` for a whole tab, the input regions for
      * composer chrome.
      */
-    'conversation.session': { kind: 'single'; scope: 'session' }
+    'conversation.session': { kind: 'single'; scope: 'session'; owner: ConversationSessionOwnerProps }
     /**
      * The strip above the session's scrollport: title, view tabs, and the
      * action row. Taking this seat means rendering all three yourself, and it
@@ -86,33 +86,20 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      */
     'conversation.view': { kind: 'list'; scope: 'session'; owner: ConvViewOwnerProps }
     /**
-     * DeepCreator's embeddable child execution flow (Activity panel subagent
-     * tabs). Root scope: the owner share carries the child identity plus the
-     * polled raw event window and pending-queue rows; the entry assembles the
-     * official snapshot through its inject and renders the fixed classic-mode
-     * body. Declared by this package's embed entry.
+     * Root adapter for an explicitly addressed, non-navigating child Session.
+     * It declares one strict-session surface so the framework supplies the
+     * same SessionProvider and standard kit as the main conversation.
      */
     'deepcreator.conversation.embed': {
       kind: 'single'
       scope: 'root'
       owner: ConversationEmbedOwnerProps
     }
-    /**
-     * Mirror of the chat node seat for the embed flow. Entries are the SAME
-     * renderer components (double-registered by their owning packages), so the
-     * seat keeps the session-scope prop shape those components require; the
-     * standard kit members are inert here because every renderer reads node
-     * data from the owner share and turn data from this seat's occurrence
-     * Hook, which carries the CHILD's own snapshot hook (the standard kit
-     * follows the CURRENT session).
-     */
-    'deepcreator.conversation.embed.node': {
-      kind: 'keyed'
+    /** Strict child-session surface mounted under the explicit provider. */
+    'deepcreator.conversation.embed.surface': {
+      kind: 'single'
       scope: 'session'
-      owner: ChatNodeOwnerProps
-      keyProps: { [Kind in ChatNodeKind]: { node: ChatNode<Kind> } }
-      hookContext: EmbedNodeOccurrence
-      inject: EmbedNodeTurnDataInjected
+      owner: ConversationEmbedSurfaceOwnerProps
     }
     /** Final business node renderer, dispatched by `ChatConversationViewNode.kind`. */
     'conversation.chat.node': {
@@ -330,6 +317,8 @@ export interface InputZone {
  * toolview hole).
  */
 export interface ConvViewOwnerProps {
+  /** Render occurrence used to isolate scroll memory across simultaneous surfaces. */
+  surfaceId?: string
   /** One-shot inspect request from another view (chat's Inspect button); null when idle. */
   inspect?: { callId: CallId } | null
   /** Acknowledge the inspect request once applied (clears the store field). */
@@ -410,58 +399,23 @@ export interface ChatNodeTurnDataInjected {
   }
 }
 
-/** Raw child event as it crosses the embed wire (closed lossless-JSON projection). */
-export type ConversationEmbedEvent = unknown
-
-/** One still-pending child inbox occurrence riding the embed owner share. */
-export interface ConversationEmbedQueuedItem {
-  id: string
-  placement: 'queued' | 'steering'
-  /** The pending UserMessage as raw JSON; the card derives its preview text. */
-  message: unknown
-}
-
 /** Owner share of the embeddable child execution flow. */
 export interface ConversationEmbedOwnerProps {
-  parentSessionId: SessionId
   childSessionId: SessionId
-  /** Polled raw event window (initial full slice, then contiguous deltas). */
-  events: readonly ConversationEmbedEvent[]
-  /** Live child's pending inbox (FIFO, steering first); read-only display. */
-  queue: readonly ConversationEmbedQueuedItem[]
-  /** Catalog activity bit — the one live fact the durable log cannot express. */
-  running: boolean
 }
 
-/**
- * Occurrence context of the embed node seat: the node key plus the child's
- * own snapshot hook. The standard kit cannot serve a non-current session, so
- * the seat's declaration-level Hook factory reads the child hook from here.
- */
-export interface EmbedNodeOccurrence {
-  nodeKey: string
-  useSession: SnapshotSelectorHook<ConversationSnapshot>
+/** Owner currency of the strict explicit-session surface. */
+export interface ConversationEmbedSurfaceOwnerProps {
+  /** Distinguishes scroll memory from the main conversation occurrence. */
+  surfaceId: string
 }
 
-/** renderSlot share narrowed to the embed node seat (mirror of ChatNodeRenderSlot). */
-export type EmbedNodeRenderSlot = NonNullable<PropsRenderSlots<'deepcreator.conversation.embed.node'>['renderSlot']>
-
-/**
- * Embed node dispatch, structurally typed for callers: the seat's generic
- * authorization signature cannot be re-targeted from the chat seat's call
- * sites, so the embed adapts its binding to this shape once (see
- * ConversationEmbed) and the bodies consume the plain function.
- */
-export type EmbedNodeDispatch = (
-  owner: ChatNodeOwnerProps & { node: ChatNode },
-  opts: { entryKey: string; hookContext: EmbedNodeOccurrence; fallback: null },
-) => ReactNode
-
-/** The embed node seat's declaration inject: the turn-data Hook over the child snapshot. */
-export interface EmbedNodeTurnDataInjected {
-  hooks: {
-    turnData: SlotHookFactory<'deepcreator.conversation.embed.node', UseChatNodeTurnData>
-  }
+/** Owner currency of the reusable main Session body outlet. */
+export interface ConversationSessionOwnerProps {
+  /** Stable render occurrence id (`main` or an Activity surface id). */
+  surfaceId: string
+  /** Suppress composer/input bridge effects while retaining the exact view tree. */
+  transcriptOnly?: boolean
 }
 
 /** Stable owner currency delivered to one keyed Chat business renderer. */
@@ -537,6 +491,8 @@ export interface ConversationInjected {
    * the root renders as the inert composer's placeholder.
    */
   hooks: { composerBlock: ObservableSnapshot<ComposerBlock | undefined> }
+  /** Publish the root entry's authorized `conversation.session` outlet. */
+  publishSessionRenderer: (renderer: (owner: ConversationSessionOwnerProps) => ReactNode) => () => void
 }
 
 /** Business callbacks injected into the strict Session body seat. */
@@ -547,8 +503,8 @@ export interface ConversationSessionInjected {
     subscribe: (fn: () => void) => () => void
     version: () => number
   }
-  /** Release historical image URLs when this rendered session scope unmounts. */
-  releaseSessionImages: (sessionId: SessionId) => void
+  /** Retain historical image URLs until every rendered surface releases them. */
+  retainSessionImages: (sessionId: SessionId) => () => void
   /** Bind the input machine's draft persistence mirror to the session store. */
   bindDraftMirror: (write: (text: string) => void) => () => void
 }
@@ -811,6 +767,8 @@ export type ChatNodeRenderSlot = PropsRenderSlots<'conversation.chat.node'>['ren
  * else comes from this share.
  */
 export interface ChatRenderOwnerProps {
+  /** Occurrence identity; Activity tails progressively materialize offscreen rows. */
+  surfaceId?: string
   /** The chat entry's node render binding, delegated for the mode body's rows. */
   renderSlot: ChatNodeRenderSlot
   /** Selection write + details panel opening in one gesture (store action + layout orchestration). */
@@ -885,15 +843,9 @@ export interface ChatViewInjected {
   loadImage: (attachment: ImageAttachmentRef) => Promise<string>
   /** Hand a call off to the trajectory view: write the one-shot inspect target and switch tabs. */
   inspectCall: (callId: CallId) => void
-  /**
-   * Per-session scroll memory surviving view switches (in-memory, never
-   * persisted): the view saves on every scroll and restores on remount; a
-   * fresh page load starts empty and keeps the open-jump-to-bottom default.
-   */
-  chatScroll: {
-    /** Record a semantic reader position; null clears it when pinned. */
+  /** Occurrence-addressed scroll memory; simultaneous surfaces never fight. */
+  chatScrollFor: (surfaceId: string) => {
     save: (position: ChatScrollPosition | null) => void
-    /** Last reader position, or null when pinned or never recorded. */
     read: () => ChatScrollPosition | null
   }
   /**

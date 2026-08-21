@@ -250,7 +250,6 @@ describe('ReadRow keyed toolview', () => {
     // The row composes ToolRow, so it declares its locale namespace at the seat.
     expect(registered).toEqual([
       { name: 'tool.call.toolview', key: 'read', locale: 'conversation' },
-      { name: 'deepcreator.conversation.embed.toolview', key: 'read', locale: 'conversation' },
     ])
     expect(readToolview.inject).toEqual(['slots'])
   })

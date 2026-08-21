@@ -27,6 +27,16 @@ interface ChatRenderMenuProps {
   t: TranslateNS<'conversation'>
 }
 
+export interface RenderModeMenuProps {
+  modes: readonly ViewTab[]
+  activeId: string
+  onPick: (id: string) => void
+  t: TranslateNS<'conversation'>
+  additionalItems?: readonly MenuEntry[]
+  onAdditionalSelect?: (id: string) => void
+  onOpenChange?: (open: boolean) => void
+}
+
 const MORE_BUTTON_WIDTH = ICON_TOOLBAR_BUTTON_SIZE
 const HEADER_GROUP_GAP = ICON_TOOLBAR_GAP
 const PANEL_BUTTON_WIDTH = ICON_TOOLBAR_BUTTON_SIZE
@@ -43,15 +53,60 @@ export function panelControlsMode(availableWidth: number): 'expanded' | 'compact
   return availableWidth >= required ? 'expanded' : 'compact'
 }
 
+/** The shared render-mode menu used by both main and secondary transcript surfaces. */
+export function RenderModeMenu({
+  modes, activeId, onPick, t, additionalItems = [], onAdditionalSelect, onOpenChange,
+}: RenderModeMenuProps) {
+  const [open, setOpen] = useState(false)
+  const setMenuOpen = (next: boolean): void => {
+    setOpen(next)
+    onOpenChange?.(next)
+  }
+  const items: MenuEntry[] = [
+    { type: 'label', id: 'render-label', text: t('chat.more.renderGroup') },
+    ...modes.map(mode => ({ id: `render:${mode.id}`, label: mode.label })),
+    ...additionalItems,
+  ]
+
+  return (
+    <Menu
+      open={open}
+      onClose={() => { setMenuOpen(false) }}
+      items={items}
+      selectedId={`render:${activeId}`}
+      onSelect={(id) => {
+        if (id.startsWith('render:')) onPick(id.slice('render:'.length))
+        else onAdditionalSelect?.(id)
+        setMenuOpen(false)
+      }}
+      portal
+      align="end"
+      anchor={(
+        <Tooltip label={t('chat.render.hint')} side="bottom" delayMs={500}>
+          <button
+            type="button"
+            className={css.trigger}
+            aria-label={t('chat.render.aria')}
+            aria-haspopup="menu"
+            aria-expanded={open}
+            onClick={() => { setMenuOpen(!open) }}
+          >
+            <IconEllipsisOutline16 size={ICON_TOOLBAR_GLYPH_SIZE} />
+          </button>
+        </Tooltip>
+      )}
+    />
+  )
+}
+
 /** Header utilities plus grouped render-mode and Session actions. */
 export function ChatRenderMenu({ modes, activeId, onPick, renderUtilities, t }: ChatRenderMenuProps) {
-  const [open, setOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
   const [availableWidth, setAvailableWidth] = useState<number | null>(null)
   const [sessionLogBusy, setSessionLogBusy] = useState(false)
   const seatRef = useRef<HTMLDivElement>(null)
   const sessionLogHostRef = useRef<HTMLDivElement>(null)
   const panelControls = availableWidth === null ? 'compact' : panelControlsMode(availableWidth)
-  const closeMenu = () => { setOpen(false) }
 
   useLayoutEffect(() => {
     const element = seatRef.current
@@ -94,9 +149,7 @@ export function ChatRenderMenu({ modes, activeId, onPick, renderUtilities, t }: 
     return () => { observer.disconnect() }
   }, [sessionLogAction])
 
-  const items: MenuEntry[] = [
-    { type: 'label', id: 'render-label', text: t('chat.more.renderGroup') },
-    ...modes.map(mode => ({ id: `render:${mode.id}`, label: mode.label })),
+  const additionalItems: MenuEntry[] = [
     { type: 'separator', id: 'session-separator' },
     { type: 'label', id: 'session-label', text: t('chat.more.sessionGroup') },
     {
@@ -108,36 +161,20 @@ export function ChatRenderMenu({ modes, activeId, onPick, renderUtilities, t }: 
   ]
 
   return (
-    <div ref={seatRef} className={clsx(css.seat, open && css.menuOpen)}>
+    <div ref={seatRef} className={clsx(css.seat, menuOpen && css.menuOpen)}>
       <div className={css.inlineHost}>{inlinePanels}</div>
-      <Menu
-        open={open}
-        onClose={closeMenu}
-        items={items}
-        selectedId={`render:${activeId}`}
-        onSelect={(id) => {
-          if (id.startsWith('render:')) onPick(id.slice('render:'.length))
+      <RenderModeMenu
+        modes={modes}
+        activeId={activeId}
+        onPick={onPick}
+        t={t}
+        additionalItems={additionalItems}
+        onOpenChange={setMenuOpen}
+        onAdditionalSelect={(id) => {
           if (id === 'session-log-download') {
             sessionLogHostRef.current?.querySelector<HTMLButtonElement>('button')?.click()
           }
-          closeMenu()
         }}
-        portal
-        align="end"
-        anchor={(
-          <Tooltip label={t('chat.render.hint')} side="bottom" delayMs={500}>
-            <button
-              type="button"
-              className={css.trigger}
-              aria-label={t('chat.render.aria')}
-              aria-haspopup="menu"
-              aria-expanded={open}
-              onClick={() => { setOpen(value => !value) }}
-            >
-              <IconEllipsisOutline16 size={ICON_TOOLBAR_GLYPH_SIZE} />
-            </button>
-          </Tooltip>
-        )}
       />
       <div ref={sessionLogHostRef} className={css.sessionLogHost} aria-hidden="true">
         {sessionLogAction}

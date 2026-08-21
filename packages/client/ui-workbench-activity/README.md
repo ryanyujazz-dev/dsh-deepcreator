@@ -21,26 +21,20 @@ Registers the `activity` Workbench type and owns two routes:
   card still opens its tab.
 - **Instance** — one subagent child per tab (the Workbench's own
   `WorkbenchPanelTabs`; the instance id is the child session id, the label
-  rides `contributePanelInfo`). The body is the conversation area's
-  **classic-mode execution flow** rendered through the
-  `deepcreator.conversation.embed` slot: raw child events
-  (`jobs-admin` → `subagentEvents`, full window then `afterSeq` deltas on an
-  adaptive 120–400ms chase cadence while the child runs and the group is
-  visible) are folded by the OFFICIAL `ConversationNodeAssembler` and
-  rendered read-only with the shipped node/tool renderers (fixed classic form
-  — no mode ring, no composer, no Think switch). The drafting indicators
-  ("Deep diving…" status row, per-tool "Creating" rows) show on the union of
-  the catalog activity bit, the session summary's running flag, and live
-  event flow (deltas only — the initial history window never lights it). The
-  tab's content persists for the child's whole lifecycle: the embed engine
-  deduplicates by seq, so a remount's full window degrades to its own delta.
-  Pending parent-appended inbox work renders as one floating read-only queue
-  card at the flow tail — a detached rounded card (all four corners, full
-  border, soft shadow) whose live height reserves a safe area under the flow
-  (the scroll floor clears the card); intervention goes through the official
-  `sessions.openSubagent` jump, after which the panel routes back to Home.
-  Closing a tab is view-only — the child keeps running.
+  rides `contributePanelInfo`). The body mounts an explicit non-navigating
+  `SessionProvider` and invokes the main area's authorized
+  `conversation.session` renderer in `transcriptOnly` form. It therefore uses
+  the same official 50-message tail window, bounded on-demand row reveal followed by `hasMore/loadOlder` paging,
+  assembler, live stream, Markdown, tool/file/detail actions, typography and
+  render-mode preference as the main conversation, but mounts neither a
+  composer nor a second render-mode picker.
+  An instance-local body toolbar owns status and "Open in conversation";
+  Workbench's shared header remains reserved for tabs and panel controls, and
+  the body adds no duplicate child title. A child observation lease exists only while
+  the tab, panel and document are visible. Hidden tabs mount no Session and do
+  no transcript assembly or React commits. Closing a tab is view-only — the
+  child keeps running.
 
 The provider owns only disposable render state (tick clock, optimistic
-stopping set, poll results, overview snapshot); Job and Session lifecycle
-stay with the official Runtime stores.
+stopping set and overview snapshot); Job and Session lifecycle stay with the
+official Runtime stores.

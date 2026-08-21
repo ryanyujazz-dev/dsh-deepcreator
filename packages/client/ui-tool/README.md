@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-Every toolview registrant now registers on BOTH dispatch seats — `tool.call.toolview` (the conversation flow) and `deepcreator.conversation.embed.toolview` (the Activity panel's embedded child flow) — and the Tool tree renders on the mirror node seat through the `EmbedToolCallTree` adapter, so the embedded classic-mode flow shows the same tool rows as the conversation area.
+Activity child transcripts invoke the same `conversation.session` renderer as the main area, so each toolview registers only once on `tool.call.toolview`; there is no mirror dispatch seat or adapter.
 
 
 Client Tool presentation plugin. `ui-conversation` dispatches each ordered `tool-call` Conversation Node through the matching key of `conversation.chat.node`; this package renders its root and Code Dispatch children, then dispatches every atomic call through the keyed `tool.call.toolview` slot. Unregistered Tool names use the generic card.
