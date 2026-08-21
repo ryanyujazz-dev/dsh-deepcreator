@@ -5,7 +5,7 @@ import { resolve } from 'node:path'
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ConversationSnapshot, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
-import { ReviewPanel, matchReviewFile } from '../src/client/Panels.tsx'
+import { REVIEW_BATCH_FILE_LIMIT, ReviewPanel, matchReviewFile } from '../src/client/Panels.tsx'
 import { ReviewCacheController } from '../src/client/review-cache.ts'
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
@@ -572,7 +572,7 @@ describe('Review Panel file stream', () => {
       expect(view.container.querySelectorAll('article[class*="reviewFilePreload"]')).toHaveLength(0)
     }, { timeout: 5000 })
     await waitFor(() => { expect(view.container.querySelectorAll('[data-review-path]').length).toBeGreaterThan(6) })
-    expect(view.container.querySelectorAll('[data-review-path]').length).toBeLessThan(100)
+    expect(view.container.querySelectorAll('[data-review-path]').length).toBeLessThanOrEqual(6 + REVIEW_BATCH_FILE_LIMIT)
 
     view.rerender(<ReviewPanel
       {...input}

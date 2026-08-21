@@ -83,63 +83,89 @@ export const REVIEW_BODY_RESIDENT_LIMIT = 16
 /** Each successful boundary load unlocks roughly this much vertical content. */
 export const REVIEW_UNLOCK_SCREENS = 2
 
+/** Prevent a misleading height estimate from staging an oversized heavy batch. */
+export const REVIEW_BATCH_FILE_LIMIT = 16
+
 /** Used only before the Workbench scroll viewport has a measurable height. */
 const REVIEW_FALLBACK_VIEWPORT_HEIGHT = 720
 
-/** A frame gap above this means scrolling paused; heavy bodies fill then. */
-const BODY_FILL_IDLE_MS = 120
+/** Near-viewport fills yield briefly while this panel's own viewport scrolls. */
+const BODY_FILL_SCROLL_IDLE_MS = 72
+
+/** Small React batches avoid both one-file starvation and large frame commits. */
+const BODY_FILL_MAX_PER_FRAME = 2
+const BODY_FILL_FRAME_BUDGET_MS = 6
 
 /**
- * One heavy body per frame, only when scrolling pauses. Batch-expanded files
- * mount a light skeleton as they enter the viewport (scrolling stays on the
- * compositor); the real DiffBlock mounts through this queue once scroll
- * activity has been quiet for a pause window, one per frame, so a fast scroll
- * never waits on a burst of heavy commits.
+ * Heavy body scheduler scoped to one Review panel. Near-viewport work yields
+ * briefly during this panel's own scrolling; boundary preloads run behind the
+ * fixed loading frontier even while wheel events continue, so Windows' longer
+ * wheel-event tail cannot starve the next batch. Two fills per frame are
+ * batched by React while the time budget prevents a large synchronous burst.
  */
-interface BodyFillTask { fill: () => void; cancelled: boolean }
-const bodyFillQueue: BodyFillTask[] = []
-let bodyFillFrame: number | null = null
-/** After this timestamp with no scroll activity, bodies may fill. */
-let bodyFillIdleAt = 0
-let scrollListening = false
+interface BodyFillTask { fill: () => void; cancelled: boolean; preload: boolean }
 
-function onScrollCapture(): void {
-  bodyFillIdleAt = performance.now() + BODY_FILL_IDLE_MS
-}
+function useReviewBodyFillScheduler(scrollRoot: HTMLElement | null) {
+  const queues = useRef<{ preload: BodyFillTask[]; viewport: BodyFillTask[] }>({ preload: [], viewport: [] })
+  const frame = useRef<number | null>(null)
+  const lastScrollAt = useRef(Number.NEGATIVE_INFINITY)
+  const disposed = useRef(false)
+  const tickRef = useRef<(now: number) => void>(() => undefined)
 
-function requestBodyFill(fill: () => void): () => void {
-  // jsdom (and other hosts without rAF) fills synchronously: tests observe
-  // the fully mounted body without frame machinery.
-  if (typeof requestAnimationFrame === 'undefined') { fill(); return () => undefined }
-  if (!scrollListening && typeof window !== 'undefined') {
-    scrollListening = true
-    window.addEventListener('scroll', onScrollCapture, true)
-  }
-  const task: BodyFillTask = { fill, cancelled: false }
-  bodyFillQueue.push(task)
-  bodyFillIdleAt = performance.now() + BODY_FILL_IDLE_MS
-  if (bodyFillFrame === null) {
-    bodyFillFrame = requestAnimationFrame(tickBodyFill)
-  }
-  return () => { task.cancelled = true }
-}
+  const schedule = useCallback(() => {
+    if (frame.current !== null || disposed.current || typeof requestAnimationFrame === 'undefined') return
+    frame.current = requestAnimationFrame(now => { tickRef.current(now) })
+  }, [])
 
-function tickBodyFill(now: number): void {
-  bodyFillFrame = null
-  if (now < bodyFillIdleAt) {
-    // Scrolling (or a fresh request) is still active: wait it out.
-    bodyFillFrame = requestAnimationFrame(tickBodyFill)
-    return
+  tickRef.current = (now: number) => {
+    frame.current = null
+    const pending = queues.current
+    const hasPreload = pending.preload.some(task => !task.cancelled)
+    if (!hasPreload && now - lastScrollAt.current < BODY_FILL_SCROLL_IDLE_MS) {
+      schedule()
+      return
+    }
+
+    const startedAt = performance.now()
+    let filled = 0
+    while (filled < BODY_FILL_MAX_PER_FRAME) {
+      const queue = pending.preload.some(task => !task.cancelled) ? pending.preload : pending.viewport
+      let task = queue.shift()
+      while (task?.cancelled === true) task = queue.shift()
+      if (task === undefined) break
+      task.fill()
+      filled += 1
+      if (performance.now() - startedAt >= BODY_FILL_FRAME_BUDGET_MS) break
+    }
+    if (pending.preload.some(task => !task.cancelled) || pending.viewport.some(task => !task.cancelled)) schedule()
   }
-  let task = bodyFillQueue.shift()
-  while (task?.cancelled === true) task = bodyFillQueue.shift()
-  if (task === undefined) return
-  task.fill()
-  if (bodyFillQueue.length > 0) {
-    // One heavy commit per frame, then breathe before the next.
-    bodyFillIdleAt = now + 40
-    bodyFillFrame = requestAnimationFrame(tickBodyFill)
-  }
+
+  useEffect(() => {
+    if (scrollRoot === null) return
+    const onScroll = () => { lastScrollAt.current = performance.now() }
+    scrollRoot.addEventListener('scroll', onScroll, { passive: true })
+    return () => { scrollRoot.removeEventListener('scroll', onScroll) }
+  }, [scrollRoot])
+
+  useEffect(() => {
+    disposed.current = false
+    return () => {
+      disposed.current = true
+      if (frame.current !== null && typeof cancelAnimationFrame !== 'undefined') cancelAnimationFrame(frame.current)
+      frame.current = null
+      for (const task of [...queues.current.preload, ...queues.current.viewport]) task.cancelled = true
+      queues.current = { preload: [], viewport: [] }
+    }
+  }, [])
+
+  return useCallback((fill: () => void, preload = false): (() => void) => {
+    // jsdom and non-visual hosts keep the old synchronous fallback.
+    if (typeof requestAnimationFrame === 'undefined') { fill(); return () => undefined }
+    const task: BodyFillTask = { fill, cancelled: false, preload }
+    queues.current[preload ? 'preload' : 'viewport'].push(task)
+    schedule()
+    return () => { task.cancelled = true }
+  }, [schedule])
 }
 
 type ReviewPanelProps = WorkbenchPanelProps & PropsLocale<'workbench-tools'> & { controller: ReviewCacheController }
@@ -167,6 +193,7 @@ function useReviewResidency(options: {
   const { controller, files, expanded, forced, eagerPath, listRef } = options
   const [resident, setResident] = useState<ReadonlySet<string>>(new Set())
   const [scrollRoot, setScrollRoot] = useState<HTMLElement | null>(null)
+  const requestBodyFill = useReviewBodyFillScheduler(scrollRoot)
   const [widthBucket, setWidthBucket] = useState(0)
   const expandedRef = useRef(expanded); expandedRef.current = expanded
   const forcedRef = useRef(forced); forcedRef.current = forced
@@ -177,7 +204,7 @@ function useReviewResidency(options: {
   const releaseTimers = useRef(new Map<string, number>())
   const scheduled = useRef(new Map<string, () => void>())
 
-  const hydrate = useCallback((path: string, immediate = false) => {
+  const hydrate = useCallback((path: string, immediate = false, preload = false) => {
     if (!expandedRef.current.has(path)) return
     const timer = releaseTimers.current.get(path)
     if (timer !== undefined) { window.clearTimeout(timer); releaseTimers.current.delete(path) }
@@ -204,10 +231,10 @@ function useReviewResidency(options: {
       scheduled.current.delete(path)
       commit()
     } else if (!scheduled.current.has(path)) {
-      const cancel = requestBodyFill(() => { scheduled.current.delete(path); commit() })
+      const cancel = requestBodyFill(() => { scheduled.current.delete(path); commit() }, preload)
       scheduled.current.set(path, cancel)
     }
-  }, [controller])
+  }, [controller, requestBodyFill])
 
   useEffect(() => {
     const list = listRef.current
@@ -275,7 +302,13 @@ function useReviewResidency(options: {
   }, [eagerPath, hydrate])
 
   useEffect(() => {
-    for (const path of forced) hydrate(path)
+    for (const path of forced) {
+      // Promote an already queued near-viewport task to the non-starving
+      // boundary queue; the invisible preload cannot extend scroll height.
+      scheduled.current.get(path)?.()
+      scheduled.current.delete(path)
+      hydrate(path, false, true)
+    }
     setResident(current => {
       if (current.size <= REVIEW_BODY_RESIDENT_LIMIT || forced.size > 0) return current
       const next = new Set(current)
@@ -432,7 +465,7 @@ function useReviewProgressiveGate(options: {
     let height = 0
     let start = unlockedStart
     const budget = batchBudget()
-    while (start > 0 && (height < budget || start === unlockedStart)) {
+    while (start > 0 && unlockedStart - start < REVIEW_BATCH_FILE_LIMIT && (height < budget || start === unlockedStart)) {
       const file = files[start - 1]
       if (file === undefined) break
       height += reviewRowEstimate(summaries.get(file.path), expanded.has(file.path))
@@ -448,7 +481,7 @@ function useReviewProgressiveGate(options: {
     let height = 0
     let end = unlockedEnd
     const budget = batchBudget()
-    while (end < files.length && (height < budget || end === unlockedEnd)) {
+    while (end < files.length && end - unlockedEnd < REVIEW_BATCH_FILE_LIMIT && (height < budget || end === unlockedEnd)) {
       const file = files[end]
       if (file === undefined) break
       height += reviewRowEstimate(summaries.get(file.path), expanded.has(file.path))
@@ -523,9 +556,9 @@ function useReviewProgressiveGate(options: {
  * Mounting is two-stage so scrolling never waits on heavy work. Approaching
  * the viewport mounts a light skeleton (an estimated-height box, ~1 ms);
  * the real DiffBlock mounts either immediately for a single-file expand
- * gesture, or through the pause-detecting body-fill queue after a batch
- * expand-all. Far bodies unmount behind an equal-height placeholder while
- * their logical expansion and controlled fold state remain intact.
+ * gesture, or through the panel-scoped, frame-budgeted body-fill queue after
+ * a batch expand-all. Far bodies unmount behind an equal-height placeholder
+ * while their logical expansion and controlled fold state remain intact.
  */
 const ReviewFileRow = memo(function ReviewFileRow({
   file, summary, controller, expanded, resident, preload, scrollRoot, widthBucket, onToggle, t,
