@@ -3,6 +3,8 @@
  * and segmented-control writes. */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { createSnapshotStore, type SessionListState, type WorkspaceListState } from '@deepseek-ai/dsh-client-runtime/client'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-web-react'
 import { AppearanceRow } from '../src/client/AppearanceRow.tsx'
@@ -135,8 +137,12 @@ describe('AppearanceRow', () => {
 
   it('keeps the light and dark selectors independent and writes the shared code font', () => {
     const b = mount()
-    expect(screen.getByLabelText('Light code diff preview').hasAttribute('data-code-theme-isolate')).toBe(true)
-    expect(screen.getByLabelText('Dark code diff preview').hasAttribute('data-code-theme-isolate')).toBe(true)
+    const lightPreview = screen.getByLabelText('Light code diff preview')
+    const darkPreview = screen.getByLabelText('Dark code diff preview')
+    expect(lightPreview.hasAttribute('data-code-theme-isolate')).toBe(true)
+    expect(darkPreview.hasAttribute('data-code-theme-isolate')).toBe(true)
+    expect(lightPreview.getAttribute('data-code-theme-tone')).toBe('light')
+    expect(darkPreview.getAttribute('data-code-theme-tone')).toBe('dark')
     fireEvent.click(screen.getByRole('button', { name: 'Light code theme' }))
     expect(screen.getByRole('menuitem', { name: 'Tokyo Light' })).toBeDefined()
     fireEvent.click(screen.getByRole('menuitem', { name: 'GitHub Light' }))
@@ -147,5 +153,13 @@ describe('AppearanceRow', () => {
     expect(b.setLightCodeTheme).toHaveBeenCalledWith('github-light')
     expect(b.setDarkCodeTheme).toHaveBeenCalledWith('one-dark')
     expect(b.setCodeFont).toHaveBeenCalledWith('jetbrains-mono')
+  })
+
+  it('keeps the preview surface and diff chrome independent from the application palette', () => {
+    const stylesheet = readFileSync(resolve(process.cwd(), 'packages/client/ui-theme/src/client/AppearanceRow.module.css'), 'utf8')
+
+    expect(stylesheet).toMatch(/\.preview :global\(\[data-diff-hunk\]\)\s*\{[^}]*background:\s*transparent;/s)
+    expect(stylesheet).toMatch(/\.preview\[data-code-theme-tone='light'\]\s*\{[^}]*--dsw-alias-label-tertiary:/s)
+    expect(stylesheet).toMatch(/\.preview\[data-code-theme-tone='dark'\]\s*\{[^}]*--dsw-alias-label-tertiary:/s)
   })
 })

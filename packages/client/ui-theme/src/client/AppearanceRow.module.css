@@ -95,8 +95,26 @@
   font-family: var(--ds-font-family-code);
 }
 
+.preview[data-code-theme-tone='light'] {
+  --dsw-alias-label-tertiary: var(--dsw-static-neutral-bluish-600);
+  --dsw-alias-state-success-primary: var(--dsw-static-green-500);
+  --dsw-alias-state-error-primary: var(--dsw-static-red-600);
+}
+
+.preview[data-code-theme-tone='dark'] {
+  --dsw-alias-label-tertiary: var(--dsw-static-neutral-bluish-400);
+  --dsw-alias-state-success-primary: var(--dsw-static-green-500);
+  --dsw-alias-state-error-primary: var(--dsw-static-red-400);
+}
+
 .preview :global([data-diff-block]) {
   height: 100%;
+}
+
+.preview :global([data-diff-hunk]) {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .fontChoice {

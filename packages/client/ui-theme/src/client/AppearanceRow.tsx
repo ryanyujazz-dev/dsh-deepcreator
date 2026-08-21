@@ -86,8 +86,15 @@ const PREVIEW_DIFF: DiffHunk[] = [{
 }]
 
 function CodeThemePreview({ themeId, label }: { themeId: LightCodeTheme | DarkCodeTheme; label: string }) {
+  const tone = themeId.endsWith('-light') ? 'light' : 'dark'
   return (
-    <div className={css.preview} data-code-theme={themeId} data-code-theme-isolate aria-label={label}>
+    <div
+      className={css.preview}
+      data-code-theme={themeId}
+      data-code-theme-isolate
+      data-code-theme-tone={tone}
+      aria-label={label}
+    >
       <DiffBlock
         diffs={PREVIEW_DIFF}
         showPath={false}
