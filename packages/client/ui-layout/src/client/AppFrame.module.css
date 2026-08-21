@@ -30,6 +30,26 @@
   top: 42px;
 }
 
+/* The Windows strip is the top-most web layer: the native caption buttons
+   live above it, so nothing in the renderer may paint over the strip either.
+   1101 sits above every overlay z-index in the tree (Menu 1100, Modal and
+   Settings 1000, ConnectionBanner 100), keeping modals, menus, and focused
+   stages below the window chrome like a native dialog. */
+.frame[data-native-window-chrome='windows'] .titlebar {
+  position: relative;
+  z-index: 1101;
+}
+
+/* Focused stages and drag handles start below the strip so their content is
+   reachable instead of hidden under the window chrome. */
+.frame[data-native-window-chrome='windows'][data-details-focused] .detailsCol {
+  top: 32px;
+}
+
+.frame[data-native-window-chrome='windows'] .handle {
+  top: 32px;
+}
+
 /* The Windows shell hides its native title bar: the frame gains a frame-owned
    32px title strip row above the three columns. The strip is the drag surface
    (the native Window Controls Overlay buttons sit over its right end), and it
