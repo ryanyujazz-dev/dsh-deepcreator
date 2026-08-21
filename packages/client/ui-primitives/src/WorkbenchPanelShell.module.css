@@ -1,4 +1,7 @@
-/* Shared visual frame for every Workbench cell. */
+/* Shared visual frame for every Workbench cell. The uniform soft shadow (a
+ * 16px-blur layer spreading ~8px on each side plus a denser near layer) lifts
+ * each card off the workbench base; it never varies by column count or focus
+ * state (the splitter gap is margin + shadow, not per-card shadow tuning). */
 .shell {
   display: flex;
   flex: 1;
@@ -10,6 +13,7 @@
   flex-direction: column;
   border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 10px;
+  box-shadow: 0 0 16px 0 rgba(0, 0, 0, 0.04), 0 0 10px 0 rgba(0, 0, 0, 0.06);
   /* Light mode sits on the conversation base so the workbench reads as one
    * surface with the chat; dark keeps the sidebar fill (rgb(27,27,28)), one
    * subtle step above the conversation base (rgb(21,21,23)). */
@@ -18,6 +22,9 @@
 
 :global(body[data-ds-dark-theme]) .shell {
   background: var(--dsw-specific-sidebar-fill);
+  /* The black shadow is invisible against the near-black base; lift the
+   * elevation so the card still reads as softly raised in dark mode. */
+  box-shadow: 0 0 16px 0 rgba(0, 0, 0, 0.35), 0 0 10px 0 rgba(0, 0, 0, 0.22);
 }
 
 .header {

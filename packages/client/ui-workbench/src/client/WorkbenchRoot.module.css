@@ -5,7 +5,9 @@
   min-width: 0;
   box-sizing: border-box;
   padding: 4px;
-  overflow: hidden;
+  /* No overflow clip: PanelShells clip their own content, and clipping here
+   * would sever their soft shadow at the padding box instead of letting it
+   * soften into the workbench inset and stage edge. */
   background: var(--dsw-alias-bg-base);
 }
 
@@ -35,7 +37,8 @@
   display: flex;
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
+  /* No overflow clip here: the PanelShell clips its own rounded content, and
+   * clipping here would sever the shell's soft shadow at the 4px margin. */
 }
 
 .empty { position: absolute; inset: 4px; }

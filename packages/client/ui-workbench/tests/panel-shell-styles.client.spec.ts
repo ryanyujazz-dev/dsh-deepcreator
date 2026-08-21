@@ -13,6 +13,7 @@ describe('Workbench PanelShell geometry', () => {
   it('owns the four-sided inset, rounded frame and compact Header', () => {
     expect(shell).toContain('margin: 4px')
     expect(shell).toContain('border-radius: 10px')
+    expect(shell).toContain('box-shadow: 0 0 16px 0 rgba(0, 0, 0, 0.04), 0 0 10px 0 rgba(0, 0, 0, 0.06)')
     expect(shell).toContain('height: 32px')
     expect(shell).toContain('flex: 0 0 32px')
     expect(shell).toContain('.headerActions { flex: none; margin-left: auto; }')
@@ -51,6 +52,9 @@ describe('Workbench PanelShell geometry', () => {
     expect(shell).toContain('background: var(--dsw-alias-bg-base)')
     expect(shell).toContain(':global(body[data-ds-dark-theme]) .shell {')
     expect(shell).toContain('background: var(--dsw-specific-sidebar-fill)')
+    // The black shadow disappears against the near-black base, so dark mode
+    // lifts the elevation with a stronger soft shadow.
+    expect(shell).toContain('box-shadow: 0 0 16px 0 rgba(0, 0, 0, 0.35), 0 0 10px 0 rgba(0, 0, 0, 0.22)')
     expect(mosaic).toContain('background: var(--dsw-alias-bg-base)')
     // Full-size provider surfaces must show the shell surface instead of
     // repainting the conversation base; the address input keeps its inset fill.
@@ -64,6 +68,13 @@ describe('Workbench PanelShell geometry', () => {
     const trackRule = mosaic.match(/\.trackSplitter\s*\{([^}]*)\}/)?.[1] ?? ''
     expect(trackRule).toContain('width: 8px')
     expect(trackRule).toContain('justify-self: center')
+    // The cell must not clip the shell's soft shadow: the shell owns its own
+    // overflow clipping, so a cell-level clip would sever the shadow at the
+    // 4px margin; the root likewise must let the shadow soften into the inset.
+    const cellRule = mosaic.match(/\.cell\s*\{([^}]*)\}/)?.[1] ?? ''
+    const rootRule = mosaic.match(/\.root\s*\{([^}]*)\}/)?.[1] ?? ''
+    expect(cellRule).not.toMatch(/overflow\s*:/)
+    expect(rootRule).not.toMatch(/overflow\s*:/)
     // Splitters must not reserve layout width between columns or deduct
     // height between stacked cells; they only overlay the margin gap.
     expect(rootTsx).toContain("'0px']")
