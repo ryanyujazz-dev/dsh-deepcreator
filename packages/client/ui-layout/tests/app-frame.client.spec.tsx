@@ -480,3 +480,43 @@ describe('AppFrame — macOS window-state avoidance markers', () => {
     expect(frame.hasAttribute('data-window-maximized')).toBe(false)
   })
 })
+
+describe('AppFrame - Windows title strip', () => {
+  const originalUserAgent = window.navigator.userAgent
+  const WINDOWS_ELECTRON_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Electron/43.4.0 Safari/537.36'
+
+  afterEach(() => {
+    Object.defineProperty(window.navigator, 'userAgent', { value: originalUserAgent, configurable: true })
+    document.title = ''
+  })
+
+  function installWindowsUserAgent(): void {
+    Object.defineProperty(window.navigator, 'userAgent', { value: WINDOWS_ELECTRON_UA, configurable: true })
+  }
+
+  it('renders the 32px drag strip above the columns with the mirrored title', () => {
+    document.title = '调试会话 - DeepSeek Harness'
+    installWindowsUserAgent()
+    const { frame } = mountFrame()
+    expect(frame.getAttribute('data-native-window-chrome')).toBe('windows')
+    const strip = frame.querySelector('[data-app-titlebar]')
+    expect(strip).toBeTruthy()
+    // The native title transform: the harness suffix becomes the product name.
+    expect(strip?.textContent).toBe('调试会话 - DeepCreator')
+  })
+
+  it('falls back to the product name for an empty title and follows later changes', async () => {
+    document.title = ''
+    installWindowsUserAgent()
+    const { frame } = mountFrame()
+    expect(frame.querySelector('[data-app-titlebar]')?.textContent).toBe('DeepCreator')
+    await act(async () => { document.title = '下一个会话 - DeepSeek Harness' })
+    expect(frame.querySelector('[data-app-titlebar]')?.textContent).toBe('下一个会话 - DeepCreator')
+  })
+
+  it('renders no strip outside the Windows Electron renderer', () => {
+    const { frame } = mountFrame()
+    expect(frame.querySelector('[data-app-titlebar]')).toBe(null)
+    expect(frame.getAttribute('data-native-window-chrome')).toBe(null)
+  })
+})

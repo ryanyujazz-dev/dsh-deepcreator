@@ -6,6 +6,7 @@ const channels = Object.freeze({
 })
 const windowChannels = Object.freeze({
   get: 'deepcreator:window:get', changed: 'deepcreator:window:changed',
+  titlebarTheme: 'deepcreator:window:titlebar-theme',
 })
 contextBridge.exposeInMainWorld('deepcreatorBrowser', Object.freeze({
   create: (id, url, bounds) => ipcRenderer.invoke(channels.create, id, url, bounds),
@@ -18,4 +19,5 @@ contextBridge.exposeInMainWorld('deepcreatorBrowser', Object.freeze({
 contextBridge.exposeInMainWorld('deepcreatorWindow', Object.freeze({
   getState: () => ipcRenderer.invoke(windowChannels.get),
   onStateChange: listener => { const handler = (_event, state) => listener(state); ipcRenderer.on(windowChannels.changed, handler); return () => ipcRenderer.removeListener(windowChannels.changed, handler) },
+  setTitleBarTheme: (color, symbolColor) => ipcRenderer.invoke(windowChannels.titlebarTheme, color, symbolColor),
 }))

@@ -23,6 +23,43 @@
   --dsh-collapsed-title-leading: 98px;
 }
 
+/* The Windows title strip occupies the frame's top 32px, so the reopen seat
+   moves below it into the app header row: the original top:10px rides the
+   header's 48px baseline down one strip height. */
+.frame[data-native-window-chrome='windows'] .sidebarToggleSeat {
+  top: 42px;
+}
+
+/* The Windows shell hides its native title bar: the frame gains a frame-owned
+   32px title strip row above the three columns. The strip is the drag surface
+   (the native Window Controls Overlay buttons sit over its right end), and it
+   follows the theme palette because it paints with the same tokens as the
+   frame. Its height matches WINDOWS_TITLE_BAR_HEIGHT in apps/desktop, so the
+   strip replaces the standard caption bar with the same compact footprint. */
+.frame[data-native-window-chrome='windows'] {
+  grid-template-rows: 32px 1fr;
+}
+
+.titlebar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 12px;
+  background: var(--dsw-alias-bg-base);
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  -webkit-app-region: drag;
+}
+
+.titlebarText {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--dsw-font-sidebar-font-size, 13px);
+  line-height: var(--dsw-font-sidebar-line-height, 20px);
+  color: var(--dsw-alias-label-secondary);
+}
+
 /* A shallow frame-level fallback keeps the very top edge draggable after
    Electron removes the macOS title bar. Each visible column header owns its
    full blank drag surface; this strip only covers the seam above their

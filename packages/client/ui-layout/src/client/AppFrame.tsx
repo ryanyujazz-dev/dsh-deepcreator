@@ -23,8 +23,15 @@ interface DesktopWindowState { maximized: boolean; fullscreen: boolean }
 interface DesktopWindowBridge {
   getState(): Promise<DesktopWindowState>
   onStateChange(listener: (state: DesktopWindowState) => void): () => void
+  setTitleBarTheme(color: string, symbolColor: string): Promise<void>
 }
 declare global { interface Window { deepcreatorWindow?: DesktopWindowBridge } }
+
+/** The strip's label mirrors the native window title's transform (main process). */
+function stripTitle(title: string): string {
+  const replaced = title.replace(/DeepSeek Harness$/, 'DeepCreator').trim()
+  return replaced === '' ? 'DeepCreator' : replaced
+}
 
 /** Full composed props: runtime share + child-slot render share + store share. */
 export type AppFrameProps =
@@ -121,6 +128,19 @@ export function AppFrame({
     const current = s.current
     return current !== undefined && s.byId[current]?.blank === false ? current : undefined
   })
+  // The Windows title strip mirrors document.title (the same text the main
+  // process projects onto the native window title) so the strip stays in
+  // step with the session name without another bridge.
+  const [titleText, setTitleText] = useState(() => stripTitle(document.title))
+  useEffect(() => {
+    if (nativeWindowChrome !== 'windows') return
+    const titleNode = document.querySelector('title')
+    if (titleNode === null) return
+    const publish = (): void => { setTitleText(stripTitle(document.title)) }
+    const observer = new MutationObserver(publish)
+    observer.observe(titleNode, { childList: true, characterData: true, subtree: true })
+    return () => { observer.disconnect() }
+  }, [nativeWindowChrome])
   const frameRef = useRef<HTMLDivElement | null>(null)
   const [viewport, setViewport] = useState(() => window.innerWidth)
 
@@ -203,6 +223,14 @@ export function AppFrame({
       data-window-maximized={windowState.maximized || undefined}
       data-window-fullscreen={windowState.fullscreen || undefined}
     >
+      {nativeWindowChrome === 'windows' && (
+        /* Frame-owned 48px title strip: replaces the hidden native title bar,
+           renders beneath the Window Controls Overlay buttons (top-right),
+           and is the window's drag surface on Windows. */
+        <div className={css.titlebar} data-app-titlebar>
+          <span className={css.titlebarText}>{titleText}</span>
+        </div>
+      )}
       <div className={css.sidebarCol}>
         {/* Render-site slot call with live concession output. The subtree
             remains mounted at zero width so its state survives reopening;
