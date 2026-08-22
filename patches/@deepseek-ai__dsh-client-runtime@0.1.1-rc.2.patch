@@ -1,5 +1,5 @@
 diff --git a/lib/client.js b/lib/client.js
-index 37b931e21184061c457a6b20ede16eff1a293087..3774332473d9ed071eb965095cb0106d3814e15e 100644
+index ba3cb21f72709cc91a733d4080266e452d6435d5..da5c490a392d1b051830d7b5e756321187465c52 100644
 --- a/lib/client.js
 +++ b/lib/client.js
 @@ -282,7 +282,8 @@ window.__ModuleLoader__.load({
@@ -32,6 +32,8 @@ index 37b931e21184061c457a6b20ede16eff1a293087..3774332473d9ed071eb965095cb0106d
  			async loadOlder() {
  				if (this.openState !== "open" || !this.hasMore || this.loadingOlder) return;
 @@ -7615,12 +7628,13 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
+ 			*  baseline cannot overwrite a newer push frame); the window events themselves are
+ 			*  never folded — the host is the only computation site. */
  			installWindow(entries, hasMore, projections) {
 +				const unchanged = entries.length === this.events.length && entries.every((entry, index) => entry.event.seq === this.events[index]?.seq);
  				this.events = entries.map((e) => e.event);
@@ -44,8 +46,6 @@ index 37b931e21184061c457a6b20ede16eff1a293087..3774332473d9ed071eb965095cb0106d
  				if (projections !== void 0) this.projections.seed(projections);
  				const buffered = this.liveBuffer;
  				this.liveBuffer = [];
- 				for (const item of buffered) this.appendLive(item.event, item.view);
- 				this.notifier.markDirty();
 @@ -7915,6 +7929,14 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
  					};
  				}
@@ -195,7 +195,7 @@ index 37b931e21184061c457a6b20ede16eff1a293087..3774332473d9ed071eb965095cb0106d
  			/** Project the manager's list snapshot into the store (title derivation is display-only). */
  			projectList() {
 diff --git a/lib/types/client/contract/sessions.d.ts b/lib/types/client/contract/sessions.d.ts
-index 0cd58417c1d7b888a384e3b4d9e26cd19a7f91f1..a305fa9c90b90b8f2aa39ce31146869bc182b811 100644
+index 0cd58417c1d7b888a384e3b4d9e26cd19a7f91f1..efc4bf7ece399e54d4f693840fe27e198daf9baa 100644
 --- a/lib/types/client/contract/sessions.d.ts
 +++ b/lib/types/client/contract/sessions.d.ts
 @@ -22,6 +22,8 @@ export interface ISessions {
@@ -208,7 +208,7 @@ index 0cd58417c1d7b888a384e3b4d9e26cd19a7f91f1..a305fa9c90b90b8f2aa39ce31146869b
       * The `session.search` result bound the wire schema fixes, exposed to
       * presentation as injected data. Not per-connection state: every transport
 diff --git a/lib/types/client/sessions/manager.d.ts b/lib/types/client/sessions/manager.d.ts
-index d53cc33a34f880e6771a5ac44cf1542f4cfb34da..c40359dda39a4471629351f7dd5c28032f5fcdf7 100644
+index d53cc33a34f880e6771a5ac44cf1542f4cfb34da..3c6c3dedc1c9403a973827211461516340de666b 100644
 --- a/lib/types/client/sessions/manager.d.ts
 +++ b/lib/types/client/sessions/manager.d.ts
 @@ -121,6 +121,8 @@ export declare class SessionManager {
@@ -221,7 +221,7 @@ index d53cc33a34f880e6771a5ac44cf1542f4cfb34da..c40359dda39a4471629351f7dd5c2803
       * Drop a session instance (scope-prune companion: instance
       * and scope share one lifecycle). The host session log is the durable
 diff --git a/lib/types/client/sessions/service.d.ts b/lib/types/client/sessions/service.d.ts
-index f421193c93bb67513167fe7474b6071f3e52717e..4892370adc453b54d1a527451b09e18b4adc01e4 100644
+index f421193c93bb67513167fe7474b6071f3e52717e..2c665f40ed0644229bbc03d8c44c9711713095d9 100644
 --- a/lib/types/client/sessions/service.d.ts
 +++ b/lib/types/client/sessions/service.d.ts
 @@ -177,6 +177,8 @@ export declare class SessionRuntime implements ISessions {
@@ -253,7 +253,7 @@ index f421193c93bb67513167fe7474b6071f3e52717e..4892370adc453b54d1a527451b09e18b
       * Move the stage to the list's current session: sweep teardowns deferred
       * behind the previous occupant and pull the new occupant's history window.
 diff --git a/lib/types/client/sessions/session.d.ts b/lib/types/client/sessions/session.d.ts
-index cbc76a0a94dd9a88d99ec088e0d85990e59e0272..1b7bcc25596e0c8f0b774eeab5e30d681ea17c7b 100644
+index 952a14a2496bb3ebfcd5a3e53a3d34d0e875b962..ab578b04d5b392c434ad101dad125493b0fa5c0d 100644
 --- a/lib/types/client/sessions/session.d.ts
 +++ b/lib/types/client/sessions/session.d.ts
 @@ -187,6 +187,8 @@ export declare class Session implements SessionFace {

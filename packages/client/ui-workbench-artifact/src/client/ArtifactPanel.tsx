@@ -179,7 +179,11 @@ export function ArtifactPanel({ artifacts, sessionId, route, tabs, activeInstanc
           ? (
             <div className={`${css.content}${markdown && markdownMode === 'preview' ? ` ${css.markdownPreview}` : ''}`}>
               {markdown && markdownMode === 'preview'
-                ? <MarkdownText text={content} codeLabels={markdownCodeLabels} />
+                ? (
+                  <div className={css.markdownDocument} data-artifact-markdown-document>
+                    <MarkdownText text={content} codeLabels={markdownCodeLabels} />
+                  </div>
+                )
                 : renderArtifact({ artifactId: activePath, content })}
             </div>
           )

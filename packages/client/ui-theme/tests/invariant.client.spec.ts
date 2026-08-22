@@ -34,15 +34,27 @@ const CODE_THEME_IDS = [
 ] as const
 
 describe('invariant companion', () => {
-  it('loads the code-theme stylesheet from the client entry', () => {
+  it('owns the complete global palette entry instead of relying on an official package side effect', () => {
     const packageRoot = resolve(process.cwd(), 'packages/client/ui-theme')
     const entry = readFileSync(resolve(packageRoot, 'src/client/index.ts'), 'utf8')
+    const baseStylesheet = readFileSync(resolve(packageRoot, 'src/styles/base.css'), 'utf8')
     const stylesheet = readFileSync(resolve(packageRoot, 'src/styles/shiki.css'), 'utf8')
 
-    expect(entry).toContain("import '../styles/shiki.css'")
+    const imports = [
+      'base.css',
+      'design-platform.css',
+      'scrollbar.css',
+      'gradient-shadow-text.css',
+      'shiki.css',
+    ].map(name => `import '../styles/${name}'`)
+    for (const statement of imports) expect(entry.indexOf(statement)).toBeGreaterThan(-1)
+    for (let index = 1; index < imports.length; index += 1) {
+      expect(entry.indexOf(imports[index]!)).toBeGreaterThan(entry.indexOf(imports[index - 1]!))
+    }
     for (const themeId of CODE_THEME_IDS) {
       expect(stylesheet).toContain(`[data-code-theme='${themeId}']`)
     }
+    expect(baseStylesheet).toContain('--dsh-reading-content-width: 748px;')
   })
 
   it('binds token colors directly while isolating nested preview scopes from the body theme', () => {

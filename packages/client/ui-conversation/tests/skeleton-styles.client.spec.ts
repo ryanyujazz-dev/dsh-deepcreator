@@ -55,6 +55,11 @@ function heroDeclarations(selector: string): Map<string, string> | undefined {
 }
 
 describe('ConversationRoot.module.css', () => {
+  it('derives the chat column from the shared readable-content measure', () => {
+    expect(declarations('.root')?.get('--dsh-chat-content-width'))
+      .toBe('var(--dsh-reading-content-width, 748px)')
+  })
+
   it('keeps the single header row at 48px without a divider', () => {
     const header = declarations('.header')
     expect(header?.get('height')).toBe('48px')

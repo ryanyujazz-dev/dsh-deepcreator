@@ -66,7 +66,7 @@ DeepCreator 会持续扩展，但不会演变成一个难以拆分的单体应�
 
 ### 现在即可安装
 
-DeepCreator 保持官方 Harness 的 Host 与 Agent 插件扩展面开放。以下公开包已按仓库锁定的 `@deepseek-ai/dsh` `0.1.0-rc.7` 运行时完成核对：
+DeepCreator 保持官方 Harness 的 Host 与 Agent 插件扩展面开放。以下公开包已按仓库锁定的 `@deepseek-ai/dsh` `0.1.1-rc.2` 运行时完成核对：
 
 | 能力 | 可安装包 | 提供的功能 |
 | --- | --- | --- |
@@ -78,7 +78,7 @@ DeepCreator 保持官方 Harness 的 Host 与 Agent 插件扩展面开放。以�
 请使用与当前 Harness 运行时一致的版本把包安装到受管理 profile，再将插件文档中的 Cordis row 加入 `$DSH_HOME/profiles/deepcreator/cordis.patch.yml`：
 
 ```sh
-pnpm --filter @ryanyujazz/dsh-deepcreator-desktop exec dsh plugin --profile deepcreator add @deepseek-ai/dsh-mcp-client@0.1.0-rc.7
+pnpm --filter @ryanyujazz/dsh-deepcreator-desktop exec dsh plugin --profile deepcreator add @deepseek-ai/dsh-mcp-client@0.1.1-rc.2
 pnpm --filter @ryanyujazz/dsh-deepcreator-desktop exec dsh --profile deepcreator --dump-config
 ```
 
@@ -151,7 +151,7 @@ pnpm run verify:harness
 
 ### 兼容性与发布范围
 
-当前兼容声明面向 DeepSeek Harness `0.1.0-rc.7`，Git SHA 为 `99f6f02fecdb7dff40c3fbc9470f5907c29f74ca`。
+当前兼容声明面向 DeepSeek Harness `0.1.1-rc.2`，Git SHA 为 `b150a551b8d465e31e418e1b2eaf5e79bbb7d28e`。
 
 > [!IMPORTANT]
 > DeepCreator 当前提供的是**开发运行时**。签名、公证、安装包、自动更新、托盘集成与原生凭据存储不在首个桌面版本范围内。

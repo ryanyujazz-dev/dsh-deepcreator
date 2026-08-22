@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -583,5 +583,192 @@ describe('Review Service', () => {
       ok: true,
       turns: [],
     })
+  })
+  it('expands ordinary untracked directories but drills into nested repositories as atomic entries', async () => {
+    const repository = await mkdtemp(join(tmpdir(), 'dsh-review-nested-')); temporary.push(repository)
+    await exec('git', ['init', '-q', repository])
+    await exec('git', ['-C', repository, 'config', 'user.email', 'test@example.com'])
+    await exec('git', ['-C', repository, 'config', 'user.name', 'Test'])
+    await writeFile(join(repository, 'root.txt'), 'root\n')
+    await exec('git', ['-C', repository, 'add', '.'])
+    await exec('git', ['-C', repository, 'commit', '-qm', 'initial'])
+    await mkdir(join(repository, 'plain', 'deep'), { recursive: true })
+    await writeFile(join(repository, 'plain', 'deep', 'note.md'), '# note\n')
+    const nested = join(repository, 'nested repo')
+    await mkdir(nested)
+    await exec('git', ['init', '-q', nested])
+    await writeFile(join(nested, 'child.txt'), 'child\n')
+    const session = { id: 'nested-status', header: { cwd: repository } } as unknown as Session
+    const review = new ReviewService(new Context())
+
+    const root = await review.status(session)
+    expect(root).toMatchObject({ ok: true })
+    expect(root.ok && root.branch).not.toContain('...')
+    expect(root.ok && root.files).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: 'plain/deep/note.md', kind: 'file' }),
+      expect.objectContaining({ path: 'nested repo', kind: 'repository', presentation: 'repository' }),
+    ]))
+    expect(root.ok && root.files.some(file => file.path === 'nested repo/child.txt')).toBe(false)
+    await expect(review.diff(session, 'plain\\deep\\note.md')).resolves.toMatchObject({
+      ok: true, path: 'plain/deep/note.md', layers: [{ newSource: { text: '# note\n' } }],
+    })
+    await expect(review.diff(session, 'nested repo')).resolves.toMatchObject({
+      ok: true, kind: 'repository', presentation: 'repository', lineStatsState: 'not-applicable', layers: [],
+    })
+    await expect(review.status(session, 'uncommitted', { repository: 'nested repo' })).resolves.toMatchObject({
+      ok: true, location: { repository: 'nested repo' }, files: [{ path: 'child.txt' }],
+    })
+    await expect(review.diff(session, 'child.txt', 'uncommitted', { repository: 'nested repo' })).resolves.toMatchObject({
+      ok: true, path: 'child.txt', layers: [{ kind: 'uncommitted', newSource: { text: 'child\n' } }],
+    })
+  })
+
+  it('captures and reconciles one Turn across root and nested repositories independently', async () => {
+    const repository = await mkdtemp(join(tmpdir(), 'dsh-review-cross-')); temporary.push(repository)
+    await exec('git', ['init', '-q', repository])
+    await exec('git', ['-C', repository, 'config', 'user.email', 'test@example.com'])
+    await exec('git', ['-C', repository, 'config', 'user.name', 'Test'])
+    await writeFile(join(repository, 'root.txt'), 'root 0\n')
+    await exec('git', ['-C', repository, 'add', '.'])
+    await exec('git', ['-C', repository, 'commit', '-qm', 'root initial'])
+    const nested = join(repository, 'nested')
+    await mkdir(nested)
+    await exec('git', ['init', '-q', nested])
+    await exec('git', ['-C', nested, 'config', 'user.email', 'test@example.com'])
+    await exec('git', ['-C', nested, 'config', 'user.name', 'Test'])
+    await writeFile(join(nested, 'child.txt'), 'child 0\n')
+    await exec('git', ['-C', nested, 'add', '.'])
+    await exec('git', ['-C', nested, 'commit', '-qm', 'child initial'])
+    const session = { id: 'cross-repository', header: { cwd: repository } } as unknown as Session
+    const review = new ReviewService(new Context())
+    const capture = review as unknown as { captureStart(session: Session, turn: number): Promise<void>; captureEnd(session: Session, turn: number): Promise<void> }
+
+    await capture.captureStart(session, 12)
+    await writeFile(join(repository, 'root.txt'), 'root 1\n')
+    await writeFile(join(nested, 'child.txt'), 'child 1\n')
+    await capture.captureEnd(session, 12)
+    await expect(review.history(session)).resolves.toMatchObject({
+      ok: true,
+      turns: [{
+        turn: 12, remainingFiles: 2, undoable: false, undoDisabledReason: 'cross-repository',
+        files: expect.arrayContaining([
+          expect.objectContaining({ path: 'root.txt', repository: '', repositoryPath: 'root.txt' }),
+          expect.objectContaining({ path: 'nested/child.txt', repository: 'nested', repositoryPath: 'child.txt' }),
+        ]),
+      }],
+    })
+    await expect(review.status(session, { turn: 12 }, { repository: 'nested' })).resolves.toMatchObject({
+      ok: true, files: [{ path: 'child.txt', repository: 'nested' }],
+    })
+    await expect(review.diff(session, 'child.txt', { turn: 12 }, { repository: 'nested' })).resolves.toMatchObject({
+      ok: true, path: 'child.txt', layers: [{ kind: 'turn' }],
+    })
+
+    await exec('git', ['-C', repository, 'add', 'root.txt'])
+    await exec('git', ['-C', repository, 'commit', '-qm', 'root change'])
+    await expect(review.history(session)).resolves.toMatchObject({ ok: true, turns: [{ remainingFiles: 1 }] })
+    await exec('git', ['-C', nested, 'add', 'child.txt'])
+    await exec('git', ['-C', nested, 'commit', '-qm', 'child change'])
+    await expect(review.history(session)).resolves.toMatchObject({ ok: true, turns: [] })
+  })
+
+  it('shows a symlink target without reading a target outside the workspace', async () => {
+    const repository = await mkdtemp(join(tmpdir(), 'dsh-review-link-')); temporary.push(repository)
+    const outside = await mkdtemp(join(tmpdir(), 'dsh-review-outside-')); temporary.push(outside)
+    await exec('git', ['init', '-q', repository])
+    await writeFile(join(outside, 'secret.txt'), 'must not be exposed\n')
+    await symlink(join(outside, 'secret.txt'), join(repository, 'external-link'))
+    const session = { id: 'symlink', header: { cwd: repository } } as unknown as Session
+    const review = new ReviewService(new Context())
+    const result = await review.diff(session, 'external-link')
+    expect(result).toMatchObject({ ok: true, kind: 'symlink' })
+    expect(result.ok && result.layers[0]?.newSource.text).toBe(join(outside, 'secret.txt'))
+    expect(result.ok && result.layers[0]?.newSource.text).not.toContain('must not be exposed')
+  })
+
+  it('keeps protected undo available for a Turn owned by one nested repository', async () => {
+    const repository = await mkdtemp(join(tmpdir(), 'dsh-review-child-undo-')); temporary.push(repository)
+    await exec('git', ['init', '-q', repository])
+    await exec('git', ['-C', repository, 'config', 'user.email', 'test@example.com'])
+    await exec('git', ['-C', repository, 'config', 'user.name', 'Test'])
+    await writeFile(join(repository, 'root.txt'), 'root\n')
+    await exec('git', ['-C', repository, 'add', '.'])
+    await exec('git', ['-C', repository, 'commit', '-qm', 'root'])
+    const nested = join(repository, 'nested')
+    await mkdir(nested)
+    await exec('git', ['init', '-q', nested])
+    await exec('git', ['-C', nested, 'config', 'user.email', 'test@example.com'])
+    await exec('git', ['-C', nested, 'config', 'user.name', 'Test'])
+    await writeFile(join(nested, 'child.txt'), 'before\n')
+    await exec('git', ['-C', nested, 'add', '.'])
+    await exec('git', ['-C', nested, 'commit', '-qm', 'child'])
+    const session = { id: 'child-undo', header: { cwd: repository } } as unknown as Session
+    const review = new ReviewService(new Context())
+    const capture = review as unknown as { captureStart(session: Session, turn: number): Promise<void>; captureEnd(session: Session, turn: number): Promise<void> }
+    await capture.captureStart(session, 3)
+    await writeFile(join(nested, 'child.txt'), 'after\n')
+    await capture.captureEnd(session, 3)
+    await expect(review.history(session)).resolves.toMatchObject({ ok: true, turns: [{ undoable: true }] })
+    await expect(review.undoTurn(session, 3)).resolves.toMatchObject({ ok: true, revertedFiles: ['nested/child.txt'] })
+    expect(await readFile(join(nested, 'child.txt'), 'utf8')).toBe('before\n')
+    expect((await exec('git', ['-C', repository, 'diff', '--cached', '--name-only'])).stdout).toBe('')
+  })
+
+  it('keeps a dirty submodule atomic and marks line statistics as not applicable', async () => {
+    const source = await mkdtemp(join(tmpdir(), 'dsh-review-submodule-source-')); temporary.push(source)
+    await exec('git', ['init', '-q', source])
+    await exec('git', ['-C', source, 'config', 'user.email', 'test@example.com'])
+    await exec('git', ['-C', source, 'config', 'user.name', 'Test'])
+    await writeFile(join(source, 'child.txt'), 'before\n')
+    await exec('git', ['-C', source, 'add', '.'])
+    await exec('git', ['-C', source, 'commit', '-qm', 'initial'])
+    const repository = await mkdtemp(join(tmpdir(), 'dsh-review-submodule-parent-')); temporary.push(repository)
+    await exec('git', ['init', '-q', repository])
+    await exec('git', ['-C', repository, 'config', 'user.email', 'test@example.com'])
+    await exec('git', ['-C', repository, 'config', 'user.name', 'Test'])
+    await exec('git', ['-c', 'protocol.file.allow=always', '-C', repository, 'submodule', 'add', '-q', source, 'modules/child'])
+    await exec('git', ['-C', repository, 'commit', '-qam', 'submodule'])
+    await writeFile(join(repository, 'modules', 'child', 'child.txt'), 'after\n')
+    const session = { id: 'submodule', header: { cwd: repository } } as unknown as Session
+    const review = new ReviewService(new Context())
+
+    await expect(review.status(session)).resolves.toMatchObject({
+      ok: true, files: [{ path: 'modules/child', kind: 'submodule', presentation: 'submodule' }],
+    })
+    await expect(review.summary(session)).resolves.toMatchObject({
+      ok: true, additions: 0, deletions: 0,
+      files: [{ path: 'modules/child', kind: 'submodule', presentation: 'submodule', lineStatsState: 'not-applicable' }],
+    })
+  })
+
+  it('attributes nested repository files inside a non-Git workspace to their owning repository', async () => {
+    const workspace = await mkdtemp(join(tmpdir(), 'dsh-review-filesystem-nested-')); temporary.push(workspace)
+    const dshHome = await mkdtemp(join(tmpdir(), 'dsh-review-filesystem-nested-home-')); temporary.push(dshHome)
+    const nested = join(workspace, 'projects', 'child')
+    await mkdir(nested, { recursive: true })
+    await exec('git', ['init', '-q', nested])
+    await exec('git', ['-C', nested, 'config', 'user.email', 'test@example.com'])
+    await exec('git', ['-C', nested, 'config', 'user.name', 'Test'])
+    await writeFile(join(nested, 'child.txt'), 'before\n')
+    await exec('git', ['-C', nested, 'add', '.'])
+    await exec('git', ['-C', nested, 'commit', '-qm', 'initial'])
+    const previousHome = process.env.DSH_HOME
+    process.env.DSH_HOME = dshHome
+    try {
+      const session = { id: 'filesystem-nested', header: { cwd: workspace } } as unknown as Session
+      const review = new ReviewService(new Context())
+      const capture = review as unknown as { captureStart(session: Session, turn: number): Promise<void>; captureEnd(session: Session, turn: number): Promise<void> }
+      await capture.captureStart(session, 7)
+      await writeFile(join(nested, 'child.txt'), 'after\n')
+      await capture.captureEnd(session, 7)
+      await expect(review.history(session)).resolves.toMatchObject({
+        ok: true,
+        workspaceKind: 'filesystem',
+        turns: [{ files: [{ path: 'projects/child/child.txt', repository: 'projects/child', repositoryPath: 'child.txt' }] }],
+      })
+    } finally {
+      if (previousHome === undefined) delete process.env.DSH_HOME
+      else process.env.DSH_HOME = previousHome
+    }
   })
 }, 30000)

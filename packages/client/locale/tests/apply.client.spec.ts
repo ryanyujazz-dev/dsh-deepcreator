@@ -4,7 +4,9 @@
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
-import { SettingsScopeBinder } from '@ryanyujazz/dsh-client-ui-settings/client'
+import {
+  apply as applyOfficialSettings, inject as officialSettingsInject,
+} from '@deepseek-ai/dsh-client-ui-settings/client'
 import { TestRemote } from '@deepseek-ai/dsh-client-test-runtime'
 import {
   apply, inject, SETTINGS_NS,
@@ -16,10 +18,10 @@ import type { createLanguageRowStore } from '../src/client/settings-store.ts'
 
 const SLOT = 'settings.general.item'
 
-async function bench() {
+async function bench(initialPreference?: string) {
   const ctx = new Context()
   await ctx.plugin(SlotRegistry).await()
-  let preference: string | undefined
+  let preference: string | undefined = initialPreference
   let revision = 0
   const namespace = () => ({
     ns: LOCALE_SETTINGS_NAMESPACE,
@@ -47,7 +49,7 @@ async function bench() {
   ctx.provide('connection', { api: { settings: { describe, mutate } }, isLoopback: true } as never)
   // The settings transport and the forwarded-event port the plugin injects.
   new TestRemote(ctx)
-  await ctx.plugin(SettingsScopeBinder).await()
+  await ctx.plugin({ inject: [...officialSettingsInject], apply: applyOfficialSettings }).await()
   return {
     ctx, slots: ctx.get('slots') as SlotRegistry, describe, mutate,
     setHostPreference: (next: string | undefined) => { preference = next; revision += 1 },
@@ -132,8 +134,7 @@ describe('locale apply', () => {
   })
 
   it('loads and refreshes the explicit Host preference after nonblocking activation', async () => {
-    const b = await bench()
-    b.setHostPreference('en')
+    const b = await bench('en')
     declareItems(b.slots)
     await b.ctx.plugin({ inject: [...inject], apply }).await()
     const locale = b.ctx.get('locale') as LocaleRuntime

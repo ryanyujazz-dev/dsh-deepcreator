@@ -14,7 +14,7 @@ import type {
 import {
   createSnapshotStore, EMPTY_CONVERSATION_VIEWS,
 } from '@deepseek-ai/dsh-client-runtime/client'
-import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-web-react'
+import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import type { ChatRenderSlotProps } from '../src/client/contract/slots.ts'
 import type { SelectionTarget } from '../src/client/contract/views.ts'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
@@ -160,6 +160,31 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
 }
 
 describe('ExecFlow partition and slot forms', () => {
+
+  it('mounts the same complete execution-run window in Activity as in main', () => {
+    const h = makeHarness({
+      nodes: [
+        user(1, 'older task'),
+        toolResult(2, 'old-a', 'bash', 1),
+        toolResult(3, 'old-b', 'bash', 1),
+        assistant(4, 'older done', 1),
+        user(5, 'latest task'),
+        toolResult(6, 'new-a', 'bash', 2),
+        toolResult(7, 'new-b', 'bash', 2),
+        toolResult(8, 'new-c', 'bash', 2),
+        toolResult(9, 'new-d', 'bash', 2),
+        assistant(10, 'latest done', 2),
+      ],
+      hasMore: true,
+    })
+    const view = render(<h.Body {...h.props} surfaceId="activity:child" />)
+    expect(view.container.querySelector('[data-chat-flow-key="fixture:user:5"]')).not.toBeNull()
+    expect(view.container.querySelector('[data-chat-flow-key="fixture:assistant:10"]')).not.toBeNull()
+    expect(view.container.querySelector('[data-chat-flow-key="fixture:user:1"]')).not.toBeNull()
+    expect(view.container.querySelector('[data-chat-flow-key="fixture:assistant:4"]')).not.toBeNull()
+    fireEvent.click(view.getByRole('button', { name: '加载更早' }))
+    expect(h.loadOlder).toHaveBeenCalledTimes(1)
+  })
 
   it('shows the live reasoning tail in classic mode and enters Think mode from the row', () => {
     const h = makeHarness({

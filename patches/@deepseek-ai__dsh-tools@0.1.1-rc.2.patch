@@ -1,5 +1,5 @@
 diff --git a/lib/types/presentation.d.ts b/lib/types/presentation.d.ts
-index 2cf0fb99048d7f892b8aa8f707cbe66ba61e9eb3..ba25de83546ae37248c8b7ae9f2bb44721c7469d 100644
+index 2cf0fb99048d7f892b8aa8f707cbe66ba61e9eb3..dc491c2455c2bc31308d2ba2d7070ea7c3aac8a8 100644
 --- a/lib/types/presentation.d.ts
 +++ b/lib/types/presentation.d.ts
 @@ -33,6 +33,10 @@ export interface FileDiff {

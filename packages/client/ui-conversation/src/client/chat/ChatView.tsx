@@ -6,8 +6,8 @@
 // render seat stays declared here and is delegated to mode bodies through
 // the owner share (one declarer per slot).
 
-import { useSyncExternalStore } from 'react'
-import type { ChatViewSlotProps } from '../contract/slots.ts'
+import { useCallback, useSyncExternalStore } from 'react'
+import type { ChatViewSlotProps, MessageImagesOwnerProps } from '../contract/slots.ts'
 import { resolveActiveMode } from './render-modes.ts'
 import css from './ChatView.module.css'
 
@@ -25,6 +25,10 @@ export function ChatView({
   const selectedMode = useStore(s => s.renderMode)
   const active = resolveActiveMode(modeTabs, selectedMode, defaultMode)
   const chatScroll = chatScrollFor(surfaceId)
+  const renderMessageImages = useCallback((owner: Omit<MessageImagesOwnerProps, 'loadImage'>) => renderSlot('conversation.message.images', {
+    ...owner,
+    loadImage,
+  }), [loadImage, renderSlot])
 
   return (
     <div className={css.frame}>
@@ -36,6 +40,7 @@ export function ChatView({
         revealChange,
         loadOlder,
         loadImage,
+        renderMessageImages,
         inspectCall,
         chatScroll,
         forkAt,

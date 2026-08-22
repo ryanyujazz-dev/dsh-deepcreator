@@ -29,8 +29,8 @@ if (!targetName.match(/^[a-z0-9-]+$/)) throw new Error(`invalid target name "${t
 // Tested dsh dependency range (the fork packages peer against it) and the
 // exact build-time version (devDependencies pin the tested contract; peers
 // keep the range so newer dsh versions warn instead of hard-failing).
-const DSH_RANGE = '^0.1.0-rc.7'
-const DSH_BUILD = '0.1.0-rc.7'
+const DSH_RANGE = '^0.1.1-rc.2'
+const DSH_BUILD = '0.1.1-rc.2'
 const PINNED = { '@deepseek-ai/cordis': '4.0.1', '@deepseek-ai/schemastery': '3.18.1' }
 const DEEPCREATOR_CLIENT_PACKAGES = new Set([
   'locale',

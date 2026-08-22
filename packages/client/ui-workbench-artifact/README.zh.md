@@ -10,7 +10,7 @@
 
 内容渲染走 `deepcreator.workbench.artifact.renderer` 槽(由 `ui-workbench` 声明,面板经 `renderArtifact` owner prop 消费)。本包注册 `code` 渲染器:文本产物使用共享 `CodeSurface` 渲染为与 Review 一致的完整文件行网格(行号 gutter＋内容列，不含 Diff 符号、增删底色与词级标记)。扩展名能映射到已注册文法时,Shiki token 继续走 `data-code-theme` 配色链;未知扩展名只退化为无语法着色的逐行纯文本,不再切换为另一套 `<pre>` 版式。内容按面板宽度软换行且不自涂底色。
 
-Markdown 与 MDX 实例会在固定的“打开所在文件夹”动作左侧显示紧凑的纯图标“预览｜代码”分段按钮：预览使用产品提供的眼睛 SVG，代码使用产品绘制的 `</>` SVG；两项都提供本地化 hover／focus 提示与可访问名称。“预览”为默认值，直接使用已结算对话正文同款的共享 `MarkdownText` 管线，因此 GFM、数学公式、代码围栏与不受信任链接策略完全一致；“代码”切回已注册 renderer 的 `document` CodeSurface（无外部 margin，带竖向分隔线的行号 gutter，正文列内部保留 padding）。选择在面板本次挂载期间按文件独立记忆；非 Markdown 文件不显示该按钮。
+Markdown 与 MDX 实例会在固定的“打开所在文件夹”动作左侧显示紧凑的纯图标“预览｜代码”分段按钮：预览使用产品提供的眼睛 SVG，代码使用产品绘制的 `</>` SVG；两项都提供本地化 hover／focus 提示与可访问名称。“预览”为默认值，直接使用已结算对话正文同款的共享 `MarkdownText` 管线，因此 GFM、数学公式、代码围栏与不受信任链接策略完全一致。面板全宽滚动表面继续负责溢出，预览文档以 `width: 100%` 在共享的 `--dsh-reading-content-width` 最大宽度内居中；窄面板会自然收缩，滚动条仍贴合面板边缘。“代码”切回已注册 renderer 的 `document` CodeSurface（无外部 margin，带竖向分隔线的行号 gutter，正文列内部保留 padding）。选择在面板本次挂载期间按文件独立记忆；非 Markdown 文件不显示该按钮。
 
 类型入口图标在会话出现用户尚未查看的新产物时于右上角显示蓝点:已见水位仅在面板组可见时推进(隐藏的组保持 mounted,因此隐藏面板时蓝点持续,直到打开)。
 

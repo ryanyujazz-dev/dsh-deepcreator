@@ -17,8 +17,8 @@
   `WorkbenchPanelTabs`;实例 id 即子会话 id,显示名走
   `contributePanelInfo`)。主体挂载显式且不导航的 `SessionProvider`，再以
   `transcriptOnly` 形态调用主对话区已授权的 `conversation.session`
-  renderer。因此它与主对话区共享官方 50 条消息尾页、按需揭示驻留行后的 `hasMore/loadOlder`
-  分页、assembler、实时流、Markdown、工具／文件／详情操作、排版变量和
+  renderer。因此它首次打开时与主对话区显示相同的完整驻留 Turn 窗口，随后直接共享官方 50 条消息
+  `hasMore/loadOlder` 分页、assembler、实时流、Markdown、工具／文件／详情操作、排版变量和
   渲染模式偏好，但不挂载输入框，也不提供第二个模式切换入口。实例正文顶部的局部工具条
   承载状态与「在对话中打开」，Workbench 公共标题栏只保留标签与面板
   控件，正文不再重复子代理标题。只有标签激活、面板可见且

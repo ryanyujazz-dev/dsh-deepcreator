@@ -1,0 +1,51 @@
+diff --git a/lib/client.js b/lib/client.js
+index 3070c931066312e5fbf92213cee41881cd36d161..d1c691fcf4bac6606e813f05730c3ae43abdbffb 100644
+--- a/lib/client.js
++++ b/lib/client.js
+@@ -256,8 +256,10 @@ window.__ModuleLoader__.load({
+ 		* string ids; `PropsRuntime` applies the branded type at the component
+ 		* boundary.
+ 		*/
+-		function SessionProvider({ empty, children }) {
+-			const info = observableHook(useHost().sessions.provideInfo)((s) => s);
++		function SessionProvider({ sessionId, empty, children }) {
++			const sessions = useHost().sessions;
++			const source = sessionId === void 0 ? sessions.provideInfo : sessions.provideInfoFor(sessionId);
++			const info = observableHook(source)((s) => s);
+ 			const id = info.sessionId;
+ 			if (id === void 0) return (0, react_jsx_runtime.jsx)(react_jsx_runtime.Fragment, { children: empty?.() ?? null });
+ 			return (0, react_jsx_runtime.jsx)(BindingContext.Provider, {
+@@ -981,6 +983,8 @@ window.__ModuleLoader__.load({
+ 		}
+ 		//#endregion
+ 		exports.apply = apply;
++		exports.bindSnapshotSelector = bindSnapshotSelector;
++		exports.createSlotRenderer = createSlotRenderer;
+ 		exports.inject = inject;
+ 		return module.exports;
+ 	}
+diff --git a/lib/types/client/index.d.ts b/lib/types/client/index.d.ts
+index 9c2b9442e454039183ea9dd701f16b242f1d57b8..952b8b03c3ed028130922f13edb8d432e5fb303e 100644
+--- a/lib/types/client/index.d.ts
++++ b/lib/types/client/index.d.ts
+@@ -1,5 +1,7 @@
+ import type { Context } from '@deepseek-ai/cordis';
+ import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots';
++export { bindSnapshotSelector } from './bind.ts';
++export { createSlotRenderer } from './scoped-slots.tsx';
+ /** Selector hook over a session's conversation snapshot. */
+ export type UseSession<Snap extends object = object> = SnapshotSelectorHook<Snap>;
+ export type { ChainRenderOpts, HostObservable, RenderOpts, SessionProvideInfo, SnapshotSelectorHook, SlotRenderer, SlotRendererHost, StoreInstanceLike, } from '@deepseek-ai/dsh-client-ui-slots';
+diff --git a/lib/types/client/session-provider.d.ts b/lib/types/client/session-provider.d.ts
+index a49274b98908c46223769afd74ae7c77b34fb27c..4cdc307adbc0501756081b8ad5e56eefcd40f0e0 100644
+--- a/lib/types/client/session-provider.d.ts
++++ b/lib/types/client/session-provider.d.ts
+@@ -57,6 +57,8 @@ export declare function SessionMaybeProvider({ children }: {
+ }): import("react").JSX.Element;
+ /** SessionProvider API: render-prop body plus the no-session branch. */
+ export interface SessionProviderProps {
++    /** Explicit session to render without changing current selection. */
++    sessionId?: string | undefined;
+     /** No-session body (also covers a current id whose session cannot be resolved). */
+     empty?: (() => ReactNode) | undefined;
+     /** Session body; remounted per session via key={sessionId}. */

@@ -4,6 +4,23 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+
+vi.mock('lottie-web/build/player/lottie_light', () => ({
+  default: {
+    loadAnimation: vi.fn((config: { container: HTMLElement }) => {
+      config.container.innerHTML = '<svg data-lottie-player="folder"><path /></svg>'
+      return {
+        addEventListener: (_event: string, callback: () => void) => { queueMicrotask(callback) },
+        removeEventListener: vi.fn(),
+        destroy: vi.fn(),
+        goToAndPlay: vi.fn(),
+        goToAndStop: vi.fn(),
+        setDirection: vi.fn(),
+      }
+    }),
+  },
+}))
+
 import { ArtifactPanel } from '../src/client/ArtifactPanel.tsx'
 import { EMPTY_ARTIFACTS_SNAPSHOT } from '../src/client/artifact-contract.ts'
 import type { ArtifactsSnapshot } from '../src/client/artifact-contract.ts'
@@ -59,6 +76,7 @@ describe('ArtifactPanel', () => {
     expect(stylesheet).toMatch(/\.panel\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*0;[^}]*overflow:\s*hidden;/)
     expect(stylesheet).toMatch(/\.pathBar\s*\{[^}]*flex:\s*none;/)
     expect(stylesheet).toMatch(/\.content\s*\{[^}]*flex:\s*1;[^}]*overflow:\s*auto;/)
+    expect(stylesheet).toMatch(/\.markdownDocument\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*var\(--dsh-reading-content-width,\s*748px\);[^}]*margin:\s*0 auto;/)
     expect(stylesheet).toMatch(/\.pathViewport\[data-truncated\]\s*\{[^}]*justify-content:\s*flex-end;/)
     expect(stylesheet).toMatch(/\.pathViewport\[data-truncated\]\s*\{[^}]*mask-image:\s*linear-gradient\(to right, transparent 0, #000 16px, #000 100%\);/)
   })
@@ -170,6 +188,7 @@ describe('ArtifactPanel', () => {
     expect(preview.textContent).toBe('')
     expect(switcher.nextElementSibling).toBe(folder)
     expect(view.container.querySelector('[data-artifact]')).toBeNull()
+    expect(view.container.querySelector('[data-artifact-markdown-document]')).not.toBeNull()
 
     fireEvent.mouseEnter(code)
     expect(view.getByRole('tooltip').textContent).toBe('renderMode.code')
@@ -179,6 +198,7 @@ describe('ArtifactPanel', () => {
     expect(code.getAttribute('aria-pressed')).toBe('true')
     expect(view.getByText(/# 标题/)).toBeTruthy()
     expect(view.container.querySelector('[data-artifact]')).not.toBeNull()
+    expect(view.container.querySelector('[data-artifact-markdown-document]')).toBeNull()
     expect(read).toHaveBeenCalledTimes(1)
   })
 

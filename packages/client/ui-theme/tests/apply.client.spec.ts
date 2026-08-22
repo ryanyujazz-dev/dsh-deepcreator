@@ -6,7 +6,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
 import { LocaleRuntime } from '@ryanyujazz/dsh-client-locale/client'
 import { TestRemote, usePinnedBrowserLanguages } from '@deepseek-ai/dsh-client-test-runtime'
-import { SettingsScopeBinder } from '@ryanyujazz/dsh-client-ui-settings/client'
+import {
+  apply as applyOfficialSettings, inject as officialSettingsInject,
+} from '@deepseek-ai/dsh-client-ui-settings/client'
 import { apply, inject, SETTINGS_NS } from '@ryanyujazz/dsh-client-ui-theme/client'
 import type { AppearanceRowInjected, ThemeRuntime } from '@ryanyujazz/dsh-client-ui-theme/client'
 import { THEME_SETTINGS_NAMESPACE, ThemeSettingsSchema, type ThemeSettings } from '../src/theme-settings.ts'
@@ -19,19 +21,13 @@ usePinnedBrowserLanguages('zh-CN')
 
 const SLOT = 'deepcreator.settings.preferences.item'
 
-function deferred<T>() {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>((done) => { resolve = done })
-  return { promise, resolve }
-}
-
-async function bench(isLoopback = true) {
+async function bench(isLoopback = true, initialPreference: string = 'system', delayInitialRead = false) {
   const ctx = new Context()
   await ctx.plugin(SlotRegistry).await()
   const locale = new LocaleRuntime(ctx)
   ctx.provide('locale', locale)
   const settings: ThemeSettings = {
-    preference: 'system', transcriptTextSize: 'standard',
+    preference: initialPreference as ThemeSettings['preference'], transcriptTextSize: 'standard',
     lightCodeTheme: 'deepcreator-light', darkCodeTheme: 'deepcreator-dark', codeFont: 'system',
   }
   const namespace = () => ({
@@ -42,13 +38,24 @@ async function bench(isLoopback = true) {
     secrets: [],
     revision: 0,
   })
-  const describe = vi.fn(() => Promise.resolve({
+  let releaseInitialRead = () => {}
+  const initialReadGate = delayInitialRead
+    ? new Promise<void>((resolve) => { releaseInitialRead = resolve })
+    : Promise.resolve()
+  let isInitialRead = true
+  const describe = vi.fn(async () => {
+    if (isInitialRead) {
+      isInitialRead = false
+      await initialReadGate
+    }
+    return {
     rpcId: 'theme-describe' as never,
     result: {
       ok: true as const,
       value: { writable: true, hasDocument: true, namespaces: [namespace()] },
     },
-  }))
+    }
+  })
   const mutate = vi.fn((request: { ops: { path: string[]; value: string }[] }) => {
     const op = request.ops[0]!
     if (op.path[0] === 'preference') settings.preference = op.value as ThemeSettings['preference']
@@ -64,11 +71,12 @@ async function bench(isLoopback = true) {
   ctx.provide('connection', { api: { settings: { describe, mutate } }, isLoopback } as never)
   // The settings transport and the forwarded-event port the plugin injects.
   new TestRemote(ctx)
-  await ctx.plugin(SettingsScopeBinder).await()
+  await ctx.plugin({ inject: [...officialSettingsInject], apply: applyOfficialSettings }).await()
   return {
     ctx, slots: ctx.get('slots') as SlotRegistry, locale, describe, mutate,
     setHostPreference: (next: string) => { settings.preference = next },
     setHostTranscriptTextSize: (next: string) => { settings.transcriptTextSize = next },
+    releaseInitialRead,
   }
 }
 
@@ -147,8 +155,7 @@ describe('ui-theme apply', () => {
   })
 
   it('loads Host settings at boot, refreshes its namespace, and keeps remote browsers process-local', async () => {
-    const b = await bench()
-    b.setHostPreference('dark')
+    const b = await bench(true, 'dark')
     declareItems(b.slots)
     await b.ctx.plugin({ inject: [...inject], apply }).await()
     const theme = b.ctx.get('theme') as ThemeRuntime
@@ -173,23 +180,18 @@ describe('ui-theme apply', () => {
   })
 
   it('activates before a slow initial settings read and converges when it settles', async () => {
-    const b = await bench()
-    b.setHostPreference('dark')
-    const describe = b.describe.getMockImplementation()!
-    const pending = deferred<Awaited<ReturnType<typeof describe>>>()
-    b.describe.mockImplementationOnce(() => pending.promise)
+    const b = await bench(true, 'dark', true)
     const fiber = b.ctx.plugin({ inject: [...inject], apply })
     await fiber.await()
     const theme = b.ctx.get('theme') as ThemeRuntime
     expect(theme.getTheme().preference).toBe('system')
-    pending.resolve(await describe())
+    b.releaseInitialRead()
     await vi.waitFor(() => { expect(theme.getTheme().preference).toBe('dark') })
     await fiber.dispose()
   })
 
   it('ignores an invalid preference crossing the settings wire', async () => {
-    const b = await bench()
-    b.setHostPreference('sepia')
+    const b = await bench(true, 'sepia')
     await b.ctx.plugin({ inject: [...inject], apply }).await()
     const theme = b.ctx.get('theme') as ThemeRuntime
     await vi.waitFor(() => { expect(b.describe).toHaveBeenCalledOnce() })

@@ -47,7 +47,10 @@ import { en, NS, zh, type ConversationKey } from './locales.ts'
 import { registerConversationNodes } from './conversation-nodes/register.ts'
 import { registerChatNodeRenderers } from './chat/register-node-renderers.ts'
 import { ConversationSurfaceRegistry } from './surface-registry.ts'
-import { CONVERSATION_SETTINGS_NAMESPACE, type ConversationSettings } from '../submission-settings.ts'
+import {
+  BUSY_ENTER_BEHAVIORS, CONVERSATION_RENDER_MODES, CONVERSATION_SETTINGS_NAMESPACE,
+  type ConversationSettings,
+} from '../submission-settings.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -140,6 +143,13 @@ export function apply(ctx: Context): void {
   const chatStore = createChatStore()
   const conversationSettings = ctx.settingsScope.bind<ConversationSettings>({
     namespace: CONVERSATION_SETTINGS_NAMESPACE,
+    decode: (value) => {
+      if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
+      const candidate = value as Partial<Record<keyof ConversationSettings, unknown>>
+      if (!BUSY_ENTER_BEHAVIORS.some(behavior => behavior === candidate.busyEnter)
+        || !CONVERSATION_RENDER_MODES.some(mode => mode === candidate.defaultRenderMode)) return undefined
+      return candidate as ConversationSettings
+    },
   })
   const submissionPolicy = new ComposerSubmissionPolicy(conversationSettings)
   const renderModePreference = new RenderModePreference(conversationSettings)
@@ -334,6 +344,7 @@ export function apply(ctx: Context): void {
     // access control, model right); empty until their owning plugins
     // register.
     children: {
+      'conversation.input.attachments': { kind: 'single', scope: 'session-maybe' },
       'conversation.input.plan': { kind: 'single', scope: 'session' },
       'conversation.input.model': { kind: 'single', scope: 'session' },
     },
@@ -388,6 +399,7 @@ export function apply(ctx: Context): void {
             inputTriggers.toggleSource('command', {
               trigger: '/',
               query: '',
+              quoted: false,
               position: snapshot.draft.slice(0, selection.start).trim() === '' ? 'leading' : 'inline',
               span: { ...selection, draftRev: snapshot.draftRev },
             })
@@ -434,6 +446,7 @@ export function apply(ctx: Context): void {
     children: {
       'conversation.chat.node': { kind: 'keyed', scope: 'session', inject: CHAT_NODE_INJECT },
       'conversation.chat.render': { kind: 'list', scope: 'session' },
+      'conversation.message.images': { kind: 'single', scope: 'session' },
     },
     store: chatStore,
     inject: (sessionId: SessionId, actions: BoundActions<typeof chatStore>): ChatViewInjected => {

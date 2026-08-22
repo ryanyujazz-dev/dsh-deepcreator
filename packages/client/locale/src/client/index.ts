@@ -353,7 +353,15 @@ export const inject = ['slots', 'connection', 'remote', 'settingsScope']
  * @param ctx - client cordis context.
  */
 export function apply(ctx: ClientContext): void {
-  const host = ctx.settingsScope.bind<LocaleSettings>({ namespace: LOCALE_SETTINGS_NAMESPACE })
+  const host = ctx.settingsScope.bind<LocaleSettings>({
+    namespace: LOCALE_SETTINGS_NAMESPACE,
+    decode: (value) => {
+      if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
+      const preference = (value as { preference?: unknown }).preference
+      if (preference === undefined) return {}
+      return LOCALES.some(locale => locale.id === preference) ? { preference: preference as LocaleId } : undefined
+    },
+  })
   const locale = new LocaleRuntime(ctx, host)
   locale.register(COMMON_NS, { zh, en })
   locale.register(SETTINGS_NS, { zh: settingsZh, en: settingsEn })

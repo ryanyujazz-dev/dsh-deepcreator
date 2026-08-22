@@ -27,7 +27,6 @@ import { ExecutionSlot, type SlotDrafting, type SlotMember } from './ExecutionSl
 import { formatRunDuration } from './message-chrome.ts'
 import css from './ChatView.module.css'
 import { flowTop, pagingAnchor, runningTurnStartTime, scrollPosition } from './scroll-anchor.ts'
-import { useProgressiveTail } from './progressive-tail.ts'
 
 const FOLLOW_THRESHOLD = 24
 const EMPTY_DRAFTING: readonly SlotDrafting[] = []
@@ -149,8 +148,8 @@ export type ExecFlowBodyProps = ChatRenderSlotProps & ExecFlowBodyInjected
  * delegated keyed seat) or an aggregated tool run (through ExecutionSlot).
  */
 export function ExecFlowBody({
-  useSession, useSessions, useStore, sessionId, openFile, revealChange, loadOlder, loadImage, inspectCall, chatScroll, forkAt,
-  fileMentions, selectRenderMode, renderSlot, t, actions, thinkForm, siblingId, surfaceId = 'main',
+  useSession, useSessions, useStore, sessionId, openFile, revealChange, loadOlder, loadImage, renderMessageImages, inspectCall, chatScroll, forkAt,
+  fileMentions, selectRenderMode, renderSlot, t, actions, thinkForm, siblingId,
 }: ExecFlowBodyProps) {
   const order = useSession(s => s.chat.order)
   const nodeStore = useSession(s => s.chat.nodes)
@@ -309,8 +308,6 @@ export function ExecFlowBody({
     }
     return { entries, drafting: draftingForLastRun ? draftingList : [] }
   }, [order, nodeStore, nodeValues, thinkForm, draftingList, draftingTurn])
-  const progressiveEntries = useProgressiveTail(flow.entries, surfaceId)
-
   /** One member's full row through the node seat (running or settled styling). */
   const renderMember = useCallback((nodeKey: string) => (
     <ChatNodeSeat
@@ -324,6 +321,7 @@ export function ExecFlowBody({
       inspectCall={inspectCall}
       forkAt={forkAt}
       loadImage={loadImage}
+      renderMessageImages={renderMessageImages}
       fileMentions={fileMentions}
       renderSlot={renderSlot}
       t={t}
@@ -524,8 +522,7 @@ export function ExecFlowBody({
         }
       }
     }
-    if (progressiveEntries.complete) loadOlder()
-    else progressiveEntries.revealOlder()
+    loadOlder()
   }
 
   return (
@@ -538,14 +535,14 @@ export function ExecFlowBody({
               {t('chat.loadError', { message: openError.message, code: openError.code })}
             </div>
           )}
-          {(hasMore || !progressiveEntries.complete) && (
+          {hasMore && (
             <div className={css.older}>
-              <button type="button" disabled={progressiveEntries.complete && loadingOlder} onClick={loadOlderAnchored}>
-                {progressiveEntries.complete && loadingOlder ? t('loading') : t('chat.loadOlder')}
+              <button type="button" disabled={loadingOlder} onClick={loadOlderAnchored}>
+                {loadingOlder ? t('loading') : t('chat.loadOlder')}
               </button>
             </div>
           )}
-          {progressiveEntries.items.map(entry => entry.kind === 'node' ? (
+          {flow.entries.map(entry => entry.kind === 'node' ? (
             <ChatNodeSeat
               key={entry.nodeKey}
               nodeKey={entry.nodeKey}
@@ -558,6 +555,7 @@ export function ExecFlowBody({
               inspectCall={inspectCall}
               forkAt={forkAt}
               loadImage={loadImage}
+              renderMessageImages={renderMessageImages}
               fileMentions={fileMentions}
               renderSlot={renderSlot}
               t={t}
@@ -596,7 +594,12 @@ export function ExecFlowBody({
             />
           )}
           {pendingSteering.map(item => (
-            <PendingSteeringBubble key={item.id} content={item.content} loadImage={loadImage} t={t} />
+            <PendingSteeringBubble
+              key={item.id}
+              content={item.content}
+              renderMessageImages={renderMessageImages}
+              t={t}
+            />
           ))}
         </div>
         {!atBottom && (

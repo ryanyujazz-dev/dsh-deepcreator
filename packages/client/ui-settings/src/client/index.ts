@@ -1,35 +1,27 @@
 /**
- * Settings domain base plugin, browser half. Provides `ctx.settingsScope`, the
- * settings-namespace Host transport every preference row binds its durable
- * section through, and owns the canonical slot-type contract for the settings
- * surface. It depends on no `ui-*` presentation package, so any feature that
- * owns a preference can reach it: the settings SHELL — the `sidebar.settings`
- * occupant, its navigation, and the chrome — lives in ui-settings-general,
- * because a shell dependency on ui-sidebar would close a reference cycle
- * through ui-layout and ui-theme. Export discipline: packages/client/AGENTS.md.
+ * DeepCreator's settings extension contract. The official ui-settings plugin
+ * owns settingsScope, settingsSchema, the describe mirror, and every official
+ * settings slot; this package adds only the product-specific Preferences seat.
  */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
-import { SettingsScopeBinder } from './settings-scope.ts'
+import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
+import './contract/slots.ts'
 
 export type {
-  SettingsGeneralItemOwnerProps, SettingsHeaderOwnerProps, SettingsOnboardingOwnerProps,
-  SettingsPluginsTabOwnerProps, SettingsSectionOwnerProps, SettingsTriggerOwnerProps,
-} from './contract/slots.ts'
-export { SettingsScopeController, SettingsScopeBinder } from './settings-scope.ts'
+  SchemaNode,
+  SettingsGeneralItemOwnerProps,
+  SettingsHeaderOwnerProps,
+  SettingsOnboardingOwnerProps,
+  SettingsPluginsTabOwnerProps,
+  SettingsSchemaService,
+  SettingsScopeBinder,
+  SettingsScopeController,
+  SettingsSectionOwnerProps,
+  SettingsTriggerOwnerProps,
+} from '@deepseek-ai/dsh-client-ui-settings/client'
 
-/**
- * Required services: none. The transport is resolved per caller through
- * `this.ctx` at `bind` time, so this plugin waits for nothing.
- */
+/** Module-loader ordering is declared in package.json; no Cordis service is shadowed here. */
 export const inject = []
 
-/**
- * Provide the settings-namespace scope service.
- *
- * Constructing the service in this plugin's fiber keeps its traced methods
- * bound to each consuming plugin's context.
- * @param ctx - client root context.
- */
-export function apply(ctx: ClientContext): void {
-  new SettingsScopeBinder(ctx)
-}
+/** Keep the extension as a loadable module without replacing the official base. */
+export function apply(_ctx: ClientContext): void {}

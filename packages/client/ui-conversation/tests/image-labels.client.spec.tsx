@@ -3,8 +3,8 @@
 // flow through image-labels into the gallery, and assistant images keep their
 // block position between text blocks.
 
-import { afterEach, describe, expect, it } from 'vitest'
-import { cleanup, fireEvent, render } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, render } from '@testing-library/react'
 import { AttachmentId } from '@deepseek-ai/dsh-attachment'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@ryanyujazz/dsh-client-locale/src/locales/zh.ts'
@@ -60,42 +60,11 @@ describe('attachment rejection copy', () => {
   })
 })
 
-describe('assistant images through the label bridge', () => {
-  it('resolves zh dictionary strings and opens the lightbox on a single click', async () => {
-    const view = render(
-      <AssistantMarkdown
-        t={t}
-        blocks={[{ kind: 'image', attachment }]}
-        streaming={false}
-        loadImage={() => Promise.resolve('blob:history')}
-      />,
-    )
-    const frame = await view.findByRole('button', { name: 'history.png，点击查看原图' })
-    expect(frame.getAttribute('title')).toBe('查看原图')
-    await view.findByAltText('history.png')
-    fireEvent.click(frame)
-    expect(view.getByRole('dialog', { name: '原图预览' })).toBeTruthy()
-    fireEvent.click(view.getByRole('button', { name: '关闭原图预览' }))
-    expect(view.queryByRole('dialog', { name: '原图预览' })).toBeNull()
-  })
-
-  it('resolves the active English dictionary', async () => {
-    const view = render(
-      <AssistantMarkdown
-        t={enT}
-        blocks={[{ kind: 'image', attachment }]}
-        streaming={false}
-        loadImage={() => Promise.resolve('blob:history')}
-      />,
-    )
-    const frame = await view.findByRole('button', { name: 'history.png, click to view original' })
-    await view.findByAltText('history.png')
-    fireEvent.click(frame)
-    expect(view.getByRole('dialog', { name: 'Original image preview' })).toBeTruthy()
-    expect(view.getByRole('button', { name: 'Close original image preview' })).toBeTruthy()
-  })
-
-  it('merges consecutive image blocks into one tiled gallery, split by text', async () => {
+describe('assistant image slot delegation', () => {
+  it('merges consecutive blocks and preserves groups around text', () => {
+    const renderMessageImages = vi.fn(({ images, align }) => (
+      <span data-image-group={images.length} data-align={align} />
+    ))
     const view = render(
       <AssistantMarkdown
         t={t}
@@ -106,17 +75,17 @@ describe('assistant images through the label bridge', () => {
           { kind: 'image', attachment },
         ]}
         streaming={false}
-        loadImage={() => Promise.resolve('blob:grouped')}
+        renderMessageImages={renderMessageImages}
       />,
     )
-    await view.findAllByAltText('history.png')
     const galleries = view.container.querySelectorAll('[data-align="start"]')
     expect(galleries).toHaveLength(2)
-    expect(galleries[0]?.querySelectorAll('[data-variant="tile"]')).toHaveLength(2)
-    expect(galleries[1]?.querySelectorAll('[data-variant="single"]')).toHaveLength(1)
+    expect(galleries[0]?.getAttribute('data-image-group')).toBe('2')
+    expect(galleries[1]?.getAttribute('data-image-group')).toBe('1')
+    expect(renderMessageImages).toHaveBeenCalledTimes(2)
   })
 
-  it('keeps assistant images at their original position between text blocks', async () => {
+  it('keeps the slot result at its original position between text blocks', () => {
     const view = render(
       <AssistantMarkdown
         t={t}
@@ -126,10 +95,10 @@ describe('assistant images through the label bridge', () => {
           { kind: 'text', text: 'after' },
         ]}
         streaming={false}
-        loadImage={() => Promise.resolve('blob:middle')}
+        renderMessageImages={() => <span data-image-group="1" />}
       />,
     )
-    const image = await view.findByAltText('history.png')
+    const image = view.container.querySelector('[data-image-group="1"]')!
     const before = view.getByText('before')
     const after = view.getByText('after')
     expect(before.compareDocumentPosition(image) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)

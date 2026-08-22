@@ -46,6 +46,15 @@ export interface SessionInputDeps {
   steerQueue?: (() => void) | undefined
   /** The plain-message sink (send choreography / materialize fork — the hub owns it). */
   defaultSink(text: string, imageIds: readonly DraftAttachmentId[], mode: InputSubmitMode): void
+  /** Command-specific image serialization and lifecycle. */
+  commandImages: {
+    serialize(ids: readonly DraftAttachmentId[]): Promise<readonly {
+      mediaType: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'
+      data: string
+      name?: string
+    }[]>
+    release(ids: readonly DraftAttachmentId[]): void
+  }
 }
 
 /** Guard tier from the machine phase. */
@@ -456,7 +465,9 @@ export class SessionInputShell implements SessionInput {
       this.run(this.core.dispatch({ type: 'adjudicated', attempt, outcome: undefined }))
       return
     }
-    inputTriggers.adjudicate(draft.trim(), attempt.signal).then(
+    inputTriggers.adjudicate(draft.trim(), attempt.signal, {
+      images: this.snapshot.imageIds.length,
+    }).then(
       (outcome: PickOutcome) => {
         if (this.dead(attempt)) return
         this.run(this.core.dispatch({ type: 'adjudicated', attempt, outcome }))
@@ -471,11 +482,21 @@ export class SessionInputShell implements SessionInput {
 
   /** The submit transaction: claim.submit against the session scope; ok maps from the outcome kind. */
   private beginSubmit(attempt: SubmitAttempt, claim: CommandClaim, args: string): void {
+    const imageIds = claim.images === true ? [...this.imageIds] : []
     Promise.resolve()
-      .then(() => claim.submit(args, this.deps.actx))
+      .then(async () => {
+        const images = imageIds.length === 0 ? [] : await this.deps.commandImages.serialize(imageIds)
+        if (this.dead(attempt)) return undefined
+        return claim.submit(args, this.deps.actx, images)
+      })
       .then(
         (outcome) => {
-          if (this.dead(attempt)) return
+          if (outcome === undefined || this.dead(attempt)) return
+          if (outcome.kind === 'success' && imageIds.length > 0) {
+            const sent = new Set(imageIds)
+            this.imageIds = this.imageIds.filter(id => !sent.has(id))
+            this.deps.commandImages.release(imageIds)
+          }
           this.run(this.core.dispatch({
             type: 'submit-settled', attempt, ok: outcome.kind === 'success', outcome,
           }))

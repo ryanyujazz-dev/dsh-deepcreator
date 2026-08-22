@@ -8,6 +8,13 @@
 }
 :global(body[data-ds-dark-theme]) .review { --dsh-review-surface: var(--dsw-specific-sidebar-fill); }
 .reviewBody { min-height: 0; flex: 1; overflow: visible; color: var(--dsw-alias-label-primary); background: var(--dsh-review-surface); }
+.reviewWarning { padding: 6px 10px; border-bottom: 1px solid var(--dsw-alias-border-l1); color: var(--dsw-alias-label-secondary); background: var(--dsh-review-surface); font-size: 10px; line-height: 16px; }
+.reviewBreadcrumb { min-height: 30px; box-sizing: border-box; display: flex; align-items: center; gap: 6px; padding: 0 10px; border-bottom: 1px solid var(--dsw-alias-border-l1); color: var(--dsw-alias-label-tertiary); font-size: 10px; }
+.reviewBreadcrumb button { flex: none; border: 0; border-radius: 5px; padding: 2px 4px; color: var(--dsw-alias-label-secondary); background: transparent; cursor: pointer; font: inherit; }
+.reviewBreadcrumb button:hover { color: var(--dsw-alias-label-primary); background: var(--dsw-alias-interactive-bg-hover); }
+.reviewBreadcrumbSegment { min-width: 0; display: inline-flex; align-items: center; gap: 6px; }
+.reviewBreadcrumbSegment:last-child { flex: 1; }
+.reviewBreadcrumbSegment:last-child > :last-child { min-width: 0; flex: 1; }
 .reviewStatus { min-height: 34px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 10px; border-bottom: 1px solid var(--dsw-alias-border-l1); color: var(--dsw-alias-label-tertiary); background: var(--dsh-review-surface); font-size: 10px; }
 .reviewStatus strong { min-width: 0; overflow: hidden; color: var(--dsw-alias-label-secondary); font-size: 11px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .reviewMissed { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--dsw-alias-border-l1); background: var(--dsh-review-surface); color: var(--dsw-alias-label-tertiary); font-size: 10px; line-height: 16px; }

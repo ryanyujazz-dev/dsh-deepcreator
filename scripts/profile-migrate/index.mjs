@@ -231,6 +231,14 @@ const dump = execFileSync(process.execPath, [dshEntry, '--profile', targetName, 
   encoding: 'utf8',
   stdio: ['ignore', 'pipe', 'inherit'],
 })
+function activeCompositionRow(id, packageName) {
+  const marker = `- id: ${id}\n`
+  const start = dump.indexOf(marker)
+  if (start === -1) return false
+  const next = dump.indexOf('\n- id: ', start + marker.length)
+  const block = dump.slice(start, next === -1 ? undefined : next)
+  return block.includes(`name: '${packageName}'`) && !block.includes('\n  disabled: true')
+}
 if (!dump.includes('@ryanyujazz/dsh-client-ui-conversation')
   || !dump.includes('@ryanyujazz/dsh-client-ui-layout')
   || !dump.includes('@ryanyujazz/dsh-client-ui-workbench')
@@ -238,6 +246,9 @@ if (!dump.includes('@ryanyujazz/dsh-client-ui-conversation')
   || !dump.includes('@ryanyujazz/dsh-artifacts')
   || !dump.includes('@ryanyujazz/dsh-review')
   || !dump.includes('@ryanyujazz/dsh-terminal-workbench')
+  || !activeCompositionRow('ui-settings', '@deepseek-ai/dsh-client-ui-settings')
+  || !activeCompositionRow('ui-settings-models', '@deepseek-ai/dsh-client-ui-settings-models')
+  || !activeCompositionRow('ui-settings-plugins', '@deepseek-ai/dsh-client-ui-settings-plugins')
   || dump.includes('execflow-conversation')
   || dump.includes('execflow-tool')) {
   throw new Error('DeepCreator profile migration: composed config omitted required DeepCreator UI rows')

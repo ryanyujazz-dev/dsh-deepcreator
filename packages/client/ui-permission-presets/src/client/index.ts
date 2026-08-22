@@ -17,7 +17,7 @@ import type { ConnectionHandle } from '@deepseek-ai/dsh-api-remotes/client'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@ryanyujazz/dsh-client-locale/client'
 // Type-only: the settings slot types (this package registers a General row).
-import type {} from '@ryanyujazz/dsh-client-ui-settings/client'
+import type { SettingsSchemaService } from '@ryanyujazz/dsh-client-ui-settings/client'
 // Type-only: pulls the ctx.remote merge and the forwarded-event key face
 // (the settings invalidation rides the allowlist) into this program.
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
@@ -43,7 +43,7 @@ export type {
 } from './settings-store.ts'
 
 /** Required services (cordis fiber inject). */
-export const inject = ['commandUi', 'sessions', 'slots', 'locale', 'connection', 'remote']
+export const inject = ['commandUi', 'sessions', 'slots', 'locale', 'connection', 'remote', 'settingsSchema']
 
 const ACCESS_NS = 'permission.access'
 
@@ -113,7 +113,10 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register('settings.permission', { zh, en }), 'ui-permission: settings row dictionaries')
 
   const connection = ctx.get('connection') as ConnectionHandle
-  const controller = new PermissionPresetSettingsController(connection.api)
+  const controller = new PermissionPresetSettingsController(
+    connection.api,
+    ctx.get('settingsSchema') as SettingsSchemaService,
+  )
   const load = (): Promise<void> => controller.load()
   const select = (preset: string): Promise<void> => controller.select(preset)
   const injected = (): PermissionRowInjected => ({

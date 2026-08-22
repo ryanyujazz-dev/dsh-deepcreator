@@ -11,7 +11,7 @@ import type {
 } from '@deepseek-ai/dsh-client-runtime/client'
 import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 import type {
-  ReviewChecksResult, ReviewFileSummary, ReviewHistoryResult, ReviewScope, ReviewStatusResult,
+  ReviewChecksResult, ReviewFileSummary, ReviewHistoryResult, ReviewLocation, ReviewScope, ReviewStatusResult,
   ReviewSummaryResult, ReviewUndoTurnResult,
 } from '@ryanyujazz/dsh-review/types'
 import {
@@ -33,12 +33,16 @@ export interface ReviewCacheSnapshot {
   history: HistoryOk | null
   summary: SummaryOk | null
   scope: ReviewScope
+  /** Workspace-relative POSIX repository path; empty is the root context. */
+  repository: string
   entries: Readonly<FileEntries>
   /** Manual-refresh error surface; background failures stay silent. */
   error: string | null
+  /** Non-blocking summary/statistics failure; status and file diffs remain usable. */
+  warning: string | null
 }
 
-export type ReviewMetaSnapshot = Pick<ReviewCacheSnapshot, 'status' | 'checks' | 'summary' | 'scope' | 'error'>
+export type ReviewMetaSnapshot = Pick<ReviewCacheSnapshot, 'status' | 'checks' | 'summary' | 'scope' | 'repository' | 'error' | 'warning'>
 export interface ReviewTotalsSnapshot { added: number; removed: number }
 
 /** A focused refresh must not confuse cancellation or transport failure with a real miss. */
@@ -50,11 +54,11 @@ export type ReviewRefreshOutcome =
   | { kind: 'error'; message: string }
 
 const EMPTY_SNAPSHOT: ReviewCacheSnapshot = {
-  status: null, checks: null, history: null, summary: null, scope: 'uncommitted', entries: {}, error: null,
+  status: null, checks: null, history: null, summary: null, scope: 'uncommitted', repository: '', entries: {}, error: null, warning: null,
 }
 
 const EMPTY_META: ReviewMetaSnapshot = {
-  status: null, checks: null, summary: null, scope: 'uncommitted', error: null,
+  status: null, checks: null, summary: null, scope: 'uncommitted', repository: '', error: null, warning: null,
 }
 const EMPTY_TOTALS: ReviewTotalsSnapshot = { added: 0, removed: 0 }
 
@@ -78,17 +82,56 @@ function sameSummary(left: SummaryOk | null, right: SummaryOk): boolean {
   return left !== null
     && left.repositoryRoot === right.repositoryRoot
     && JSON.stringify(left.scope) === JSON.stringify(right.scope)
+    && left.location?.repository === right.location?.repository
     && left.additions === right.additions
     && left.deletions === right.deletions
     && JSON.stringify(left.files) === JSON.stringify(right.files)
 }
 
 function sameStatusFiles(left: StatusOk | null, right: StatusOk): boolean {
-  if (left === null || left.files.length !== right.files.length) return false
+  if (left === null || left.location?.repository !== right.location?.repository || left.files.length !== right.files.length) return false
   return left.files.every((file, index) => {
     const other = right.files[index]
     return other !== undefined && file.path === other.path && file.oldPath === other.oldPath
+      && file.kind === other.kind && file.presentation === other.presentation
   })
+}
+
+function locationArgument(repository: string): ReviewLocation | undefined {
+  return repository === '' ? undefined : { repository }
+}
+
+function argumentCountMismatch(value: unknown): boolean {
+  const message = value instanceof Error
+    ? value.message
+    : typeof value === 'object' && value !== null && 'ok' in value && value.ok === false
+      && 'error' in value && typeof value.error === 'object' && value.error !== null
+      && 'message' in value.error && typeof value.error.message === 'string'
+      ? value.error.message
+      : String(value)
+  return /expected \d+ argument\(s\), got \d+/i.test(message)
+}
+
+/**
+ * Typert validates Remote arity before invoking the Host method. Optional
+ * TypeScript parameters still count toward that wire arity, so a new Host
+ * expects the explicit trailing `undefined` while an old Host rejects it.
+ * Retry only the root-context call; repository drill-down has no safe legacy
+ * equivalent and must never silently fall back to the root repository.
+ */
+async function rootArityCompatible<T>(current: () => Promise<T>, legacy: () => Promise<T>): Promise<T> {
+  try {
+    const result = await current()
+    return argumentCountMismatch(result) ? await legacy() : result
+  } catch (reason) {
+    if (argumentCountMismatch(reason)) return await legacy()
+    throw reason
+  }
+}
+
+function missingSummaryMethod(reason: unknown): boolean {
+  const message = reason instanceof Error ? reason.message : String(reason)
+  return /unknown (remote )?method|method .*summary.*not found|does not exist/i.test(message)
 }
 
 /**
@@ -130,6 +173,7 @@ export class ReviewCacheController {
   private historyTimer: number | null = null
   private turnStatsLoading = false
   private readonly turnStats = new Map<string, { additions: number; deletions: number }>()
+  private readonly views = new Map<string, ReviewCacheSnapshot>()
   private readonly onWindowFocus = (): void => { if (!this.disposed) void this.refresh({ silent: true }) }
 
   constructor(options: {
@@ -167,8 +211,10 @@ export class ReviewCacheController {
         // Filesystem workspaces have no external HEAD to reconcile. Their
         // session mutation/turn events already invalidate Review; polling
         // would only rebuild a full temporary tree every two seconds.
+        const history = this.state.history
+        const hasRepositoryOwnedTurn = history?.turns.some(turn => turn.files.some(file => (file.repository ?? '') !== '')) === true
         if (!this.disposed && document.visibilityState === 'visible'
-          && this.state.history?.workspaceKind !== 'filesystem') void this.refreshHistory(true, true)
+          && (history?.workspaceKind !== 'filesystem' || hasRepositoryOwnedTurn)) void this.refreshHistory(true, true)
       }, 2_000)
       window.addEventListener('focus', this.onWindowFocus)
     }
@@ -181,7 +227,7 @@ export class ReviewCacheController {
     // history request is in flight. It owns initialization from that point;
     // do not issue a second refresh that can supersede its focused request.
     if (this.disposed || generation !== this.generation) return
-    if (this.state.history?.workspaceKind === 'filesystem') {
+    if (this.state.history?.workspaceKind === 'filesystem' && this.state.repository === '') {
       const latest = this.state.history.turns.find(turn => turn.remainingFiles > 0)
       if (latest !== undefined) this.publish({ scope: { turn: latest.turn } })
     }
@@ -233,7 +279,7 @@ export class ReviewCacheController {
   }
 
   async selectScope(scope: ReviewScope, focusPath?: string): Promise<ReviewRefreshOutcome> {
-    const selected = this.state.history?.workspaceKind === 'filesystem' && typeof scope === 'string'
+    const selected = this.state.history?.workspaceKind === 'filesystem' && this.state.repository === '' && typeof scope === 'string'
       ? (() => {
           const latest = this.state.history?.turns.find(turn => turn.remainingFiles > 0)
           return latest === undefined ? scope : { turn: latest.turn } as ReviewScope
@@ -247,6 +293,27 @@ export class ReviewCacheController {
     }
     // Scope selection and file reveal are user gestures: surface a failed
     // status request instead of leaving an unexplained blank panel.
+    return this.refresh({ ...(focusPath === undefined ? {} : { focusPath }), silent: false })
+  }
+
+  /** Drill into a nested repository without replacing the Workbench panel. */
+  async selectRepository(repository: string, scope: ReviewScope = 'uncommitted', focusPath?: string): Promise<ReviewRefreshOutcome> {
+    const normalized = repository.replaceAll('\\', '/').replace(/^\.\//, '').replace(/\/+$/, '')
+    if (normalized === this.state.repository) return this.selectScope(scope, focusPath)
+    this.views.set(this.state.repository, this.state)
+    this.generation += 1
+    this.clearQueues()
+    this.resident = new Set()
+    const retained = this.views.get(normalized)
+    this.publish(retained === undefined ? {
+      repository: normalized, scope, status: null, checks: null, summary: null, entries: {}, error: null, warning: null,
+    } : {
+      ...retained,
+      history: this.state.history,
+      repository: normalized,
+      ...(JSON.stringify(retained.scope) === JSON.stringify(scope) ? {} : { scope, status: null, summary: null, entries: {} }),
+      error: null,
+    })
     return this.refresh({ ...(focusPath === undefined ? {} : { focusPath }), silent: false })
   }
 
@@ -341,9 +408,13 @@ export class ReviewCacheController {
         if (this.disposed) return
         let summarized = false
         try {
-          const wire = await this.remote.review.summary(this.sessionId, { turn: turn.turn })
+          const wire = await rootArityCompatible(
+            async () => await this.remote.review.summary(this.sessionId, { turn: turn.turn }, undefined),
+            async () => await this.remote.review.summary(this.sessionId, { turn: turn.turn }),
+          )
           if (wire.ok && wire.value.ok) {
             for (const file of wire.value.files) {
+              if (file.additions === undefined || file.deletions === undefined) continue
               this.turnStats.set(this.turnStatsKey(turn.turn, file.path), {
                 additions: file.additions,
                 deletions: file.deletions,
@@ -354,7 +425,10 @@ export class ReviewCacheController {
         } catch { /* Old Host: fall back to its per-file Diff contract. */ }
         if (summarized) continue
         for (const file of turn.files.filter(file => file.additions === undefined || file.deletions === undefined)) {
-          const wire = await this.remote.review.diff(this.sessionId, file.path, { turn: turn.turn })
+          const wire = await rootArityCompatible(
+            async () => await this.remote.review.diff(this.sessionId, file.path, { turn: turn.turn }, undefined),
+            async () => await this.remote.review.diff(this.sessionId, file.path, { turn: turn.turn }),
+          )
           if (!wire.ok || !wire.value.ok) continue
           const parsed = parseDiffResult(wire.value)
           this.turnStats.set(this.turnStatsKey(turn.turn, file.path), {
@@ -420,6 +494,7 @@ export class ReviewCacheController {
   ensure(path: string, priority: ReviewLoadPriority = 'viewport', fresh = false): void {
     const entry = this.state.entries[path]
     if (entry === undefined || entry.fetching) return
+    if (entry.status.kind === 'repository' || entry.status.kind === 'submodule') return
     this.setEntry(path, current => ({ ...current, lastOpened: ++this.stamp }))
     if (entry.cache.kind === 'ready') {
       if (fresh && !entry.stale) this.setEntry(path, current => ({ ...current, stale: true }))
@@ -456,16 +531,20 @@ export class ReviewCacheController {
     if (patch.history !== undefined && patch.history !== previous.history) {
       for (const listener of this.historyListeners) listener()
     }
-    if (patch.status !== undefined || patch.checks !== undefined || patch.summary !== undefined || patch.scope !== undefined || patch.error !== undefined) {
+    if (patch.status !== undefined || patch.checks !== undefined || patch.summary !== undefined || patch.scope !== undefined
+      || patch.repository !== undefined || patch.error !== undefined || patch.warning !== undefined) {
       const nextMeta: ReviewMetaSnapshot = {
         status: this.state.status,
         checks: this.state.checks,
         summary: this.state.summary,
         scope: this.state.scope,
+        repository: this.state.repository,
         error: this.state.error,
+        warning: this.state.warning,
       }
       if (nextMeta.status !== this.meta.status || nextMeta.checks !== this.meta.checks
-        || nextMeta.summary !== this.meta.summary || nextMeta.scope !== this.meta.scope || nextMeta.error !== this.meta.error) {
+        || nextMeta.summary !== this.meta.summary || nextMeta.scope !== this.meta.scope || nextMeta.repository !== this.meta.repository
+        || nextMeta.error !== this.meta.error || nextMeta.warning !== this.meta.warning) {
         this.meta = nextMeta
         for (const listener of this.metaListeners) listener()
       }
@@ -525,6 +604,7 @@ export class ReviewCacheController {
     if (revalidate ? current.cache.kind !== 'ready' : (current.cache.kind !== 'empty' && current.cache.kind !== 'error')) return
     const generation = this.generation
     const scope = this.state.scope
+    const repository = this.state.repository
     this.setEntry(path, entry => ({
       ...entry,
       fetching: true,
@@ -532,7 +612,13 @@ export class ReviewCacheController {
       ...(revalidate ? {} : { cache: { kind: 'loading' } as const }),
     }))
     try {
-      const wire = await this.remote.review.diff(this.sessionId, path, scope)
+      const location = locationArgument(repository)
+      const wire = location === undefined
+        ? await rootArityCompatible(
+            async () => await this.remote.review.diff(this.sessionId, path, scope, undefined),
+            async () => await this.remote.review.diff(this.sessionId, path, scope),
+          )
+        : await this.remote.review.diff(this.sessionId, path, scope, location)
       if (!wire.ok) throw transportError(wire)
       if (!wire.value.ok) throw new Error(wire.value.message)
       const result = wire.value
@@ -566,7 +652,9 @@ export class ReviewCacheController {
 
   private prefetchIdle(): void {
     if (!this.visible) return
-    const paths = this.state.status?.files.slice(0, REVIEW_IDLE_PREFETCH_LIMIT).map(file => file.path) ?? []
+    const paths = this.state.status?.files
+      .filter(file => file.kind !== 'repository' && file.kind !== 'submodule')
+      .slice(0, REVIEW_IDLE_PREFETCH_LIMIT).map(file => file.path) ?? []
     this.enqueue(paths, 'idle')
   }
 
@@ -619,12 +707,24 @@ export class ReviewCacheController {
 
   private async refreshSummary(sequence: number, scope: ReviewScope): Promise<void> {
     try {
-      const wire = await this.remote.review.summary(this.sessionId, scope)
-      if (!wire.ok || !wire.value.ok || sequence !== this.generation || this.disposed) return
+      const location = locationArgument(this.state.repository)
+      const wire = location === undefined
+        ? await rootArityCompatible(
+            async () => await this.remote.review.summary(this.sessionId, scope, undefined),
+            async () => await this.remote.review.summary(this.sessionId, scope),
+          )
+        : await this.remote.review.summary(this.sessionId, scope, location)
+      if (!wire.ok) throw transportError(wire)
+      if (!wire.value.ok) throw new Error(wire.value.message)
+      if (sequence !== this.generation || this.disposed) return
       if (!sameSummary(this.state.summary, wire.value)) this.publish({ summary: wire.value })
-    } catch {
-      // Older Hosts do not expose summary. Ready file caches progressively
-      // provide the same totals without surfacing a compatibility error.
+      if (this.state.warning !== null) this.publish({ warning: null })
+    } catch (reason) {
+      // Only the explicit old-Host missing-method case is silent. A genuine
+      // statistics failure must not blank status/diffs, but it is visible.
+      if (!missingSummaryMethod(reason) && sequence === this.generation && !this.disposed) {
+        this.publish({ warning: reason instanceof Error ? reason.message : String(reason) })
+      }
     }
   }
 
@@ -632,12 +732,23 @@ export class ReviewCacheController {
     const { focusPath, runChecks = false, silent = false } = options
     const seq = ++this.generation
     try {
-      const statusWire = await this.remote.review.status(this.sessionId, this.state.scope)
+      const location = locationArgument(this.state.repository)
+      const statusWire = location === undefined
+        ? await rootArityCompatible(
+            async () => await this.remote.review.status(this.sessionId, this.state.scope, undefined),
+            async () => await this.remote.review.status(this.sessionId, this.state.scope),
+          )
+        : await this.remote.review.status(this.sessionId, this.state.scope, location)
       if (!statusWire.ok) throw transportError(statusWire)
       if (!statusWire.value.ok) throw new Error(statusWire.value.message)
       let nextChecks: ChecksOk | null = null
       if (runChecks) {
-        const checksWire = await this.remote.review.checks(this.sessionId)
+        const checksWire = location === undefined
+          ? await rootArityCompatible(
+              async () => await this.remote.review.checks(this.sessionId, undefined),
+              async () => await this.remote.review.checks(this.sessionId),
+            )
+          : await this.remote.review.checks(this.sessionId, location)
         if (!checksWire.ok) throw transportError(checksWire)
         if (!checksWire.value.ok) throw new Error(checksWire.value.message)
         nextChecks = checksWire.value
