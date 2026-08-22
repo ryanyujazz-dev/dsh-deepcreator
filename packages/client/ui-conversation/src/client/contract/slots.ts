@@ -32,6 +32,25 @@ export interface ComposerAttachment {
   previewUrl: string
 }
 
+/** Draft-image state handed to the retained official attachment presenter. */
+export interface ComposerAttachmentsOwnerProps {
+  attachments: readonly ComposerAttachment[]
+  canAcceptDrop: boolean
+  onAddImages: (files: readonly File[]) => void
+  onRemoveImage: (id: DraftAttachmentId) => void
+  dropLimits?: { readonly count: number; readonly size: string } | undefined
+}
+
+/** Durable message images handed to the retained official attachment presenter. */
+export interface MessageImagesOwnerProps {
+  images: readonly { readonly attachment: ImageAttachmentRef }[]
+  loadImage: (attachment: ImageAttachmentRef) => Promise<string>
+  align: 'start' | 'end'
+}
+
+/** Slot-backed image renderer; conversation owns data, attachment owns React. */
+export type RenderMessageImages = (owner: Omit<MessageImagesOwnerProps, 'loadImage'>) => ReactNode
+
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
     /**
@@ -109,6 +128,12 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
       keyProps: { [Kind in ChatNodeKind]: { node: ChatNode<Kind> } }
       hookContext: string
       inject: ChatNodeTurnDataInjected
+    }
+    /** Optional official renderer for one consecutive group of durable images. */
+    'conversation.message.images': {
+      kind: 'single'
+      scope: 'session'
+      owner: MessageImagesOwnerProps
     }
     /**
      * The chat view's per-command row hole: keyed dispatch on the command
@@ -243,6 +268,12 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * command face through its own inject.
      */
     'conversation.composer.bar': { kind: 'single'; scope: 'session-maybe'; owner: ComposerBarOwnerProps }
+    /** Optional official draft-image rail, drop target, and preview surface. */
+    'conversation.input.attachments': {
+      kind: 'single'
+      scope: 'session-maybe'
+      owner: ComposerAttachmentsOwnerProps
+    }
     /**
      * The named plan-status seat in the composer tool row, immediately right
      * of the access-mode control — one occupant, so taking it means rendering
@@ -437,6 +468,8 @@ export interface ChatNodeOwnerProps {
   forkAt: (seq: number) => void
   /** Resolve a session-authorized historical image for inline display. */
   loadImage: (attachment: ImageAttachmentRef) => Promise<string>
+  /** Render historical images through the attachment slot implementation. */
+  renderMessageImages: RenderMessageImages
   fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined
   /** Active think display form: 'compact' hides reasoning blocks downstream
    * (the execflow render modes); absent renders the native collapsed rows. */
@@ -632,7 +665,7 @@ export interface InputControlOwnerProps {
 /** Full composer-bar props: standard kit & owner share & control-seat render share & injected share (hooks bound) & locale seat. */
 export type ComposerBarProps =
   PropsRuntime<'conversation.composer.bar'>
-  & PropsRenderSlots<'conversation.input.plan' | 'conversation.input.model'>
+  & PropsRenderSlots<'conversation.input.attachments' | 'conversation.input.plan' | 'conversation.input.model'>
   & InjectFace<ComposerBarInjected>
   & PropsLocale<'conversation'>
 
@@ -767,7 +800,7 @@ export type ChatNodeRenderSlot = PropsRenderSlots<'conversation.chat.node'>['ren
  * else comes from this share.
  */
 export interface ChatRenderOwnerProps {
-  /** Occurrence identity; Activity tails progressively materialize offscreen rows. */
+  /** Occurrence identity; isolates scroll memory between main and Activity surfaces. */
   surfaceId?: string
   /** The chat entry's node render binding, delegated for the mode body's rows. */
   renderSlot: ChatNodeRenderSlot
@@ -787,6 +820,8 @@ export interface ChatRenderOwnerProps {
   loadOlder: () => void
   /** Resolve a session-authorized historical image for inline display. */
   loadImage: (attachment: ImageAttachmentRef) => Promise<string>
+  /** Render historical images through the attachment slot implementation. */
+  renderMessageImages: RenderMessageImages
   /** Hand a call off to the trajectory view: write the one-shot inspect target and switch tabs. */
   inspectCall: (callId: CallId) => void
   /**
@@ -881,7 +916,8 @@ export interface ChatViewInjected {
 
 /** Full chat-view component props: runtime & its render-mode/Tool render shares & store & injected & locale seat. */
 export type ChatViewSlotProps =
-  PropsRuntime<'conversation.view'> & PropsRenderSlots<'conversation.chat.node' | 'conversation.chat.render'>
+  PropsRuntime<'conversation.view'>
+  & PropsRenderSlots<'conversation.chat.node' | 'conversation.chat.render' | 'conversation.message.images'>
   & PropsStore<ChatStore> & ChatViewInjected & PropsLocale<'conversation'>
 
 /** Owner share common to the hero / New-Session Workspace pickers. */

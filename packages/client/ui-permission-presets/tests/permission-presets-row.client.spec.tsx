@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-web-react'
+import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import type { SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
 import { PermissionRow, type PermissionRowProps } from '../src/client/PermissionRow.tsx'
 import { en } from '../src/client/locales.ts'
 import { PermissionPresetSettingsController } from '../src/client/settings-store.ts'
+import { SETTINGS_SCHEMA } from './settings-schema.fixture.ts'
 
 afterEach(cleanup)
 
@@ -63,7 +64,7 @@ describe('PermissionRow', () => {
         describe: () => Promise.resolve(ok({ writable: true, hasDocument: false, namespaces: [view('read-only')] })),
         mutate,
       } as never,
-    })
+    }, SETTINGS_SCHEMA)
     mount(controller)
     const button = await screen.findByRole('button', { name: 'Read Only' })
     expect(button.getAttribute('aria-expanded')).toBe('false')
@@ -90,7 +91,7 @@ describe('PermissionRow', () => {
         describe: () => Promise.resolve(ok({ writable: true, hasDocument: false, namespaces: [view('read-only')] })),
         mutate,
       } as never,
-    })
+    }, SETTINGS_SCHEMA)
     mount(controller)
     fireEvent.click(await screen.findByRole('button', { name: 'Read Only' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Full access' }))
@@ -114,7 +115,7 @@ describe('PermissionRow', () => {
         describe: () => Promise.resolve(ok({ writable: true, hasDocument: false, namespaces: [] })),
         mutate: vi.fn(),
       } as never,
-    })
+    }, SETTINGS_SCHEMA)
     const rendered = mount(absent)
     await waitFor(() => { expect(rendered.container.textContent).toBe('') })
     rendered.unmount()
@@ -124,7 +125,7 @@ describe('PermissionRow', () => {
         describe: () => Promise.resolve(ok({ writable: false, hasDocument: false, namespaces: [view('read-only')] })),
         mutate: vi.fn(),
       } as never,
-    })
+    }, SETTINGS_SCHEMA)
     mount(readonly)
     expect((await screen.findByRole('button', { name: 'Read Only' })).hasAttribute('disabled')).toBe(true)
   })
@@ -145,7 +146,7 @@ describe('PermissionRow', () => {
           },
         }),
       } as never,
-    })
+    }, SETTINGS_SCHEMA)
     mount(controller)
     expect((await screen.findByRole('button', { name: 'Loading' })).hasAttribute('disabled')).toBe(true)
     describe.resolve(ok({ writable: true, hasDocument: false, namespaces: [view('read-only')] }))

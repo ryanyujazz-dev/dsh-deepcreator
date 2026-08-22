@@ -1,8 +1,18 @@
 diff --git a/lib/index.js b/lib/index.js
-index ca1875bab434e3462f85c292e6d2dc776439d229..b89dfc749c2e39fc1eedaf67bfa9cb9a3b8ccff2 100644
+index 1f8e617edbebf842c5f8a27e26026f41fdf62e12..cfff34b287ade45c64a9a4ac4870edf4f5bfccda 100644
 --- a/lib/index.js
 +++ b/lib/index.js
-@@ -268,6 +268,7 @@ var TestSessions = class {
+@@ -2,8 +2,7 @@ import { Context, Inject } from "@deepseek-ai/cordis";
+ import { Fragment, createElement, useSyncExternalStore } from "react";
+ import { act, render, within } from "@testing-library/react";
+ import { ConversationEventRegistry, ConversationViewRegistry, EMPTY_CHAT_SNAPSHOT, EMPTY_CONVERSATION_VIEWS, SessionProvideChannel, SlotRegistry, createScope, createSnapshotStore, scopeOf } from "@deepseek-ai/dsh-client-runtime/client";
+-import { bindSnapshotSelector as bindSnapshotSelector$1 } from "@deepseek-ai/dsh-client-ui-renderer/src/client/bind.ts";
+-import { createSlotRenderer as createSlotRenderer$1 } from "@deepseek-ai/dsh-client-ui-renderer/src/client/scoped-slots.tsx";
++import { bindSnapshotSelector as bindSnapshotSelector$1, createSlotRenderer as createSlotRenderer$1 } from "@deepseek-ai/dsh-client-ui-renderer/client";
+ import { afterEach, beforeEach, expect, vi } from "vitest";
+ import { SESSION_SEARCH_RESULT_LIMIT } from "@deepseek-ai/dsh-host-apiproxy/api";
+ //#region lib/types/snapshot.js
+@@ -269,6 +268,7 @@ var TestSessions = class {
  	* renderer's SessionProvider.
  	*/
  	currentProvideInfo;
@@ -10,7 +20,7 @@ index ca1875bab434e3462f85c292e6d2dc776439d229..b89dfc749c2e39fc1eedaf67bfa9cb9a
  	records = /* @__PURE__ */ new Map();
  	/** The production provide channel (roster, materialization rules, current projection) — no test-side mirror. */
  	channel;
-@@ -425,6 +426,24 @@ var TestSessions = class {
+@@ -426,6 +426,24 @@ var TestSessions = class {
  		record.provideInfo ??= this.channel.materializeInfo(this.bindingOf(id, record));
  		return record.provideInfo;
  	}
@@ -36,7 +46,7 @@ index ca1875bab434e3462f85c292e6d2dc776439d229..b89dfc749c2e39fc1eedaf67bfa9cb9a
  	* Resolve the current-session-optional standard kit (host face member):
  	* unknown or absent ids return the static no-session projection.
 diff --git a/lib/types/sessions.d.ts b/lib/types/sessions.d.ts
-index 2a1062c1a3749770195d6998f3729c4deb0084f1..c639d89529d59204b406389db8a4d17bc17435fd 100644
+index 2a1062c1a3749770195d6998f3729c4deb0084f1..bfc332801b9708d646a4dd2b586e28e25f08514c 100644
 --- a/lib/types/sessions.d.ts
 +++ b/lib/types/sessions.d.ts
 @@ -101,6 +101,7 @@ export declare class TestSessions implements ISessions {

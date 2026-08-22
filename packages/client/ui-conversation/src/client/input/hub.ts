@@ -31,6 +31,11 @@ interface ConversationAttachmentFace {
     mode: InputSubmitMode,
   ): Promise<void>
   releaseDraftImage(id: DraftAttachmentId): void
+  serializeDraftImages(ids: readonly DraftAttachmentId[]): Promise<readonly {
+    mediaType: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'
+    data: string
+    name?: string
+  }[]>
 }
 
 /** Session-addressed input facade registry (SessionInputResolver face + composer-layer extras). */
@@ -76,6 +81,13 @@ export class InputHub implements SessionInputResolver {
       popup: () => this.popup(actx),
       queue: queueReadFaceOf(session),
       defaultSink: (text, imageIds, mode) => { this.sink(session, text, imageIds, mode) },
+      commandImages: {
+        serialize: ids => this.conversation().serializeDraftImages(ids),
+        release: (ids) => {
+          const conversation = this.conversation()
+          for (const id of ids) conversation.releaseDraftImage(id)
+        },
+      },
       steerQueue: () => { void this.steerQueue(session, shell) },
     })
     this.shells.set(id, shell)

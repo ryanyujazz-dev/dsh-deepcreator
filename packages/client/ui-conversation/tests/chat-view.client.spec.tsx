@@ -11,7 +11,7 @@ import type {
   ModelRetryNode, RunningToolCall, SessionId, SessionListState, ToolCallBlock, ToolResultNode, TurnErrorNode,
   TurnMaxTokensNode, UserMessageNode, WorkspaceListState,
 } from '@deepseek-ai/dsh-client-runtime/client'
-import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-web-react'
+import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import {
   createSnapshotStore, EMPTY_CONVERSATION_VIEWS, PendingWait,
 } from '@deepseek-ai/dsh-client-runtime/client'
@@ -450,22 +450,55 @@ describe('ChatView', () => {
     expect(h.chatScrollFor).toHaveBeenCalledExactlyOnceWith('activity:child')
   })
 
-  it('keeps a cold Activity tail bounded and reveals assembled rows only on demand', async () => {
-    const nodes = Array.from({ length: 10 }, (_, index) => user(index + 1, `row-${index + 1}`))
+  it('mounts the same complete resident turn window in Activity and the main conversation', () => {
+    const nodes = [
+      user(1, 'first prompt'),
+      assistant(2, 'first answer a', 1),
+      assistant(3, 'first answer b', 1),
+      assistant(4, 'first answer c', 1),
+      assistant(5, 'first answer d', 1),
+      user(6, 'latest prompt'),
+      assistant(7, 'latest answer a', 2),
+      assistant(8, 'latest answer b', 2),
+      assistant(9, 'latest answer c', 2),
+      assistant(10, 'latest answer d', 2),
+      assistant(11, 'latest answer e', 2),
+    ]
     const h = makeHarness({ nodes })
     const view = render(<h.ChatView {...h.props} surfaceId="activity:child" />)
-    expect(view.container.querySelectorAll('[data-chat-flow-key]')).toHaveLength(4)
-    expect(view.getByRole('button', { name: '加载更早' })).toBeTruthy()
-    fireEvent.click(view.getByRole('button', { name: '加载更早' }))
-    expect(view.container.querySelectorAll('[data-chat-flow-key]')).toHaveLength(8)
-    fireEvent.click(view.getByRole('button', { name: '加载更早' }))
-    expect(view.container.querySelectorAll('[data-chat-flow-key]')).toHaveLength(10)
+    expect(view.container.querySelectorAll('[data-chat-flow-key]')).toHaveLength(11)
+    expect(view.getByText('latest prompt')).toBeTruthy()
+    expect(view.getByText('latest answer e')).toBeTruthy()
+    expect(view.getByText('first prompt')).toBeTruthy()
     expect(view.queryByRole('button', { name: '加载更早' })).toBeNull()
 
     view.unmount()
     const mainHarness = makeHarness({ nodes })
     const mainView = render(<mainHarness.ChatView {...mainHarness.props} />)
-    expect(mainView.container.querySelectorAll('[data-chat-flow-key]')).toHaveLength(10)
+    expect(mainView.container.querySelectorAll('[data-chat-flow-key]')).toHaveLength(11)
+  })
+
+  it('delegates Activity history directly to the same official paging callback as main', () => {
+    const nodes = [user(1, 'first prompt'), assistant(2, 'first answer', 1)]
+    const h = makeHarness({ nodes, hasMore: true })
+    const view = render(<h.ChatView {...h.props} surfaceId="activity:child" />)
+
+    expect(view.container.querySelectorAll('[data-chat-flow-key]')).toHaveLength(2)
+    fireEvent.click(view.getByRole('button', { name: '加载更早' }))
+    expect(h.loadOlder).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not invent local Activity history inside one long turn', () => {
+    const nodes = [
+      user(1, 'task prompt'),
+      ...Array.from({ length: 9 }, (_, index) => assistant(index + 2, `answer-${index + 1}`, 1)),
+    ]
+    const h = makeHarness({ nodes })
+    const view = render(<h.ChatView {...h.props} surfaceId="activity:child" />)
+    expect(view.container.querySelectorAll('[data-chat-flow-key]')).toHaveLength(10)
+    expect(view.getByText('task prompt')).toBeTruthy()
+    expect(view.getByText('answer-9')).toBeTruthy()
+    expect(view.queryByRole('button', { name: '加载更早' })).toBeNull()
   })
 
   it('hands a windowless tool result to the Tool seat with an empty tool name', () => {

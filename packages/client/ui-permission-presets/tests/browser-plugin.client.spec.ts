@@ -20,6 +20,7 @@ import {
 } from '../src/client/PermissionRow.tsx'
 import { apply, inject } from '../src/client/index.ts'
 import { accessEn } from '../src/client/locales.ts'
+import { SETTINGS_SCHEMA } from './settings-schema.fixture.ts'
 
 const sid = (k: string): SessionId => k as SessionId
 
@@ -41,6 +42,7 @@ async function bench() {
   // The plugin injects `remote`; forwarded events reach it through the same
   // `$dispatch` handoff the connection sink makes.
   new TestRemote(ctx)
+  ctx.provide('settingsSchema', SETTINGS_SCHEMA)
   ctx.slots.register({
     name: 'root',
     children: {

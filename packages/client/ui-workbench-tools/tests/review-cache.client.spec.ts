@@ -118,7 +118,7 @@ describe('ReviewCacheController', () => {
     cache.setVisible(true)
     await flush()
     // Strictly one in flight: b waits for a.
-    expect(remote.review.status).toHaveBeenCalledWith(SID, 'uncommitted')
+    expect(remote.review.status).toHaveBeenCalledWith(SID, 'uncommitted', undefined)
     expect(remote.review.diff.mock.calls.map(call => call[1])).toEqual(['src/a.ts'])
     gates[0]?.()
     await flush()
@@ -273,7 +273,7 @@ describe('ReviewCacheController', () => {
     await flush(); await flush()
     expect(remote.review.status).toHaveBeenCalledTimes(2)
     expect(remote.review.diff.mock.calls.length).toBeGreaterThan(before)
-    expect(remote.review.diff).toHaveBeenLastCalledWith(SID, 'src/b.ts', 'uncommitted')
+    expect(remote.review.diff).toHaveBeenLastCalledWith(SID, 'src/b.ts', 'uncommitted', undefined)
     cache.dispose()
   })
 
@@ -296,8 +296,8 @@ describe('ReviewCacheController', () => {
     await cache.selectScope({ turn: 9 }, '/workspace/src/a.ts')
     await flush()
     expect(cache.getSnapshot().scope).toEqual({ turn: 9 })
-    expect(remote.review.status).toHaveBeenLastCalledWith(SID, { turn: 9 })
-    expect(remote.review.diff).toHaveBeenLastCalledWith(SID, 'src/a.ts', { turn: 9 })
+    expect(remote.review.status).toHaveBeenLastCalledWith(SID, { turn: 9 }, undefined)
+    expect(remote.review.diff).toHaveBeenLastCalledWith(SID, 'src/a.ts', { turn: 9 }, undefined)
     cache.dispose()
   })
 
@@ -317,12 +317,67 @@ describe('ReviewCacheController', () => {
     const cache = new ReviewCacheController({ remote: remote as never, sessionId: SID, session: sessionStub().session })
 
     await flush(); await flush(); await flush()
-    expect(remote.review.diff).toHaveBeenCalledWith(SID, 'src/a.ts', { turn: 8 })
+    expect(remote.review.diff).toHaveBeenCalledWith(SID, 'src/a.ts', { turn: 8 }, undefined)
     expect(cache.getSnapshot().history?.turns[0]).toMatchObject({
       additions: 1,
       deletions: 1,
       files: [{ path: 'src/a.ts', additions: 1, deletions: 1 }],
     })
+    cache.dispose()
+  })
+
+  it('surfaces a real summary failure without discarding status or diffs', async () => {
+    const remote = remoteMock(['src/a.ts'])
+    remote.review.summary.mockRejectedValue(new Error('numstat failed'))
+    const cache = new ReviewCacheController({ remote: remote as never, sessionId: SID, session: sessionStub().session })
+    cache.setVisible(true)
+    await flush(); await flush()
+    expect(cache.getSnapshot().status?.files).toHaveLength(1)
+    expect(cache.getSnapshot().entries['src/a.ts']?.cache.kind).toBe('ready')
+    expect(cache.getSnapshot().warning).toBe('numstat failed')
+    cache.dispose()
+  })
+
+  it('sends the new root location slot and retries the legacy arity only when an old Host rejects it', async () => {
+    const remote = remoteMock([])
+    remote.review.status.mockImplementation(async (...args: unknown[]) => args.length === 3
+      ? { ok: false, error: { message: 'client api: review/status expected 2 argument(s), got 3' } }
+      : {
+          ok: true,
+          value: { ok: true, repositoryRoot: '/workspace', branch: 'main', scope: args[1], files: [] },
+        })
+    const cache = new ReviewCacheController({ remote: remote as never, sessionId: SID, session: sessionStub().session })
+
+    await flush()
+
+    expect(cache.getSnapshot().status).toMatchObject({ ok: true, files: [] })
+    expect(remote.review.status.mock.calls[0]).toEqual([SID, 'uncommitted', undefined])
+    expect(remote.review.status.mock.calls[1]).toEqual([SID, 'uncommitted'])
+    cache.dispose()
+  })
+
+  it('keeps repository location in the cache key and restores the root view when returning', async () => {
+    const remote = remoteMock(['root.ts'])
+    remote.review.status.mockImplementation(async (_sessionId: string, scope: unknown, location?: { repository?: string }) => ({
+      ok: true,
+      value: {
+        ok: true, repositoryRoot: location?.repository === undefined ? '/workspace' : '/workspace/nested',
+        branch: 'main', scope, location,
+        files: [{ path: location?.repository === undefined ? 'root.ts' : 'child.ts', index: ' ', workingTree: 'M' }],
+      },
+    }))
+    remote.review.summary.mockResolvedValue({
+      ok: true, value: { ok: true, repositoryRoot: '/workspace', scope: 'uncommitted', additions: 0, deletions: 0, files: [] },
+    })
+    const cache = new ReviewCacheController({ remote: remote as never, sessionId: SID, session: sessionStub().session })
+    await flush()
+    expect(cache.getSnapshot().status?.files[0]?.path).toBe('root.ts')
+    await cache.selectRepository('nested')
+    expect(remote.review.status).toHaveBeenLastCalledWith(SID, 'uncommitted', { repository: 'nested' })
+    expect(cache.getSnapshot()).toMatchObject({ repository: 'nested', status: { files: [{ path: 'child.ts' }] } })
+    await cache.selectRepository('')
+    expect(remote.review.status).toHaveBeenLastCalledWith(SID, 'uncommitted', undefined)
+    expect(cache.getSnapshot()).toMatchObject({ repository: '', status: { files: [{ path: 'root.ts' }] } })
     cache.dispose()
   })
 
@@ -361,7 +416,7 @@ describe('ReviewCacheController', () => {
     expect(cache.getSnapshot().scope).toBe('uncommitted')
     expect(cache.getSnapshot().entries).toEqual({})
     await flush()
-    expect(remote.review.status).toHaveBeenLastCalledWith(SID, 'uncommitted')
+    expect(remote.review.status).toHaveBeenLastCalledWith(SID, 'uncommitted', undefined)
     expect(cache.getSnapshot().status?.files).toEqual([])
     cache.dispose()
   })
@@ -471,7 +526,7 @@ describe('ReviewCacheController', () => {
     await flush(); await flush()
 
     expect(cache.getSnapshot().scope).toEqual({ turn: 7 })
-    expect(remote.review.status).toHaveBeenCalledWith(SID, { turn: 7 })
+    expect(remote.review.status).toHaveBeenCalledWith(SID, { turn: 7 }, undefined)
     await cache.selectScope('uncommitted')
     expect(cache.getSnapshot().scope).toEqual({ turn: 7 })
     cache.dispose()

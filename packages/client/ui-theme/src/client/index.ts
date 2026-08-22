@@ -8,6 +8,14 @@
  * settings General section — the theme feature owns its own settings surface.
  */
 import type { Context } from '@deepseek-ai/cordis'
+// Own the complete global palette entry explicitly. rc.1 and earlier happened
+// to bring part of this surface in through dsh-client-web-react; that package
+// no longer exists in rc.2, so relying on its transitive side effect leaves
+// every --dsw-* surface token unresolved while the code palette still loads.
+import '../styles/base.css'
+import '../styles/design-platform.css'
+import '../styles/scrollbar.css'
+import '../styles/gradient-shadow-text.css'
 import '../styles/shiki.css'
 import '@fontsource-variable/jetbrains-mono/wght.css'
 import '@fontsource-variable/fira-code/wght.css'
@@ -29,6 +37,7 @@ import {
   DEFAULT_PREFERENCE, DEFAULT_TRANSCRIPT_TEXT_SIZE,
   isCodeFont, isDarkCodeTheme, isLightCodeTheme, isThemePreference,
   LIGHT_CODE_THEME_FIELD, THEME_PREFERENCE_FIELD, THEME_SETTINGS_NAMESPACE, TRANSCRIPT_TEXT_SIZE_FIELD,
+  TRANSCRIPT_TEXT_SIZES,
   type CodeFont, type DarkCodeTheme, type LightCodeTheme,
   type ThemePreference, type ThemeSettings, type TranscriptTextSize,
 } from '../theme-settings.ts'
@@ -550,7 +559,19 @@ export const inject = ['slots', 'locale', 'connection', 'remote', 'settingsScope
  * @param ctx - client cordis context.
  */
 export function apply(ctx: ClientContext): void {
-  const host = ctx.settingsScope.bind<ThemeSettings>({ namespace: THEME_SETTINGS_NAMESPACE })
+  const host = ctx.settingsScope.bind<ThemeSettings>({
+    namespace: THEME_SETTINGS_NAMESPACE,
+    decode: (value) => {
+      if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
+      const candidate = value as Partial<Record<keyof ThemeSettings, unknown>>
+      if (!isThemePreference(candidate.preference)
+        || !TRANSCRIPT_TEXT_SIZES.some(size => size === candidate.transcriptTextSize)
+        || !isLightCodeTheme(candidate.lightCodeTheme)
+        || !isDarkCodeTheme(candidate.darkCodeTheme)
+        || !isCodeFont(candidate.codeFont)) return undefined
+      return candidate as ThemeSettings
+    },
+  })
   const theme = new ThemeRuntime(ctx, host)
   ctx.provide('theme', theme)
 

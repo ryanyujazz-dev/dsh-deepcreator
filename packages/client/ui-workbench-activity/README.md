@@ -24,7 +24,8 @@ Registers the `activity` Workbench type and owns two routes:
   rides `contributePanelInfo`). The body mounts an explicit non-navigating
   `SessionProvider` and invokes the main area's authorized
   `conversation.session` renderer in `transcriptOnly` form. It therefore uses
-  the same official 50-message tail window, bounded on-demand row reveal followed by `hasMore/loadOlder` paging,
+  the same complete resident Turn window as the main conversation on first
+  open, followed directly by the same official 50-message `hasMore/loadOlder` paging,
   assembler, live stream, Markdown, tool/file/detail actions, typography and
   render-mode preference as the main conversation, but mounts neither a
   composer nor a second render-mode picker.

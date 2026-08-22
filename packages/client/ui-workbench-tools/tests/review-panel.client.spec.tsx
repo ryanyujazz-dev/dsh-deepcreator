@@ -342,7 +342,7 @@ describe('Review Panel file stream', () => {
     // The live expansion survives a reveal instead of resetting.
     expect(view.getByRole('button', { name: /src\/a\.ts/ }).getAttribute('aria-expanded')).toBe('true')
     // The focus wants current content: exactly one fresh re-fetch of b.
-    expect(input.remote.review.diff).toHaveBeenLastCalledWith('session-1', 'src/b.ts', 'uncommitted')
+    expect(input.remote.review.diff).toHaveBeenLastCalledWith('session-1', 'src/b.ts', 'uncommitted', undefined)
     expect(input.remote.review.diff).toHaveBeenCalledTimes(3)
     // The reveal scroll lands last: the open's top-focus scroll preceded it.
     // Heavy renders (multi-theme token payloads) can stretch the reveal's
@@ -438,7 +438,7 @@ describe('Review Panel file stream', () => {
     />)
 
     await waitFor(() => {
-      expect(input.remote.review.status).toHaveBeenLastCalledWith('session-1', 'unstaged')
+      expect(input.remote.review.status).toHaveBeenLastCalledWith('session-1', 'unstaged', undefined)
       expect(view.getByRole('button', { name: /src\/a\.ts/ }).getAttribute('aria-expanded')).toBe('true')
       expect(view.getByRole('button', { name: /src\/b\.ts/ }).getAttribute('aria-expanded')).toBe('true')
     })
@@ -462,7 +462,7 @@ describe('Review Panel file stream', () => {
       reveal={{ target: '/workspace/src/b.ts', parameters: { scope: 'turn', turn: '5', expand: 'all' }, nonce: 1 }}
     />)
     await waitFor(() => { expect(next.remote.review.diff).toHaveBeenCalledTimes(2) })
-    expect(next.remote.review.status).toHaveBeenLastCalledWith('session-1', { turn: 5 })
+    expect(next.remote.review.status).toHaveBeenLastCalledWith('session-1', { turn: 5 }, undefined)
     expect(revealed.getByRole('button', { name: /src\/b\.ts/ }).getAttribute('aria-expanded')).toBe('true')
     expect(revealed.container.querySelector('[data-review-boundary="before"]')).not.toBeNull()
     await waitFor(() => { expect(revealed.container.textContent).toContain('export const ready = true') }, { timeout: 5000 })
@@ -475,7 +475,7 @@ describe('Review Panel file stream', () => {
       reveal={{ parameters: { scope: 'turn', turn: '5', expand: 'all' }, nonce: 1 }}
     />)
     await waitFor(() => {
-      expect(fromCard.remote.review.status).toHaveBeenLastCalledWith('session-1', { turn: 5 })
+      expect(fromCard.remote.review.status).toHaveBeenLastCalledWith('session-1', { turn: 5 }, undefined)
       expect(cardView.getByRole('button', { name: /src\/a\.ts/ }).getAttribute('aria-expanded')).toBe('true')
       expect(cardView.getByRole('button', { name: /src\/b\.ts/ }).getAttribute('aria-expanded')).toBe('true')
     })
@@ -488,7 +488,7 @@ describe('Review Panel file stream', () => {
       reveal={{ parameters: { scope: 'unstaged', expand: 'all' }, nonce: 2 }}
     />)
     await waitFor(() => {
-      expect(fromHeader.remote.review.status).toHaveBeenLastCalledWith('session-1', 'unstaged')
+      expect(fromHeader.remote.review.status).toHaveBeenLastCalledWith('session-1', 'unstaged', undefined)
       expect(headerView.getByRole('button', { name: /src\/a\.ts/ }).getAttribute('aria-expanded')).toBe('true')
       expect(headerView.getByRole('button', { name: /src\/b\.ts/ }).getAttribute('aria-expanded')).toBe('true')
     })
@@ -508,10 +508,48 @@ describe('Review Panel file stream', () => {
     type ScopeMenu = { props: { onSelect: (id: string) => void } }
     act(() => { (contribution?.left as unknown as ScopeMenu).props.onSelect('staged') })
     await waitFor(() => {
-      expect(input.remote.review.status).toHaveBeenLastCalledWith('session-1', 'staged')
+      expect(input.remote.review.status).toHaveBeenLastCalledWith('session-1', 'staged', undefined)
       expect(view.getByRole('button', { name: /src\/a\.ts/ }).getAttribute('aria-expanded')).toBe('true')
       expect(view.getByRole('button', { name: /src\/b\.ts/ }).getAttribute('aria-expanded')).toBe('true')
     })
+  })
+
+  it('drills into an atomic nested repository in place and returns through the breadcrumb', async () => {
+    const remote = remoteMock()
+    remote.review.status.mockImplementation(async (_sessionId: string, scope: unknown, location?: { repository?: string }) => ({
+      ok: true,
+      value: location?.repository === 'nested'
+        ? { ok: true, repositoryRoot: '/workspace/nested', workspaceKind: 'git', branch: 'child', scope, location, files: [{ path: 'child.ts', index: ' ', workingTree: 'M', kind: 'file' }] }
+        : { ok: true, repositoryRoot: '/workspace', workspaceKind: 'git', branch: 'main', scope, location, files: [{ path: 'nested', index: '?', workingTree: '?', kind: 'repository', presentation: 'repository' }] },
+    }))
+    remote.review.summary.mockImplementation(async (_sessionId: string, scope: unknown, location?: { repository?: string }) => ({
+      ok: true,
+      value: location?.repository === 'nested'
+        ? { ok: true, repositoryRoot: '/workspace/nested', scope, location, additions: 1, deletions: 1, files: [{ path: 'child.ts', additions: 1, deletions: 1, lineStatsState: 'available', presentation: 'text' }] }
+        : { ok: true, repositoryRoot: '/workspace', scope, location, additions: 0, deletions: 0, files: [{ path: 'nested', kind: 'repository', presentation: 'repository', lineStatsState: 'not-applicable' }] },
+    }))
+    remote.review.diff.mockImplementation(async (_sessionId: string, path: string) => ({
+      ok: true,
+      value: {
+        ok: true, repositoryRoot: '/workspace/nested', path, presentation: 'text',
+        layers: [{
+          kind: 'working-tree', patch: patches['src/a.ts'],
+          oldSource: { revision: 'index', text: 'const value = 1' },
+          newSource: { revision: 'worktree', text: 'const value = 2' },
+        }],
+      },
+    }))
+    const input = props(remote)
+    const view = render(<ReviewPanel {...input} />)
+    const nested = await view.findByRole('button', { name: /nested/ })
+    expect(remote.review.diff).not.toHaveBeenCalled()
+    fireEvent.click(nested)
+    await waitFor(() => { expect(remote.review.status).toHaveBeenLastCalledWith('session-1', 'uncommitted', { repository: 'nested' }) })
+    await view.findByRole('button', { name: /child\.ts/ })
+    expect(view.getByRole('navigation', { name: 'review.repository.breadcrumb' }).textContent).toContain('nested')
+    expect(remote.review.diff).toHaveBeenCalledWith('session-1', 'child.ts', 'uncommitted', { repository: 'nested' })
+    fireEvent.click(view.getByRole('button', { name: 'review.repository.root' }))
+    await waitFor(() => { expect(remote.review.status).toHaveBeenLastCalledWith('session-1', 'uncommitted', undefined) })
   })
 
   it('gates 500 files in settled two-screen batches and expands both directions around a reveal', { timeout: 20000 }, async () => {
@@ -615,7 +653,7 @@ describe('Review Panel file stream', () => {
       {...input}
       reveal={{ target: '/workspace/src/f400.ts', parameters: { scope: 'uncommitted', expand: 'all' }, nonce: 1 }}
     />)
-    await waitFor(() => { expect(remote.review.diff).toHaveBeenCalledWith('session-1', 'src/f400.ts', 'uncommitted') })
+    await waitFor(() => { expect(remote.review.diff).toHaveBeenCalledWith('session-1', 'src/f400.ts', 'uncommitted', undefined) })
     await waitFor(() => { expect(view.container.querySelectorAll('[data-review-path]')).toHaveLength(1) })
     const row400 = view.container.querySelector('[data-review-path="src/f400.ts"]') as HTMLElement
     await waitFor(() => { expect(row400.querySelector('div[class*="reviewFileContent"]')).not.toBeNull() })

@@ -1,5 +1,5 @@
 diff --git a/lib/types/index.d.ts b/lib/types/index.d.ts
-index 9b11dcbcb7ac41ca5c3765fceeebace4ccdc4efe..5d092490a9e4a6456e3c854215f282c403ffae03 100644
+index 9b11dcbcb7ac41ca5c3765fceeebace4ccdc4efe..1177d91cc7f779c7aad8974e76f66429bf650280 100644
 --- a/lib/types/index.d.ts
 +++ b/lib/types/index.d.ts
 @@ -257,6 +257,8 @@ export type MatchedShare<E extends SlotEntryDef, M> = E['kind'] extends 'chain'
@@ -12,7 +12,7 @@ index 9b11dcbcb7ac41ca5c3765fceeebace4ccdc4efe..5d092490a9e4a6456e3c854215f282c4
      empty?: (() => ReactNode) | undefined;
      /** Session body; the framework remounts it per session (key=sessionId). */
 diff --git a/lib/types/renderer.d.ts b/lib/types/renderer.d.ts
-index 4f97d3791452ee34db2bfd39ec007681140e022b..9262a21675c0418b680ae374a218473a6c51c4f9 100644
+index 2ec121dba8f6683b03aaba808aeefee1cc7d947a..dc9559650592e5e90a02eedf30b16c9c6667a43a 100644
 --- a/lib/types/renderer.d.ts
 +++ b/lib/types/renderer.d.ts
 @@ -170,6 +170,8 @@ export interface SlotRendererHost {

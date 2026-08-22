@@ -10,7 +10,7 @@ import type {
   WorkbenchPanelHeaderContribution, WorkbenchPanelInfoContribution, WorkbenchPanelProps,
 } from '@ryanyujazz/dsh-client-ui-workbench/client'
 import {
-  DiffBlock, FileIcon, IconChevronDownOutline14, IconPlusOutline16, IconRefreshOutline14, IconUnfoldLessOutline16,
+  DiffBlock, FileIcon, IconChevronDownOutline14, IconFolderClose16, IconPlusOutline16, IconRefreshOutline14, IconUnfoldLessOutline16,
   IconUnfoldMoreOutline16, Menu, OverflowFadeText, WorkbenchPanelIconButton, type MenuEntry,
 } from '@ryanyujazz/dsh-client-ui-primitives'
 import { REVIEW_IDLE_PREFETCH_LIMIT } from './review-model.ts'
@@ -561,7 +561,7 @@ function useReviewProgressiveGate(options: {
  * while their logical expansion and controlled fold state remain intact.
  */
 const ReviewFileRow = memo(function ReviewFileRow({
-  file, summary, controller, expanded, resident, preload, scrollRoot, widthBucket, onToggle, t,
+  file, summary, controller, expanded, resident, preload, scrollRoot, widthBucket, onToggle, onOpenRepository, t,
 }: {
   file: ReviewFileStatus
   summary: ReviewFileSummary | undefined
@@ -572,6 +572,7 @@ const ReviewFileRow = memo(function ReviewFileRow({
   scrollRoot: HTMLElement | null
   widthBucket: number
   onToggle: (path: string) => void
+  onOpenRepository: (path: string) => void
   t: RemoteProps['t']
 }) {
   const subscribe = useCallback((listener: () => void) => controller.subscribeFile(file.path, listener), [controller, file.path])
@@ -651,37 +652,47 @@ const ReviewFileRow = memo(function ReviewFileRow({
   }, [bodyHeight, expanded, preload, resident, scrollRoot, widthBucket])
 
   const onHeaderClick = useCallback(() => {
+    if (file.kind === 'repository' || file.kind === 'submodule') { onOpenRepository(file.path); return }
     if (!expanded) controller.ensure(file.path, 'focus')
     onToggle(file.path)
-  }, [controller, expanded, file.path, onToggle])
+  }, [controller, expanded, file.kind, file.path, onOpenRepository, onToggle])
   const additions = summary?.additions ?? ready?.added
   const deletions = summary?.deletions ?? ready?.removed
-  const showCounts = summary?.binary !== true && additions !== undefined && deletions !== undefined
+  const lineStatsAvailable = summary?.lineStatsState === 'available'
+    || (summary?.lineStatsState === undefined && summary?.binary !== true && additions !== undefined && deletions !== undefined
+      && (additions > 0 || deletions > 0))
+  const showCounts = lineStatsAvailable && additions !== undefined && deletions !== undefined
+  const presentation = summary?.presentation ?? ready?.raw.presentation ?? file.presentation ?? 'unknown'
+  const atomic = file.kind === 'repository' || file.kind === 'submodule'
+  const hasRenderableDiff = ready?.layers.some(layer => layer.files.some(parsed => parsed.binary || parsed.hunks.length > 0)) ?? false
   return (
     <article ref={anchorRef} className={preload ? `${css.reviewFile} ${css.reviewFilePreload}` : css.reviewFile} data-review-path={file.path}>
       <button
         type="button"
         className={css.reviewFileHeader}
-        aria-expanded={expanded}
+        aria-expanded={atomic ? undefined : expanded}
         onClick={onHeaderClick}
       >
         <IconChevronDownOutline14 className={expanded ? undefined : css.reviewFileChevronCollapsed} />
-        <FileIcon path={file.path} />
+        {atomic ? <IconFolderClose16 size={14} /> : <FileIcon path={file.path} />}
         <OverflowFadeText className={css.reviewFilePath} text={label} fade="left" />
         {pending && summary === undefined
           ? <span className={css.reviewFileLoading}>{t('loading')}</span>
           : showCounts && <span className={css.reviewCounts}><b>{`+${additions}`}</b><i>{`-${deletions}`}</i></span>}
       </button>
-      {expanded && !resident && (
+      {!atomic && expanded && !resident && (
         <div className={css.reviewFileSkeleton} style={{ height: bodyHeight }} aria-hidden>
           {t('loading')}
         </div>
       )}
-      {resident && expanded && (
+      {!atomic && resident && expanded && (
         <div ref={bodyRef} className={css.reviewFileContent}>
           {pending && <div className={css.reviewFileMessage}>{t('loading')}</div>}
           {failed !== null && <div className={css.reviewFileError}>{failed}</div>}
-          {ready !== null && ready.layers.map(layer => (
+          {ready !== null && !hasRenderableDiff && presentation !== 'text' && (
+            <div className={css.binary}>{t(`review.presentation.${presentation}`)}</div>
+          )}
+          {ready !== null && hasRenderableDiff && ready.layers.map(layer => (
             <section key={layer.kind} className={css.diffLayer}>
               <div className={css.diffLayerTitle}>
                 <span>{layer.kind === 'staged'
@@ -742,6 +753,8 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
   const [missedPath, setMissedPath] = useState<string | null>(null)
   const [scopeMenuOpen, setScopeMenuOpen] = useState(false)
   const listRef = useRef<HTMLDivElement | null>(null)
+  const repositoryParents = useRef(new Map<string, string>())
+  const repositoryViews = useRef(new Map<string, { expanded: ReadonlySet<string>; scrollTop: number }>() )
   const expandedRef = useRef(expandedPaths); expandedRef.current = expandedPaths
   const prevVisible = useRef(false)
   /** Whether the current open has already been handled (expand-all or reveal). */
@@ -750,7 +763,7 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
   const summaries = useMemo(() => new Map(meta.summary?.files.map(file => [file.path, file]) ?? []), [meta.summary])
   const scopeId = typeof meta.scope === 'string' ? meta.scope : `turn:${meta.scope.turn}`
   const gate = useReviewProgressiveGate({
-    controller, files, summaries, expanded: expandedPaths, eagerPath, listRef, scopeKey: scopeId,
+    controller, files, summaries, expanded: expandedPaths, eagerPath, listRef, scopeKey: `${meta.repository}\0${scopeId}`,
   })
   const residency = useReviewResidency({
     controller, files: gate.files, expanded: expandedPaths, forced: gate.preloadPaths, eagerPath, listRef,
@@ -775,7 +788,7 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
     const files = meta.status?.files ?? []
     if (files.length === 0) return
     openHandled.current = true
-    const next = new Set(files.map(file => file.path))
+    const next = new Set(files.filter(file => file.kind !== 'repository' && file.kind !== 'submodule').map(file => file.path))
     expandedRef.current = next
     startTransition(() => { setExpandedPaths(next) })
     // Focus the top after the expansion joins the layout.
@@ -807,16 +820,22 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
     const requested: ReviewScope = scopeValue === 'unstaged' || scopeValue === 'staged' || scopeValue === 'uncommitted'
       ? scopeValue
       : Number.isSafeInteger(turn) && turn >= 0 ? { turn } : meta.scope
+    const requestedRepository = typeof reveal.parameters?.repository === 'string'
+      ? reveal.parameters.repository.replaceAll('\\', '/').replace(/^\.\//, '').replace(/\/+$/, '') : ''
     // Every Review presentation is expand-all by contract. Parameters still
     // spell it out for self-documenting entry points, but this provider-side
     // default prevents a future or fallback reveal from silently regressing.
-    void controller.selectScope(requested, reveal.target).then((outcome) => {
+    const selection = controller.getSnapshot().repository === requestedRepository
+      ? controller.selectScope(requested, reveal.target)
+      : controller.selectRepository(requestedRepository, requested, reveal.target)
+    void selection.then((outcome) => {
       if (outcome.kind === 'missing') {
         if (reveal.target !== undefined) setMissedPath(reveal.target)
         return
       }
       if (outcome.kind === 'ready' || outcome.kind === 'found') {
-        const paths = controller.getSnapshot().status?.files.map(file => file.path) ?? []
+        const paths = controller.getSnapshot().status?.files
+          .filter(file => file.kind !== 'repository' && file.kind !== 'submodule').map(file => file.path) ?? []
         const next = new Set(paths)
         expandedRef.current = next
         const focus = outcome.kind === 'found' ? outcome.path : null
@@ -836,6 +855,46 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
       // expansion above already pointed the user at the file.
     })
   }, [reveal, controller])
+
+  const navigateRepository = useCallback((repository: string): void => {
+    repositoryViews.current.set(meta.repository, {
+      expanded: expandedRef.current,
+      scrollTop: residency.scrollRoot?.scrollTop ?? 0,
+    })
+    setMissedPath(null); setEagerPath(null); setExpandedPaths(new Set())
+    void controller.selectRepository(repository).then(outcome => {
+      if (outcome.kind !== 'ready' && outcome.kind !== 'found') return
+      const available = controller.getSnapshot().status?.files
+        .filter(file => file.kind !== 'repository' && file.kind !== 'submodule').map(file => file.path) ?? []
+      const retained = repositoryViews.current.get(repository)
+      const next = retained === undefined
+        ? new Set(available)
+        : new Set(available.filter(path => retained.expanded.has(path)))
+      expandedRef.current = next
+      setExpandedPaths(next)
+      if (retained !== undefined) requestAnimationFrame(() => {
+        const root = scrollingParent(listRef.current)
+        if (root !== null) root.scrollTop = retained.scrollTop
+      })
+    })
+  }, [controller, meta.repository, residency.scrollRoot])
+
+  const openRepository = useCallback((path: string): void => {
+    const repository = [meta.repository, path].filter(Boolean).join('/')
+    repositoryParents.current.set(repository, meta.repository)
+    navigateRepository(repository)
+  }, [meta.repository, navigateRepository])
+
+  const repositoryChain = useMemo(() => {
+    const result: string[] = []
+    let current = meta.repository
+    const seen = new Set<string>()
+    while (current !== '' && !seen.has(current)) {
+      seen.add(current); result.unshift(current)
+      current = repositoryParents.current.get(current) ?? ''
+    }
+    return result
+  }, [meta.repository])
 
   const toggleFile = useCallback((path: string): void => {
     const opening = !expandedRef.current.has(path)
@@ -859,11 +918,12 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
     ? t(`review.scope.${meta.scope}`)
     : t('review.scope.turn', { turn: meta.scope.turn })
   const historyTurns = useMemo(() => history?.turns
-    .filter(turn => turn.remainingFiles > 0)
-    .toSorted((a, b) => b.turn - a.turn) ?? [], [history])
+    .filter(turn => turn.remainingFiles > 0 && (meta.repository === ''
+      || turn.files.some(file => file.state === 'pending' && (file.repository ?? '') === meta.repository)))
+    .toSorted((a, b) => b.turn - a.turn) ?? [], [history, meta.repository])
   const currentTurns = useMemo(() => historyTurns.filter(turn => turn.current === true), [historyTurns])
   const completedTurns = useMemo(() => historyTurns.filter(turn => turn.current !== true), [historyTurns])
-  const workspaceKind = history?.workspaceKind ?? meta.status?.workspaceKind ?? 'git'
+  const workspaceKind = meta.status?.workspaceKind ?? (meta.repository === '' ? history?.workspaceKind : 'git') ?? 'git'
   const scopeItems = useMemo<MenuEntry[]>(() => [
     ...(workspaceKind === 'git' ? [
       { id: 'unstaged', label: t('review.scope.unstaged') },
@@ -893,7 +953,8 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
         setExpandedPaths(new Set())
         void controller.selectScope(next).then((outcome) => {
           if (outcome.kind !== 'ready' && outcome.kind !== 'found') return
-          const paths = controller.getSnapshot().status?.files.map(file => file.path) ?? []
+          const paths = controller.getSnapshot().status?.files
+            .filter(file => file.kind !== 'repository' && file.kind !== 'submodule').map(file => file.path) ?? []
           const expanded = new Set(paths)
           expandedRef.current = expanded
           setExpandedPaths(expanded)
@@ -919,7 +980,7 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
         className={css.reviewBulkToggle}
         disabled={(meta.status?.files.length ?? 0) === 0}
         onClick={() => {
-          const paths = meta.status?.files.map(file => file.path) ?? []
+          const paths = meta.status?.files.filter(file => file.kind !== 'repository' && file.kind !== 'submodule').map(file => file.path) ?? []
           const next = anyExpanded ? new Set<string>() : new Set(paths)
           expandedRef.current = next
           // Mounting many warmed DiffBlocks is still a large render: mark the
@@ -938,7 +999,21 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
   return (
     <div className={css.review}>
       {meta.error !== null && <div className={css.error}>{meta.error}</div>}
+      {meta.warning !== null && <div className={css.reviewWarning} role="status">{t('review.summaryWarning')}: {meta.warning}</div>}
       <div className={css.reviewBody}>
+        {meta.repository !== '' && (
+          <nav className={css.reviewBreadcrumb} aria-label={t('review.repository.breadcrumb')}>
+            <button type="button" onClick={() => { navigateRepository('') }}>{t('review.repository.root')}</button>
+            {repositoryChain.map((repository, index) => (
+              <span className={css.reviewBreadcrumbSegment} key={repository}>
+                <span aria-hidden>›</span>
+                {index === repositoryChain.length - 1
+                  ? <OverflowFadeText text={repository.split('/').at(-1) ?? repository} fade="left" />
+                  : <button type="button" onClick={() => { navigateRepository(repository) }}>{repository.split('/').at(-1) ?? repository}</button>}
+              </span>
+            ))}
+          </nav>
+        )}
         <div className={css.reviewStatus}>
           <strong>{meta.status?.branch || t('review.title')} → {scopeLabel}</strong>
           <span>{meta.checks !== null && !meta.checks.clean
@@ -973,6 +1048,7 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
                   scrollRoot={residency.scrollRoot}
                   widthBucket={residency.widthBucket}
                   onToggle={toggleFile}
+                  onOpenRepository={openRepository}
                   t={t}
                 />
               ))}

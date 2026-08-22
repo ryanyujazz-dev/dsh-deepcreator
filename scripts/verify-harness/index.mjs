@@ -17,12 +17,15 @@ if (installedDsh.version !== compatibility.harnessVersion) {
 }
 
 const workspaceConfig = readFileSync(join(root, 'pnpm-workspace.yaml'), 'utf8')
-for (const patchName of ['@deepseek-ai/dsh-tool-fs@0.1.0-rc.7', '@deepseek-ai/dsh-tools@0.1.0-rc.7']) {
+for (const patchName of [
+  `@deepseek-ai/dsh-tool-fs@${compatibility.harnessVersion}`,
+  `@deepseek-ai/dsh-tools@${compatibility.harnessVersion}`,
+]) {
   if (!workspaceConfig.includes(patchName)) failures.push(`pnpm workspace omits required diff metadata patch ${patchName}`)
 }
 for (const patchFile of [
-  'patches/@deepseek-ai__dsh-tool-fs@0.1.0-rc.7.patch',
-  'patches/@deepseek-ai__dsh-tools@0.1.0-rc.7.patch',
+  `patches/@deepseek-ai__dsh-tool-fs@${compatibility.harnessVersion}.patch`,
+  `patches/@deepseek-ai__dsh-tools@${compatibility.harnessVersion}.patch`,
 ]) {
   const absolute = join(root, patchFile)
   if (!existsSync(absolute)) failures.push(`required diff metadata patch is missing: ${patchFile}`)
@@ -55,14 +58,27 @@ for (const entry of readdirSync(clientRoot, { withFileTypes: true })) {
       if (name.startsWith('@deepseek-ai/dsh-') && String(spec).includes('workspace:')) {
         failures.push(`${manifest.name} keeps unresolved official workspace dependency ${name}@${spec}`)
       }
-      if (name.startsWith('@deepseek-ai/dsh-') && String(spec).includes('0.1.0-rc.5')) {
-        failures.push(`${manifest.name} still targets old Harness dependency ${name}@${spec}`)
+      if (
+        name.startsWith('@deepseek-ai/dsh-')
+        && /\d+\.\d+\.\d+(?:-[\w.]+)?/.test(String(spec))
+        && !String(spec).includes(compatibility.harnessVersion)
+      ) {
+        failures.push(`${manifest.name} targets unsupported Harness dependency ${name}@${spec}`)
+      }
+      if (name === '@deepseek-ai/dsh-client-web-react' || name === '@deepseek-ai/dsh-client-schema-form') {
+        failures.push(`${manifest.name} depends on removed official package ${name}`)
       }
     }
   }
 }
 
 const bundlePatch = readFileSync(join(root, 'packages/bundle/deepcreator-web/cordis.patch.yml'), 'utf8')
+if (!bundlePatch.includes('- id: ui-brand-official\n  disabled: true')) {
+  failures.push('deepcreator-web must disable the official brand row while DeepCreator owns brand seats')
+}
+if (bundlePatch.includes('- id: ui-settings\n  disabled: true')) {
+  failures.push('deepcreator-web must retain the official settings base and its schema/mirror services')
+}
 for (const required of [
   '@ryanyujazz/dsh-client-locale',
   '@ryanyujazz/dsh-client-ui-primitives',

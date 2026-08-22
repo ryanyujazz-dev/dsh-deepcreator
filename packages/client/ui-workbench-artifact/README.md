@@ -57,6 +57,10 @@ the supplied eye glyph; Code uses the product `</>` glyph. Both options expose
 localized hover/focus hints and accessible names. Preview is the default and
 renders through the same shared `MarkdownText` pipeline as settled assistant
 prose, including GFM, math, code fences, and the same untrusted-link policy.
+The panel-wide scroll surface remains responsible for overflow, while the
+preview document is centered at `width: 100%` with the shared
+`--dsh-reading-content-width` maximum; narrow panels shrink naturally and the
+scrollbar stays aligned to the panel edge.
 Code returns to the registered renderer's `document` CodeSurface (no outer
 margin, numbered gutter with a vertical divider, and content padding inside
 the text column). The selection is remembered independently per open file for

@@ -138,7 +138,9 @@ export function parseDiffResult(diff: Extract<ReviewDiffResult, { ok: true }>): 
 
 /** Wire-level identity of two diff results (SWR keep-parse reference test). */
 export function sameDiffResult(a: Extract<ReviewDiffResult, { ok: true }>, b: Extract<ReviewDiffResult, { ok: true }>): boolean {
-  if (a.path !== b.path || a.oldPath !== b.oldPath || a.layers.length !== b.layers.length) return false
+  if (a.path !== b.path || a.oldPath !== b.oldPath || a.kind !== b.kind || a.presentation !== b.presentation
+    || a.lineStatsState !== b.lineStatsState || a.location?.repository !== b.location?.repository
+    || a.layers.length !== b.layers.length) return false
   return a.layers.every((layer, index) => {
     const other = b.layers[index]
     return other !== undefined

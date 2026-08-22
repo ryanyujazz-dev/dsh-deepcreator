@@ -7,11 +7,11 @@
   disabled: true
 - id: ui-theme
   disabled: true
+- id: ui-brand-official
+  disabled: true
 - id: ui-layout
   disabled: true
 - id: ui-sidebar
-  disabled: true
-- id: ui-settings
   disabled: true
 - id: ui-settings-general
   disabled: true

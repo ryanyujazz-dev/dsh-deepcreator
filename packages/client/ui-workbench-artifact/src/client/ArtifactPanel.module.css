@@ -15,6 +15,7 @@
 .pathAction { flex: none; --dsh-icon-toolbar-button-size: 24px; --dsh-icon-toolbar-glyph-size: 16px; }
 .content { min-width: 0; min-height: 0; flex: 1; overflow: auto; }
 .markdownPreview { box-sizing: border-box; padding: 20px 24px 40px; }
+.markdownDocument { width: 100%; max-width: var(--dsh-reading-content-width, 748px); margin: 0 auto; }
 .content > pre { box-sizing: border-box; min-height: 100%; margin: 0; padding: 16px; white-space: pre-wrap; color: var(--dsw-alias-label-primary); font: 12px/1.65 var(--dsw-font-mono); }
 .list { min-width: 0; min-height: 0; flex: 1; overflow: auto; padding: 6px; }
 .list > button { width: 100%; min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 0; border-radius: 8px; padding: 8px 10px; color: var(--dsw-alias-label-primary); background: transparent; text-align: left; cursor: pointer; }

@@ -187,6 +187,23 @@ export class ConversationController extends Service implements IConversation {
     return attachments
   }
 
+  /** Serialize draft images for a command that explicitly accepts attachments. */
+  async serializeDraftImages(imageIds: readonly DraftAttachmentId[]): Promise<readonly {
+    mediaType: ImageMediaType
+    data: string
+    name?: string
+  }[]> {
+    const attachments = this.draftImages(imageIds)
+    if (attachments.length !== imageIds.length) {
+      throw new Error('conversation.serializeDraftImages: one or more draft images are no longer available')
+    }
+    return Promise.all(attachments.map(async ({ file }) => ({
+      mediaType: imageMediaType(file.type),
+      data: bytesToBase64(new Uint8Array(await file.arrayBuffer())),
+      ...(file.name === '' ? {} : { name: file.name }),
+    })))
+  }
+
   /**
    * Release one browser-owned draft image and preview URL.
    * @param id - draft attachment id.

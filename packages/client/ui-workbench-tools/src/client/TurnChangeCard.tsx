@@ -79,7 +79,8 @@ export function TurnChangeCard({ turn, controller, workbench, openFile, t }: Pro
             <>
             <ConversationFileCardAction
               disabled={!record.undoable || undoing}
-              title={record.undoable ? t('turnCard.undo') : t('turnCard.undoUnavailable')}
+              title={record.undoable ? t('turnCard.undo') : record.undoDisabledReason === 'cross-repository'
+                ? t('turnCard.undoCrossRepository') : t('turnCard.undoUnavailable')}
               onClick={() => { setConfirming(true) }}
             >
               {t('turnCard.undo')}
@@ -99,7 +100,8 @@ export function TurnChangeCard({ turn, controller, workbench, openFile, t }: Pro
                   if (file.state === 'pending') openReview(file.path)
                   else openFile(file.path)
                 }}
-                trailing={file.additions !== undefined && file.deletions !== undefined && (file.additions > 0 || file.deletions > 0) && (
+                trailing={(file.lineStatsState === 'available' || file.lineStatsState === undefined)
+                  && file.additions !== undefined && file.deletions !== undefined && (file.additions > 0 || file.deletions > 0) && (
                     <span className={css.diffCounts}><b>{`+${file.additions}`}</b><i>{`-${file.deletions}`}</i></span>
                 )}
               />

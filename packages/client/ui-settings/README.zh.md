@@ -1,20 +1,16 @@
-# @deepseek-ai/dsh-client-ui-settings
+# @ryanyujazz/dsh-client-ui-settings
 
 [English](README.md) | 中文
 
-设置领域的底座，承担两项职责，本身不含任何呈现内容。它提供 `ctx.settingsScope`——每个偏好设置行绑定自己那份持久化命名空间分区所用的宿主传输层；并声明由注册方填充的设置 slot 类型：`settings.trigger`／`settings.header`／`settings.close`（界面框架内容）、`settings.action`（内容标题栏中的有序操作）、`settings.section`（每项功能一页）、`settings.general.item`（“通用设置”中的顶层 block）、`deepcreator.settings.preferences.item`（共享“偏好”分组内的功能设置行）、`settings.plugins.tab`（“插件”分区内由各功能持有的页面）和 `settings.onboarding`（由各功能持有的有序页面）。它不依赖任何 `ui-*` 呈现包，因此任何持有偏好设置的功能都能够到它；设置**外壳**——`sidebar.settings` 占位方、它的导航与界面框架——位于 ui-settings-general，因为外壳一旦依赖 ui-sidebar，就会经 ui-layout 与 ui-theme 闭合出一条引用图环路。外壳自身的契约类型出于同一原因与外壳放在一起。
+DeepCreator 的设置扩展契约，叠加在保留的官方 `@deepseek-ai/dsh-client-ui-settings` 底座之上。`ctx.settingsScope`、`ctx.settingsSchema`、共享 describe mirror 及全部官方设置 slot 仍只由官方插件持有。本包仅声明产品专属的 `deepcreator.settings.preferences.item` 列表座位，并为自定义消费方重导出官方设置类型。
 
-该插件不注入任何服务、也不等待任何服务：`ctx.settingsScope.bind(spec)` 在调用时经**调用方**的 context 解析线路面，因此绑定所得 scope 的 disposer 归调用方 fiber 所有，而由调用方注入 `connection` 取得传输层、注入 `remote` 取得失效通知。监听器在首次后台读取启动之前就已存在，因此某一行的激活绝不会阻塞在设置传输层上。已绑定的 scope 会在收到属于自己命名空间的转发 `settings/document-updated` 事件时、以及在 `connection/reset` 时重新读取。写入携带单一字段路径以及最近已知的命名空间 revision 作为 `expectedRevision`；被拒绝或失败的写入会重新读取，除非已有更新的写入取代了它，而过期的读取绝不会覆盖发布更新的结果。若 spec 未提供 `decode`，则分区不是普通对象、未通过其重建后的 schema 校验、或携带本客户端无法重建的 schema 信封时，一律不发布任何值，于是行渲染自己的缺失状态，而不是一份半解码的值。
+把传输与 schema 服务留在官方层就是升级边界：官方新增的设置功能可以继续注入官方模块，无需依赖 DeepCreator 的复刻实现。本包不实现任何运行时服务，也不得禁用或遮蔽 composition 中的官方 `ui-settings` 行。
 
 ## 模型体验
 
-无。设置领域底座为浏览器提供偏好设置存储与 slot 声明；这里没有任何内容进入模型请求。
-
-#### KV Cache 影响
-
-无；该包既不组装也不发送提供方请求。
+无。本包只声明浏览器 UI 扩展座位，不参与模型请求组装。
 
 ## 已知限制与暂缓事项
 
-- **远程浏览器没有持久化设置**：设置 RPC 仅限 loopback，因此在非 loopback 浏览器中绑定的 scope 以 `unavailable` 起步且从不跨线路，它支撑的每一行在那里都是无效的。
-- **每次写入仅一个字段**：`set` 只发送单个 `set` op，因此需要同时改动两个字段的行没有事务可用，会发布两个 revision。
+- 只有 DeepCreator 设置外壳声明对应父级时，自定义 Preferences 座位才存在。
+- 持久化设置行为（包括 loopback 限制与写入语义）遵循仓库锁定的官方设置包。
