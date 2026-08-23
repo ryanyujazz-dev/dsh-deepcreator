@@ -33,6 +33,12 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * package's 'sidebar' entry; each action receives only the column state.
      */
     'sidebar.footer.action': { kind: 'list'; scope: 'root'; owner: SidebarFooterActionOwnerProps }
+    /**
+     * Optional primary actions contributed by independently installed
+     * features. Occupants render their own `<li>` + SidebarRow so an empty
+     * slot contributes no DOM or row gap.
+     */
+    'deepcreator.sidebar.primary.action': { kind: 'list'; scope: 'root'; owner: SidebarPrimaryActionOwnerProps }
   }
 }
 
@@ -59,6 +65,12 @@ export interface SidebarSettingsOwnerProps {
 /** Owner share of an action rendered beside Settings at the sidebar foot. */
 export interface SidebarFooterActionOwnerProps {
   /** Whether expanded sidebar content is visible. */
+  wide: boolean
+}
+
+/** Owner share for independently composed primary sidebar actions. */
+export interface SidebarPrimaryActionOwnerProps {
+  /** Whether expanded labels are visible beside the rail icon. */
   wide: boolean
 }
 
@@ -97,5 +109,5 @@ export type SidebarClosedToggleComponentProps =
  */
 export type SidebarRootComponentProps =
   PropsRuntime<'sidebar'>
-  & PropsRenderSlots<'sidebar.workspaces' | 'sidebar.settings' | 'sidebar.footer.action'>
+  & PropsRenderSlots<'sidebar.workspaces' | 'sidebar.settings' | 'sidebar.footer.action' | 'deepcreator.sidebar.primary.action'>
   & SidebarRootInjected & PropsLocale<'sidebar'>

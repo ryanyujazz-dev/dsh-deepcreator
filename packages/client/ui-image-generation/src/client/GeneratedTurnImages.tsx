@@ -1,9 +1,25 @@
 import { useMemo, type CSSProperties } from 'react'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
-import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ToolCallBlock } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ChatNode } from '@ryanyujazz/dsh-client-ui-conversation/client'
 import css from './GeneratedTurnImages.module.css'
+
+export interface GeneratedImageActionOwnerProps {
+  turn: number
+  index: number
+  attachment: ImageAttachmentRef
+}
+
+declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface SlotMap {
+    'deepcreator.image-generation.result.action': {
+      kind: 'list'
+      scope: 'session'
+      owner: GeneratedImageActionOwnerProps
+    }
+  }
+}
 
 function collect(block: ToolCallBlock, refs: Array<{ attachment: ImageAttachmentRef }>): void {
   if ('kind' in block && !block.isError && block.call?.name === 'create_image') {
@@ -12,7 +28,10 @@ function collect(block: ToolCallBlock, refs: Array<{ attachment: ImageAttachment
   for (const child of block.subCalls) collect(child, refs)
 }
 
-export function GeneratedTurnImages({ turn, renderMessageImages, useSession }: PropsRuntime<'deepcreator.conversation.chat.turnMedia'>) {
+type GeneratedTurnImagesProps = PropsRuntime<'deepcreator.conversation.chat.turnMedia'>
+  & PropsRenderSlots<'deepcreator.image-generation.result.action'>
+
+export function GeneratedTurnImages({ turn, renderMessageImages, useSession, renderSlot }: GeneratedTurnImagesProps) {
   const snapshot = useSession(value => value)
   const images = useMemo(() => {
     const refs: Array<{ attachment: ImageAttachmentRef }> = []
@@ -32,6 +51,11 @@ export function GeneratedTurnImages({ turn, renderMessageImages, useSession }: P
           data-generated-turn-image
         >
           {renderMessageImages({ images: [image], align: 'start' })}
+          {renderSlot('deepcreator.image-generation.result.action', {
+            turn: turn.turn,
+            index,
+            attachment: image.attachment,
+          })}
         </div>
       ))}
     </div>

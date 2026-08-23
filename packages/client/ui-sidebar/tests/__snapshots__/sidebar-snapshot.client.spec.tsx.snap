@@ -119,6 +119,10 @@ exports[`sidebar shell snapshots > renders the expanded column (wordmark, capsul
           </span>
         </button>
       </li>
+      <div
+        data-slot="deepcreator.sidebar.primary.action"
+        style="display: contents;"
+      />
     </ul>
     <div
       class="regionArea"
@@ -271,6 +275,10 @@ exports[`sidebar shell snapshots > renders the expanded column in the default lo
           </span>
         </button>
       </li>
+      <div
+        data-slot="deepcreator.sidebar.primary.action"
+        style="display: contents;"
+      />
     </ul>
     <div
       class="regionArea"

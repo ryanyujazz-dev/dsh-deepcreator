@@ -120,3 +120,5 @@
 ## 修改规则
 
 任何后续 UI 调整都要同步检查本规范。新增渲染器必须消费语义变量和 slot，不得绕过插件注册直接修改宿主渲染分支。
+
+可选插件的侧边栏主操作只能注册到 `deepcreator.sidebar.primary.action`，并自行复用 `SidebarRow` 与列表项结构；生成图片动作只能注册到 `deepcreator.image-generation.result.action`。两个 Slot 空置时不得产生 DOM、间距或占位样式，插件卸载后宿主视觉必须恢复为原状。

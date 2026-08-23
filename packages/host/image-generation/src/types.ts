@@ -34,6 +34,42 @@ export interface ImageInput {
   name?: string
 }
 
+export type ImageInputRole = 'generic' | 'init-image' | 'style-reference' | 'subject-reference'
+  | 'composition-reference' | 'mask' | 'control-image'
+
+export interface SemanticImageSource {
+  kind: 'attachment' | 'workspace-path'
+  value: string
+  role: ImageInputRole
+}
+
+export interface GenerationCorrelation { namespace: string; id: string }
+
+export interface ImageGenerationRequestContext {
+  sessionId: string
+  turn: number
+  workspaceRoot: string
+  provider: string
+  model: string
+  prompt: string
+  aspectRatio: ImageAspectRatio
+  resolution: ImageResolution
+  inputs: readonly SemanticImageSource[]
+  correlation?: GenerationCorrelation
+  outputPath: string
+}
+
+export type ImageGenerationMiddleware = (
+  request: ImageGenerationRequestContext,
+  next: () => Promise<CreateImageResult>,
+) => Promise<CreateImageResult>
+
+export type ImageGenerationResultEvent =
+  | { status: 'succeeded'; request: ImageGenerationRequestContext; result: CreateImageResult }
+  | { status: 'failed'; request: ImageGenerationRequestContext; error: string }
+
+export type ImageGenerationResultListener = (event: ImageGenerationResultEvent) => void | Promise<void>
+
 export interface GenerateImageRequest {
   provider: ImageProviderProfile
   model: ImageModelProfile

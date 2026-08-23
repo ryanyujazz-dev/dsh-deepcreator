@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest'
 import {
   MANAGED_PROFILE_VERSION,
   managedProfileNeedsRefresh,
+  preservedExternalBundles,
+  preservedExternalDependencies,
   requiredWorkspaceLinks,
 } from '../../../scripts/profile-migrate/contract.mjs'
 
@@ -44,5 +46,20 @@ describe('managed DeepCreator profile contract', () => {
     } finally {
       await rm(targetDir, { recursive: true, force: true })
     }
+  })
+
+  it('retains external bundles from source and the current managed target', () => {
+    expect(preservedExternalBundles(
+      { dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', 'source-addon'] } } },
+      { dsh: { profile: { bundles: ['target-addon', 'source-addon', '@ryanyujazz/dsh-deepcreator-web'] } } },
+    )).toEqual(['source-addon', 'target-addon'])
+  })
+
+  it('retains external dependency specs and excludes managed packages', () => {
+    expect(preservedExternalDependencies(
+      new Set(['owned']),
+      { dependencies: { owned: 'old', addon: '1.0.0' } },
+      { dependencies: { owned: 'link:managed', addon: '2.0.0', local: '3.0.0' } },
+    )).toEqual({ addon: '2.0.0', local: '3.0.0' })
   })
 })

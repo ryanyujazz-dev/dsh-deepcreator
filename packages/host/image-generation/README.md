@@ -2,6 +2,8 @@
 
 Host-side `create_image` capability. Provider profiles are stored in the official `image-generation` Settings namespace; API keys are referenced by environment-style credential names and resolved through the official Credentials service for every request.
 
+`ImageGenerationRuntime` is the reversible public extension boundary for request middleware and result observers. Structured `input_images` assign semantic roles to attachment or workspace inputs; legacy `input_attachment_ids` and `input_paths` remain supported and normalize to `generic`.
+
 The tool supports native OpenAI Images, Volcengine Ark Seedream, and Gemini image-generation endpoints. Every successful call creates exactly one workspace PNG and one durable image attachment.
 
 OpenAI calls the native Images generation/edit endpoints, Seedream calls Ark `images/generations` with group output disabled, and Gemini calls the current Interactions `interactions` endpoint. Provider base URLs and model IDs remain settings-owned so deployments can override the presets without changing this package.

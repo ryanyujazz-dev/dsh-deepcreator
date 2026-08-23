@@ -9,10 +9,11 @@ import { generateImage } from './providers.ts'
 import { IMAGE_GENERATION_SETTINGS_KEY } from './settings.ts'
 import type {
   CreateImageResult, ImageAspectRatio, ImageGenerationMode, ImageGenerationSettings, ImageInput,
-  ImageModelProfile, ImageProviderProfile, ImageResolution,
+  ImageInputRole, ImageModelProfile, ImageProviderProfile, ImageResolution, SemanticImageSource,
 } from './types.ts'
 import { writeWorkspacePng } from './workspace.ts'
 import type { ImageGenerationRetryPolicy } from './retry-policy.ts'
+import type { ImageGenerationRuntime } from './runtime.ts'
 
 const ASPECT_RATIOS = ['source', '1:1', '3:2', '2:3', '4:3', '3:4', '16:9', '9:16'] as const
 const RESOLUTIONS = ['1K', '2K', '4K'] as const
@@ -112,6 +113,7 @@ function json(value: unknown): JsonValue { return JSON.parse(JSON.stringify(valu
 
 export interface ImageGenerationToolEnvironment {
   retryPolicy: ImageGenerationRetryPolicy
+  runtime: ImageGenerationRuntime
   turnOf(agent: ReturnType<typeof owner>): number
 }
 
@@ -127,6 +129,14 @@ export function createImageTool(ctx: Context, env: ImageGenerationToolEnvironmen
       resolution: { type: 'string', required: true, enum: RESOLUTIONS },
       input_attachment_ids: { type: 'array', items: { type: 'string' } },
       input_paths: { type: 'array', items: { type: 'string' } },
+      input_images: { type: 'array', items: { type: 'object', additionalProperties: false, properties: {
+        source_kind: { type: 'string', required: true, enum: ['attachment', 'workspace-path'] },
+        source: { type: 'string', required: true },
+        role: { type: 'string', required: true, enum: ['generic', 'init-image', 'style-reference', 'subject-reference', 'composition-reference', 'mask', 'control-image'] },
+      } } },
+      correlation: { type: 'object', additionalProperties: false, properties: {
+        namespace: { type: 'string', required: true }, id: { type: 'string', required: true },
+      } },
       output_path: { type: 'string', required: true },
     },
     output: {
@@ -153,7 +163,16 @@ export function createImageTool(ctx: Context, env: ImageGenerationToolEnvironmen
         const settings = config(ctx)
         const provider = selectProvider(settings, args.provider)
         const model = selectModel(provider, args.model)
-        const mode: ImageGenerationMode = (args.input_attachment_ids?.length ?? 0) + (args.input_paths?.length ?? 0) > 0 ? 'image-to-image' : 'text-to-image'
+        if ((args.input_images?.length ?? 0) > 0 && ((args.input_attachment_ids?.length ?? 0) > 0 || (args.input_paths?.length ?? 0) > 0)) {
+          throw new Error('input_images cannot be combined with legacy input_attachment_ids or input_paths.')
+        }
+        const semanticSources: SemanticImageSource[] = args.input_images?.map(input => ({
+          kind: input.source_kind as SemanticImageSource['kind'], value: input.source, role: input.role as ImageInputRole,
+        })) ?? [
+          ...(args.input_attachment_ids ?? []).map(value => ({ kind: 'attachment' as const, value, role: 'generic' as const })),
+          ...(args.input_paths ?? []).map(value => ({ kind: 'workspace-path' as const, value, role: 'generic' as const })),
+        ]
+        const mode: ImageGenerationMode = semanticSources.length > 0 ? 'image-to-image' : 'text-to-image'
         if (!model.modes.includes(mode)) throw new Error(`Model "${provider.id}/${model.id}" does not support ${mode}.`)
         const aspectRatio = args.aspect_ratio as ImageAspectRatio
         const resolution = args.resolution as ImageResolution
@@ -163,19 +182,28 @@ export function createImageTool(ctx: Context, env: ImageGenerationToolEnvironmen
         if (provider.protocol === 'openai' && resolution !== '1K') throw new Error('The native OpenAI Images adapter supports resolution 1K only.')
         const resolved = await ctx.credentials.resolve(credentialRef(provider.apiKeyEnv))
         if (resolved === undefined) throw new Error(`No API key is configured for provider "${provider.id}" (${provider.apiKeyEnv}).`)
+        const attachmentSources = semanticSources.filter(input => input.kind === 'attachment')
+        const workspaceSources = semanticSources.filter(input => input.kind === 'workspace-path')
         const inputs = [
-          ...await attachmentInputs(ctx, exec, args.input_attachment_ids ?? []),
-          ...await workspaceInputs(exec, args.input_paths ?? []),
+          ...await attachmentInputs(ctx, exec, attachmentSources.map(input => input.value)),
+          ...await workspaceInputs(exec, workspaceSources.map(input => input.value)),
         ]
-        const generated = await generateImage({ provider, model, apiKey: resolved.value, prompt: args.prompt, aspectRatio, resolution, inputs, signal: exec.signal })
-        const png = await sharp(generated.data).rotate().png().toBuffer()
-        const metadata = await sharp(png).metadata()
-        if (metadata.width === undefined || metadata.height === undefined) throw new Error('Generated image has no readable dimensions.')
-        const writtenPath = await writeWorkspacePng(agent.session.header.cwd ?? process.cwd(), args.output_path, png)
-        const attachment = await ctx.attachments.saveImage({ data: png, mediaType: 'image/png' as ImageMediaType, name: path.basename(writtenPath) })
-        const result = json({ path: writtenPath, provider: provider.id, model: model.id, aspectRatio, resolution, width: metadata.width, height: metadata.height, attachment })
+        const request = {
+          sessionId: String(agent.id), turn: env.turnOf(agent), workspaceRoot: agent.session.header.cwd ?? process.cwd(), provider: provider.id, model: model.id,
+          prompt: args.prompt, aspectRatio, resolution, inputs: semanticSources,
+          ...(args.correlation === undefined ? {} : { correlation: args.correlation }), outputPath: args.output_path,
+        }
+        const result = await env.runtime.run(request, async () => {
+          const generated = await generateImage({ provider, model, apiKey: resolved.value, prompt: args.prompt, aspectRatio, resolution, inputs, signal: exec.signal })
+          const png = await sharp(generated.data).rotate().png().toBuffer()
+          const metadata = await sharp(png).metadata()
+          if (metadata.width === undefined || metadata.height === undefined) throw new Error('Generated image has no readable dimensions.')
+          const writtenPath = await writeWorkspacePng(agent.session.header.cwd ?? process.cwd(), args.output_path, png)
+          const attachment = await ctx.attachments.saveImage({ data: png, mediaType: 'image/png' as ImageMediaType, name: path.basename(writtenPath) })
+          return json({ path: writtenPath, provider: provider.id, model: model.id, aspectRatio, resolution, width: metadata.width, height: metadata.height, attachment }) as unknown as CreateImageResult
+        })
         env.retryPolicy.recordSuccess(attempt)
-        return result
+        return json(result)
       } catch (error) {
         if (exec.signal.aborted) throw error
         throw env.retryPolicy.recordFailure(attempt, error)

@@ -23,10 +23,14 @@ export function apply(ctx: ClientContext): void {
       ctx.locale.register(NS, { zh, en }),
       ctx.slots.inject('settings.plugin.item', () => ctx.slots.register({ name: 'settings.plugin.item', key: 'image-generation', locale: NS, inject: () => ({ settings, api }) }, ImageGenerationSettingsCard)),
       ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({ name: 'tool.call.toolview', key: 'create_image', locale: 'conversation' }, ImageToolRow)),
-      ctx.slots.inject('deepcreator.conversation.chat.turnMedia', () => ctx.slots.register({ name: 'deepcreator.conversation.chat.turnMedia', id: 'generated-images', order: 0 }, GeneratedTurnImages)),
+      ctx.slots.inject('deepcreator.conversation.chat.turnMedia', () => ctx.slots.register({
+        name: 'deepcreator.conversation.chat.turnMedia', id: 'generated-images', order: 0,
+        children: { 'deepcreator.image-generation.result.action': { kind: 'list', scope: 'session' } },
+      }, GeneratedTurnImages)),
     ]
     return () => { for (const dispose of disposers.reverse()) dispose() }
   }, 'ui-image-generation: settings and conversation registrations')
 }
 
 export { ImageGenerationSettingsCard, ImageToolRow, GeneratedTurnImages }
+export type { GeneratedImageActionOwnerProps } from './GeneratedTurnImages.tsx'

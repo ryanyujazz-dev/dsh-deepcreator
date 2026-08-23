@@ -1,10 +1,42 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 
-export const MANAGED_PROFILE_VERSION = 3
+export const MANAGED_PROFILE_VERSION = 4
 export const RETIRED_PROFILE_DEPENDENCIES = new Set([
   '@ryanyujazz/dsh-browser-mcp',
 ])
+
+const BUILTIN_BUNDLES = new Set([
+  '@deepseek-ai/dsh-base',
+  '@deepseek-ai/dsh-web-app',
+  '@ryanyujazz/dsh-execflow-chat',
+  '@ryanyujazz/dsh-deepcreator-web',
+])
+
+/** Preserve independently installed Bundle ids across managed-profile refreshes. */
+export function preservedExternalBundles(...manifests) {
+  const result = []
+  const seen = new Set()
+  for (const manifest of manifests) {
+    for (const bundle of manifest?.dsh?.profile?.bundles ?? []) {
+      if (typeof bundle !== 'string' || BUILTIN_BUNDLES.has(bundle) || seen.has(bundle)) continue
+      seen.add(bundle)
+      result.push(bundle)
+    }
+  }
+  return result
+}
+
+/** Preserve unknown dependencies while rebuilding the managed dependency set. */
+export function preservedExternalDependencies(owned, ...manifests) {
+  const result = {}
+  for (const manifest of manifests) {
+    for (const [name, spec] of Object.entries(manifest?.dependencies ?? {})) {
+      if (!owned.has(name)) result[name] = spec
+    }
+  }
+  return result
+}
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'))

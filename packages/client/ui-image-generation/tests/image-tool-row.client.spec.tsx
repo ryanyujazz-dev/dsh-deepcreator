@@ -65,10 +65,12 @@ describe('GeneratedTurnImages', () => {
     ])
     const snapshot = { chat: { locations: { getTurn: () => [...nodes.keys()] }, nodes } }
     const renderMessageImages = vi.fn(() => <span data-final-image />)
+    const renderSlot = vi.fn(() => null)
     const view = render(
       <GeneratedTurnImages
         turn={{ turn: 1 } as never}
         renderMessageImages={renderMessageImages}
+        renderSlot={renderSlot as never}
         useSession={((selector: (value: typeof snapshot) => unknown) => selector(snapshot)) as never}
       />,
     )
@@ -76,6 +78,7 @@ describe('GeneratedTurnImages', () => {
     expect(view.container.querySelectorAll('[data-generated-turn-image]')).toHaveLength(2)
     expect(renderMessageImages).toHaveBeenNthCalledWith(1, { images: [{ attachment: result.content[0]?.attachment }], align: 'start' })
     expect(renderMessageImages).toHaveBeenNthCalledWith(2, { images: [{ attachment: second.content[0]?.attachment }], align: 'start' })
+    expect(renderSlot).toHaveBeenCalledTimes(2)
     expect(turnImageStyles).toMatch(/\.image\s*\{[^}]*width: 50%/)
     expect(turnImageStyles).toContain('aspect-ratio: var(--dsh-generated-image-ratio)')
   })

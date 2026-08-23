@@ -8,7 +8,9 @@ import {
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { MANAGED_PROFILE_VERSION } from './contract.mjs'
+import {
+  MANAGED_PROFILE_VERSION, preservedExternalBundles, preservedExternalDependencies,
+} from './contract.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const dshHome = resolve(process.env.DSH_HOME ?? join(homedir(), '.dsh'))
@@ -148,16 +150,9 @@ const sourceBundles = sourceManifest.dsh?.profile?.bundles
 if (!Array.isArray(sourceBundles)) {
   throw new Error(`DeepCreator profile migration: ${join(sourceDir, 'package.json')} has no dsh.profile.bundles array`)
 }
-const thirdPartyBundles = sourceBundles.filter(bundle =>
-  bundle !== '@deepseek-ai/dsh-base'
-  && bundle !== '@deepseek-ai/dsh-web-app'
-  && bundle !== '@ryanyujazz/dsh-execflow-chat'
-  && bundle !== '@ryanyujazz/dsh-deepcreator-web')
+const thirdPartyBundles = preservedExternalBundles(sourceManifest, existingTarget)
 
-const dependencies = {}
-for (const [name, spec] of Object.entries(sourceManifest.dependencies ?? {})) {
-  if (!OWNED_DEPENDENCIES.has(name)) dependencies[name] = spec
-}
+const dependencies = preservedExternalDependencies(OWNED_DEPENDENCIES, sourceManifest, existingTarget)
 dependencies['@ryanyujazz/dsh-deepcreator-web'] = `link:${bundlePath}`
 for (const name of [
   '@deepseek-ai/dsh-agent',

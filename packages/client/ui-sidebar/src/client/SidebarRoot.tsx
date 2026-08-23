@@ -203,6 +203,7 @@ export function SidebarRoot({
             {wide && <span className={clsx(css.primaryLabel, css.wide)}>{t('scheduledTasks')}</span>}
           </SidebarRow>
         </li>
+        {renderSlot('deepcreator.sidebar.primary.action', { wide })}
       </ul>
 
       {/* The browsing region fills the expanded column between controls and foot. */}
