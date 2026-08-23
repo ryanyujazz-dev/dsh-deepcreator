@@ -3,13 +3,32 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import type { Session } from '@deepseek-ai/dsh-session'
+import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import { afterEach, describe, expect, it } from 'vitest'
-import { ArtifactReader } from '../src/index.ts'
+import {
+  ARTIFACT_PRESENTATION_PROMPT, ARTIFACT_RESOLVER_DESCRIPTION, ArtifactReader,
+} from '../src/index.ts'
 
 const temporary: string[] = []
 afterEach(async () => { await Promise.all(temporary.splice(0).map(path => rm(path, { recursive: true, force: true }))) })
 
 describe('ArtifactReader', () => {
+  it('gives the Agent explicit, selective artifact presentation guidance', async () => {
+    const ctx = new Context()
+    new SystemPrompt(ctx, {})
+    new ArtifactReader(ctx)
+
+    const assembly = await ctx.systemPrompt.assemble()
+    expect(assembly.sections).toContainEqual({
+      name: 'deepcreator:artifact-presentation',
+      text: ARTIFACT_PRESENTATION_PROMPT,
+    })
+    expect(ARTIFACT_PRESENTATION_PROMPT).toContain('proactively present one primary user-consumable artifact')
+    expect(ARTIFACT_PRESENTATION_PROMPT).toContain('Do not open ordinary source files')
+    expect(ARTIFACT_PRESENTATION_PROMPT).toContain('do not reopen a resource')
+    expect(ARTIFACT_RESOLVER_DESCRIPTION).toContain('present the primary output once')
+  })
+
   it('reads workspace files by absolute or relative path', async () => {
     const workspace = await mkdtemp(join(tmpdir(), 'dsh-artifacts-workspace-')); temporary.push(workspace)
     await writeFile(join(workspace, 'plan.md'), '# plan')
