@@ -17,3 +17,5 @@ Core imports none of Playwright, Electron, Chrome, React, or the current panel i
 If a fresh temporary live IAB tab cannot be presented, its resolver closes it immediately. Structured snapshots share one Provider-neutral visibility/redaction script: hidden controls and secret/token fields are excluded, while model-facing URL copies redact sensitive and opaque query values. Exact URLs remain inside Provider/UI state rather than entering tool results and Session logs.
 
 A temporary live IAB tab becomes `deliverable` only after an exact Surface presentation acknowledgement. Provider-owned live Chrome/headed-Playwright tabs are deliverables when shown. Unpresented live tabs and ordinary temporary background tabs close at turn end.
+
+The agent-fenced `browser/closeTab` Remote is the user-interface lifecycle boundary: closing a Browser instance drains its queued command, invokes the owning Provider's `close`, deletes the logical tab, and bumps the Browser state revision. Hiding or unmounting a Presenter remains presentation-only and never calls this operation.

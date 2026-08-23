@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, render, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { BrowserPanel } from '../src/client/BrowserPanel.tsx'
 import { BrowserClientRuntime } from '../src/client/runtime.ts'
 import type { BrowserRemoteClient, BrowserSurfaceBridge } from '../src/client/runtime.ts'
@@ -17,7 +17,7 @@ class ResizeObserverStub {
 beforeEach(() => { notifyResize = () => {}; vi.stubGlobal('ResizeObserver', ResizeObserverStub) })
 afterEach(() => { cleanup(); delete window.deepcreatorBrowserSurface; vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
-describe('BrowserPanel live surface', () => {
+describe('BrowserPanel', () => {
   it('commits the selected live tab and mounts its exact native surface', async () => {
     let finishMount = (): void => {}
     let panelWidth = 240
@@ -66,6 +66,33 @@ describe('BrowserPanel live surface', () => {
     await waitFor(() => expect(browser.waitForSurface('tab-1', 20)).resolves.toEqual({ ok: true }))
     expect(document.body.textContent).toContain('https://example.test/')
     expect(contributePanelInfo).toHaveBeenCalledWith({ tabLabels: { 'tab-1': 'Example' } })
+    browser.dispose()
+  })
+
+  it('distinguishes a missing screenshot from a failed preview and retries it explicitly', async () => {
+    const state = vi.fn(async () => ({ ok: true as const, value: { ok: true as const, value: {
+      sessionId: 'agent-1', revision: 1, browsers: [], selectedTabId: 'tab-1',
+      tabs: [{
+        tabId: 'tab-1', browserId: 'playwright-chromium', url: 'https://example.test/', title: 'Example', loading: false,
+        canGoBack: false, canGoForward: false, lifecycle: 'deliverable' as const, presentation: 'snapshot' as const,
+        presentationBinding: { owner: 'deepcreator' as const, mode: 'snapshot' as const, requiredBeforeControl: false },
+        controlState: 'ready' as const, presentationState: 'presented' as const, snapshotArtifactId: 'shot-1',
+      }],
+    } } }))
+    const snapshotImage = vi.fn()
+      .mockResolvedValueOnce({ ok: true as const, value: { ok: false as const, code: 'BROWSER_UNAVAILABLE' as const, message: 'preview failed' } })
+      .mockResolvedValueOnce({ ok: true as const, value: { ok: true as const, value: { artifactId: 'shot-1', dataUrl: 'data:image/png;base64,cG5n' } } })
+    const browser = new BrowserClientRuntime({ state, snapshotImage } as unknown as BrowserRemoteClient, () => 'agent-1' as never)
+    await browser.refresh()
+    const view = render(<BrowserPanel {...({
+      browser, typeId: 'browser', route: 'instance', tabs: ['tab-1'], activeInstanceId: 'tab-1', visible: true,
+      openInstance: vi.fn(), contributePanelInfo: () => () => undefined, t: (key: string) => key,
+    } as never)} />)
+
+    expect(view.getByText(/snapshotFailed: BROWSER_UNAVAILABLE: preview failed/)).toBeTruthy()
+    fireEvent.click(view.getByRole('button', { name: 'retry' }))
+    await waitFor(() => expect(view.container.querySelector('img')?.getAttribute('src')).toBe('data:image/png;base64,cG5n'))
+    expect(view.queryByText('snapshotEmpty')).toBeNull()
     browser.dispose()
   })
 })

@@ -65,6 +65,19 @@ describe('BrowserRuntime', () => {
     expect(runtime.tab('agent-1', created.tab.tabId)).toMatchObject({ lifecycle: 'deliverable', presentationState: 'presented', controlState: 'ready' })
   })
 
+  it('destroys the Provider page and logical identity when the user closes a tab', async () => {
+    const provider = visible(); const runtime = new BrowserRuntime(); runtime.registerProvider(provider)
+    const created = await runtime.createTab({ sessionId: 'agent-1', turn: 8, workspaceRoot: process.cwd(), selection: { browserId: 'visible' }, signal })
+    runtime.markPresentationPending('agent-1', created.tab.tabId)
+    runtime.settlePresentation('agent-1', created.tab.tabId, 'presented')
+
+    await runtime.close('agent-1', created.tab.tabId, signal)
+
+    expect(provider.close).toHaveBeenCalledOnce()
+    expect(() => runtime.tab('agent-1', created.tab.tabId)).toThrowError(expect.objectContaining({ code: 'TAB_NOT_FOUND' }))
+    expect(runtime.state('agent-1').tabs).toEqual([])
+  })
+
   it('fences node refs by snapshot and interrupts control by exact surface', async () => {
     const provider = visible(); const runtime = new BrowserRuntime(); runtime.registerProvider(provider)
     const created = await runtime.createTab({ sessionId: 'agent-1', turn: 0, workspaceRoot: process.cwd(), selection: { browserId: 'visible' }, signal })

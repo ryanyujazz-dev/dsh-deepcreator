@@ -106,6 +106,14 @@ export class BrowserHostService extends TypertRemoteService {
     catch (error) { return browserFailure(error) }
   }
 
+  @Remote('closeTab')
+  async closeTab(agent: Agent, tabId: string): Promise<BrowserRemoteResult<{ closed: true; tabId: string }>> {
+    try {
+      await this.browser.close(String(agent.id), tabId, AbortSignal.timeout(5_000))
+      return { ok: true, value: { closed: true, tabId } }
+    } catch (error) { return browserFailure(error) }
+  }
+
   @Remote('clearBrowserData')
   async clearBrowserData(browserId: string): Promise<BrowserRemoteResult<{ cleared: string[]; unavailable: string[] }>> {
     const ids = browserId === 'all' ? this.browser.descriptors().map(browser => browser.browserId) : [browserId]

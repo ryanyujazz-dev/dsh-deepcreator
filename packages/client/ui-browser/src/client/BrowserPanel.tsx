@@ -47,11 +47,15 @@ export function BrowserPanel({ browser, route, activeInstanceId, openInstance, c
   if (snapshot.error !== undefined) return <div className={css.root}><div className={css.empty}>{t('unavailable')}: {snapshot.error}</div></div>
   if (route === 'home' || activeInstanceId === undefined) return <div className={css.root}>{states.length === 0 ? <div className={css.empty}>{t('empty')}</div> : <div className={css.tabs}>{states.map(tab => <button key={tab.tabId} type="button" className={css.tab} onClick={() => openInstance(tab.tabId)}>{tab.title || tab.url || tab.tabId}</button>)}</div>}</div>
   if (active === undefined) return <div className={css.root}><div className={css.empty}>{t('stale')}</div></div>
+  const snapshotError = snapshot.snapshotErrors[active.tabId]
   return <div className={css.root}>
     <div className={css.status}><span>{active.loading ? t('loading') : active.presentation === 'snapshot' ? t('background') : t('browser')}</span><span className={css.url} title={active.url}>{active.url}</span></div>
     {active.presentation === 'live' && active.surfaceId !== undefined
       ? <LiveSurface browser={browser} tabId={active.tabId} surfaceId={active.surfaceId} visible={visible} label={t('liveUnavailable')} />
-      : active.snapshotImageDataUrl === undefined ? <div className={css.empty}>{t('snapshotEmpty')}</div> : <div className={css.surface}><img className={css.snapshot} src={active.snapshotImageDataUrl} alt={active.title || active.url} /></div>}
+      : active.snapshotImageDataUrl !== undefined ? <div className={css.surface}><img className={css.snapshot} src={active.snapshotImageDataUrl} alt={active.title || active.url} /></div>
+        : active.snapshotArtifactId === undefined ? <div className={css.empty}>{t('snapshotEmpty')}</div>
+          : snapshotError === undefined ? <div className={css.empty}>{t('snapshotLoading')}</div>
+            : <div className={css.empty}><div className={css.previewFailure}><span>{t('snapshotFailed')}: {snapshotError}</span><button type="button" className={css.retry} onClick={() => { void browser.retrySnapshot(active.tabId) }}>{t('retry')}</button></div></div>}
     {active.lastAction === undefined ? null : <div className={css.timeline}>{active.lastAction.action} · {active.lastAction.result}</div>}
   </div>
 }

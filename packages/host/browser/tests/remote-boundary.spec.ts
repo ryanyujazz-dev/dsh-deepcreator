@@ -7,6 +7,11 @@ interface GeneratedInvocation {
 }
 
 describe('Browser generated Remote boundary', () => {
+  it('exposes an agent-fenced close operation for a user-closed Workbench tab', () => {
+    const invocation = (TYPERT as { invocations: GeneratedInvocation[] }).invocations.find(item => item.id.endsWith('#browser/closeTab'))
+    expect(invocation).toBeDefined()
+  })
+
   it('accepts provider-contributed namespaced capabilities in browser/state', () => {
     const invocation = (TYPERT as { invocations: GeneratedInvocation[] }).invocations.find(item => item.id.endsWith('#browser/state'))
     expect(invocation).toBeDefined()

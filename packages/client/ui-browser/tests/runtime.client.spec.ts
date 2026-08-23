@@ -31,6 +31,76 @@ describe('BrowserClientRuntime', () => {
     runtime.dispose()
   })
 
+  it('publishes screenshot hydration independently of Host revision and recovers after a failed preview fetch', async () => {
+    const tab = {
+      tabId: 'tab-1', browserId: 'playwright-chromium', url: 'https://example.test', title: 'Example', loading: false, canGoBack: false, canGoForward: false,
+      lifecycle: 'deliverable' as const, presentation: 'snapshot' as const, presentationBinding: { owner: 'deepcreator' as const, mode: 'snapshot' as const, requiredBeforeControl: false },
+      controlState: 'ready' as const, presentationState: 'presented' as const, snapshotArtifactId: 'shot-1',
+    }
+    const state = vi.fn(async () => ({ ok: true as const, value: { ok: true as const, value: { sessionId: 'agent-1', revision: 1, browsers: [], tabs: [tab] } } }))
+    const snapshotImage = vi.fn()
+      .mockResolvedValueOnce({ ok: true as const, value: { ok: false as const, code: 'BROWSER_UNAVAILABLE' as const, message: 'preview transport failed' } })
+      .mockResolvedValueOnce({ ok: true as const, value: { ok: true as const, value: { artifactId: 'shot-1', dataUrl: 'data:image/png;base64,cG5n' } } })
+    const runtime = new BrowserClientRuntime({ state, snapshotImage } as unknown as BrowserRemoteClient, () => 'agent-1' as never)
+
+    await runtime.refresh()
+    expect(runtime.getSnapshot().state.revision).toBe(1)
+    expect(runtime.getSnapshot().state.tabs[0]?.snapshotImageDataUrl).toBeUndefined()
+    expect(runtime.getSnapshot().snapshotErrors['tab-1']).toContain('preview transport failed')
+
+    await runtime.retrySnapshot('tab-1')
+    expect(runtime.getSnapshot().state.revision).toBe(1)
+    expect(runtime.getSnapshot().state.tabs[0]?.snapshotImageDataUrl).toBe('data:image/png;base64,cG5n')
+    expect(runtime.getSnapshot().snapshotErrors['tab-1']).toBeUndefined()
+    expect(snapshotImage).toHaveBeenCalledTimes(2)
+    runtime.dispose()
+  })
+
+  it('bounds automatic screenshot retries until the user explicitly retries', async () => {
+    let revision = 1
+    const tab = {
+      tabId: 'tab-1', browserId: 'playwright-chromium', url: 'https://example.test', title: 'Example', loading: false, canGoBack: false, canGoForward: false,
+      lifecycle: 'deliverable' as const, presentation: 'snapshot' as const, presentationBinding: { owner: 'deepcreator' as const, mode: 'snapshot' as const, requiredBeforeControl: false },
+      controlState: 'ready' as const, presentationState: 'presented' as const, snapshotArtifactId: 'shot-1',
+    }
+    const state = vi.fn(async () => ({ ok: true as const, value: { ok: true as const, value: { sessionId: 'agent-1', revision, browsers: [], tabs: [tab] } } }))
+    const snapshotImage = vi.fn(async () => ({ ok: true as const, value: { ok: false as const, code: 'BROWSER_UNAVAILABLE' as const, message: 'preview transport failed' } }))
+    const runtime = new BrowserClientRuntime({ state, snapshotImage } as unknown as BrowserRemoteClient, () => 'agent-1' as never)
+
+    await runtime.refresh()
+    await new Promise(resolve => setTimeout(resolve, 300))
+    await new Promise(resolve => setTimeout(resolve, 550))
+    expect(snapshotImage).toHaveBeenCalledTimes(3)
+
+    revision++
+    await runtime.refresh()
+    expect(snapshotImage).toHaveBeenCalledTimes(3)
+
+    await runtime.retrySnapshot('tab-1')
+    expect(snapshotImage).toHaveBeenCalledTimes(4)
+    runtime.dispose()
+  })
+
+  it('closes the Host Browser tab when a Workbench instance is closed', async () => {
+    let closed = false
+    const tab = {
+      tabId: 'tab-1', browserId: 'iab', url: 'https://example.test', title: 'Example', loading: false, canGoBack: false, canGoForward: false,
+      lifecycle: 'deliverable' as const, presentation: 'live' as const, presentationBinding: { owner: 'deepcreator' as const, mode: 'live' as const, requiredBeforeControl: true },
+      controlState: 'ready' as const, presentationState: 'presented' as const, surfaceId: 'surface-1',
+    }
+    const state = vi.fn(async () => ({ ok: true as const, value: { ok: true as const, value: { sessionId: 'agent-1', revision: closed ? 2 : 1, browsers: [], tabs: closed ? [] : [tab] } } }))
+    const closeTab = vi.fn(async (tabId: string) => { closed = true; return { ok: true as const, value: { ok: true as const, value: { closed: true as const, tabId } } } })
+    const runtime = new BrowserClientRuntime({ state, closeTab } as unknown as BrowserRemoteClient, () => 'agent-1' as never)
+    await runtime.refresh()
+
+    await runtime.closeTab('tab-1')
+
+    expect(closeTab).toHaveBeenCalledWith('tab-1')
+    expect(runtime.getSnapshot().state.tabs).toEqual([])
+    expect(runtime.getSnapshot().state.revision).toBe(2)
+    runtime.dispose()
+  })
+
   it('distinguishes panel render, native mount, rejection, and success', async () => {
     const remote = { state: vi.fn() } as unknown as BrowserRemoteClient
     const runtime = new BrowserClientRuntime(remote, () => 'agent-1' as never)

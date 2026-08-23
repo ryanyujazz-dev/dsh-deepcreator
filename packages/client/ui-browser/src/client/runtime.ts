@@ -11,13 +11,14 @@ export interface BrowserSurfaceBridge {
 export interface BrowserRemoteClient {
   state(sessionId: SessionId): Promise<RemoteResult<BrowserRemoteResult<BrowserStateSnapshot>>>
   waitStateRevision?(sessionId: SessionId, afterRevision: number): Promise<RemoteResult<BrowserRemoteResult<{ revision: number }>>>
+  closeTab?(tabId: string): Promise<RemoteResult<BrowserRemoteResult<{ closed: true; tabId: string }>>>
   clearBrowserData?(browserId: string): Promise<RemoteResult<BrowserRemoteResult<{ cleared: string[]; unavailable: string[] }>>>
   manageProvider?(browserId: string, action: 'install' | 'repair' | 'uninstall'): Promise<RemoteResult<BrowserRemoteResult<{ status: 'ready' | 'unavailable' | 'removed'; diagnostic?: string }>>>
   snapshotImage?(tabId: string): Promise<RemoteResult<BrowserRemoteResult<{ artifactId: string; dataUrl: string }>>>
 }
 
 const EMPTY_STATE: BrowserStateSnapshot = { sessionId: '', revision: 0, browsers: [], tabs: [] }
-export interface BrowserClientSnapshot { state: BrowserStateSnapshot; error?: string }
+export interface BrowserClientSnapshot { state: BrowserStateSnapshot; snapshotErrors: Readonly<Record<string, string>>; error?: string }
 export type BrowserSurfaceMountFailure = {
   code: 'PANEL_RENDER_TIMEOUT' | 'SURFACE_MOUNT_REJECTED' | 'SURFACE_MOUNT_TIMEOUT' | 'SURFACE_DESTROYED'
   message: string
@@ -31,8 +32,12 @@ export class BrowserClientRuntime {
   readonly #surfaceWaiters = new Map<string, Set<(outcome: BrowserSurfaceMountOutcome) => void>>()
   readonly #surfaces = new Map<string, BrowserSurfaceMountState>()
   readonly #snapshotImages = new Map<string, string>()
+  readonly #snapshotErrors = new Map<string, { artifactId: string; message: string }>()
+  readonly #snapshotAttempts = new Map<string, number>()
+  readonly #snapshotRetryTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  readonly #closingTabs = new Set<string>()
   #state = EMPTY_STATE
-  #snapshot: BrowserClientSnapshot = { state: EMPTY_STATE }
+  #snapshot: BrowserClientSnapshot = { state: EMPTY_STATE, snapshotErrors: {} }
   #error: string | undefined
   #timer: ReturnType<typeof setInterval> | undefined
   #watching = false
@@ -59,17 +64,12 @@ export class BrowserClientRuntime {
       if (!wire.ok) { this.#setError(`${wire.error.code}: ${wire.error.message}`); return }
       if (!wire.value.ok) { this.#setError(`${wire.value.code}: ${wire.value.message}`); return }
       let next = wire.value.value
-      if (this.remote.snapshotImage !== undefined) {
-        await Promise.all(next.tabs.map(async tab => {
-          if (tab.snapshotArtifactId === undefined || this.#snapshotImages.has(tab.snapshotArtifactId)) return
-          const image = await this.remote.snapshotImage!(tab.tabId).catch(() => undefined)
-          if (image?.ok === true && image.value.ok && image.value.value.artifactId === tab.snapshotArtifactId) this.#snapshotImages.set(tab.snapshotArtifactId, image.value.value.dataUrl)
-        }))
-        next = { ...next, tabs: next.tabs.map(tab => tab.snapshotArtifactId === undefined ? tab : { ...tab, ...(this.#snapshotImages.get(tab.snapshotArtifactId) === undefined ? {} : { snapshotImageDataUrl: this.#snapshotImages.get(tab.snapshotArtifactId)! }) }) }
-      }
+      this.#pruneSnapshots(next)
+      next = this.#withSnapshotImages(next)
       if (next.revision !== this.#state.revision || next.sessionId !== this.#state.sessionId || this.#error !== undefined) {
         this.#state = next; this.#error = undefined; this.#publish()
       }
+      await this.#hydrateSnapshots(wire.value.value)
     } catch (error) { this.#setError(error instanceof Error ? error.message : String(error)) }
     finally { this.#busy = false }
   }
@@ -83,6 +83,31 @@ export class BrowserClientRuntime {
     const state = this.#surfaces.get(tabId)
     this.#surfaces.delete(tabId)
     if (state?.phase === 'started') this.#settleSurface(tabId, { ok: false, failure: { code: 'SURFACE_DESTROYED', message: 'The Browser panel unmounted before its native surface became ready.' } })
+  }
+  async closeTab(tabId: string): Promise<void> {
+    if (this.#closingTabs.has(tabId)) return
+    if (this.remote.closeTab === undefined) { this.#setError('PRESENTATION_UNAVAILABLE: Browser tab closing is unavailable in this deployment.'); return }
+    this.#closingTabs.add(tabId)
+    try {
+      const wire = await this.remote.closeTab(tabId)
+      if (!wire.ok) { this.#setError(`${wire.error.code}: ${wire.error.message}`); return }
+      if (!wire.value.ok) { this.#setError(`${wire.value.code}: ${wire.value.message}`); return }
+      this.#dropTabPreview(tabId)
+      await this.refresh()
+    } catch (error) { this.#setError(error instanceof Error ? error.message : String(error)) }
+    finally { this.#closingTabs.delete(tabId) }
+  }
+  async retrySnapshot(tabId: string): Promise<void> {
+    const tab = this.#state.tabs.find(candidate => candidate.tabId === tabId)
+    if (tab?.snapshotArtifactId === undefined) return
+    this.#snapshotImages.delete(tab.snapshotArtifactId)
+    this.#snapshotErrors.delete(tabId)
+    this.#snapshotAttempts.delete(tab.snapshotArtifactId)
+    const timer = this.#snapshotRetryTimers.get(tab.snapshotArtifactId)
+    if (timer !== undefined) clearTimeout(timer)
+    this.#snapshotRetryTimers.delete(tab.snapshotArtifactId)
+    this.#publish()
+    await this.refresh()
   }
   waitForSurface(tabId: string, timeoutMs: number): Promise<BrowserSurfaceMountOutcome> {
     const current = this.#surfaces.get(tabId)
@@ -102,7 +127,9 @@ export class BrowserClientRuntime {
     })
   }
   dispose(): void {
-    if (this.#timer !== undefined) clearInterval(this.#timer); this.#watching = false; this.#timer = undefined; this.#listeners.clear(); this.#surfaces.clear(); this.#snapshotImages.clear()
+    if (this.#timer !== undefined) clearInterval(this.#timer); this.#watching = false; this.#timer = undefined; this.#listeners.clear(); this.#surfaces.clear(); this.#snapshotImages.clear(); this.#snapshotErrors.clear(); this.#snapshotAttempts.clear(); this.#closingTabs.clear()
+    for (const timer of this.#snapshotRetryTimers.values()) clearTimeout(timer)
+    this.#snapshotRetryTimers.clear()
     for (const waiters of this.#surfaceWaiters.values()) for (const resolve of waiters) resolve({ ok: false, failure: { code: 'SURFACE_DESTROYED', message: 'The Browser client stopped before its native surface became ready.' } })
     this.#surfaceWaiters.clear()
   }
@@ -118,8 +145,82 @@ export class BrowserClientRuntime {
     }
   }
   #delay(ms: number): Promise<void> { return new Promise(resolve => setTimeout(resolve, ms)) }
+  async #hydrateSnapshots(state: BrowserStateSnapshot): Promise<void> {
+    let changed = false
+    await Promise.all(state.tabs.map(async tab => {
+      const artifactId = tab.snapshotArtifactId
+      if (artifactId === undefined || this.#snapshotImages.has(artifactId)) return
+      const failure = this.#snapshotErrors.get(tab.tabId)
+      if ((this.#snapshotAttempts.get(artifactId) ?? 0) >= 3 && failure?.artifactId === artifactId) return
+      if (this.remote.snapshotImage === undefined) {
+        changed = this.#setSnapshotError(tab.tabId, artifactId, 'PRESENTATION_UNAVAILABLE: Screenshot preview Remote is unavailable.') || changed
+        return
+      }
+      try {
+        const image = await this.remote.snapshotImage(tab.tabId)
+        if (!image.ok) throw new Error(`${image.error.code}: ${image.error.message}`)
+        if (!image.value.ok) throw new Error(`${image.value.code}: ${image.value.message}`)
+        if (image.value.value.artifactId !== artifactId) throw new Error(`STALE_SNAPSHOT: Expected ${artifactId}, received ${image.value.value.artifactId}.`)
+        this.#snapshotImages.set(artifactId, image.value.value.dataUrl)
+        this.#snapshotAttempts.delete(artifactId)
+        const timer = this.#snapshotRetryTimers.get(artifactId)
+        if (timer !== undefined) clearTimeout(timer)
+        this.#snapshotRetryTimers.delete(artifactId)
+        changed = this.#snapshotErrors.delete(tab.tabId) || changed
+        changed = true
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        changed = this.#setSnapshotError(tab.tabId, artifactId, message) || changed
+        this.#scheduleSnapshotRetry(artifactId)
+      }
+    }))
+    if (!changed) return
+    this.#state = this.#withSnapshotImages(this.#state)
+    this.#publish()
+  }
+  #withSnapshotImages(state: BrowserStateSnapshot): BrowserStateSnapshot {
+    return { ...state, tabs: state.tabs.map(tab => tab.snapshotArtifactId === undefined ? tab : {
+      ...tab,
+      ...(this.#snapshotImages.get(tab.snapshotArtifactId) === undefined ? {} : { snapshotImageDataUrl: this.#snapshotImages.get(tab.snapshotArtifactId)! }),
+    }) }
+  }
+  #setSnapshotError(tabId: string, artifactId: string, message: string): boolean {
+    const current = this.#snapshotErrors.get(tabId)
+    if (current?.artifactId === artifactId && current.message === message) return false
+    this.#snapshotErrors.set(tabId, { artifactId, message })
+    return true
+  }
+  #scheduleSnapshotRetry(artifactId: string): void {
+    const attempts = (this.#snapshotAttempts.get(artifactId) ?? 0) + 1
+    this.#snapshotAttempts.set(artifactId, attempts)
+    if (attempts >= 3 || this.#snapshotRetryTimers.has(artifactId)) return
+    const timer = setTimeout(() => { this.#snapshotRetryTimers.delete(artifactId); void this.refresh() }, 250 * (2 ** (attempts - 1)))
+    this.#snapshotRetryTimers.set(artifactId, timer)
+  }
+  #pruneSnapshots(state: BrowserStateSnapshot): void {
+    const current = new Map(state.tabs.flatMap(tab => tab.snapshotArtifactId === undefined ? [] : [[tab.tabId, tab.snapshotArtifactId] as const]))
+    for (const [tabId, error] of this.#snapshotErrors) if (current.get(tabId) !== error.artifactId) this.#snapshotErrors.delete(tabId)
+    const artifacts = new Set(current.values())
+    for (const artifactId of this.#snapshotImages.keys()) if (!artifacts.has(artifactId)) this.#snapshotImages.delete(artifactId)
+    for (const artifactId of this.#snapshotAttempts.keys()) if (!artifacts.has(artifactId)) this.#snapshotAttempts.delete(artifactId)
+    for (const [artifactId, timer] of this.#snapshotRetryTimers) if (!artifacts.has(artifactId)) { clearTimeout(timer); this.#snapshotRetryTimers.delete(artifactId) }
+  }
+  #dropTabPreview(tabId: string): void {
+    const tab = this.#state.tabs.find(candidate => candidate.tabId === tabId)
+    if (tab?.snapshotArtifactId !== undefined) {
+      this.#snapshotImages.delete(tab.snapshotArtifactId)
+      this.#snapshotAttempts.delete(tab.snapshotArtifactId)
+      const timer = this.#snapshotRetryTimers.get(tab.snapshotArtifactId)
+      if (timer !== undefined) clearTimeout(timer)
+      this.#snapshotRetryTimers.delete(tab.snapshotArtifactId)
+    }
+    this.#snapshotErrors.delete(tabId)
+  }
   #settleSurface(tabId: string, outcome: BrowserSurfaceMountOutcome): void { for (const resolve of this.#surfaceWaiters.get(tabId) ?? []) resolve(outcome); this.#surfaceWaiters.delete(tabId) }
   #setError(error: string): void { if (this.#error === error) return; this.#error = error; this.#publish() }
-  #publish(): void { this.#snapshot = { state: this.#state, ...(this.#error === undefined ? {} : { error: this.#error }) }; this.#emit() }
+  #publish(): void {
+    const snapshotErrors = Object.fromEntries([...this.#snapshotErrors].flatMap(([tabId, failure]) => this.#state.tabs.some(tab => tab.tabId === tabId && tab.snapshotArtifactId === failure.artifactId) ? [[tabId, failure.message]] : []))
+    this.#snapshot = { state: this.#state, snapshotErrors, ...(this.#error === undefined ? {} : { error: this.#error }) }; this.#emit()
+  }
   #emit(): void { for (const listener of this.#listeners) listener() }
 }
