@@ -2,6 +2,7 @@ import { readFile, realpath } from 'node:fs/promises'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session } from '@deepseek-ai/dsh-session'
+import type {} from '@deepseek-ai/dsh-system-prompt'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@ryanyujazz/dsh-presentation'
 import type { ArtifactReadResult } from './types.ts'
@@ -12,7 +13,23 @@ declare module '@deepseek-ai/cordis' {
 }
 declare module '@ryanyujazz/dsh-presentation/types' { interface PresentationInputMap { artifact: { artifactId: string } } }
 
-export const inject = ['presentationRuntime']
+export const inject = ['presentationRuntime', 'systemPrompt']
+
+export const ARTIFACT_PRESENTATION_PROMPT = [
+  'When open_in_deepcreator is available, proactively present one primary user-consumable artifact after creating and verifying it.',
+  'User-consumable artifacts include reports, documents, images, exported files, and standalone viewable prototype entry files.',
+  'Do not open ordinary source files, tests, configuration, dependency metadata, temporary files, or every file in a multi-file implementation merely because they changed.',
+  'When several artifacts form one result, present the main entry point once and leave the rest in the produced-files list.',
+  'Do not present when the user asked not to, and do not reopen a resource whose presentation was suppressed or that the user dismissed during the current turn.',
+  'Only status="presented" proves the user can see it; report unavailable presentation honestly.',
+].join(' ')
+
+export const ARTIFACT_RESOLVER_DESCRIPTION = [
+  'Present a primary user-consumable workspace artifact.',
+  'After creating and verifying a report, document, image, export, or standalone prototype entry file, present the primary output once unless the user asked not to.',
+  'Do not proactively present ordinary source, test, config, dependency, temporary, or secondary implementation files.',
+  'Fields: kind="artifact", artifactId.',
+].join(' ')
 
 /**
  * Read-only workspace file reader for the Workbench Artifact panel. The panel
@@ -25,10 +42,15 @@ export class ArtifactReader extends TypertRemoteService {
   static inject = inject
   constructor(ctx: Context) {
     super(ctx, 'artifacts')
+    ctx.systemPrompt?.section({
+      name: 'deepcreator:artifact-presentation',
+      order: 191,
+      text: ARTIFACT_PRESENTATION_PROMPT,
+    })
     const presentation = ctx.presentationRuntime
     if (presentation === undefined) return
     const dispose = presentation.registerResolver({
-      kind: 'artifact', description: 'Present a workspace artifact. Fields: kind="artifact", artifactId.',
+      kind: 'artifact', description: ARTIFACT_RESOLVER_DESCRIPTION,
       inputSchema: { type: 'object', additionalProperties: false, properties: {
         kind: { type: 'string', const: 'artifact', required: true }, artifactId: { type: 'string', required: true },
       } },
