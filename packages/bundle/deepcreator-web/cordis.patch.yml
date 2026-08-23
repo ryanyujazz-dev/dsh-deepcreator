@@ -44,6 +44,21 @@
     - id: deepcreator-terminal-bash
       name: '@deepseek-ai/dsh-terminal-bash'
 
+    - id: deepcreator-presentation
+      name: '@ryanyujazz/dsh-presentation'
+
+    - id: deepcreator-browser
+      name: '@ryanyujazz/dsh-browser'
+
+    - id: deepcreator-browser-playwright
+      name: '@ryanyujazz/dsh-browser-playwright'
+
+    - id: deepcreator-browser-iab
+      name: '@ryanyujazz/dsh-browser-iab'
+
+    - id: deepcreator-browser-chrome
+      name: '@ryanyujazz/dsh-browser-chrome'
+
     - id: deepcreator-artifacts
       name: '@ryanyujazz/dsh-artifacts'
 
@@ -91,6 +106,12 @@
 
     - id: deepcreator-workbench-remotes
       name: '@ryanyujazz/dsh-client-workbench-remotes'
+
+    - id: deepcreator-client-presentation
+      name: '@ryanyujazz/dsh-client-presentation'
+
+    - id: deepcreator-ui-browser
+      name: '@ryanyujazz/dsh-client-ui-browser'
 
     - id: deepcreator-workbench-activity
       name: '@ryanyujazz/dsh-client-ui-workbench-activity'

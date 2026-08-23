@@ -8,6 +8,7 @@ import {
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { MANAGED_PROFILE_VERSION } from './contract.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const dshHome = resolve(process.env.DSH_HOME ?? join(homedir(), '.dsh'))
@@ -23,7 +24,9 @@ const OWNED_DEPENDENCIES = new Set([
   '@ryanyujazz/dsh-deepcreator-web',
   '@ryanyujazz/dsh-client-compat',
   '@ryanyujazz/dsh-client-locale',
+  '@ryanyujazz/dsh-client-presentation',
   '@ryanyujazz/dsh-client-ui-agent-preset',
+  '@ryanyujazz/dsh-client-ui-browser',
   '@ryanyujazz/dsh-client-ui-conversation',
   '@ryanyujazz/dsh-client-ui-layout',
   '@ryanyujazz/dsh-client-ui-model-selection',
@@ -44,6 +47,10 @@ const OWNED_DEPENDENCIES = new Set([
   '@ryanyujazz/dsh-client-workbench-remotes',
   '@ryanyujazz/dsh-client-ui-workspace',
   '@ryanyujazz/dsh-artifacts',
+  '@ryanyujazz/dsh-browser',
+  '@ryanyujazz/dsh-presentation',
+  '@ryanyujazz/dsh-browser-mcp',
+  '@ryanyujazz/dsh-jobs-admin',
   '@ryanyujazz/dsh-session-admin',
   '@ryanyujazz/dsh-review',
   '@ryanyujazz/dsh-skills',
@@ -193,7 +200,7 @@ const targetManifest = {
   },
   deepcreator: {
     managed: true,
-    profileVersion: 2,
+    profileVersion: MANAGED_PROFILE_VERSION,
     sourceProfile: sourceName,
   },
 }
@@ -243,12 +250,18 @@ if (!dump.includes('@ryanyujazz/dsh-client-ui-conversation')
   || !dump.includes('@ryanyujazz/dsh-client-ui-layout')
   || !dump.includes('@ryanyujazz/dsh-client-ui-workbench')
   || !dump.includes('@ryanyujazz/dsh-client-workbench-remotes')
+  || !dump.includes('@ryanyujazz/dsh-client-presentation')
   || !dump.includes('@ryanyujazz/dsh-artifacts')
   || !dump.includes('@ryanyujazz/dsh-review')
   || !dump.includes('@ryanyujazz/dsh-terminal-workbench')
   || !activeCompositionRow('ui-settings', '@deepseek-ai/dsh-client-ui-settings')
   || !activeCompositionRow('ui-settings-models', '@deepseek-ai/dsh-client-ui-settings-models')
   || !activeCompositionRow('ui-settings-plugins', '@deepseek-ai/dsh-client-ui-settings-plugins')
+  || !activeCompositionRow('deepcreator-browser', '@ryanyujazz/dsh-browser')
+  || !activeCompositionRow('deepcreator-presentation', '@ryanyujazz/dsh-presentation')
+  || !activeCompositionRow('deepcreator-client-presentation', '@ryanyujazz/dsh-client-presentation')
+  || !activeCompositionRow('deepcreator-ui-browser', '@ryanyujazz/dsh-client-ui-browser')
+  || dump.includes('deepcreator-browser-mcp')
   || dump.includes('execflow-conversation')
   || dump.includes('execflow-tool')) {
   throw new Error('DeepCreator profile migration: composed config omitted required DeepCreator UI rows')

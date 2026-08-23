@@ -100,7 +100,7 @@ pnpm run profile:migrate
 pnpm run dev:desktop
 ```
 
-`profile:migrate` creates the managed `deepcreator` profile from the existing `web` profile. It backs up both profiles, retains third-party bundles and user patches, removes legacy ExecFlow rows, links the local Client plugins, and validates the assembled Cordis tree. Re-running it refreshes the managed profile without duplicating rows; the original `web` profile remains the rollback path.
+`profile:migrate` creates the managed `deepcreator` profile from the existing `web` profile. It backs up both profiles, retains third-party bundles and user patches, removes retired rows, links the local Client and Host plugins, and validates the assembled Cordis tree. Both Desktop launch commands first run the lightweight `profile:ensure` check; it invokes migration only when the managed profile version, required workspace links, installed links, or retired dependency set is stale. The original `web` profile remains the rollback path.
 
 ## Architecture
 
