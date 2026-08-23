@@ -961,9 +961,11 @@ function commitEnvironment(): NodeJS.ProcessEnv {
 }
 
 async function writeTurn(repository: ReviewRepository, ref: string, tree: string, manifest: TurnManifest, parent?: string): Promise<string> {
-  const args = ['commit-tree', tree, '-m', JSON.stringify(manifest)]
+  const args = ['commit-tree', tree, '-F', '-']
   if (parent !== undefined) args.push('-p', parent)
-  const commit = (await git(repository, args, { env: commitEnvironment() })).trim()
+  // The manifest grows with every file changed in the turn and can exceed the
+  // OS command line length; pipe it through stdin instead of `-m`.
+  const commit = (await gitStdin(repository, args, `${JSON.stringify(manifest)}\n`, commitEnvironment())).trim()
   await git(repository, ['update-ref', ref, commit])
   return commit
 }
