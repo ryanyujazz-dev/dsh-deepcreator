@@ -192,7 +192,9 @@ describe('DiffBlock context folding', () => {
     expect(bodyRows(container)).toHaveLength(24)
   })
 
-  it('bounds mounted rows for a huge changed hunk', () => {
+  // Rendering 2k virtualized rows is the heaviest case in this file; under the
+  // parallel suite it needs far more than the 5s default, so give it its own.
+  it('bounds mounted rows for a huge changed hunk', { timeout: 15_000 }, () => {
     const { container } = render(<DiffBlock diffs={[{ path: 'huge.ts', oldText: null, newText: added(2_000) }]} variant="review" />)
     expect(container.querySelector('[data-diff-virtual-rows]')).toBeTruthy()
     const mounted = container.querySelectorAll('[data-diff-row]').length

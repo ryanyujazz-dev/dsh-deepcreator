@@ -4,6 +4,7 @@ import { access, lstat, mkdir, mkdtemp, readlink, realpath, rm, writeFile } from
 import { homedir, tmpdir } from 'node:os'
 import { createRequire } from 'node:module'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
 import { Worker } from 'node:worker_threads'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -37,7 +38,7 @@ const EXACT_DIFF_TEXT_LIMIT = 1024 * 1024
 const GENERATION_SOURCE_BYTES = 32 * 1024 * 1024
 const GENERATION_CACHE_BYTES = 64 * 1024 * 1024
 const AGGREGATE_PATCH_BATCH_THRESHOLD = 3
-const DIFF_MODULE_PATH = createRequire(import.meta.url).resolve('diff')
+const DIFF_MODULE_PATH = pathToFileURL(createRequire(import.meta.url).resolve('diff')).href
 
 interface ExactTurnFile {
   path: string

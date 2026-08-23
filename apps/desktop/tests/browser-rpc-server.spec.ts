@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { allocateBrowserRpcEndpoint, BrowserRpcServer } from '../src/browser-rpc-server.ts'
 
 describe('Browser RPC endpoint allocation', () => {
-  it('uses a short owner-only directory for Unix sockets', async () => {
+  it.runIf(process.platform !== 'win32')('uses a short owner-only directory for Unix sockets', async () => {
     const allocation = await allocateBrowserRpcEndpoint('darwin')
     try {
       expect(allocation.endpoint.startsWith('/tmp/dcb-')).toBe(true)

@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -10,6 +11,20 @@ import { ReviewService } from '../src/index.ts'
 
 const exec = promisify(execFile)
 const temporary: string[] = []
+
+/** Windows without Developer Mode/admin lacks SeCreateSymbolicLinkPrivilege and fails symlink(). */
+function canCreateSymlinks(): boolean {
+  const probe = join(tmpdir(), `dsh-symlink-probe-${process.pid}`)
+  const target = join(probe, 'target')
+  try {
+    mkdirSync(probe, { recursive: true })
+    writeFileSync(target, 'probe')
+    symlinkSync(target, join(probe, 'link'))
+    return true
+  } catch { return false }
+  finally { rmSync(probe, { recursive: true, force: true }) }
+}
+const symlinksAvailable = canCreateSymlinks()
 
 function emitSessionEvent(ctx: Context, session: Session, type: string): void {
   const emitter = ctx as unknown as {
@@ -368,6 +383,9 @@ describe('Review Service', () => {
     await expect(review.manifest(session, { turn: 7 })).resolves.toMatchObject({
       ok: true, consistency: 'live-exact', files: [],
     })
+    // Release the generation-scoped `git cat-file --batch` child; on Windows its
+    // repository CWD would otherwise block the temp-directory cleanup.
+    await review.deleteSessionSnapshots(session)
   })
 
   it('computes one cached path batch for many files without per-file Git processes', async () => {
@@ -904,7 +922,7 @@ describe('Review Service', () => {
     await expect(review.history(session)).resolves.toMatchObject({ ok: true, turns: [] })
   })
 
-  it('shows a symlink target without reading a target outside the workspace', async () => {
+  it.runIf(symlinksAvailable)('shows a symlink target without reading a target outside the workspace', async () => {
     const repository = await mkdtemp(join(tmpdir(), 'dsh-review-link-')); temporary.push(repository)
     const outside = await mkdtemp(join(tmpdir(), 'dsh-review-outside-')); temporary.push(outside)
     await exec('git', ['init', '-q', repository])
