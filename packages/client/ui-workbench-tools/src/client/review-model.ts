@@ -111,15 +111,27 @@ function statusEqual(a: ReviewFileStatus, b: ReviewFileStatus): boolean {
 
 /** Parse one wire diff result once: hunks carry their snapshots, counts fold. */
 export function parseDiffResult(diff: Extract<ReviewDiffResult, { ok: true }>): Omit<ReadyCache, 'kind' | 'raw'> {
-  const layers: ParsedLayer[] = diff.layers.map(layer => {
-    const parsedFiles = parseUnifiedDiff(layer.patch, diff.path)
+  return assembleParsedDiff(diff, diff.layers.map(layer => parseUnifiedDiff(layer.patch, diff.path)))
+}
+
+type ParsedUnifiedLayers = ReturnType<typeof parseUnifiedDiff>[]
+
+function assembleParsedDiff(
+  diff: Extract<ReviewDiffResult, { ok: true }>,
+  parsedLayers: ParsedUnifiedLayers,
+): Omit<ReadyCache, 'kind' | 'raw'> {
+  const layers: ParsedLayer[] = diff.layers.map((layer, layerIndex) => {
+    const parsedFiles = parsedLayers[layerIndex] ?? []
     const files: ParsedLayerFile[] = parsedFiles.map(file => ({
       key: `${file.oldPath ?? ''}:${file.path}`,
       binary: file.binary,
       hunks: file.hunks.map(hunk => ({
         ...hunk,
+        deferHighlight: true,
         oldSource: layer.oldSource.text,
         newSource: layer.newSource.text,
+        oldLineCount: layer.oldSource.lineCount,
+        newLineCount: layer.newSource.lineCount,
       })),
     }))
     return {
@@ -136,6 +148,151 @@ export function parseDiffResult(diff: Extract<ReviewDiffResult, { ok: true }>): 
   }
 }
 
+/**
+ * Self-contained parser copied into a Blob worker. Keeping this function free
+ * of module references makes the worker usable from the bundled desktop
+ * client without a second public asset or worker-specific build entry.
+ */
+function parseReviewDiffLayersInWorker(inputs: Array<{ patch: string; fallbackPath: string }>): ParsedUnifiedLayers {
+  const headerPattern = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/u
+  const stripPrefix = (value: string): string => {
+    const path = value.slice(4).trim().split('\t', 1)[0] ?? ''
+    if (path === '/dev/null') return path
+    return path.startsWith('a/') || path.startsWith('b/') ? path.slice(2) : path
+  }
+  return inputs.map(({ patch, fallbackPath }) => {
+    const files: ParsedUnifiedLayers[number] = []
+    let file: ParsedUnifiedLayers[number][number] | undefined
+    const lines = patch.split('\n')
+    let index = 0
+    while (index < lines.length) {
+      const line = lines[index] ?? ''
+      if (line.startsWith('diff --git ')) {
+        const match = /^diff --git a\/(.+) b\/(.+)$/u.exec(line)
+        file = { oldPath: match?.[1] ?? null, path: match?.[2] ?? fallbackPath, binary: false, hunks: [], added: 0, removed: 0 }
+        files.push(file)
+        index += 1
+        continue
+      }
+      if (file === undefined && line.startsWith('@@ ')) {
+        file = { oldPath: fallbackPath || null, path: fallbackPath, binary: false, hunks: [], added: 0, removed: 0 }
+        files.push(file)
+      }
+      if (file !== undefined && line.startsWith('--- ')) {
+        const oldPath = stripPrefix(line)
+        file.oldPath = oldPath === '/dev/null' ? null : oldPath
+        index += 1
+        continue
+      }
+      if (file !== undefined && line.startsWith('+++ ')) {
+        const path = stripPrefix(line)
+        if (path !== '/dev/null') file.path = path
+        index += 1
+        continue
+      }
+      if (file !== undefined && (/^(?:Binary files |GIT binary patch)/u).test(line)) {
+        file.binary = true
+        index += 1
+        continue
+      }
+      const header = headerPattern.exec(line)
+      if (file === undefined || header === null) { index += 1; continue }
+      const oldLines: string[] = []
+      const newLines: string[] = []
+      let added = 0
+      let removed = 0
+      index += 1
+      while (index < lines.length) {
+        const hunkLine = lines[index] ?? ''
+        if (hunkLine.startsWith('diff --git ') || hunkLine.startsWith('@@ ')) break
+        if (hunkLine.startsWith('\\ No newline at end of file')) { index += 1; continue }
+        if (hunkLine.startsWith('-')) { oldLines.push(hunkLine.slice(1)); removed += 1 }
+        else if (hunkLine.startsWith('+')) { newLines.push(hunkLine.slice(1)); added += 1 }
+        else if (hunkLine.startsWith(' ')) { oldLines.push(hunkLine.slice(1)); newLines.push(hunkLine.slice(1)) }
+        else break
+        index += 1
+      }
+      file.hunks.push({
+        path: file.path,
+        oldText: oldLines.length === 0 ? null : oldLines.join('\n'),
+        newText: newLines.join('\n'),
+        oldStart: Number(header[1]),
+        newStart: Number(header[2]),
+      })
+      file.added += added
+      file.removed += removed
+    }
+    return files
+  })
+}
+
+interface PendingWorkerParse {
+  diff: Extract<ReviewDiffResult, { ok: true }>
+  resolve: (value: Omit<ReadyCache, 'kind' | 'raw'>) => void
+}
+
+/** One controller-owned parser worker; tests and unsupported hosts fall back synchronously. */
+export class ReviewDiffParser {
+  private worker: Worker | null | undefined
+  private workerUrl: string | null = null
+  private serial = 0
+  private disposed = false
+  private readonly pending = new Map<number, PendingWorkerParse>()
+
+  async parse(diff: Extract<ReviewDiffResult, { ok: true }>): Promise<Omit<ReadyCache, 'kind' | 'raw'>> {
+    const worker = this.ensureWorker()
+    if (worker === null || this.disposed) return parseDiffResult(diff)
+    const id = ++this.serial
+    return await new Promise(resolve => {
+      this.pending.set(id, { diff, resolve })
+      worker.postMessage({ id, layers: diff.layers.map(layer => ({ patch: layer.patch, fallbackPath: diff.path })) })
+    })
+  }
+
+  dispose(): void {
+    if (this.disposed) return
+    this.disposed = true
+    this.disableWorker()
+  }
+
+  private ensureWorker(): Worker | null {
+    if (this.worker !== undefined) return this.worker
+    if (typeof Worker === 'undefined' || typeof Blob === 'undefined'
+      || typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') {
+      this.worker = null
+      return null
+    }
+    try {
+      const source = `const parseLayers = (${parseReviewDiffLayersInWorker.toString()});\nself.onmessage = event => {\n  const { id, layers } = event.data;\n  try { self.postMessage({ id, layers: parseLayers(layers) }); }\n  catch (reason) { self.postMessage({ id, error: reason instanceof Error ? reason.message : String(reason) }); }\n};`
+      this.workerUrl = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }))
+      const worker = new Worker(this.workerUrl)
+      worker.onmessage = (event: MessageEvent<{ id: number; layers?: ParsedUnifiedLayers; error?: string }>) => {
+        const task = this.pending.get(event.data.id)
+        if (task === undefined) return
+        this.pending.delete(event.data.id)
+        task.resolve(event.data.layers === undefined
+          ? parseDiffResult(task.diff)
+          : assembleParsedDiff(task.diff, event.data.layers))
+      }
+      worker.onerror = () => { this.disableWorker() }
+      this.worker = worker
+      return worker
+    } catch {
+      this.disableWorker()
+      return null
+    }
+  }
+
+  private disableWorker(): void {
+    this.worker?.terminate()
+    this.worker = null
+    if (this.workerUrl !== null) URL.revokeObjectURL(this.workerUrl)
+    this.workerUrl = null
+    for (const task of this.pending.values()) task.resolve(parseDiffResult(task.diff))
+    this.pending.clear()
+  }
+}
+
 /** Wire-level identity of two diff results (SWR keep-parse reference test). */
 export function sameDiffResult(a: Extract<ReviewDiffResult, { ok: true }>, b: Extract<ReviewDiffResult, { ok: true }>): boolean {
   if (a.path !== b.path || a.oldPath !== b.oldPath || a.kind !== b.kind || a.presentation !== b.presentation
@@ -147,7 +304,9 @@ export function sameDiffResult(a: Extract<ReviewDiffResult, { ok: true }>, b: Ex
       && layer.kind === other.kind
       && layer.patch === other.patch
       && layer.oldSource.text === other.oldSource.text
+      && layer.oldSource.lineCount === other.oldSource.lineCount
       && layer.newSource.text === other.newSource.text
+      && layer.newSource.lineCount === other.newSource.lineCount
   })
 }
 

@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import clsx from 'clsx'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { writeClipboard } from './clipboard.ts'
 import { FileIcon } from './file-icons/FileIcon.tsx'
 import { IconCheckOutline16, IconCopyOutline16 } from './icons/index.tsx'
@@ -47,6 +48,8 @@ export interface DiffBlockProps {
   /** Optional controlled fold keys. Use this when a heavy body may unmount and later return. */
   expandedFoldKeys?: ReadonlySet<string> | undefined
   onExpandedFoldKeysChange?: ((keys: ReadonlySet<string>) => void) | undefined
+  /** Review-only lazy source loader used when an omitted-context fold opens. */
+  loadSource?: ((side: 'old' | 'new') => Promise<string | null>) | undefined
 }
 
 const DEFAULT_LABELS: DiffBlockLabels = {
@@ -59,12 +62,16 @@ const DEFAULT_LABELS: DiffBlockLabels = {
   contextLine: (line, text) => `未修改${line === null ? '' : `第 ${line} 行`}：${text}`,
 }
 
+const DIFF_ROW_VIRTUALIZE_THRESHOLD = 800
+const DIFF_ROW_OVERSCAN = 24
+
 interface FoldRow { kind: 'fold'; hidden: AlignedRow[]; key: string }
 type VisibleRow = AlignedRow | FoldRow
 
 interface ContextBasis {
   side: 'old' | 'new'
-  source: string
+  source: string | null
+  lineCount?: number
   start: number
   consumed: number
 }
@@ -73,7 +80,8 @@ interface OmittedContextGap {
   kind: 'gap'
   key: string
   path: string
-  source: string
+  side: 'old' | 'new'
+  source: string | null
   start: number
   count: number
 }
@@ -134,15 +142,15 @@ function rowLineNumber(row: AlignedRow): number | null {
 }
 
 function contextBasis(input: DiffHunk, model: DiffHunkModel): ContextBasis | undefined {
-  if (input.newSource !== undefined && input.newSource !== null && input.newStart !== undefined && input.newStart > 0) {
+  if (input.newStart !== undefined && input.newStart > 0) {
     return {
-      side: 'new', source: input.newSource, start: input.newStart,
+      side: 'new', source: input.newSource ?? null, ...(input.newLineCount === undefined ? {} : { lineCount: input.newLineCount }), start: input.newStart,
       consumed: model.rows.filter(row => row.kind !== 'del').length,
     }
   }
-  if (input.oldSource !== undefined && input.oldSource !== null && input.oldStart !== undefined && input.oldStart > 0) {
+  if (input.oldStart !== undefined && input.oldStart > 0) {
     return {
-      side: 'old', source: input.oldSource, start: input.oldStart,
+      side: 'old', source: input.oldSource ?? null, ...(input.oldLineCount === undefined ? {} : { lineCount: input.oldLineCount }), start: input.oldStart,
       consumed: model.rows.filter(row => row.kind !== 'add').length,
     }
   }
@@ -155,7 +163,7 @@ function omittedContextGap(
   if (count <= 0 || start <= 0) return undefined
   return {
     kind: 'gap', key: `${path}:${basis.side}:${start}:${count}:${position}`, path,
-    source: basis.source, start, count,
+    side: basis.side, source: basis.source, start, count,
   }
 }
 
@@ -207,11 +215,12 @@ function reviewEntries(diffs: readonly DiffHunk[], models: readonly DiffHunkMode
 
     if (previous !== undefined && (previous.path !== model.path || basis === undefined || previous.basis.side !== basis.side || previous.basis.source !== basis.source)) {
       const tailStart = previous.basis.start + previous.basis.consumed
-      const tail = omittedContextGap(
+      const total = previous.basis.source === null ? previous.basis.lineCount : countLines(previous.basis.source)
+      const tail = total === undefined ? undefined : omittedContextGap(
         previous.path,
         previous.basis,
         tailStart,
-        countLines(previous.basis.source) - tailStart + 1,
+        total - tailStart + 1,
         'tail',
       )
       if (tail !== undefined) entries.push(tail)
@@ -235,11 +244,12 @@ function reviewEntries(diffs: readonly DiffHunk[], models: readonly DiffHunkMode
 
   if (previous !== undefined) {
     const tailStart = previous.basis.start + previous.basis.consumed
-    const tail = omittedContextGap(
+    const total = previous.basis.source === null ? previous.basis.lineCount : countLines(previous.basis.source)
+    const tail = total === undefined ? undefined : omittedContextGap(
       previous.path,
       previous.basis,
       tailStart,
-      countLines(previous.basis.source) - tailStart + 1,
+      total - tailStart + 1,
       'tail',
     )
     if (tail !== undefined) entries.push(tail)
@@ -308,15 +318,104 @@ const AlignedDiffRow = memo(function AlignedDiffRow({ row, index, labels }: { ro
   )
 })
 
-function OmittedContext({ gap, labels, expanded, onExpandedChange }: {
+function diffRowKey(row: VisibleRow, index: number): string {
+  return row.kind === 'fold' ? row.key : `${row.kind}:${rowLineNumber(row) ?? 'x'}:${index}`
+}
+
+function renderDiffRow(
+  row: VisibleRow,
+  index: number,
+  labels: DiffBlockLabels,
+  onExpandFold: ((key: string) => void) | undefined,
+  key?: string,
+) {
+  return row.kind === 'fold'
+    ? <button
+        key={key}
+        type="button"
+        className={css.fold}
+        aria-label={labels.expandContext(row.hidden.length)}
+        onClick={() => { onExpandFold?.(row.key) }}
+      >
+        {`⋯ ${labels.expandContext(row.hidden.length)}`}
+      </button>
+    : <AlignedDiffRow key={key} row={row} index={index} labels={labels} />
+}
+
+function VirtualDiffRows({ rows, labels, onExpandFold }: {
+  rows: readonly VisibleRow[]
+  labels: DiffBlockLabels
+  onExpandFold?: ((key: string) => void) | undefined
+}) {
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollRef.current,
+    getItemKey: index => diffRowKey(rows[index] as VisibleRow, index),
+    estimateSize: index => rows[index]?.kind === 'fold' ? 24 : 22,
+    measureElement: element => element.getBoundingClientRect().height || 22,
+    overscan: DIFF_ROW_OVERSCAN,
+    initialRect: { width: 800, height: 600 },
+    observeElementRect: (_instance, callback) => {
+      const node = scrollRef.current
+      const measure = () => {
+        const rect = node?.getBoundingClientRect()
+        callback({ width: rect?.width || 800, height: rect?.height || 600 })
+      }
+      measure()
+      if (node === null || typeof ResizeObserver === 'undefined') return () => {}
+      const observer = new ResizeObserver(measure)
+      observer.observe(node)
+      return () => { observer.disconnect() }
+    },
+  })
+  return (
+    <div ref={scrollRef} className={css.virtualRows} data-diff-virtual-rows="">
+      <div className={css.virtualRowsCanvas} style={{ height: virtualizer.getTotalSize() }}>
+        {virtualizer.getVirtualItems().map(item => {
+          const row = rows[item.index]
+          if (row === undefined) return null
+          return <div
+            key={item.key}
+            ref={virtualizer.measureElement}
+            data-index={item.index}
+            className={css.virtualRow}
+            style={{ transform: `translateY(${item.start}px)` }}
+          >
+            {renderDiffRow(row, item.index, labels, onExpandFold)}
+          </div>
+        })}
+      </div>
+    </div>
+  )
+}
+
+function DiffRows({ rows, labels, onExpandFold }: {
+  rows: readonly VisibleRow[]
+  labels: DiffBlockLabels
+  onExpandFold?: ((key: string) => void) | undefined
+}) {
+  if (rows.length > DIFF_ROW_VIRTUALIZE_THRESHOLD) {
+    return <VirtualDiffRows rows={rows} labels={labels} onExpandFold={onExpandFold} />
+  }
+  return <>{rows.map((row, index) => renderDiffRow(
+    row, index, labels, onExpandFold, diffRowKey(row, index),
+  ))}</>
+}
+
+function OmittedContext({ gap, labels, expanded, onExpandedChange, loadSource }: {
   gap: OmittedContextGap
   labels: DiffBlockLabels
   expanded: boolean
   onExpandedChange: (expanded: boolean) => void
+  loadSource?: ((side: 'old' | 'new') => Promise<string | null>) | undefined
 }) {
+  const [source, setSource] = useState(gap.source)
+  const [loading, setLoading] = useState(false)
+  useEffect(() => { setSource(gap.source) }, [gap.source])
   const rows = useMemo(() => {
-    if (!expanded) return []
-    const text = sourceRangeText(gap.source, gap.start, gap.count)
+    if (!expanded || source === null) return []
+    const text = sourceRangeText(source, gap.start, gap.count)
     if (text === '') return []
     return buildDiffHunkModel({
       path: gap.path,
@@ -324,24 +423,35 @@ function OmittedContext({ gap, labels, expanded, onExpandedChange }: {
       newText: text,
       oldStart: gap.start,
       newStart: gap.start,
-      oldSource: gap.source,
-      newSource: gap.source,
+      oldSource: source,
+      newSource: source,
     }).rows
-  }, [expanded, gap])
+  }, [expanded, gap.count, gap.path, gap.start, source])
   if (!expanded) return (
     <button
       type="button"
       className={css.fold}
       aria-label={labels.expandContext(gap.count)}
-      onClick={() => { onExpandedChange(true) }}
+      disabled={loading}
+      onClick={() => {
+        if (source !== null) { onExpandedChange(true); return }
+        if (loadSource === undefined || loading) return
+        setLoading(true)
+        void loadSource(gap.side).then(value => {
+          if (value === null) return
+          setSource(value)
+          onExpandedChange(true)
+        }).catch(() => {
+          // Keep the fold closed. A later click can retry after the controller
+          // refreshes a stale generation or the transport recovers.
+        }).finally(() => { setLoading(false) })
+      }}
     >
       {`⋯ ${labels.expandContext(gap.count)}`}
     </button>
   )
   return (
-    <>
-      {rows.map((row, index) => <AlignedDiffRow key={`${row.kind}:${rowLineNumber(row) ?? 'x'}:${index}`} row={row} index={index} labels={labels} />)}
-    </>
+    <DiffRows rows={rows} labels={labels} />
   )
 }
 
@@ -369,35 +479,22 @@ function HunkRows({
   onExpandedKeysChange: (keys: ReadonlySet<string>) => void
 }) {
   const visible = useMemo(() => foldedRows(model.rows, expandedKeys, entryKey), [entryKey, expandedKeys, model.rows])
-
-  const renderRow = (row: VisibleRow, index: number) => {
-    if (row.kind === 'fold') return (
-      <button
-        key={row.key}
-        type="button"
-        className={css.fold}
-        aria-label={labels.expandContext(row.hidden.length)}
-        onClick={() => {
-          onExpandedKeysChange(new Set([...expandedKeys, row.key]))
-        }}
-      >
-        {`⋯ ${labels.expandContext(row.hidden.length)}`}
-      </button>
-    )
-    return <AlignedDiffRow key={`${row.kind}:${rowLineNumber(row) ?? 'x'}:${index}`} row={row} index={index} labels={labels} />
-  }
-
-  return <>{visible.map(renderRow)}</>
+  return <DiffRows
+    rows={visible}
+    labels={labels}
+    onExpandFold={key => { onExpandedKeysChange(new Set([...expandedKeys, key])) }}
+  />
 }
 
 function FileCard({
-  group, showPath, labels, expandedKeys, onExpandedKeysChange,
+  group, showPath, labels, expandedKeys, onExpandedKeysChange, loadSource,
 }: {
   group: FileEntryGroup
   showPath: boolean
   labels: DiffBlockLabels
   expandedKeys: ReadonlySet<string>
   onExpandedKeysChange: (keys: ReadonlySet<string>) => void
+  loadSource?: ((side: 'old' | 'new') => Promise<string | null>) | undefined
 }) {
   return (
     <section className={css.hunk} data-diff-file="" data-diff-hunk="">
@@ -415,6 +512,7 @@ function FileCard({
           ? <OmittedContext
               key={entry.key} gap={entry} labels={labels}
               expanded={expandedKeys.has(entry.key)}
+              loadSource={loadSource}
               onExpandedChange={() => { onExpandedKeysChange(new Set([...expandedKeys, entry.key])) }}
             />
           : <HunkRows
@@ -438,6 +536,7 @@ export function DiffBlock({
   onFoldStateChange,
   expandedFoldKeys,
   onExpandedFoldKeysChange,
+  loadSource,
 }: DiffBlockProps) {
   const loaded = useSyncExternalStore(subscribeGrammarLoaded, grammarLoadCount, grammarLoadCount)
   // Snapshots highlight progressively: a queued snapshot renders plain text,
@@ -449,6 +548,10 @@ export function DiffBlock({
       const language = diffLanguageFromPath(diff.path)
       if (diff.oldSource !== undefined && diff.oldSource !== null) keys.add(snapshotHighlightKey(diff.oldSource, language))
       if (diff.newSource !== undefined && diff.newSource !== null) keys.add(snapshotHighlightKey(diff.newSource, language))
+      if (diff.deferHighlight === true && diff.oldText !== null && diff.oldText !== '') {
+        keys.add(snapshotHighlightKey(diff.oldText, language))
+      }
+      if (diff.deferHighlight === true && diff.newText !== '') keys.add(snapshotHighlightKey(diff.newText, language))
     }
     return keys
   }, [diffs])
@@ -509,6 +612,7 @@ export function DiffBlock({
             labels={labels}
             expandedKeys={activeExpandedFoldKeys}
             onExpandedKeysChange={updateExpandedFoldKeys}
+            loadSource={loadSource}
           />
         ))}
       </div>

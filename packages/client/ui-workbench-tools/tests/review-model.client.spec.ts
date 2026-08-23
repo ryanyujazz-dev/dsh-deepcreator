@@ -8,7 +8,7 @@ import type { ConversationNode, RunningToolCall, ToolResultNode } from '@deepsee
 import type { ReviewDiffResult, ReviewFileStatus } from '@ryanyujazz/dsh-review/types'
 import {
   REVIEW_CACHE_LIMIT, decodeMutationSignal, encodeMutationSignal, evictCollapsedCaches, markStale,
-  matchReviewFile, mergeFileEntries, mutationSignal, mutationToolPath, parseDiffResult, readExpandedPaths,
+  matchReviewFile, mergeFileEntries, mutationSignal, mutationToolPath, parseDiffResult, readExpandedPaths, ReviewDiffParser,
   sameDiffResult, writeExpandedPaths, type FileEntries, type FileEntry,
 } from '../src/client/review-model.ts'
 
@@ -136,13 +136,63 @@ describe('diff parsing', () => {
   it('parses layers once with merged snapshots and folded counts', () => {
     const parsed = parseDiffResult(diffResult('src/a.ts'))
     expect(parsed.layers).toHaveLength(1)
-    expect(parsed.layers[0]?.files[0]?.hunks[0]).toMatchObject({ oldText: 'a', newText: 'b', oldSource: 'a', newSource: 'b' })
+    expect(parsed.layers[0]?.files[0]?.hunks[0]).toMatchObject({
+      oldText: 'a', newText: 'b', oldSource: 'a', newSource: 'b', deferHighlight: true,
+    })
     expect(parsed).toMatchObject({ added: 1, removed: 1 })
   })
 
   it('sameDiffResult compares wire content', () => {
     expect(sameDiffResult(diffResult('src/a.ts'), diffResult('src/a.ts'))).toBe(true)
     expect(sameDiffResult(diffResult('src/a.ts'), diffResult('src/a.ts', { path: 'other.ts' }))).toBe(false)
+  })
+
+  it('posts patch-only work to a controller-owned Worker and disposes it', async () => {
+    const workerDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'Worker')
+    const createDescriptor = Object.getOwnPropertyDescriptor(URL, 'createObjectURL')
+    const revokeDescriptor = Object.getOwnPropertyDescriptor(URL, 'revokeObjectURL')
+    class FakeWorker {
+      static instance: FakeWorker | undefined
+      onmessage: ((event: MessageEvent) => void) | null = null
+      onerror: ((event: ErrorEvent) => void) | null = null
+      readonly messages: unknown[] = []
+      terminated = false
+      constructor(_url: string) { FakeWorker.instance = this }
+      postMessage(value: unknown): void { this.messages.push(value) }
+      terminate(): void { this.terminated = true }
+    }
+    try {
+      Object.defineProperty(globalThis, 'Worker', { configurable: true, writable: true, value: FakeWorker })
+      Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: () => 'blob:review-worker' })
+      Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: () => {} })
+      const parser = new ReviewDiffParser()
+      const pending = parser.parse(diffResult('src/a.ts', { layers: [{
+        kind: 'working-tree', patch: diffResult('src/a.ts').layers[0]!.patch,
+        oldSource: { revision: 'index', text: null }, newSource: { revision: 'worktree', text: null },
+      }] }))
+      const worker = FakeWorker.instance
+      expect(worker?.messages).toHaveLength(1)
+      const posted = worker?.messages[0] as { id: number; layers: Array<{ patch: string; fallbackPath: string }> }
+      expect(posted.layers[0]).toMatchObject({ fallbackPath: 'src/a.ts' })
+      expect(posted.layers[0]?.patch).toContain('diff --git')
+      worker?.onmessage?.({ data: {
+        id: posted.id,
+        layers: [[{
+          oldPath: 'src/a.ts', path: 'src/a.ts', binary: false, added: 1, removed: 1,
+          hunks: [{ path: 'src/a.ts', oldText: 'a', newText: 'b', oldStart: 1, newStart: 1 }],
+        }]],
+      } } as MessageEvent)
+      await expect(pending).resolves.toMatchObject({ added: 1, removed: 1 })
+      parser.dispose()
+      expect(worker?.terminated).toBe(true)
+    } finally {
+      if (workerDescriptor === undefined) Reflect.deleteProperty(globalThis, 'Worker')
+      else Object.defineProperty(globalThis, 'Worker', workerDescriptor)
+      if (createDescriptor === undefined) Reflect.deleteProperty(URL, 'createObjectURL')
+      else Object.defineProperty(URL, 'createObjectURL', createDescriptor)
+      if (revokeDescriptor === undefined) Reflect.deleteProperty(URL, 'revokeObjectURL')
+      else Object.defineProperty(URL, 'revokeObjectURL', revokeDescriptor)
+    }
   })
 })
 

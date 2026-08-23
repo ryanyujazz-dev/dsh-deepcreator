@@ -5,11 +5,34 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { Context } from '@deepseek-ai/cordis'
 import type { Session } from '@deepseek-ai/dsh-session'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ReviewService } from '../src/index.ts'
 
 const exec = promisify(execFile)
 const temporary: string[] = []
+
+function emitSessionEvent(ctx: Context, session: Session, type: string): void {
+  const emitter = ctx as unknown as {
+    emit(name: 'session/event', target: Session, event: {
+      type: string
+      seq: number
+      time: number
+      data: Record<string, never>
+    }): void
+  }
+  emitter.emit('session/event', session, { type, seq: 1, time: Date.now(), data: {} })
+}
+
+async function gitTraceCommandCount(path: string, command: string): Promise<number> {
+  const lines = (await readFile(path, 'utf8')).split('\n').filter(Boolean)
+  return lines.filter(line => {
+    const event: unknown = JSON.parse(line)
+    if (typeof event !== 'object' || event === null) return false
+    const candidate = event as { event?: unknown; argv?: unknown }
+    return candidate.event === 'start' && Array.isArray(candidate.argv) && candidate.argv.includes(command)
+  }).length
+}
+
 // Windows host global core.autocrlf=true would convert the temp repos' files
 // to CRLF and break exact-content assertions; pin every git subprocess this
 // test process spawns (including the ReviewService under test) to LF.
@@ -193,6 +216,52 @@ describe('Review Service', () => {
     await expect(review.summary(session, 'uncommitted')).resolves.toMatchObject({ additions: 1, deletions: 1 })
   })
 
+  it('shares one live Git tree across a status refresh wave and replaces it on the next status', async () => {
+    const repository = await mkdtemp(join(tmpdir(), 'dsh-review-shared-tree-')); temporary.push(repository)
+    const traceDirectory = await mkdtemp(join(tmpdir(), 'dsh-review-trace-')); temporary.push(traceDirectory)
+    const tracePath = join(traceDirectory, 'git.jsonl')
+    await exec('git', ['init', '-q', repository])
+    await exec('git', ['-C', repository, 'config', 'user.email', 'test@example.com'])
+    await exec('git', ['-C', repository, 'config', 'user.name', 'Test'])
+    await writeFile(join(repository, 'file.txt'), 'before\n')
+    await exec('git', ['-C', repository, 'add', '.'])
+    await exec('git', ['-C', repository, 'commit', '-qm', 'initial'])
+    await writeFile(join(repository, 'file.txt'), 'wave one\n')
+    const session = { id: 'shared-tree', header: { cwd: repository } } as unknown as Session
+    const ctx = new Context()
+    const review = new ReviewService(ctx)
+    const previousTrace = process.env.GIT_TRACE2_EVENT
+    process.env.GIT_TRACE2_EVENT = tracePath
+
+    try {
+      await expect(review.status(session)).resolves.toMatchObject({ ok: true, files: [{ path: 'file.txt' }] })
+      expect(await gitTraceCommandCount(tracePath, 'add')).toBe(0)
+      await expect(review.summary(session)).resolves.toMatchObject({ ok: true, additions: 1, deletions: 1 })
+      expect(await gitTraceCommandCount(tracePath, 'add')).toBe(1)
+      await writeFile(join(repository, 'file.txt'), 'wave two\n')
+
+      emitSessionEvent(ctx, session, 'assistant/chunk')
+      await expect(review.diff(session, 'file.txt')).resolves.toMatchObject({
+        ok: true,
+        layers: [{
+          oldSource: { text: 'before\n' },
+          newSource: { text: 'wave one\n' },
+        }],
+      })
+      expect(await gitTraceCommandCount(tracePath, 'add')).toBe(1)
+
+      await expect(review.status(session)).resolves.toMatchObject({ ok: true, files: [{ path: 'file.txt' }] })
+      await expect(review.diff(session, 'file.txt')).resolves.toMatchObject({
+        ok: true,
+        layers: [{ newSource: { text: 'wave two\n' } }],
+      })
+      expect(await gitTraceCommandCount(tracePath, 'add')).toBe(2)
+    } finally {
+      if (previousTrace === undefined) delete process.env.GIT_TRACE2_EVENT
+      else process.env.GIT_TRACE2_EVENT = previousTrace
+    }
+  })
+
   it('summarizes a scope without loading per-file source snapshots', async () => {
     const repository = await mkdtemp(join(tmpdir(), 'dsh-review-')); temporary.push(repository)
     await exec('git', ['init', '-q', repository])
@@ -219,6 +288,134 @@ describe('Review Service', () => {
         expect.objectContaining({ path: 'image.bin', additions: 0, deletions: 0, binary: true }),
       ]),
     })
+  })
+
+  it('merges exact tool edits into one generation and serves source lazily', async () => {
+    const repository = await mkdtemp(join(tmpdir(), 'dsh-review-generation-')); temporary.push(repository)
+    await exec('git', ['init', '-q', repository])
+    await exec('git', ['-C', repository, 'config', 'user.email', 'test@example.com'])
+    await exec('git', ['-C', repository, 'config', 'user.name', 'Test'])
+    await writeFile(join(repository, 'file.txt'), 'before\n')
+    await exec('git', ['-C', repository, 'add', '.'])
+    await exec('git', ['-C', repository, 'commit', '-qm', 'initial'])
+    const session = { id: 'generation-session', header: { cwd: repository } } as unknown as Session
+    const review = new ReviewService(new Context())
+    const internals = review as unknown as {
+      captureStart(session: Session, turn: number): Promise<void>
+      ensureTracker(session: Session, turn: number): Promise<unknown>
+      rootCallTurns: Map<string, number>
+      turnTrackers: Map<string, { dirty: boolean; dirtyReason?: string; root: string }>
+      generations: Map<string, { snapshot?: () => Promise<unknown> }>
+      toolResultValue(result: unknown): unknown
+      observeToolResult(execution: unknown, result: unknown): void
+    }
+    await internals.captureStart(session, 7)
+    await internals.ensureTracker(session, 7)
+    expect(internals.turnTrackers.get(`generation-session\0${7}`)?.dirtyReason).toBeUndefined()
+    internals.rootCallTurns.set('generation-session\0root-call', 7)
+    const execution = { agent: { session }, rootCallId: 'root-call', name: 'edit' }
+
+    await writeFile(join(repository, 'file.txt'), 'middle\n')
+    const firstResult = {
+      isError: false, value: { path: 'file.txt', before: 'before\n', after: 'middle\n' },
+    }
+    expect(internals.toolResultValue(firstResult)).toEqual(firstResult.value)
+    expect(internals.turnTrackers.get(`generation-session\0${7}`)?.root).toBe(await realpath(repository))
+    internals.observeToolResult(execution, firstResult)
+    expect(internals.turnTrackers.get(`generation-session\0${7}`)?.dirtyReason).toBeUndefined()
+    await writeFile(join(repository, 'file.txt'), 'final\n')
+    internals.observeToolResult(execution, {
+      isError: false, value: { path: 'file.txt', before: 'middle\n', after: 'final\n' },
+    })
+
+    const manifest = await review.manifest(session, { turn: 7 })
+    expect(manifest).toMatchObject({
+      ok: true, consistency: 'live-exact', files: [{ path: 'file.txt', lineStatsState: 'pending' }],
+    })
+    if (!manifest.ok) throw new Error(manifest.message)
+    const patches = await review.patches(session, manifest.generation, ['file.txt'])
+    if (!patches.ok) throw new Error(patches.message)
+    expect(patches).toMatchObject({
+      ok: true,
+      files: [{ path: 'file.txt', additions: 1, deletions: 1, layers: [{ oldRevision: 'turn-start', newRevision: 'turn-end' }] }],
+    })
+    expect(patches.ok && patches.files[0]?.layers[0]?.patch).toContain('-before')
+    expect(patches.ok && patches.files[0]?.layers[0]?.patch).toContain('+final')
+    await expect(review.source(session, manifest.generation, 'file.txt', 'old')).resolves.toMatchObject({ ok: true, text: 'before\n' })
+    await expect(review.source(session, manifest.generation, 'file.txt', 'new')).resolves.toMatchObject({ ok: true, text: 'final\n' })
+    await expect(review.patches(session, 'missing-generation', ['file.txt'])).resolves.toMatchObject({
+      ok: false, code: 'STALE_GENERATION',
+    })
+
+    const workspaceManifest = await review.manifest(session)
+    if (!workspaceManifest.ok) throw new Error(workspaceManifest.message)
+    const workspaceGeneration = internals.generations.get(workspaceManifest.generation)
+    const authoritative = workspaceGeneration?.snapshot
+    expect(authoritative).toBeTypeOf('function')
+    if (authoritative === undefined) throw new Error('Expected a lazy authoritative snapshot.')
+    const snapshot = vi.fn(authoritative)
+    if (workspaceGeneration !== undefined) workspaceGeneration.snapshot = snapshot
+    const workspacePatch = await review.patches(session, workspaceManifest.generation, ['file.txt'])
+    expect(workspacePatch.ok && workspacePatch.files[0]?.layers[0]?.patch).toContain('+final')
+    expect(snapshot).not.toHaveBeenCalled()
+    await expect(review.source(session, workspaceManifest.generation, 'file.txt', 'new')).resolves.toMatchObject({ text: 'final\n' })
+    expect(snapshot).not.toHaveBeenCalled()
+
+    await writeFile(join(repository, 'file.txt'), 'before\n')
+    internals.observeToolResult(execution, {
+      isError: false, value: { path: 'file.txt', before: 'final\n', after: 'before\n' },
+    })
+    await expect(review.manifest(session, { turn: 7 })).resolves.toMatchObject({
+      ok: true, consistency: 'live-exact', files: [],
+    })
+  })
+
+  it('computes one cached path batch for many files without per-file Git processes', async () => {
+    const repository = await mkdtemp(join(tmpdir(), 'dsh-review-batch-')); temporary.push(repository)
+    await exec('git', ['init', '-q', repository])
+    await exec('git', ['-C', repository, 'config', 'user.email', 'test@example.com'])
+    await exec('git', ['-C', repository, 'config', 'user.name', 'Test'])
+    const paths = Array.from({ length: 500 }, (_, index) => `file-${String(index).padStart(3, '0')}.txt`)
+    await Promise.all(paths.map(async path => { await writeFile(join(repository, path), 'before\n') }))
+    await exec('git', ['-C', repository, 'add', '.'])
+    await exec('git', ['-C', repository, 'commit', '-qm', 'initial'])
+    await Promise.all(paths.map(async path => { await writeFile(join(repository, path), 'after\n') }))
+    const traceDirectory = await mkdtemp(join(tmpdir(), 'dsh-review-trace-')); temporary.push(traceDirectory)
+    const tracePath = join(traceDirectory, 'trace.json')
+    const previousTrace = process.env.GIT_TRACE2_EVENT
+    process.env.GIT_TRACE2_EVENT = tracePath
+    try {
+      const session = { id: 'batch-session', header: { cwd: repository } } as unknown as Session
+      const review = new ReviewService(new Context())
+      const manifest = await review.manifest(session)
+      if (!manifest.ok) throw new Error(manifest.message)
+      expect(manifest.files).toHaveLength(paths.length)
+      const result = await review.patches(session, manifest.generation, paths)
+      expect(result.ok && result.files).toHaveLength(paths.length)
+      expect(result.ok && result.files.every(file => file.layers.length === 1)).toBe(true)
+      if (result.ok) {
+        for (const file of result.files) expect(file.layers[0]?.patch).toContain(file.path)
+        expect(result.files.every(file => file.layers.every(layer => !('oldSource' in layer) && !('newSource' in layer)))).toBe(true)
+        expect(Buffer.byteLength(JSON.stringify(result))).toBeLessThan(512 * 1024)
+      }
+      // The second request reuses the generation path cache and starts no new
+      // per-file Git work.
+      const before = await gitTraceCommandCount(tracePath, 'diff')
+      await review.patches(session, manifest.generation, paths.slice(0, 5))
+      expect(await gitTraceCommandCount(tracePath, 'diff')).toBe(before)
+      expect(before).toBeLessThanOrEqual(3)
+      const catFilesBefore = await gitTraceCommandCount(tracePath, 'cat-file')
+      const sources = await Promise.all(paths.slice(0, 5).map(async path => await review.source(session, manifest.generation, path, 'old')))
+      expect(sources.every(source => source.ok && source.text === 'before\n')).toBe(true)
+      const catFilesAfter = await gitTraceCommandCount(tracePath, 'cat-file')
+      expect(catFilesAfter - catFilesBefore).toBe(1)
+      await Promise.all(paths.slice(0, 5).map(async path => await review.source(session, manifest.generation, path, 'old')))
+      expect(await gitTraceCommandCount(tracePath, 'cat-file')).toBe(catFilesAfter)
+      await review.deleteSessionSnapshots(session)
+    } finally {
+      if (previousTrace === undefined) delete process.env.GIT_TRACE2_EVENT
+      else process.env.GIT_TRACE2_EVENT = previousTrace
+    }
   })
 
   it('returns explicit patches for untracked text and binary changes', async () => {
@@ -368,6 +565,41 @@ describe('Review Service', () => {
         newSource: { revision: 'turn-end', text: 'after\n' },
       }],
     })
+  })
+
+  it('keeps reconciliation results across non-mutating session events', async () => {
+    const repository = await mkdtemp(join(tmpdir(), 'dsh-review-reconcile-cache-')); temporary.push(repository)
+    await exec('git', ['init', '-q', repository])
+    await exec('git', ['-C', repository, 'config', 'user.email', 'test@example.com'])
+    await exec('git', ['-C', repository, 'config', 'user.name', 'Test'])
+    await writeFile(join(repository, 'file.txt'), 'before\n')
+    await exec('git', ['-C', repository, 'add', '.'])
+    await exec('git', ['-C', repository, 'commit', '-qm', 'initial'])
+    const session = { id: 'reconcile-cache', header: { cwd: repository } } as unknown as Session
+    const ctx = new Context()
+    const review = new ReviewService(ctx)
+    const capture = review as unknown as {
+      captureStart(session: Session, turn: number): Promise<void>
+      captureEnd(session: Session, turn: number): Promise<void>
+    }
+    const internals = review as unknown as { reconcileCache: Map<string, unknown> }
+    await capture.captureStart(session, 1)
+    await writeFile(join(repository, 'file.txt'), 'after\n')
+    await capture.captureEnd(session, 1)
+
+    await expect(review.history(session)).resolves.toMatchObject({
+      ok: true,
+      turns: [{ turn: 1, remainingFiles: 1 }],
+    })
+    expect(internals.reconcileCache.size).toBe(1)
+
+    emitSessionEvent(ctx, session, 'assistant/chunk')
+    expect(internals.reconcileCache.size).toBe(1)
+    await expect(review.history(session)).resolves.toMatchObject({
+      ok: true,
+      turns: [{ turn: 1, remainingFiles: 1 }],
+    })
+    expect(internals.reconcileCache.size).toBe(1)
   })
 
   it('tracks partial external commits without resolving a still-dirty file', async () => {

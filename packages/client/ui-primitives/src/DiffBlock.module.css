@@ -81,6 +81,15 @@
   align-items: stretch;
 }
 
+.virtualRows {
+  position: relative;
+  max-height: min(70vh, 900px);
+  overflow: auto;
+  contain: strict;
+}
+.virtualRowsCanvas { position: relative; width: 100%; }
+.virtualRow { position: absolute; top: 0; left: 0; width: 100%; }
+
 .gutter, .sign {
   box-sizing: border-box;
   padding-top: 1px;

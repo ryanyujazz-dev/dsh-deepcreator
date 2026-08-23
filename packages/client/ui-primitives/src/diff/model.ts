@@ -22,6 +22,11 @@ export interface DiffHunkInput {
   oldSource?: string | null | undefined
   /** Optional full new snapshot used to preserve multiline grammar state. */
   newSource?: string | null | undefined
+  /** Optional source sizes let Review expose fold rows before lazy source arrives. */
+  oldLineCount?: number | undefined
+  newLineCount?: number | undefined
+  /** Render plain text first and schedule mounted hunk highlighting while idle. */
+  deferHighlight?: boolean | undefined
 }
 
 export interface DiffHunkModel {
@@ -46,7 +51,20 @@ export function countDiffHunkLines(input: Pick<DiffHunkInput, 'oldText' | 'newTe
 }
 
 const WORD_REFINEMENT_LIMIT = 4000
-const FULL_SOURCE_HIGHLIGHT_LIMIT = 512 * 1024
+const FULL_SOURCE_HIGHLIGHT_LIMIT = 128 * 1024
+const FULL_SOURCE_HIGHLIGHT_LINE_LIMIT = 2_000
+const HUNK_HIGHLIGHT_LIMIT = 32 * 1024
+const HUNK_HIGHLIGHT_LINE_LIMIT = 800
+
+function withinHighlightBudget(source: string, characterLimit: number, lineLimit: number): boolean {
+  if (source.length > characterLimit) return false
+  let lines = 1
+  for (let index = source.indexOf('\n'); index >= 0; index = source.indexOf('\n', index + 1)) {
+    lines += 1
+    if (lines > lineLimit) return false
+  }
+  return true
+}
 
 /**
  * Full-snapshot highlighting memoized by source text and language. The Review
@@ -183,7 +201,7 @@ function scheduleSnapshotHighlight(): void {
 
 /** Highlight result for one snapshot, or undefined while it is queued. */
 function highlightSnapshot(source: string, language: string | undefined): HighlightSpan[][] | undefined {
-  if (source.length > FULL_SOURCE_HIGHLIGHT_LIMIT) return undefined
+  if (!withinHighlightBudget(source, FULL_SOURCE_HIGHLIGHT_LIMIT, FULL_SOURCE_HIGHLIGHT_LINE_LIMIT)) return undefined
   const version = grammarLoadCount()
   const hit = snapshotHighlightMemo.get(source)?.get(language ?? '')
   if (hit !== undefined && hit.version === version) {
@@ -311,6 +329,7 @@ export function warmDiffHunkModels(hunks: readonly DiffHunkInput[]): void {
 export function buildDiffHunkModel(input: DiffHunkInput): DiffHunkModel {
   const oldText = input.oldText ?? ''
   const language = diffLanguageFromPath(input.path)
+  const deferHunk = input.deferHighlight === true
   const oldOversize = input.oldSource !== undefined && input.oldSource !== null && input.oldSource.length > FULL_SOURCE_HIGHLIGHT_LIMIT
   const newOversize = input.newSource !== undefined && input.newSource !== null && input.newSource.length > FULL_SOURCE_HIGHLIGHT_LIMIT
   const oldFull = oldOversize || input.oldSource === undefined || input.oldSource === null
@@ -319,13 +338,19 @@ export function buildDiffHunkModel(input: DiffHunkInput): DiffHunkModel {
   const newFull = newOversize || input.newSource === undefined || input.newSource === null
     ? undefined
     : highlightSnapshot(input.newSource, language)
+  const oldDeferred = deferHunk && withinHighlightBudget(oldText, HUNK_HIGHLIGHT_LIMIT, HUNK_HIGHLIGHT_LINE_LIMIT)
+    ? highlightSnapshot(oldText, language)
+    : undefined
+  const newDeferred = deferHunk && withinHighlightBudget(input.newText, HUNK_HIGHLIGHT_LIMIT, HUNK_HIGHLIGHT_LINE_LIMIT)
+    ? highlightSnapshot(input.newText, language)
+    : undefined
   // A queued snapshot renders plain text until its highlight lands; only
   // snapshot-less hunks (chat diffs) and oversized snapshots fall back to a
   // synchronous highlight of the hunk text itself.
-  const oldSyntax = oldFull ?? (oldOversize || input.oldSource === undefined || input.oldSource === null
+  const oldSyntax = oldFull ?? oldDeferred ?? (!deferHunk && (oldOversize || input.oldSource === undefined || input.oldSource === null)
     ? highlightLines(oldText, language)
     : undefined)
-  const newSyntax = newFull ?? (newOversize || input.newSource === undefined || input.newSource === null
+  const newSyntax = newFull ?? newDeferred ?? (!deferHunk && (newOversize || input.newSource === undefined || input.newSource === null)
     ? highlightLines(input.newText, language)
     : undefined)
   const rows: AlignedRow[] = []

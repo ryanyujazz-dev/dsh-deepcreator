@@ -32,6 +32,7 @@ export interface ReviewFileSummary {
 export interface ReviewSourceSnapshot {
   revision: 'head' | 'index' | 'worktree' | 'turn-start' | 'turn-end'
   text: string | null
+  lineCount?: number
 }
 
 export interface ReviewPatchLayer {
@@ -39,6 +40,35 @@ export interface ReviewPatchLayer {
   patch: string
   oldSource: ReviewSourceSnapshot
   newSource: ReviewSourceSnapshot
+}
+
+export type ReviewConsistency = 'live-exact' | 'live-reconciling' | 'authoritative'
+
+/** One file in a generation-bound Review manifest. */
+export type ReviewManifestFile = ReviewFileStatus & Omit<ReviewFileSummary, keyof ReviewFileStatus | 'lineStatsState'> & {
+  /** Statistics can arrive with the first patch batch for a live exact Turn. */
+  lineStatsState?: ReviewLineStatsState | 'pending'
+}
+
+/** Lightweight, source-free patch layer used by the generation protocol. */
+export interface ReviewPatchLayerV2 {
+  kind: ReviewPatchLayer['kind']
+  patch: string
+  oldRevision: ReviewSourceSnapshot['revision']
+  newRevision: ReviewSourceSnapshot['revision']
+  oldLineCount?: number
+  newLineCount?: number
+}
+
+export interface ReviewPatchFile {
+  path: string
+  oldPath?: string
+  kind?: ReviewEntryKind
+  presentation?: ReviewPresentation
+  lineStatsState?: ReviewLineStatsState
+  additions?: number
+  deletions?: number
+  layers: ReviewPatchLayerV2[]
 }
 
 export type ReviewTurnFileState = 'pending' | 'committed' | 'reverted'
@@ -75,6 +105,42 @@ export interface ReviewTurnHistory {
 export type ReviewHistoryResult =
   | { ok: true; repositoryRoot: string; workspaceKind: ReviewWorkspaceKind; head?: string | null; turns: ReviewTurnHistory[] }
   | { ok: false; code: 'NO_WORKSPACE' | 'NOT_REPOSITORY' | 'OUTSIDE_WORKSPACE' | 'READ_FAILED'; message: string }
+
+export type ReviewManifestResult =
+  | {
+    ok: true
+    generation: string
+    epoch: number
+    consistency: ReviewConsistency
+    repositoryRoot: string
+    workspaceKind: ReviewWorkspaceKind
+    head?: string | null
+    branch: string
+    scope: ReviewScope
+    location?: ReviewLocation
+    additions: number
+    deletions: number
+    files: ReviewManifestFile[]
+    turns: ReviewTurnHistory[]
+    /** Metadata-first manifests defer expensive line statistics. */
+    summaryPending?: boolean
+    /** Metadata-first manifests defer historical reconciliation. */
+    historyPending?: boolean
+  }
+  | { ok: false; code: 'NO_WORKSPACE' | 'NOT_REPOSITORY' | 'OUTSIDE_WORKSPACE' | 'TURN_NOT_FOUND' | 'READ_FAILED'; message: string }
+
+export type ReviewPatchesResult =
+  | { ok: true; generation: string; files: ReviewPatchFile[] }
+  | { ok: false; code: 'STALE_GENERATION' | 'OUTSIDE_REPOSITORY' | 'READ_FAILED'; message: string }
+
+export type ReviewSourceSide = 'old' | 'new'
+export type ReviewSourceResult =
+  | { ok: true; generation: string; path: string; side: ReviewSourceSide; text: string | null }
+  | { ok: false; code: 'STALE_GENERATION' | 'OUTSIDE_REPOSITORY' | 'READ_FAILED'; message: string }
+
+export type ReviewProbeResult =
+  | { ok: true; epoch: number; changed: boolean }
+  | { ok: false; code: 'NO_WORKSPACE' | 'READ_FAILED'; message: string }
 
 export type ReviewStatusResult =
   | { ok: true; repositoryRoot: string; workspaceKind: ReviewWorkspaceKind; branch: string; scope: ReviewScope; location?: ReviewLocation; files: ReviewFileStatus[] }

@@ -5,18 +5,37 @@ import { resolve } from 'node:path'
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ConversationSnapshot, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
-import { REVIEW_BATCH_FILE_LIMIT, ReviewPanel, matchReviewFile } from '../src/client/Panels.tsx'
+import { ReviewPanel, matchReviewFile } from '../src/client/Panels.tsx'
 import { ReviewCacheController } from '../src/client/review-cache.ts'
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals() })
+const controllers = new Set<ReviewCacheController>()
+
+afterEach(() => {
+  cleanup()
+  for (const controller of controllers) controller.dispose()
+  controllers.clear()
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+})
 beforeEach(() => {
   localStorage.clear()
   // jsdom has no scrollIntoView; the panel's top-focus scroll (open) and the
   // reveal tests both call it. The reveal test overrides this stub locally.
   Element.prototype.scrollIntoView = vi.fn()
+  HTMLElement.prototype.scrollTo = function (options?: ScrollToOptions | number, y?: number): void {
+    this.scrollTop = typeof options === 'number' ? y ?? 0 : options?.top ?? 0
+    queueMicrotask(() => { this.dispatchEvent(new Event('scroll')) })
+  }
 })
 
 const SID = 'session-1' as SessionId
+
+function domRect(width: number, height: number): DOMRect {
+  return {
+    x: 0, y: 0, width, height, top: 0, right: width, bottom: height, left: 0,
+    toJSON: () => ({ width, height }),
+  } as DOMRect
+}
 
 const patches: Record<string, string> = {
   'src/a.ts': [
@@ -99,6 +118,7 @@ function remoteMock() {
 /** Panel props carrying a real controller over the mocked data plane. */
 function props(remote = remoteMock()): ComponentProps<typeof ReviewPanel> & { remote: ReturnType<typeof remoteMock> } {
   const controller = new ReviewCacheController({ remote: remote as never, sessionId: SID, session: sessionStub().session })
+  controllers.add(controller)
   return {
     controller,
     remote,
@@ -219,9 +239,13 @@ describe('Review Panel file stream', () => {
       expect(status?.textContent).toContain('-2')
     }, { timeout: 5000 })
 
-    // Opening the panel expands every file; both headers carry prefetched counts.
-    expect(first.getAttribute('aria-expanded')).toBe('true')
-    expect(second.getAttribute('aria-expanded')).toBe('true')
+    // Opening the panel expands every file after the controller restores the
+    // scope. Under the full UI suite, grammar loading can delay that commit,
+    // so observe the public row state instead of racing the restore effect.
+    await waitFor(() => {
+      expect(first.getAttribute('aria-expanded')).toBe('true')
+      expect(second.getAttribute('aria-expanded')).toBe('true')
+    })
     // The body fills in after the pause window (batch/restore mounts go
     // through the body-fill queue, not synchronously); jsdom frame timing can
     // stretch that, so wait with a generous timeout.
@@ -281,12 +305,45 @@ describe('Review Panel file stream', () => {
     expect(input.remote.review.diff.mock.calls.length).toBe(before)
   })
 
-  it('keeps file headers sticky inside the single scrolling viewport', () => {
+  it('keeps file headers sticky inside the virtualized scrolling viewport', () => {
     const stylesheet = readFileSync(resolve(process.cwd(), 'packages/client/ui-workbench-tools/src/client/Panels.module.css'), 'utf8')
 
-    expect(stylesheet).toMatch(/\.reviewBody\s*\{[^}]*overflow:\s*visible;/)
+    expect(stylesheet).toMatch(/\.fileList\s*\{[^}]*overflow:\s*auto;/)
+    expect(stylesheet).toMatch(/\.reviewVirtualRow\s*\{[^}]*position:\s*absolute;[^}]*width:\s*100%;/)
     expect(stylesheet).toMatch(/\.reviewFileHeader\s*\{[^}]*position:\s*sticky;[^}]*top:\s*0;/)
+    // The virtualizer is the sole owner of row visibility and height. Browser
+    // content skipping reports the intrinsic 36px header height and makes the
+    // following absolute row overlap an expanded diff body.
+    expect(stylesheet).not.toContain('content-visibility')
+    expect(stylesheet).not.toContain('contain-intrinsic-size')
+    expect(readFileSync(resolve(process.cwd(), 'packages/client/ui-workbench-tools/src/client/Panels.tsx'), 'utf8'))
+      .not.toContain('transform: `translateY(${item.start}px)`')
     expect(stylesheet).not.toMatch(/\.reviewBody\s*\{[^}]*grid-template-columns:/)
+  })
+
+  it('remeasures warm expanded rows before paint instead of retaining compact estimates', async () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+      const element = this as HTMLElement
+      if (!element.hasAttribute('data-review-virtual-row')) return domRect(480, 720)
+      const path = element.querySelector<HTMLElement>('[data-review-path]')?.dataset.reviewPath
+      const expanded = element.querySelector('button[aria-expanded="true"]') !== null
+      if (!expanded) return domRect(480, 36)
+      return domRect(480, path === 'src/a.ts' ? 240 : 180)
+    })
+    const input = props()
+    const view = render(<ReviewPanel {...input} />)
+
+    await waitFor(() => {
+      expect(view.getByRole('button', { name: /src\/a\.ts/ }).getAttribute('aria-expanded')).toBe('true')
+      expect(view.getByRole('button', { name: /src\/b\.ts/ }).getAttribute('aria-expanded')).toBe('true')
+    })
+    await waitFor(() => {
+      const rows = [...view.container.querySelectorAll<HTMLElement>('[data-review-virtual-row]')]
+      expect(rows).toHaveLength(2)
+      expect(rows[0]?.style.top).toBe('0px')
+      expect(rows[1]?.style.top).toBe('240px')
+    })
+    input.controller.dispose()
   })
 
   it('preserves the path tail with a left-edge fade in file headers', async () => {
@@ -327,8 +384,11 @@ describe('Review Panel file stream', () => {
   })
 
   it('expands, re-fetches, and scrolls to the revealed file from an absolute target', async () => {
-    const scrollIntoView = vi.fn()
-    Element.prototype.scrollIntoView = scrollIntoView
+    const scrollTo = vi.fn(function (this: HTMLElement, options?: ScrollToOptions | number, y?: number): void {
+      this.scrollTop = typeof options === 'number' ? y ?? 0 : options?.top ?? 0
+      queueMicrotask(() => { this.dispatchEvent(new Event('scroll')) })
+    })
+    HTMLElement.prototype.scrollTo = scrollTo
     const input = props()
     const view = render(<ReviewPanel {...input} />)
     await waitFor(() => { expect(input.remote.review.diff).toHaveBeenCalledTimes(2) })
@@ -344,16 +404,10 @@ describe('Review Panel file stream', () => {
     // The focus wants current content: exactly one fresh re-fetch of b.
     expect(input.remote.review.diff).toHaveBeenLastCalledWith('session-1', 'src/b.ts', 'uncommitted', undefined)
     expect(input.remote.review.diff).toHaveBeenCalledTimes(3)
-    // The reveal scroll lands last: the open's top-focus scroll preceded it.
-    // Heavy renders (multi-theme token payloads) can stretch the reveal's
-    // expansion frame, so wait until ITS scroll is the latest one.
-    await waitFor(() => {
-      expect(scrollIntoView).toHaveBeenCalled()
-      const latest = scrollIntoView.mock.instances[scrollIntoView.mock.instances.length - 1] as HTMLElement
-      expect(latest.dataset.reviewPath).toBe('src/b.ts')
-    })
-    const last = scrollIntoView.mock.instances[scrollIntoView.mock.instances.length - 1] as HTMLElement
-    expect(last.dataset.reviewPath).toBe('src/b.ts')
+    // The file virtualizer scrolls the list itself; the target need not exist
+    // in the DOM before the request is made.
+    await waitFor(() => { expect(scrollTo).toHaveBeenCalled() })
+    expect(scrollTo.mock.calls.some(call => typeof call[0] === 'object' && (call[0]?.top ?? 0) > 0)).toBe(true)
     expect(view.queryByText('review.missedFile')).toBeNull()
   })
 
@@ -388,6 +442,7 @@ describe('Review Panel file stream', () => {
 
     expect(view.queryByText('review.missedFile')).toBeNull()
     expect(view.getByText('loading')).toBeTruthy()
+    await waitFor(() => { expect(release).toBeDefined() })
     release?.({
       ok: true,
       value: { ok: true, repositoryRoot: '/workspace', branch: 'main', files: [] },
@@ -447,13 +502,15 @@ describe('Review Panel file stream', () => {
   it('opens at the full top window and gives a targeted reveal its own bidirectional window', async () => {
     const input = props()
     const view = render(<ReviewPanel {...input} />)
-    await waitFor(() => { expect(input.remote.review.diff).toHaveBeenCalledTimes(2) })
     // Opening = expand-all, top of the list.
-    expect(view.getByRole('button', { name: /src\/a\.ts/ }).getAttribute('aria-expanded')).toBe('true')
-    expect(view.getByRole('button', { name: /src\/b\.ts/ }).getAttribute('aria-expanded')).toBe('true')
+    await waitFor(() => {
+      expect(input.remote.review.diff).toHaveBeenCalledTimes(2)
+      expect(view.getByRole('button', { name: /src\/a\.ts/ }).getAttribute('aria-expanded')).toBe('true')
+      expect(view.getByRole('button', { name: /src\/b\.ts/ }).getAttribute('aria-expanded')).toBe('true')
+    })
 
-    // A reveal-driven open starts at the target; earlier/later files sit
-    // behind independent loading boundaries instead of inflating scrollHeight.
+    // A reveal-driven open scrolls the virtual list to the target while every
+    // file remains logically expanded.
     view.unmount()
     input.controller.dispose()
     const next = props()
@@ -461,10 +518,12 @@ describe('Review Panel file stream', () => {
       {...next}
       reveal={{ target: '/workspace/src/b.ts', parameters: { scope: 'turn', turn: '5', expand: 'all' }, nonce: 1 }}
     />)
-    await waitFor(() => { expect(next.remote.review.diff).toHaveBeenCalledTimes(2) })
-    expect(next.remote.review.status).toHaveBeenLastCalledWith('session-1', { turn: 5 }, undefined)
-    expect(revealed.getByRole('button', { name: /src\/b\.ts/ }).getAttribute('aria-expanded')).toBe('true')
-    expect(revealed.container.querySelector('[data-review-boundary="before"]')).not.toBeNull()
+    await waitFor(() => {
+      expect(next.remote.review.diff).toHaveBeenCalledTimes(2)
+      expect(next.remote.review.status).toHaveBeenLastCalledWith('session-1', { turn: 5 }, undefined)
+      expect(revealed.getByRole('button', { name: /src\/b\.ts/ }).getAttribute('aria-expanded')).toBe('true')
+    })
+    expect(revealed.container.querySelector('[data-review-boundary]')).toBeNull()
     await waitFor(() => { expect(revealed.container.textContent).toContain('export const ready = true') }, { timeout: 5000 })
   })
 
@@ -552,41 +611,58 @@ describe('Review Panel file stream', () => {
     await waitFor(() => { expect(remote.review.status).toHaveBeenLastCalledWith('session-1', 'uncommitted', undefined) })
   })
 
-  it('gates 500 files in settled two-screen batches and expands both directions around a reveal', { timeout: 20000 }, async () => {
-    type ObserverRecord = {
-      margin: string
-      targets: Set<Element>
-      trigger: (target: Element, isIntersecting: boolean) => void
-    }
-    const observers: ObserverRecord[] = []
-    class TestIntersectionObserver {
-      readonly root: Element | Document | null
-      readonly rootMargin: string
-      readonly thresholds: readonly number[] = [0]
-      private readonly callback: IntersectionObserverCallback
-      readonly targets = new Set<Element>()
-      constructor(callback: IntersectionObserverCallback, options: IntersectionObserverInit = {}) {
-        this.callback = callback
-        this.root = options.root ?? null
-        this.rootMargin = options.rootMargin ?? '0px'
-        observers.push({
-          margin: this.rootMargin,
-          targets: this.targets,
-          trigger: (target, isIntersecting) => {
-            this.callback([{ target, isIntersecting } as IntersectionObserverEntry], this as unknown as IntersectionObserver)
-          },
-        })
-      }
-      observe(target: Element) { this.targets.add(target) }
-      unobserve(target: Element) { this.targets.delete(target) }
-      disconnect() { this.targets.clear() }
-      takeRecords(): IntersectionObserverEntry[] { return [] }
-    }
-    vi.stubGlobal('IntersectionObserver', TestIntersectionObserver)
-    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => window.setTimeout(() => { callback(performance.now() + 1_000) }, 0))
-    vi.stubGlobal('cancelAnimationFrame', (handle: number) => { window.clearTimeout(handle) })
+  it('does not reuse a same-path virtual row across retained root and nested repository views', async () => {
+    const remote = remoteMock()
+    remote.review.status.mockImplementation(async (_sessionId: string, scope: unknown, location?: { repository?: string }) => ({
+      ok: true,
+      value: location?.repository === 'nested'
+        ? { ok: true, repositoryRoot: '/workspace/nested', workspaceKind: 'git', branch: 'child', scope, location, files: [{ path: 'README.md', index: ' ', workingTree: 'M', kind: 'file' }] }
+        : { ok: true, repositoryRoot: '/workspace', workspaceKind: 'git', branch: 'main', scope, location, files: [
+            { path: 'README.md', index: ' ', workingTree: 'M', kind: 'file' },
+            { path: 'nested', index: '?', workingTree: '?', kind: 'repository', presentation: 'repository' },
+          ] },
+    }))
+    remote.review.summary.mockImplementation(async (_sessionId: string, scope: unknown, location?: { repository?: string }) => ({
+      ok: true,
+      value: location?.repository === 'nested'
+        ? { ok: true, repositoryRoot: '/workspace/nested', scope, location, additions: 1, deletions: 1, files: [{ path: 'README.md', additions: 1, deletions: 1, lineStatsState: 'available', presentation: 'text' }] }
+        : { ok: true, repositoryRoot: '/workspace', scope, location, additions: 1, deletions: 1, files: [
+            { path: 'README.md', additions: 1, deletions: 1, lineStatsState: 'available', presentation: 'text' },
+            { path: 'nested', kind: 'repository', presentation: 'repository', lineStatsState: 'not-applicable' },
+          ] },
+    }))
+    remote.review.diff.mockImplementation(async (_sessionId: string, path: string, _scope: unknown, location?: { repository?: string }) => ({
+      ok: true,
+      value: {
+        ok: true, repositoryRoot: location?.repository === 'nested' ? '/workspace/nested' : '/workspace', path, presentation: 'text',
+        layers: [{
+          kind: 'working-tree',
+          patch: [`diff --git a/${path} b/${path}`, `--- a/${path}`, `+++ b/${path}`, '@@ -1 +1 @@', '-old', '+new'].join('\n'),
+          oldSource: { revision: 'index', text: 'old' }, newSource: { revision: 'worktree', text: 'new' },
+        }],
+      },
+    }))
+    const input = props(remote)
+    const view = render(<ReviewPanel {...input} />)
 
-    const paths = Array.from({ length: 500 }, (_value, index) => `src/f${String(index + 1).padStart(3, '0')}.ts`)
+    fireEvent.click(await view.findByRole('button', { name: /nested/ }))
+    await waitFor(() => { expect(view.container.querySelector('[class*="reviewStatus"] strong')?.textContent).toContain('child') })
+    fireEvent.click(view.getByRole('button', { name: 'review.repository.root' }))
+    await waitFor(() => { expect(view.container.querySelector('[class*="reviewStatus"] strong')?.textContent).toContain('main') })
+    const rootRow = view.getByRole('button', { name: /README\.md/ }).closest('[data-review-virtual-row]')
+    expect(rootRow).not.toBeNull()
+
+    fireEvent.click(view.getByRole('button', { name: /nested/ }))
+    await waitFor(() => { expect(view.container.querySelector('[class*="reviewStatus"] strong')?.textContent).toContain('child') })
+    const nestedRow = view.getByRole('button', { name: /README\.md/ }).closest('[data-review-virtual-row]')
+    expect(nestedRow).not.toBeNull()
+    expect(nestedRow).not.toBe(rootRow)
+    input.controller.dispose()
+  })
+
+  it.each([500, 2_000])('keeps a %i-file expanded review bounded to virtual viewport rows', { timeout: 15000 }, async fileCount => {
+    const digits = String(fileCount).length
+    const paths = Array.from({ length: fileCount }, (_value, index) => `src/f${String(index + 1).padStart(digits, '0')}.ts`)
     const remote = remoteMock()
     remote.review.status.mockResolvedValue({
       ok: true,
@@ -598,7 +674,7 @@ describe('Review Panel file stream', () => {
     remote.review.summary.mockResolvedValue({
       ok: true,
       value: {
-        ok: true, repositoryRoot: '/workspace', scope: 'uncommitted', additions: 500, deletions: 500,
+        ok: true, repositoryRoot: '/workspace', scope: 'uncommitted', additions: fileCount, deletions: fileCount,
         files: paths.map(path => ({ path, additions: 1, deletions: 1, binary: false })),
       },
     })
@@ -610,91 +686,36 @@ describe('Review Panel file stream', () => {
           kind: 'working-tree', patch: [
             `diff --git a/${path} b/${path}`, `--- a/${path}`, `+++ b/${path}`, '@@ -1 +1 @@', '-old', '+new',
           ].join('\n'),
-          oldSource: { revision: 'index', text: 'old' },
-          newSource: { revision: 'worktree', text: 'new' },
+          oldSource: { revision: 'index', text: 'old' }, newSource: { revision: 'worktree', text: 'new' },
         }],
       },
     }))
     const input = props(remote)
     const view = render(<ReviewPanel {...input} />)
 
-    await waitFor(() => { expect(view.container.querySelectorAll('[data-review-path]')).toHaveLength(6) })
-    await waitFor(() => {
-      expect([...view.container.querySelectorAll('[data-review-path]')].every(row => row.querySelector('button')?.getAttribute('aria-expanded') === 'true')).toBe(true)
-    })
-    await waitFor(() => { expect(remote.review.diff).toHaveBeenCalledTimes(6) })
-
-    const afterGate = await waitFor(() => {
-      const observer = observers.find(item => item.margin === '0px 0px 200% 0px')
-      expect(observer).toBeDefined()
-      return observer as ObserverRecord
-    })
-    const afterBoundary = view.container.querySelector('[data-review-boundary="after"]') as HTMLElement
-    act(() => { afterGate.trigger(afterBoundary, true) })
-    expect(view.container.querySelectorAll('[data-review-path]')).toHaveLength(6)
-    expect(view.container.querySelector('[data-review-boundary="after"]')?.textContent).toContain('loading')
-    // The exact row count follows the measured scroll-root height; regardless
-    // of that test-host geometry, the range grows only after the whole batch
-    // settles and remains far smaller than the 500-file repository.
-    await waitFor(() => { expect(remote.review.diff.mock.calls.length).toBeGreaterThan(6) })
-    await waitFor(() => {
-      expect(view.container.querySelectorAll('article[class*="reviewFilePreload"]').length).toBeGreaterThan(0)
-    })
-    // Data-ready rows are mounted invisibly one per frame. Until every body
-    // is resident, the visible scroll frontier stays on the loading row.
-    expect(view.container.querySelector('[data-review-boundary="after"]')).toBe(afterBoundary)
-    await waitFor(() => {
-      expect(view.container.querySelectorAll('article[class*="reviewFilePreload"]')).toHaveLength(0)
-    }, { timeout: 5000 })
-    await waitFor(() => { expect(view.container.querySelectorAll('[data-review-path]').length).toBeGreaterThan(6) })
-    expect(view.container.querySelectorAll('[data-review-path]').length).toBeLessThanOrEqual(6 + REVIEW_BATCH_FILE_LIMIT)
+    await waitFor(() => { expect(view.container.querySelectorAll('[data-review-path]').length).toBeGreaterThan(0) })
+    const initialCount = view.container.querySelectorAll('[data-review-path]').length
+    expect(initialCount).toBeLessThan(32)
+    expect(view.container.querySelector('[class*="reviewVirtualCanvas"]')?.getAttribute('style')).toContain('height:')
+    const mountedRows = [...view.container.querySelectorAll<HTMLElement>('[class*="reviewVirtualRow"]')]
+    expect(mountedRows.every(row => row.style.top !== '' && row.style.transform === '')).toBe(true)
 
     view.rerender(<ReviewPanel
       {...input}
-      reveal={{ target: '/workspace/src/f400.ts', parameters: { scope: 'uncommitted', expand: 'all' }, nonce: 1 }}
+      reveal={{ target: `/workspace/${paths.at(-101)}`, parameters: { scope: 'uncommitted', expand: 'all' }, nonce: 1 }}
     />)
-    await waitFor(() => { expect(remote.review.diff).toHaveBeenCalledWith('session-1', 'src/f400.ts', 'uncommitted', undefined) })
-    await waitFor(() => { expect(view.container.querySelectorAll('[data-review-path]')).toHaveLength(1) })
-    const row400 = view.container.querySelector('[data-review-path="src/f400.ts"]') as HTMLElement
-    await waitFor(() => { expect(row400.querySelector('div[class*="reviewFileContent"]')).not.toBeNull() })
-    expect(view.container.querySelector('[data-review-boundary="before"]')).not.toBeNull()
-    expect(view.container.querySelector('[data-review-boundary="after"]')).not.toBeNull()
-
-    const beforeBoundaryAtReveal = view.container.querySelector('[data-review-boundary="before"]') as HTMLElement
-    const afterBoundaryAtReveal = view.container.querySelector('[data-review-boundary="after"]') as HTMLElement
-    const beforeGate = await waitFor(() => {
-      const observer = observers.findLast(item => item.margin === '200% 0px 0px 0px' && item.targets.has(beforeBoundaryAtReveal))
-      expect(observer).toBeDefined()
-      return observer as ObserverRecord
-    })
-    const nextAfterGate = await waitFor(() => {
-      const observer = observers.findLast(item => item.margin === '0px 0px 200% 0px' && item.targets.has(afterBoundaryAtReveal))
-      expect(observer).toBeDefined()
-      return observer as ObserverRecord
-    })
-    act(() => {
-      beforeGate.trigger(beforeBoundaryAtReveal, true)
-      nextAfterGate.trigger(afterBoundaryAtReveal, true)
-    })
-    expect(view.container.querySelectorAll('[data-review-path]')).toHaveLength(1)
-    await waitFor(() => {
-      expect(view.container.querySelectorAll('article[class*="reviewFilePreload"]').length).toBeGreaterThan(0)
-    })
-    await waitFor(() => {
-      expect(view.container.querySelectorAll('article[class*="reviewFilePreload"]')).toHaveLength(0)
-    }, { timeout: 5000 })
-    await waitFor(() => {
-      const current = [...view.container.querySelectorAll<HTMLElement>('[data-review-path]')]
-        .map(row => row.dataset.reviewPath ?? '')
-      expect(current.some(path => path < 'src/f400.ts')).toBe(true)
-      expect(current.some(path => path > 'src/f400.ts')).toBe(true)
-    })
-    const revealedPaths = [...view.container.querySelectorAll<HTMLElement>('[data-review-path]')]
+    const target = paths.at(-101)
+    expect(target).toBeDefined()
+    await waitFor(() => { expect(view.container.querySelector(`[data-review-path="${target}"]`)).not.toBeNull() })
+    const revealed = [...view.container.querySelectorAll<HTMLElement>('[data-review-path]')]
       .map(row => row.dataset.reviewPath ?? '')
-    expect(revealedPaths.some(path => path < 'src/f400.ts')).toBe(true)
-    expect(revealedPaths.some(path => path > 'src/f400.ts')).toBe(true)
+    expect(revealed.length).toBeLessThan(32)
+    expect(revealed).toContain(target)
+    expect(revealed.some(path => path < target!)).toBe(true)
+    expect(revealed.some(path => path > target!)).toBe(true)
     input.controller.dispose()
   })
+
 })
 
 describe('matchReviewFile', () => {
