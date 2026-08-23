@@ -1,7 +1,8 @@
 // @vitest-environment node
-// The bundled official-skill provider: eleven packaged deepseek-harness
-// skills register through `ctx.skills` with parsed frontmatter, stripped
-// bodies, and a resource base that resolves each skill's packaged files.
+// The bundled official-skill provider: the packaged deepseek-harness skills
+// plus DeepCreator's own browser skills register through `ctx.skills` with
+// parsed frontmatter, stripped bodies, and a resource base that resolves each
+// skill's packaged files.
 
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -10,9 +11,10 @@ import { apply, inject, name } from '../src/index.ts'
 import type { SkillCandidate, SkillDefinition, SkillProvider } from '@deepseek-ai/dsh-skill'
 
 const OFFICIAL_SKILL_NAMES = [
-  'dsh-archive-agent-notes', 'dsh-code-review', 'dsh-doc-site-sync', 'dsh-doc-standards',
-  'dsh-find-simplifications', 'dsh-merging-stacked-prs', 'dsh-pre-push-checks', 'dsh-prose-standard',
-  'dsh-translate-docs', 'dsh-trim-cot-leakage', 'record-browser-gif',
+  'dsh-archive-agent-notes', 'dsh-browser-control', 'dsh-code-review', 'dsh-doc-site-sync',
+  'dsh-doc-standards', 'dsh-find-simplifications', 'dsh-merging-stacked-prs', 'dsh-playwright-control', 'dsh-pre-push-checks',
+  'dsh-prose-standard', 'dsh-translate-docs', 'dsh-trim-cot-leakage', 'dsh-web-gui-tester',
+  'record-browser-gif',
 ]
 
 /** Drive `apply()` against a stub `ctx.skills` and return the registered provider. */
@@ -37,7 +39,7 @@ describe('bundled official skills provider', () => {
     expect(inject).toEqual(['skills'])
   })
 
-  it('lists the eleven official skills as bundled candidates', async () => {
+  it('lists the fourteen bundled skills as candidates', async () => {
     const provider = await registeredProvider()
     const candidates = await provider.list({}) as readonly SkillCandidate[]
     expect(candidates.map(candidate => candidate.name)).toEqual(OFFICIAL_SKILL_NAMES)

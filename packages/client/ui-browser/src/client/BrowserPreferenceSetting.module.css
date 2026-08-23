@@ -1,0 +1,8 @@
+.group { display:flex; flex-direction:column; width:100%; }
+.row { display:grid; grid-template-columns:minmax(0,1fr) minmax(150px,auto); gap:16px; align-items:center; padding:10px 0; color:var(--dsw-alias-label-primary); }
+.row + .row { border-top:1px solid var(--dsw-alias-border-l2); }
+.title,.description { display:block; }
+.title { font-size:13px; line-height:20px; font-weight:500; }
+.description { color:var(--dsw-alias-label-tertiary); font-size:11px; line-height:16px; }
+.row select { min-height:28px; padding:0 28px 0 8px; border:1px solid var(--dsw-alias-border-l1); border-radius:6px; color:var(--dsw-alias-label-primary); background:var(--dsw-alias-bg-layer-2); }
+@media (max-width:560px) { .row { grid-template-columns:1fr; gap:6px; } }

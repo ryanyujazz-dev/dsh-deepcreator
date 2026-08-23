@@ -82,4 +82,17 @@ describe('WorkbenchController', () => {
     expect(controller.visibility.version()).toBe(1)
     expect(listener).toHaveBeenCalledOnce()
   })
+
+  it('publishes explicit user dismissal edges separately from visibility', () => {
+    const controller = new WorkbenchController(new Context(), layout)
+    const listener = vi.fn()
+    controller.dismissals.subscribe(listener)
+
+    controller.hide('browser')
+    expect(controller.dismissals.getSnapshot()).toMatchObject({ typeId: 'browser' })
+    controller.closeTab('browser', 'tab-1')
+    expect(controller.dismissals.getSnapshot()).toMatchObject({ typeId: 'browser', instanceId: 'tab-1' })
+    expect(listener).toHaveBeenCalledTimes(2)
+    expect(controller.visibility.list()).toEqual([])
+  })
 })

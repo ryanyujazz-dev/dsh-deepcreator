@@ -11,7 +11,8 @@ import { app, BrowserWindow, dialog, shell, type Event } from 'electron'
 import { resolveDesktopDshLaunch, resolveDesktopWorkspace } from './dsh-launch.ts'
 import { startDesktopHost, type DesktopHost } from './host-process.ts'
 import { nativeWindowChromeOptions } from './window-options.ts'
-import { BrowserViewManager } from './browser-views.ts'
+import { BrowserRpcServer } from './browser-rpc-server.ts'
+import { BrowserSurfaceDriver } from './browser-views.ts'
 import { TitleBarThemeBridge } from './titlebar-theme.ts'
 import { WindowStateBridge } from './window-state.ts'
 
@@ -24,7 +25,8 @@ const SHUTDOWN_TIMEOUT_MS = 10_000
 let mainWindow: BrowserWindow | undefined
 let host: DesktopHost | undefined
 let shutdownStarted = false
-let browserViews: BrowserViewManager | undefined
+let browserViews: BrowserSurfaceDriver | undefined
+let browserRpc: BrowserRpcServer | undefined
 let windowState: WindowStateBridge | undefined
 let titleBarTheme: TitleBarThemeBridge | undefined
 
@@ -76,8 +78,9 @@ async function createWindow(activeHost: DesktopHost): Promise<BrowserWindow> {
     },
   })
   guardNavigation(window, activeHost.url)
-  browserViews = new BrowserViewManager(window)
-  browserViews.install()
+  browserViews = new BrowserSurfaceDriver(window)
+  await browserViews.install()
+  browserRpc?.attach(browserViews)
   windowState = new WindowStateBridge(window)
   windowState.install()
   titleBarTheme = new TitleBarThemeBridge(window)
@@ -102,25 +105,37 @@ async function createWindow(activeHost: DesktopHost): Promise<BrowserWindow> {
 
 /** Start the Host child and native window as one application lifecycle. */
 async function start(): Promise<void> {
+  const activeBrowserRpc = new BrowserRpcServer()
+  await activeBrowserRpc.start()
+  browserRpc = activeBrowserRpc
   const launch = resolveDesktopDshLaunch(
     require.resolve('@deepseek-ai/dsh/package.json'),
     process.env,
   )
-  const activeHost = await startDesktopHost({
-    command: launch.command,
-    args: launch.args,
-    cwd: resolveDesktopWorkspace(process.env, process.cwd()),
-    env: launch.env,
-    startupTimeoutMs: STARTUP_TIMEOUT_MS,
-    shutdownTimeoutMs: SHUTDOWN_TIMEOUT_MS,
-    onStdout: (line) => { console.log(`[dsh-host] ${line}`) },
-    onStderr: (chunk) => { process.stderr.write(`[dsh-host] ${chunk}`) },
-  })
+  let activeHost: DesktopHost
+  try {
+    activeHost = await startDesktopHost({
+      command: launch.command,
+      args: launch.args,
+      cwd: resolveDesktopWorkspace(process.env, process.cwd()),
+      env: { ...launch.env, ...activeBrowserRpc.hostEnv() },
+      startupTimeoutMs: STARTUP_TIMEOUT_MS,
+      shutdownTimeoutMs: SHUTDOWN_TIMEOUT_MS,
+      onStdout: (line) => { console.log(`[dsh-host] ${line}`) },
+      onStderr: (chunk) => { process.stderr.write(`[dsh-host] ${chunk}`) },
+    })
+  } catch (error) {
+    await activeBrowserRpc.stop()
+    if (browserRpc === activeBrowserRpc) browserRpc = undefined
+    throw error
+  }
   host = activeHost
   try {
     mainWindow = await createWindow(activeHost)
   } catch (error) {
     await activeHost.stop()
+    await activeBrowserRpc.stop()
+    if (browserRpc === activeBrowserRpc) browserRpc = undefined
     host = undefined
     throw error
   }
@@ -150,11 +165,14 @@ if (!app.requestSingleInstanceLock()) {
   })
   app.on('window-all-closed', () => { app.quit() })
   app.on('before-quit', (event) => {
-    if (host === undefined || shutdownStarted) return
+    if ((host === undefined && browserRpc === undefined) || shutdownStarted) return
     event.preventDefault()
     shutdownStarted = true
-    void host.stop().finally(() => {
+    const stoppingHost = host?.stop() ?? Promise.resolve()
+    const stoppingBrowser = browserRpc?.stop() ?? Promise.resolve()
+    void Promise.allSettled([stoppingHost, stoppingBrowser]).finally(() => {
       host = undefined
+      browserRpc = undefined
       app.quit()
     })
   })

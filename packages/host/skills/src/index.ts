@@ -1,12 +1,14 @@
 /**
  * The official deepseek-harness development skills, bundled as one immutable
- * provider on `ctx.skills`. The eleven skill directories ship verbatim under
+ * provider on `ctx.skills`, together with DeepCreator's own browser skills.
+ * The fourteen skill directories ship verbatim under
  * `assets/skills/` (SKILL.md plus each skill's agents/references/scripts), so
  * a DeepCreator installation gains the same skills the official repository
  * uses for its own development: code review, simplification finding,
  * pre-push checks, docs standards, prose standard, translation, CoT-leakage
  * trimming, agent-note archiving, stacked-PR merging, doc-site sync, and
- * browser-GIF recording.
+ * browser-GIF recording — plus the agent-driven browser control and GUI
+ * testing skills for semantic Browser control and full Playwright automation.
  *
  * The provider parses each SKILL.md frontmatter the same way the official
  * filesystem provider does (name/description plus the invocation flags), and

@@ -5,6 +5,8 @@ import { createElement, type ReactNode } from 'react'
 import type {} from '@ryanyujazz/dsh-artifacts/remote'
 import type {} from '@ryanyujazz/dsh-client-locale/client'
 import type {} from '@ryanyujazz/dsh-client-workbench-remotes/client'
+import type {} from '@ryanyujazz/dsh-client-presentation/client'
+import type { PresentationProvider } from '@ryanyujazz/dsh-client-presentation/client'
 import type { PanelTypeDefinition, WorkbenchPanelProps } from '@ryanyujazz/dsh-client-ui-workbench/client'
 import type {} from '@ryanyujazz/dsh-client-ui-workbench/client'
 import { ArtifactIcon } from './ArtifactIcon.tsx'
@@ -22,6 +24,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' { interface LocaleNamespaceMap
 export const inject = [
   'slots', 'workbench', 'workspaces', 'locale', 'remote', 'remote.artifacts',
   'conversationEvents', 'conversationViews',
+  'presentation',
 ]
 
 export function apply(ctx: ClientContext): void {
@@ -50,6 +53,14 @@ export function apply(ctx: ClientContext): void {
     id: 'artifact', label: () => t('type'), scope: 'session', order: 3, supportsHome: true, supportsCreate: false,
     supportsMultipleInstances: true, minWidth: 150, minHeight: 260, preferredWidth: 520, initialWidthRatio: 1 / 3, closePolicy: 'detach',
   }
+  const presenter: PresentationProvider = {
+    id: 'workbench-artifact', priority: 100, resourceKinds: ['artifact'], modes: ['none'], surfaceHost: false,
+    async present(_request, resource) {
+      if (!ctx.workbench.types.list().some(type => type.id === 'artifact')) return { status: 'unavailable', presenterId: 'workbench-artifact', failure: { code: 'PANEL_UNAVAILABLE', stage: 'present', retryable: true, message: 'The Artifact panel type is not registered in this client.' } }
+      ctx.workbench.present({ typeId: 'artifact', instanceId: resource.id, route: 'instance', reveal: true, reason: 'agent' })
+      return { status: 'presented', presenterId: 'workbench-artifact' }
+    },
+  }
   ctx.effect(() => {
     const disposers: Array<() => void> = []
     try {
@@ -69,6 +80,10 @@ export function apply(ctx: ClientContext): void {
       disposers.push(registerArtifactNodeDefinition(ctx))
       disposers.push(registerArtifactsConversationView(ctx))
       disposers.push(ctx.locale.register(NS, { zh, en }))
+      if (ctx.presentation !== undefined) {
+        disposers.push(ctx.presentation.providers.register(presenter))
+        if (ctx.workbench.dismissals !== undefined) disposers.push(ctx.workbench.dismissals.subscribe(() => { const dismissal = ctx.workbench.dismissals.getSnapshot(); if (dismissal?.typeId === 'artifact') ctx.presentation.dismiss('artifact', dismissal.instanceId) }))
+      }
     } catch (error) {
       for (const dispose of disposers.reverse()) dispose()
       throw error

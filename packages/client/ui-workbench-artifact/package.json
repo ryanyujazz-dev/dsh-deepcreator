@@ -28,7 +28,8 @@
         "@ryanyujazz/dsh-client-workbench-remotes",
         "@ryanyujazz/dsh-client-ui-workbench",
         "@ryanyujazz/dsh-client-ui-primitives",
-        "@ryanyujazz/dsh-client-ui-conversation"
+        "@ryanyujazz/dsh-client-ui-conversation",
+        "@ryanyujazz/dsh-client-presentation"
       ],
       "platform": "web"
     }
@@ -52,7 +53,8 @@
     "@ryanyujazz/dsh-client-workbench-remotes": "^0.1.0",
     "@ryanyujazz/dsh-client-ui-primitives": "^0.1.0",
     "@ryanyujazz/dsh-client-ui-workbench": "^0.1.0",
-    "@ryanyujazz/dsh-client-ui-conversation": "^0.1.0"
+    "@ryanyujazz/dsh-client-ui-conversation": "^0.1.0",
+    "@ryanyujazz/dsh-client-presentation": "^0.1.0"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.1",
@@ -68,7 +70,8 @@
     "@ryanyujazz/dsh-client-workbench-remotes": "workspace:^",
     "@ryanyujazz/dsh-client-ui-primitives": "workspace:^",
     "@ryanyujazz/dsh-client-ui-workbench": "workspace:^",
-    "@ryanyujazz/dsh-client-ui-conversation": "workspace:^"
+    "@ryanyujazz/dsh-client-ui-conversation": "workspace:^",
+    "@ryanyujazz/dsh-client-presentation": "workspace:^"
   },
   "files": [
     "lib/index.js",

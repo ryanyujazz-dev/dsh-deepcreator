@@ -72,6 +72,11 @@ export interface WorkbenchService {
   types: { list(): readonly PanelTypeDefinition[] }
   /** Types currently visible in the live topology (controller-published). */
   visibility: { list(): readonly string[] }
+  /** Explicit user dismissal edges. Responsive hiding never emits one. */
+  dismissals: {
+    getSnapshot(): { sequence: number; typeId: string; instanceId?: string } | null
+    subscribe(listener: () => void): () => void
+  }
   present(request: WorkbenchPresentRequest): void
   activate(typeId: string, instanceId?: string): void
   /** Present the type as a user action and focus `target` inside its panel. */

@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "DeepCreator Browser Provider",
+  "version": "0.1.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArLZdm504dTYOqT4dnOiZy7Lkbvb9zLG2JgRmZo+40yq/uM97IUMe7ZkzgkvK/APWaXSYYiy6cO5S8TUZsl9vWnDAs/QyiRoI2YRr3wxjxDwentnGG/1f8jUIbCfQ3oe8Q0O8kARFNooz0XW3HXDVjXo2JIvpvePut51+TJlDsWE1D+Pig4Z6CFpg37N1Munj9CdULzw48pe0isA4eBSHfS04pJAwW4mhWayA10AylXKvgxvm+ktO41V/sOKy4bXCDQJdsXFhcjuo4R6JL1oujwSRZrXxuSOPzxRnn9tO9/FbJ17Rw2A2KmkCpsPPYcB3xtlSPrcbpLsOwLdHb4Fn+wIDAQAB",
+  "description": "Share selected Chrome tabs with DeepCreator Browser Runtime.",
+  "permissions": ["activeTab", "debugger", "nativeMessaging", "scripting", "storage", "tabs", "tabGroups"],
+  "host_permissions": ["http://*/*", "https://*/*"],
+  "background": { "service_worker": "service-worker.js", "type": "module" },
+  "action": { "default_title": "Share/unshare this tab with DeepCreator" }
+}
