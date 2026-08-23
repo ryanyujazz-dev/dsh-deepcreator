@@ -26,6 +26,7 @@ async function bench() {
   const openPath = vi.fn(async () => {})
   const open = vi.fn()
   const clear = vi.fn()
+  const refresh = vi.fn(async () => {})
   const search = vi.fn(async () => ({
     ok: true as const,
     value: { items: [{ sessionId: 'session' as never, snippet: 'match' }], hasMore: false },
@@ -36,7 +37,7 @@ async function bench() {
   ctx.provide('workspaces', {
     create, startSession, rename, insertSessionBefore, openPath,
   } as never)
-  ctx.provide('sessions', { open, clear, search, searchResultLimit: 20, binding, fork } as never)
+  ctx.provide('sessions', { open, clear, refresh, search, searchResultLimit: 20, binding, fork } as never)
   ctx.provide('connection', {
     isLoopback: true,
     hostDescription: {
@@ -56,7 +57,8 @@ async function bench() {
   ctx.provide('remote.session-admin', sessionAdminRemote as never)
   return {
     ctx, slots: ctx.get('slots') as SlotRegistry, locale, create, startSession, rename,
-    insertSessionBefore, openPath, open, clear, search, renameSession, binding, fork,
+    insertSessionBefore, openPath, open, clear, refresh, search, renameSession, binding, fork,
+    sessionAdminRemote,
   }
 }
 
@@ -126,6 +128,9 @@ describe('ui-workspace apply', () => {
     expect(b.rename).toHaveBeenCalledWith('ws', 'renamed')
     await browser.insertSessionBefore('ws' as never, 's1' as never, 's2' as never)
     expect(b.insertSessionBefore).toHaveBeenCalledWith('ws', 's1', 's2')
+    await browser.deleteSession('session-11111111-2222-4333-8444-555555555555' as never)
+    expect(b.sessionAdminRemote.delete).toHaveBeenCalledWith('session-11111111-2222-4333-8444-555555555555')
+    expect(b.refresh).toHaveBeenCalledTimes(1)
     await browser.createWorkspace({ path: '/tmp/browser-project' })
     expect(b.create).toHaveBeenCalledWith({ path: '/tmp/browser-project' })
 
