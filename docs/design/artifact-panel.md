@@ -162,7 +162,7 @@ Host package `packages/host/artifacts` (`@ryanyujazz/dsh-artifacts`) is a
 read-only workspace file reader (one Typert Remote `read`); no registry, no
 events, no fold.
 
-`ui-workbench-tools` retains Review, Terminal, and Preview. Bundle changes ride
+`ui-workbench-tools` retains Review and Terminal; Browser presentation is owned by `ui-browser`. Bundle changes ride
 the existing `deepcreator-web` patch (`deepcreator-workbench-artifact` Client
 row + `deepcreator-artifacts` Host row; the former `deepcreator-tool-artifact`
 row is removed).

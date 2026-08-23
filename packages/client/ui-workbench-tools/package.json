@@ -1,6 +1,6 @@
 {
   "name": "@ryanyujazz/dsh-client-ui-workbench-tools",
-  "description": "Review, Terminal and Preview providers for DeepCreator Workbench",
+  "description": "Review and Terminal providers for DeepCreator Workbench",
   "version": "0.1.0",
   "publishConfig": {
     "access": "public"
@@ -28,7 +28,8 @@
         "@ryanyujazz/dsh-client-workbench-remotes",
         "@ryanyujazz/dsh-client-ui-workbench",
         "@ryanyujazz/dsh-client-ui-primitives",
-        "@ryanyujazz/dsh-client-ui-conversation"
+        "@ryanyujazz/dsh-client-ui-conversation",
+        "@ryanyujazz/dsh-client-presentation"
       ],
       "platform": "web"
     }
@@ -51,9 +52,11 @@
     "@ryanyujazz/dsh-client-ui-workbench": "^0.1.0",
     "@ryanyujazz/dsh-client-ui-conversation": "^0.1.0",
     "@ryanyujazz/dsh-review": "^0.1.0",
-    "@ryanyujazz/dsh-terminal-workbench": "^0.1.0"
+    "@ryanyujazz/dsh-terminal-workbench": "^0.1.0",
+    "@ryanyujazz/dsh-client-presentation": "^0.1.0"
   },
   "dependencies": {
+    "@tanstack/react-virtual": "^3.14.9",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0"
   },
@@ -70,7 +73,8 @@
     "@ryanyujazz/dsh-client-ui-workbench": "workspace:^",
     "@ryanyujazz/dsh-client-ui-conversation": "workspace:^",
     "@ryanyujazz/dsh-review": "workspace:^",
-    "@ryanyujazz/dsh-terminal-workbench": "workspace:^"
+    "@ryanyujazz/dsh-terminal-workbench": "workspace:^",
+    "@ryanyujazz/dsh-client-presentation": "workspace:^"
   },
   "files": [
     "lib/index.js",

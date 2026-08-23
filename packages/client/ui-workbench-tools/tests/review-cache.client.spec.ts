@@ -263,6 +263,340 @@ describe('ReviewCacheController', () => {
     cache.dispose()
   })
 
+  it('does not periodically poll history on an old Host, hidden or visible', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-22T00:00:00Z'))
+    const remote = remoteMock()
+    remote.review.history.mockResolvedValue({
+      ok: true,
+      value: {
+        ok: true, repositoryRoot: '/workspace', workspaceKind: 'git',
+        turns: [{ turn: 4, current: true, remainingFiles: 1, files: [{ path: 'src/a.ts', state: 'pending' }] }],
+      },
+    })
+    const cache = new ReviewCacheController({ remote: remote as never, sessionId: SID, session: sessionStub().session })
+    await advance()
+    const initialized = remote.review.history.mock.calls.length
+
+    await vi.advanceTimersByTimeAsync(12_000)
+    expect(remote.review.history).toHaveBeenCalledTimes(initialized)
+
+    cache.setVisible(true)
+    await advance()
+    const visible = remote.review.history.mock.calls.length
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(remote.review.history).toHaveBeenCalledTimes(visible)
+    cache.dispose()
+  })
+
+  it('probes a generation Host only while visible and refreshes after an epoch change', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-22T00:00:00Z'))
+    const legacy = remoteMock()
+    const manifest = vi.fn().mockResolvedValue({
+      ok: true, value: {
+        ok: true, generation: 'g1', epoch: 1, consistency: 'authoritative',
+        repositoryRoot: '/workspace', workspaceKind: 'git', branch: 'main', scope: 'uncommitted',
+        additions: 1, deletions: 1,
+        files: [{ path: 'src/a.ts', index: ' ', workingTree: 'M', additions: 1, deletions: 1 }], turns: [],
+      },
+    })
+    const probe = vi.fn().mockResolvedValue({ ok: true, value: { ok: true, epoch: 1, changed: false } })
+    const remote = { review: { ...legacy.review, manifest, probe, patches: vi.fn() } }
+    const cache = new ReviewCacheController({ remote: remote as never, sessionId: SID, session: sessionStub().session })
+    await advance()
+    const initialized = manifest.mock.calls.length
+
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(probe).not.toHaveBeenCalled()
+    expect(manifest).toHaveBeenCalledTimes(initialized)
+    cache.setVisible(true)
+    await advance()
+    const visibleRefreshes = manifest.mock.calls.length
+    probe.mockResolvedValueOnce({ ok: true, value: { ok: true, epoch: 2, changed: true } })
+    await vi.advanceTimersByTimeAsync(2_000)
+    await advance()
+    expect(probe).toHaveBeenCalledTimes(1)
+    expect(manifest.mock.calls.length).toBeGreaterThan(visibleRefreshes)
+    cache.dispose()
+  })
+
+  it('batches viewport patches for one Host generation without full source snapshots', async () => {
+    const legacy = remoteMock()
+    const paths = ['src/a.ts', 'src/b.ts']
+    const manifest = vi.fn().mockResolvedValue({
+      ok: true, value: {
+        ok: true, generation: 'g1', epoch: 1, consistency: 'authoritative',
+        repositoryRoot: '/workspace', workspaceKind: 'git', branch: 'main', scope: 'uncommitted',
+        additions: 2, deletions: 2,
+        files: paths.map(path => ({ path, index: ' ', workingTree: 'M', additions: 1, deletions: 1 })), turns: [],
+      },
+    })
+    const patches = vi.fn(async (_sid: string, generation: string, requested: string[]) => ({
+      ok: true, value: {
+        ok: true, generation,
+        // A batch transport is free to return files in any order. The cache
+        // must associate patches by path, never by request/response index.
+        files: requested.toReversed().map(path => ({
+          path, additions: 1, deletions: 1,
+          layers: [{
+            kind: 'uncommitted', patch: patch(path).replace('+b', `+content:${path}`),
+            oldRevision: 'head', newRevision: 'worktree',
+          }],
+        })),
+      },
+    }))
+    const remote = { review: { ...legacy.review, manifest, patches, probe: vi.fn() } }
+    const cache = new ReviewCacheController({ remote: remote as never, sessionId: SID, session: sessionStub().session })
+    await flush()
+
+    cache.ensure(paths[0]!, 'viewport')
+    cache.ensure(paths[1]!, 'viewport')
+    await flush()
+
+    expect(patches).toHaveBeenCalledTimes(1)
+    expect(patches).toHaveBeenCalledWith(SID, 'g1', paths)
+    expect(cache.getSnapshot().entries[paths[0]!]?.cache.kind).toBe('ready')
+    const raw = cache.getSnapshot().entries[paths[0]!]?.cache
+    expect(raw?.kind === 'ready' ? raw.raw.layers[0]?.oldSource.text : 'missing').toBeNull()
+    for (const path of paths) {
+      const entry = cache.getSnapshot().entries[path]?.cache
+      expect(entry?.kind === 'ready' ? entry.raw.layers[0]?.patch : '').toContain(`+content:${path}`)
+    }
+    cache.dispose()
+  })
+
+  it('starts a pending viewport patch before deferred generation metadata', async () => {
+    vi.useFakeTimers()
+    const legacy = remoteMock(['src/a.ts'])
+    const manifest = vi.fn().mockResolvedValue({
+      ok: true, value: {
+        ok: true, generation: 'g-priority', epoch: 1, consistency: 'authoritative',
+        repositoryRoot: '/workspace', workspaceKind: 'git', branch: 'main', scope: 'uncommitted',
+        additions: 0, deletions: 0, summaryPending: true, historyPending: true,
+        files: [{ path: 'src/a.ts', index: ' ', workingTree: 'M', lineStatsState: 'pending' }], turns: [],
+      },
+    })
+    const order: string[] = []
+    const patches = vi.fn(async (_sid: string, generation: string, requested: string[]) => {
+      order.push('patch')
+      return {
+        ok: true, value: {
+          ok: true, generation,
+          files: requested.map(path => ({
+            path, additions: 1, deletions: 1,
+            layers: [{ kind: 'uncommitted', patch: patch(path), oldRevision: 'head', newRevision: 'worktree' }],
+          })),
+        },
+      }
+    })
+    legacy.review.summary.mockImplementation(async () => {
+      order.push('summary')
+      return {
+        ok: true, value: {
+          ok: true, repositoryRoot: '/workspace', scope: 'uncommitted', additions: 1, deletions: 1,
+          files: [{ path: 'src/a.ts', additions: 1, deletions: 1, lineStatsState: 'available' }],
+        },
+      }
+    })
+    legacy.review.history.mockImplementation(async () => {
+      order.push('history')
+      return { ok: true, value: { ok: true, repositoryRoot: '/workspace', turns: [] } }
+    })
+    const remote = { review: { ...legacy.review, manifest, patches, probe: vi.fn() } }
+    const cache = new ReviewCacheController({ remote: remote as never, sessionId: SID, session: sessionStub().session })
+    await advance()
+
+    cache.setResident(new Set(['src/a.ts']))
+    cache.ensure('src/a.ts', 'viewport')
+    await advance()
+    expect(order).toEqual(['patch'])
+
+    await vi.advanceTimersByTimeAsync(350)
+    await advance()
+    expect(order[0]).toBe('patch')
+    expect(order).toEqual(expect.arrayContaining(['summary', 'history']))
+    cache.dispose()
+  })
+
+  it('keeps a 2000-file generation request volume bounded by the resident viewport', async () => {
+    const paths = Array.from({ length: 2_000 }, (_value, index) => `src/file-${String(index).padStart(4, '0')}.ts`)
+    const residents = paths.slice(1_500, 1_524)
+    const legacy = remoteMock(paths)
+    const manifest = vi.fn().mockResolvedValue({
+      ok: true, value: {
+        ok: true, generation: 'g-large', epoch: 1, consistency: 'authoritative',
+        repositoryRoot: '/workspace', workspaceKind: 'git', branch: 'main', scope: 'uncommitted',
+        additions: 0, deletions: 0, summaryPending: true, historyPending: true,
+        files: paths.map(path => ({ path, index: ' ', workingTree: 'M', lineStatsState: 'pending' })), turns: [],
+      },
+    })
+    const patches = vi.fn(async (_sid: string, generation: string, requested: string[]) => ({
+      ok: true, value: {
+        ok: true, generation,
+        files: requested.map(path => ({
+          path, additions: 1, deletions: 1,
+          layers: [{ kind: 'uncommitted', patch: patch(path), oldRevision: 'head', newRevision: 'worktree' }],
+        })),
+      },
+    }))
+    const remote = { review: { ...legacy.review, manifest, patches, probe: vi.fn() } }
+    const cache = new ReviewCacheController({ remote: remote as never, sessionId: SID, session: sessionStub().session })
+    await flush()
+
+    cache.setResident(new Set(residents))
+    for (const path of residents) cache.ensure(path, 'viewport')
+    await flush()
+    await flush()
+
+    const requested = patches.mock.calls.flatMap(call => call[2] as string[])
+    expect(patches).toHaveBeenCalledTimes(2)
+    expect(new Set(requested)).toEqual(new Set(residents))
+    expect(requested).toHaveLength(residents.length)
+    expect(paths.filter(path => cache.getSnapshot().entries[path]?.cache.kind === 'ready')).toEqual(residents)
+    for (const path of residents) {
+      const entry = cache.getSnapshot().entries[path]?.cache
+      expect(entry?.kind === 'ready' ? entry.raw.layers[0]?.oldSource.text : 'missing').toBeNull()
+    }
+    cache.dispose()
+  })
+
+  it('lets a jumped viewport supersede an unresolved offscreen batch', async () => {
+    const legacy = remoteMock(['a.ts', 'b.ts', 'c.ts'])
+    const manifest = vi.fn().mockResolvedValue({
+      ok: true, value: {
+        ok: true, generation: 'g1', epoch: 1, consistency: 'authoritative',
+        repositoryRoot: '/workspace', workspaceKind: 'git', branch: 'main', scope: 'uncommitted',
+        additions: 0, deletions: 0, summaryPending: true, historyPending: true,
+        files: ['a.ts', 'b.ts', 'c.ts'].map(path => ({ path, index: ' ', workingTree: 'M', lineStatsState: 'pending' })), turns: [],
+      },
+    })
+    let releaseFirst: ((value: unknown) => void) | undefined
+    const patches = vi.fn(async (_sid: string, generation: string, requested: string[]) => {
+      if (requested.includes('a.ts')) return await new Promise(resolve => { releaseFirst = resolve })
+      return {
+        ok: true, value: {
+          ok: true, generation,
+          files: requested.map(path => ({
+            path, additions: 1, deletions: 1,
+            layers: [{ kind: 'uncommitted', patch: patch(path), oldRevision: 'head', newRevision: 'worktree' }],
+          })),
+        },
+      }
+    })
+    const remote = { review: { ...legacy.review, manifest, patches, probe: vi.fn() } }
+    const cache = new ReviewCacheController({ remote: remote as never, sessionId: SID, session: sessionStub().session })
+    await flush()
+
+    cache.setResident(new Set(['a.ts']))
+    cache.ensure('a.ts', 'viewport')
+    await flush()
+    expect(patches).toHaveBeenCalledWith(SID, 'g1', ['a.ts'])
+
+    cache.setResident(new Set(['c.ts']))
+    cache.ensure('c.ts', 'viewport')
+    await flush()
+    expect(patches).toHaveBeenCalledWith(SID, 'g1', ['c.ts'])
+    expect(cache.getSnapshot().entries['c.ts']?.cache.kind).toBe('ready')
+
+    releaseFirst?.({
+      ok: true, value: {
+        ok: true, generation: 'g1',
+        files: [{
+          path: 'a.ts', additions: 1, deletions: 1,
+          layers: [{ kind: 'uncommitted', patch: patch('a.ts'), oldRevision: 'head', newRevision: 'worktree' }],
+        }],
+      },
+    })
+    await flush()
+    expect(cache.getSnapshot().entries['a.ts']?.cache.kind).toBe('empty')
+    cache.dispose()
+  })
+
+  it('rejects a legacy diff response for a different path', async () => {
+    const remote = remoteMock(['src/a.ts'])
+    remote.review.diff.mockResolvedValueOnce({
+      ok: true,
+      value: {
+        ok: true, repositoryRoot: '/workspace', path: 'src/wrong.ts',
+        layers: [{
+          kind: 'working-tree', patch: patch('src/wrong.ts'),
+          oldSource: { revision: 'index', text: 'a' }, newSource: { revision: 'worktree', text: 'b' },
+        }],
+      },
+    })
+    const cache = new ReviewCacheController({ remote: remote as never, sessionId: SID, session: sessionStub().session })
+    await flush()
+    cache.ensure('src/a.ts', 'focus')
+    await flush()
+
+    const entry = cache.getSnapshot().entries['src/a.ts']?.cache
+    expect(entry).toMatchObject({ kind: 'error', message: expect.stringContaining('path mismatch') })
+    cache.dispose()
+  })
+
+  it('releases superseded loading rows and starts the new generation without waiting for the old RPC', async () => {
+    const legacy = remoteMock()
+    const path = 'src/a.ts'
+    let generation = 0
+    const manifest = vi.fn(async () => {
+      const id = `g${String(++generation)}`
+      return {
+        ok: true, value: {
+          ok: true, generation: id, epoch: generation, consistency: 'authoritative',
+          repositoryRoot: '/workspace', workspaceKind: 'git', branch: 'main', scope: 'uncommitted',
+          additions: 1, deletions: 1,
+          files: [{ path, index: ' ', workingTree: 'M', additions: 1, deletions: 1 }], turns: [],
+        },
+      }
+    })
+    let releaseOld: ((value: unknown) => void) | undefined
+    const patches = vi.fn(async (_sid: string, id: string, requested: string[]) => {
+      if (id === 'g1') return await new Promise(resolve => { releaseOld = resolve })
+      return {
+        ok: true, value: {
+          ok: true, generation: id,
+          files: requested.map(requestedPath => ({
+            path: requestedPath, additions: 1, deletions: 1,
+            layers: [{
+              kind: 'uncommitted',
+              patch: patch(requestedPath).replace('+b', `+${id}`),
+              oldRevision: 'head', newRevision: 'worktree',
+            }],
+          })),
+        },
+      }
+    })
+    const remote = { review: { ...legacy.review, manifest, patches, probe: vi.fn() } }
+    const cache = new ReviewCacheController({ remote: remote as never, sessionId: SID, session: sessionStub().session })
+    await flush()
+    cache.setResident(new Set([path]))
+    cache.ensure(path, 'viewport')
+    await flush()
+    expect(cache.getSnapshot().entries[path]?.cache.kind).toBe('loading')
+
+    await cache.refresh({ silent: true })
+    await flush()
+    expect(patches.mock.calls.some(call => call[1] === 'g2')).toBe(true)
+    const ready = cache.getSnapshot().entries[path]?.cache
+    expect(ready?.kind).toBe('ready')
+    expect(ready?.kind === 'ready' ? ready.raw.layers[0]?.patch : '').toContain('+g2')
+
+    releaseOld?.({
+      ok: true, value: {
+        ok: true, generation: 'g1',
+        files: [{
+          path, additions: 1, deletions: 1,
+          layers: [{ kind: 'uncommitted', patch: patch(path), oldRevision: 'head', newRevision: 'worktree' }],
+        }],
+      },
+    })
+    await flush()
+    const afterLateResult = cache.getSnapshot().entries[path]?.cache
+    expect(afterLateResult?.kind === 'ready' ? afterLateResult.raw.layers[0]?.patch : '').toContain('+g2')
+    cache.dispose()
+  })
+
   it('focus fetch (reveal) jumps the queue with fresh content', async () => {
     const remote = remoteMock()
     const cache = new ReviewCacheController({ remote: remote as never, sessionId: SID, session: sessionStub().session })

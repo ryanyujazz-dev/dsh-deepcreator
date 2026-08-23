@@ -11,20 +11,21 @@ import type {
 } from '@deepseek-ai/dsh-client-runtime/client'
 import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 import type {
-  ReviewChecksResult, ReviewFileSummary, ReviewHistoryResult, ReviewLocation, ReviewScope, ReviewStatusResult,
-  ReviewSummaryResult, ReviewUndoTurnResult,
+  ReviewChecksResult, ReviewDiffResult, ReviewFileSummary, ReviewHistoryResult, ReviewLocation, ReviewManifestResult,
+  ReviewPatchFile, ReviewScope, ReviewStatusResult, ReviewSummaryResult, ReviewUndoTurnResult,
 } from '@ryanyujazz/dsh-review/types'
 import {
   REVIEW_CACHE_BYTES, REVIEW_CACHE_LIMIT, REVIEW_IDLE_PREFETCH_LIMIT, REVIEW_PREFETCH_LIMIT,
   decodeMutationSignal, encodeMutationSignal,
   evictCollapsedCaches, markStale, matchReviewFile, mergeFileEntries, mutationSignal,
-  parseDiffResult, sameDiffResult, type FileEntries, type FileEntry, type MutationSignal, type ReadyCache,
+  ReviewDiffParser, sameDiffResult, type FileEntries, type FileEntry, type MutationSignal, type ReadyCache,
 } from './review-model.ts'
 
 type StatusOk = Extract<ReviewStatusResult, { ok: true }>
 type ChecksOk = Extract<ReviewChecksResult, { ok: true }>
 type HistoryOk = Extract<ReviewHistoryResult, { ok: true }>
 type SummaryOk = Extract<ReviewSummaryResult, { ok: true }>
+type ManifestOk = Extract<ReviewManifestResult, { ok: true }>
 
 /** The immutable view the panel renders through useSyncExternalStore. */
 export interface ReviewCacheSnapshot {
@@ -62,11 +63,16 @@ const EMPTY_META: ReviewMetaSnapshot = {
 }
 const EMPTY_TOTALS: ReviewTotalsSnapshot = { added: 0, removed: 0 }
 
-export type ReviewLoadPriority = 'focus' | 'viewport' | 'idle'
-const PRIORITY_RANK: Record<ReviewLoadPriority, number> = { focus: 0, viewport: 1, idle: 2 }
+export type ReviewLoadPriority = 'focus' | 'viewport' | 'overscan' | 'idle'
+const PRIORITY_ORDER = ['focus', 'viewport', 'overscan', 'idle'] as const
+const PRIORITY_RANK: Record<ReviewLoadPriority, number> = { focus: 0, viewport: 1, overscan: 2, idle: 3 }
 
 /** Settled mutation tools are coalesced into one invalidation after this long. */
-const MUTATION_DEBOUNCE_MS = 600
+const MUTATION_DEBOUNCE_MS = 24
+const PROBE_POLL_MS = 2_000
+const TURN_END_HISTORY_RETRY_MS = 2_000
+const PATCH_BATCH_LIMIT = 16
+const DEFERRED_METADATA_MS = 350
 
 function transportError(result: { ok: false; error: { message: string } }): Error {
   return new Error(result.error.message)
@@ -134,6 +140,12 @@ function missingSummaryMethod(reason: unknown): boolean {
   return /unknown (remote )?method|method .*summary.*not found|does not exist/i.test(message)
 }
 
+function missingRemoteMethod(reason: unknown, method: string): boolean {
+  const message = reason instanceof Error ? reason.message : typeof reason === 'object' && reason !== null
+    ? JSON.stringify(reason) : String(reason)
+  return new RegExp(`unknown (remote )?method|method .*${method}.*not found|does not exist`, 'i').test(message)
+}
+
 /**
  * One session's Review cache. All writes funnel through private state plus
  * `publish()`; the published snapshot object only changes identity when the
@@ -157,11 +169,21 @@ export class ReviewCacheController {
   private historyListeners = new Set<() => void>()
   private fileListeners = new Map<string, Set<() => void>>()
   private generation = 0
+  /** Opaque Host generation; distinct from the local request sequence above. */
+  private hostGeneration: string | null = null
+  private hostEpoch = 0
+  private generationProtocol: 'unknown' | 'available' | 'legacy' = 'unknown'
+  private readonly sourceCache = new Map<string, Promise<string | null>>()
+  private readonly diffParser = new ReviewDiffParser()
   private stamp = 0
   private disposed = false
-  private queues: Record<ReviewLoadPriority, string[]> = { focus: [], viewport: [], idle: [] }
-  private draining = false
+  private queues: Record<ReviewLoadPriority, string[]> = { focus: [], viewport: [], overscan: [], idle: [] }
+  private drainEpoch = 0
+  private drainingEpoch: number | null = null
+  private drainScheduled = false
   private queued = new Map<string, ReviewLoadPriority>()
+  private requestSerial = 0
+  private activeRequests = new Map<string, number>()
   private resident: ReadonlySet<string> = new Set()
   private visible = false
   private initializing = true
@@ -171,6 +193,8 @@ export class ReviewCacheController {
   private seenTurnEnds = -1
   private unsubscribeSession: () => void
   private historyTimer: number | null = null
+  private turnEndHistoryTimer: number | null = null
+  private metadataTimer: number | null = null
   private turnStatsLoading = false
   private readonly turnStats = new Map<string, { additions: number; deletions: number }>()
   private readonly views = new Map<string, ReviewCacheSnapshot>()
@@ -208,30 +232,27 @@ export class ReviewCacheController {
     })
     if (typeof window !== 'undefined') {
       this.historyTimer = window.setInterval(() => {
-        // Filesystem workspaces have no external HEAD to reconcile. Their
-        // session mutation/turn events already invalidate Review; polling
-        // would only rebuild a full temporary tree every two seconds.
-        const history = this.state.history
-        const hasRepositoryOwnedTurn = history?.turns.some(turn => turn.files.some(file => (file.repository ?? '') !== '')) === true
-        if (!this.disposed && document.visibilityState === 'visible'
-          && (history?.workspaceKind !== 'filesystem' || hasRepositoryOwnedTurn)) void this.refreshHistory(true, true)
-      }, 2_000)
+        if (this.disposed || !this.visible || document.visibilityState !== 'visible'
+          || this.generationProtocol !== 'available') return
+        void this.probe()
+      }, PROBE_POLL_MS)
       window.addEventListener('focus', this.onWindowFocus)
     }
   }
 
   private async initialize(): Promise<void> {
-    const generation = this.generation
-    await this.refreshHistory(true)
-    // An explicit presentation/scope selection may arrive while the initial
-    // history request is in flight. It owns initialization from that point;
-    // do not issue a second refresh that can supersede its focused request.
-    if (this.disposed || generation !== this.generation) return
-    if (this.state.history?.workspaceKind === 'filesystem' && this.state.repository === '') {
-      const latest = this.state.history.turns.find(turn => turn.remainingFiles > 0)
-      if (latest !== undefined) this.publish({ scope: { turn: latest.turn } })
+    const outcome = await this.refresh()
+    if (this.disposed || outcome.kind === 'superseded') return
+    if (this.state.status?.workspaceKind === 'filesystem' && this.state.repository === '') {
+      // A legacy Host has no manifest-carried history. Await its one required
+      // history read before choosing the filesystem-only Turn scope.
+      if (this.state.history === null) await this.refreshHistory(true)
+      const latest = this.state.history?.turns.find(turn => turn.remainingFiles > 0)
+      if (latest !== undefined && typeof this.state.scope === 'string') {
+        this.publish({ scope: { turn: latest.turn } })
+        await this.refresh()
+      }
     }
-    await this.refresh()
   }
 
   readonly subscribe = (listener: () => void): (() => void) => {
@@ -287,6 +308,7 @@ export class ReviewCacheController {
       : scope
     const same = JSON.stringify(selected) === JSON.stringify(this.state.scope)
     if (!same) {
+      this.hostGeneration = null
       this.clearQueues()
       this.resident = new Set()
       this.publish({ scope: selected, status: null, summary: null, entries: {}, error: null })
@@ -302,6 +324,7 @@ export class ReviewCacheController {
     if (normalized === this.state.repository) return this.selectScope(scope, focusPath)
     this.views.set(this.state.repository, this.state)
     this.generation += 1
+    this.hostGeneration = null
     this.clearQueues()
     this.resident = new Set()
     const retained = this.views.get(normalized)
@@ -430,7 +453,7 @@ export class ReviewCacheController {
             async () => await this.remote.review.diff(this.sessionId, file.path, { turn: turn.turn }),
           )
           if (!wire.ok || !wire.value.ok) continue
-          const parsed = parseDiffResult(wire.value)
+          const parsed = await this.diffParser.parse(wire.value)
           this.turnStats.set(this.turnStatsKey(turn.turn, file.path), {
             additions: parsed.added,
             deletions: parsed.removed,
@@ -471,6 +494,29 @@ export class ReviewCacheController {
   /** Heavy bodies near the viewport are exempt from weighted cache eviction. */
   setResident(paths: ReadonlySet<string>): void {
     this.resident = paths
+    let superseded = false
+    // Viewport and overscan demand are edge-triggered. A fast scrollbar jump
+    // must not drain files that have already left the mounted window.
+    for (const priority of ['viewport', 'overscan', 'idle'] as const) {
+      const kept = this.queues[priority].filter(path => paths.has(path))
+      if (kept.length !== this.queues[priority].length) superseded = true
+      this.queues[priority] = kept
+    }
+    if (superseded) {
+      this.queued.clear()
+      for (const priority of PRIORITY_ORDER) {
+        for (const path of this.queues[priority]) this.queued.set(path, priority)
+      }
+    }
+    const obsolete = new Map([...this.activeRequests].filter(([path]) => !paths.has(path)))
+    if (obsolete.size > 0) {
+      // Let a fresh drain start without waiting for an obsolete transport.
+      // Its late response loses request ownership and is ignored.
+      this.drainEpoch += 1
+      this.releasePatchRequests(obsolete, false)
+      superseded = true
+    }
+    if (superseded) this.scheduleDrain()
     const evicted = evictCollapsedCaches(this.state.entries, this.resident, this.cacheLimit, this.cacheBytes)
     if (evicted !== null) this.replaceEntries(evicted)
   }
@@ -504,11 +550,33 @@ export class ReviewCacheController {
     if (entry.cache.kind === 'empty' || entry.cache.kind === 'error') this.enqueue([path], priority)
   }
 
+  /** Lazy full source for one expanded context fold in the active generation. */
+  async source(path: string, side: 'old' | 'new'): Promise<string | null> {
+    const generation = this.hostGeneration
+    if (generation === null || typeof this.remote.review.source !== 'function') return null
+    const key = `${generation}\0${path}\0${side}`
+    const cached = this.sourceCache.get(key)
+    if (cached !== undefined) return await cached
+    const request = (async () => {
+      const wire = await this.remote.review.source(this.sessionId, generation, path, side)
+      if (!wire.ok) throw transportError(wire)
+      if (!wire.value.ok) {
+        if (wire.value.code === 'STALE_GENERATION') void this.refresh({ silent: true })
+        throw new Error(wire.value.message)
+      }
+      return wire.value.text
+    })()
+    this.sourceCache.set(key, request)
+    try { return await request } catch (reason) { this.sourceCache.delete(key); throw reason }
+  }
+
   dispose(): void {
     if (this.disposed) return
     this.disposed = true
     if (this.invalidateTimer !== null) window.clearTimeout(this.invalidateTimer)
     if (this.historyTimer !== null) window.clearInterval(this.historyTimer)
+    if (this.turnEndHistoryTimer !== null) window.clearTimeout(this.turnEndHistoryTimer)
+    if (this.metadataTimer !== null) window.clearTimeout(this.metadataTimer)
     if (typeof window !== 'undefined') window.removeEventListener('focus', this.onWindowFocus)
     this.unsubscribeSession()
     this.listeners.clear()
@@ -516,6 +584,9 @@ export class ReviewCacheController {
     this.totalsListeners.clear()
     this.historyListeners.clear()
     this.fileListeners.clear()
+    this.sourceCache.clear()
+    this.activeRequests.clear()
+    this.diffParser.dispose()
   }
 
   private publish(patch: Partial<ReviewCacheSnapshot>): void {
@@ -598,6 +669,130 @@ export class ReviewCacheController {
     for (const listener of this.listeners) listener()
   }
 
+  private generationDiff(file: ReviewPatchFile): Extract<ReviewDiffResult, { ok: true }> {
+    const status = this.state.status
+    if (status === null) throw new Error('Review manifest is unavailable.')
+    return {
+      ok: true,
+      repositoryRoot: status.repositoryRoot,
+      workspaceKind: status.workspaceKind,
+      scope: this.state.scope,
+      ...(status.location === undefined ? {} : { location: status.location }),
+      path: file.path,
+      ...(file.oldPath === undefined ? {} : { oldPath: file.oldPath }),
+      ...(file.kind === undefined ? {} : { kind: file.kind }),
+      ...(file.presentation === undefined ? {} : { presentation: file.presentation }),
+      ...(file.lineStatsState === undefined ? {} : { lineStatsState: file.lineStatsState }),
+      layers: file.layers.map(layer => ({
+        kind: layer.kind,
+        patch: layer.patch,
+        oldSource: { revision: layer.oldRevision, text: null, ...(layer.oldLineCount === undefined ? {} : { lineCount: layer.oldLineCount }) },
+        newSource: { revision: layer.newRevision, text: null, ...(layer.newLineCount === undefined ? {} : { lineCount: layer.newLineCount }) },
+      })),
+    }
+  }
+
+  /** Release request ownership after a generation/sequence is superseded. */
+  private releasePatchRequests(requests: ReadonlyMap<string, number>, retry: boolean): void {
+    for (const [path, request] of requests) {
+      if (this.activeRequests.get(path) !== request) continue
+      this.activeRequests.delete(path)
+      const entry = this.state.entries[path]
+      if (entry === undefined || !entry.fetching) continue
+      this.setEntry(path, current => ({
+        ...current,
+        fetching: false,
+        cache: current.cache.kind === 'loading' ? { kind: 'empty' } : current.cache,
+      }))
+      if (retry && this.resident.has(path)) this.enqueue([path], 'viewport')
+    }
+  }
+
+  private async loadPatchBatch(paths: readonly string[]): Promise<void> {
+    const hostGeneration = this.hostGeneration
+    if (hostGeneration === null || paths.length === 0) return
+    const sequence = this.generation
+    const requested = paths.filter(path => {
+      const entry = this.state.entries[path]
+      return entry !== undefined && !entry.fetching
+        && (entry.cache.kind === 'empty' || entry.cache.kind === 'error' || entry.cache.kind === 'ready' && entry.stale)
+    })
+    if (requested.length === 0) return
+    const requests = new Map<string, number>()
+    for (const path of requested) {
+      const request = ++this.requestSerial
+      requests.set(path, request)
+      this.activeRequests.set(path, request)
+      this.setEntry(path, entry => ({
+        ...entry,
+        fetching: true,
+        ...(entry.cache.kind === 'ready' ? {} : { cache: { kind: 'loading' } as const }),
+      }))
+    }
+    try {
+      const wire = await this.remote.review.patches(this.sessionId, hostGeneration, [...requested])
+      if (!wire.ok) throw transportError(wire)
+      if (!wire.value.ok) {
+        if (wire.value.code === 'STALE_GENERATION') {
+          this.releasePatchRequests(requests, false)
+          await this.refresh({ silent: true })
+          for (const path of requested) if (this.resident.has(path)) this.ensure(path, 'viewport')
+          return
+        }
+        throw new Error(wire.value.message)
+      }
+      if (this.disposed || sequence !== this.generation || hostGeneration !== this.hostGeneration) {
+        this.releasePatchRequests(requests, !this.disposed)
+        return
+      }
+      const files = new Map(wire.value.files.map(file => [file.path, file] as const))
+      const prepared = new Map<string, ReadyCache>()
+      await Promise.all(requested.map(async path => {
+        const file = files.get(path)
+        if (file === undefined || this.state.entries[path] === undefined) return
+        const result = this.generationDiff(file)
+        const previous = this.state.entries[path]?.cache
+        prepared.set(path, previous?.kind === 'ready' && sameDiffResult(previous.raw, result)
+          ? previous
+          : { kind: 'ready', ...await this.diffParser.parse(result), raw: result })
+      }))
+      if (this.disposed || sequence !== this.generation || hostGeneration !== this.hostGeneration) {
+        this.releasePatchRequests(requests, !this.disposed)
+        return
+      }
+      for (const path of requested) {
+        const request = requests.get(path)
+        if (request === undefined || this.activeRequests.get(path) !== request) continue
+        const cache = prepared.get(path)
+        if (cache === undefined || this.state.entries[path] === undefined) {
+          this.activeRequests.delete(path)
+          this.setEntry(path, entry => ({ ...entry, fetching: false, cache: { kind: 'error', message: 'Patch missing from generation.' } }))
+          continue
+        }
+        this.activeRequests.delete(path)
+        this.setEntry(path, entry => ({ ...entry, fetching: false, cache, stale: false }))
+      }
+      const evicted = evictCollapsedCaches(this.state.entries, this.resident, this.cacheLimit, this.cacheBytes)
+      if (evicted !== null) this.replaceEntries(evicted)
+    } catch (reason) {
+      if (this.disposed || sequence !== this.generation || hostGeneration !== this.hostGeneration) {
+        this.releasePatchRequests(requests, !this.disposed)
+        return
+      }
+      const message = reason instanceof Error ? reason.message : String(reason)
+      for (const path of requested) {
+        const request = requests.get(path)
+        if (request === undefined || this.activeRequests.get(path) !== request) continue
+        this.activeRequests.delete(path)
+        this.setEntry(path, entry => ({
+          ...entry,
+          fetching: false,
+          ...(entry.cache.kind === 'ready' ? {} : { cache: { kind: 'error', message } }),
+        }))
+      }
+    }
+  }
+
   private async loadDiff(path: string, revalidate: boolean): Promise<void> {
     const current = this.state.entries[path]
     if (current === undefined || current.fetching) return
@@ -605,6 +800,9 @@ export class ReviewCacheController {
     const generation = this.generation
     const scope = this.state.scope
     const repository = this.state.repository
+    const request = ++this.requestSerial
+    const requests = new Map([[path, request]])
+    this.activeRequests.set(path, request)
     this.setEntry(path, entry => ({
       ...entry,
       fetching: true,
@@ -622,18 +820,36 @@ export class ReviewCacheController {
       if (!wire.ok) throw transportError(wire)
       if (!wire.value.ok) throw new Error(wire.value.message)
       const result = wire.value
-      if (this.disposed || generation !== this.generation || this.state.entries[path] === undefined) return
+      if (result.path !== path) {
+        throw new Error(`Review diff path mismatch: requested ${path}, received ${result.path}.`)
+      }
+      if (this.disposed || generation !== this.generation || this.state.entries[path] === undefined) {
+        this.releasePatchRequests(requests, !this.disposed)
+        return
+      }
+      if (this.activeRequests.get(path) !== request) return
       // Identical wire content keeps the previous parse object, so a no-op
       // revalidate costs no re-render inside the panel.
       const previous = this.state.entries[path]?.cache
       const cache: ReadyCache = previous !== undefined && previous.kind === 'ready' && sameDiffResult(previous.raw, result)
         ? previous
-        : { kind: 'ready', ...parseDiffResult(result), raw: result }
+        : { kind: 'ready', ...await this.diffParser.parse(result), raw: result }
+      if (this.disposed || generation !== this.generation || this.state.entries[path] === undefined) {
+        this.releasePatchRequests(requests, !this.disposed)
+        return
+      }
+      if (this.activeRequests.get(path) !== request) return
+      this.activeRequests.delete(path)
       this.setEntry(path, entry => ({ ...entry, fetching: false, cache, stale: false }))
       const evicted = evictCollapsedCaches(this.state.entries, this.resident, this.cacheLimit, this.cacheBytes)
       if (evicted !== null) this.replaceEntries(evicted)
     } catch (reason) {
-      if (this.disposed) return
+      if (this.disposed || generation !== this.generation) {
+        this.releasePatchRequests(requests, !this.disposed)
+        return
+      }
+      if (this.activeRequests.get(path) !== request) return
+      this.activeRequests.delete(path)
       const message = reason instanceof Error ? reason.message : String(reason)
       // A failed revalidate keeps the cached content; the entry stays stale
       // and the next signal retries.
@@ -646,12 +862,16 @@ export class ReviewCacheController {
   }
 
   private clearQueues(): void {
-    this.queues = { focus: [], viewport: [], idle: [] }
+    this.drainEpoch += 1
+    this.releasePatchRequests(new Map(this.activeRequests), false)
+    this.queues = { focus: [], viewport: [], overscan: [], idle: [] }
     this.queued.clear()
   }
 
   private prefetchIdle(): void {
-    if (!this.visible) return
+    // Generation clients are driven by virtual-viewport residency. Keep the
+    // small legacy warm-up only for old Hosts whose RPC is per-file.
+    if (!this.visible || this.hostGeneration !== null) return
     const paths = this.state.status?.files
       .filter(file => file.kind !== 'repository' && file.kind !== 'submodule')
       .slice(0, REVIEW_IDLE_PREFETCH_LIMIT).map(file => file.path) ?? []
@@ -669,11 +889,20 @@ export class ReviewCacheController {
       this.queues[priority].push(path)
       if (priority === 'idle') idleQueued += 1
     }
-    void this.drain()
+    this.scheduleDrain()
+  }
+
+  private scheduleDrain(): void {
+    if (this.drainScheduled) return
+    this.drainScheduled = true
+    queueMicrotask(() => {
+      this.drainScheduled = false
+      if (!this.disposed) void this.drain()
+    })
   }
 
   private takeNext(): string | undefined {
-    for (const priority of ['focus', 'viewport', 'idle'] as const) {
+    for (const priority of PRIORITY_ORDER) {
       while (this.queues[priority].length > 0) {
         const path = this.queues[priority].shift()
         if (path === undefined || this.queued.get(path) !== priority) continue
@@ -684,24 +913,38 @@ export class ReviewCacheController {
     return undefined
   }
 
+  private takeBatch(): string[] {
+    const batch: string[] = []
+    while (batch.length < PATCH_BATCH_LIMIT) {
+      const path = this.takeNext()
+      if (path === undefined) break
+      batch.push(path)
+    }
+    return batch
+  }
+
   private async drain(): Promise<void> {
-    if (this.draining) return
-    this.draining = true
+    const epoch = this.drainEpoch
+    if (this.drainingEpoch === epoch) return
+    this.drainingEpoch = epoch
     try {
-      while (!this.disposed) {
-        const path = this.takeNext()
-        if (path === undefined) break
-        const entry = this.state.entries[path]
-        if (entry === undefined) continue
-        if (entry.cache.kind === 'empty' || entry.cache.kind === 'error') await this.loadDiff(path, false)
-        else if (entry.cache.kind === 'ready' && entry.stale) await this.loadDiff(path, true)
-        // A completed load parses and warms synchronously; yield between
-        // files so a fast local RPC never turns the prefetch into one long
-        // main-thread block.
+      while (!this.disposed && epoch === this.drainEpoch) {
+        const paths = this.takeBatch()
+        if (paths.length === 0) break
+        if (this.hostGeneration !== null) await this.loadPatchBatch(paths)
+        else for (const path of paths) {
+          const entry = this.state.entries[path]
+          if (entry === undefined) continue
+          if (entry.cache.kind === 'empty' || entry.cache.kind === 'error') await this.loadDiff(path, false)
+          else if (entry.cache.kind === 'ready' && entry.stale) await this.loadDiff(path, true)
+        }
+        // Yield between batches so even the synchronous old-Host fallback
+        // cannot monopolize the main thread; generation parsing normally
+        // completes in the controller-owned Worker before this point.
         await new Promise(resolve => { setTimeout(resolve, 0) })
       }
     } finally {
-      this.draining = false
+      if (this.drainingEpoch === epoch) this.drainingEpoch = null
     }
   }
 
@@ -728,19 +971,123 @@ export class ReviewCacheController {
     }
   }
 
+  /** Let focus/viewport patches claim Host and Worker capacity before totals/history reconciliation. */
+  private scheduleDeferredMetadata(sequence: number, scope: ReviewScope, summaryPending: boolean, historyPending: boolean): void {
+    if (!summaryPending && !historyPending) return
+    if (this.metadataTimer !== null && typeof window !== 'undefined') window.clearTimeout(this.metadataTimer)
+    const run = (): void => {
+      this.metadataTimer = null
+      if (this.disposed || sequence !== this.generation) return
+      if (summaryPending) void this.refreshSummary(sequence, scope)
+      if (historyPending && this.state.history === null) void this.refreshHistory(true)
+    }
+    if (typeof window === 'undefined') { queueMicrotask(run); return }
+    this.metadataTimer = window.setTimeout(run, DEFERRED_METADATA_MS)
+  }
+
+  private async fetchManifest(scope: ReviewScope, repository: string): Promise<ManifestOk | null> {
+    if (this.generationProtocol === 'legacy') return null
+    if (typeof this.remote.review.manifest !== 'function') {
+      this.generationProtocol = 'legacy'
+      return null
+    }
+    try {
+      const wire = await this.remote.review.manifest(this.sessionId, scope, locationArgument(repository))
+      if (!wire.ok) {
+        if (missingRemoteMethod(wire, 'manifest')) { this.generationProtocol = 'legacy'; return null }
+        throw transportError(wire)
+      }
+      if (!wire.value.ok) throw new Error(wire.value.message)
+      this.generationProtocol = 'available'
+      return wire.value
+    } catch (reason) {
+      if (missingRemoteMethod(reason, 'manifest')) { this.generationProtocol = 'legacy'; return null }
+      throw reason
+    }
+  }
+
+  private manifestViews(manifest: ManifestOk): { status: StatusOk; summary: SummaryOk | null; history: HistoryOk | null } {
+    const status: StatusOk = {
+      ok: true,
+      repositoryRoot: manifest.repositoryRoot,
+      workspaceKind: manifest.workspaceKind,
+      branch: manifest.branch,
+      scope: manifest.scope,
+      ...(manifest.location === undefined ? {} : { location: manifest.location }),
+      files: manifest.files.map(({ additions: _additions, deletions: _deletions, binary: _binary,
+        lineStatsState: _lineStatsState, ...file }) => file),
+    }
+    const summary: SummaryOk | null = manifest.summaryPending === true ? null : {
+      ok: true,
+      repositoryRoot: manifest.repositoryRoot,
+      workspaceKind: manifest.workspaceKind,
+      scope: manifest.scope,
+      ...(manifest.location === undefined ? {} : { location: manifest.location }),
+      additions: manifest.additions,
+      deletions: manifest.deletions,
+      files: manifest.files.map(({ index: _index, workingTree: _workingTree, lineStatsState, ...file }) => ({
+        ...file,
+        ...(lineStatsState === undefined ? {} : { lineStatsState: lineStatsState === 'pending' ? 'unknown' as const : lineStatsState }),
+      })),
+    }
+    const history: HistoryOk | null = manifest.historyPending === true ? null : {
+      ok: true,
+      repositoryRoot: manifest.repositoryRoot,
+      workspaceKind: manifest.workspaceKind,
+      ...(manifest.head === undefined ? {} : { head: manifest.head }),
+      turns: manifest.turns,
+    }
+    return { status, summary, history }
+  }
+
+  private async probe(): Promise<void> {
+    if (typeof this.remote.review.probe !== 'function') {
+      this.generationProtocol = 'legacy'
+      return
+    }
+    try {
+      const wire = await this.remote.review.probe(this.sessionId, this.hostEpoch)
+      if (!wire.ok) {
+        if (missingRemoteMethod(wire, 'probe')) this.generationProtocol = 'legacy'
+        return
+      }
+      if (!wire.value.ok) return
+      this.hostEpoch = wire.value.epoch
+      if (wire.value.changed) await this.refresh({ silent: true })
+    } catch (reason) {
+      if (missingRemoteMethod(reason, 'probe')) this.generationProtocol = 'legacy'
+    }
+  }
+
   async refresh(options: { focusPath?: string; runChecks?: boolean; silent?: boolean } = {}): Promise<ReviewRefreshOutcome> {
     const { focusPath, runChecks = false, silent = false } = options
     const seq = ++this.generation
     try {
       const location = locationArgument(this.state.repository)
-      const statusWire = location === undefined
-        ? await rootArityCompatible(
-            async () => await this.remote.review.status(this.sessionId, this.state.scope, undefined),
-            async () => await this.remote.review.status(this.sessionId, this.state.scope),
-          )
-        : await this.remote.review.status(this.sessionId, this.state.scope, location)
-      if (!statusWire.ok) throw transportError(statusWire)
-      if (!statusWire.value.ok) throw new Error(statusWire.value.message)
+      const manifest = await this.fetchManifest(this.state.scope, this.state.repository)
+      let nextStatus: StatusOk
+      let nextSummary: SummaryOk | null = null
+      let nextHistory: HistoryOk | null = null
+      if (manifest !== null) {
+        const views = this.manifestViews(manifest)
+        nextStatus = views.status
+        nextSummary = views.summary
+        nextHistory = views.history === null ? null : this.mergeTurnStats(views.history)
+        if (this.hostGeneration !== manifest.generation) this.sourceCache.clear()
+        this.hostGeneration = manifest.generation
+        this.hostEpoch = manifest.epoch
+      } else {
+        this.hostGeneration = null
+        const statusWire = location === undefined
+          ? await rootArityCompatible(
+              async () => await this.remote.review.status(this.sessionId, this.state.scope, undefined),
+              async () => await this.remote.review.status(this.sessionId, this.state.scope),
+            )
+          : await this.remote.review.status(this.sessionId, this.state.scope, location)
+        if (!statusWire.ok) throw transportError(statusWire)
+        if (!statusWire.value.ok) throw new Error(statusWire.value.message)
+        nextStatus = statusWire.value
+      }
       let nextChecks: ChecksOk | null = null
       if (runChecks) {
         const checksWire = location === undefined
@@ -754,24 +1101,35 @@ export class ReviewCacheController {
         nextChecks = checksWire.value
       }
       if (seq !== this.generation || this.disposed) return { kind: 'superseded' }
-      const nextStatus = statusWire.value
+      // A fresh manifest owns a new opaque generation. Cancel every request
+      // that was claimed while this refresh was in flight before merging the
+      // new status, otherwise its `loading` flag can survive indefinitely.
+      this.clearQueues()
       const merged = mergeFileEntries(this.state.entries, nextStatus.files, () => ++this.stamp)
-      const keepSummary = sameStatusFiles(this.state.status, nextStatus)
+      const keepSummary = nextSummary === null && sameStatusFiles(this.state.status, nextStatus)
       let focus: string | undefined
       if (focusPath !== undefined) focus = matchReviewFile(nextStatus.files, focusPath)
       this.publish({
         status: nextStatus,
-        ...(keepSummary ? {} : { summary: null }),
+        ...(nextSummary !== null ? { summary: nextSummary } : keepSummary ? {} : { summary: null }),
+        ...(nextHistory === null ? {} : { history: nextHistory }),
         entries: merged,
         ...(nextChecks !== null ? { checks: nextChecks } : {}),
         error: null,
       })
-      void this.refreshSummary(seq, this.state.scope)
-      void this.refreshHistory(true)
       // A reveal focus wants the current content immediately; everything
       // else (new or stale) flows through the sequential background queue.
       if (focus !== undefined) this.ensure(focus, 'focus', true)
+      for (const path of this.resident) if (path !== focus) this.ensure(path, 'viewport')
       this.prefetchIdle()
+      if (manifest === null) {
+        // Preserve old-Host timing and compatibility: legacy status never
+        // carries either metadata view, so start its established RPCs now.
+        if (nextSummary === null) void this.refreshSummary(seq, this.state.scope)
+        if (nextHistory === null) void this.refreshHistory(true)
+      } else {
+        this.scheduleDeferredMetadata(seq, this.state.scope, nextSummary === null, nextHistory === null)
+      }
       const evicted = evictCollapsedCaches(merged, this.resident, this.cacheLimit, this.cacheBytes)
       if (evicted !== null) this.publish({ entries: evicted })
       if (focusPath === undefined) return { kind: 'ready' }
@@ -805,7 +1163,12 @@ export class ReviewCacheController {
         const matched = target === null || files === undefined ? undefined : matchReviewFile(files, target)
         const marked = markStale(this.state.entries, matched === undefined ? null : new Set([matched]))
         if (marked !== this.state.entries) this.publish({ entries: marked })
-        void this.refresh({ silent: true })
+        // A precise mutation is also a cache-warming signal. The controller
+        // exists for the Session lifetime, so fetch this one patch even while
+        // Review is hidden; opening the panel then consumes an already parsed
+        // file instead of starting from Git. Unknown/burst writes retain the
+        // metadata-only authoritative refresh.
+        void this.refresh({ silent: true, ...(target === null ? {} : { focusPath: target }) })
       }, MUTATION_DEBOUNCE_MS)
     }
     const turnEndCount = snapshot.turnEnds.size
@@ -816,7 +1179,19 @@ export class ReviewCacheController {
       // A finished turn re-runs checks; while the panel is hidden it defers
       // to the next visibility refresh.
       if (this.visible) void this.refresh({ silent: true, runChecks: true })
-      else this.checksPending = true
+      else {
+        this.checksPending = true
+        // Host captureEnd is asynchronous on the same event. Read once now for
+        // fast paths, then once after its workspace snapshot has had time to
+        // settle; the hidden panel no longer needs a permanent two-second poll
+        // of an open Turn just to discover this boundary.
+        void this.refreshHistory(true)
+        if (this.turnEndHistoryTimer !== null) window.clearTimeout(this.turnEndHistoryTimer)
+        this.turnEndHistoryTimer = window.setTimeout(() => {
+          this.turnEndHistoryTimer = null
+          if (!this.disposed) void this.refreshHistory(true, true)
+        }, TURN_END_HISTORY_RETRY_MS)
+      }
     }
   }
 }

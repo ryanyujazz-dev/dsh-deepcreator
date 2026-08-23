@@ -192,6 +192,20 @@ describe('DiffBlock context folding', () => {
     expect(bodyRows(container)).toHaveLength(24)
   })
 
+  it('bounds mounted rows for a huge changed hunk', () => {
+    const { container } = render(<DiffBlock diffs={[{ path: 'huge.ts', oldText: null, newText: added(2_000) }]} variant="review" />)
+    expect(container.querySelector('[data-diff-virtual-rows]')).toBeTruthy()
+    const mounted = container.querySelectorAll('[data-diff-row]').length
+    expect(mounted).toBeGreaterThan(0)
+    expect(mounted).toBeLessThan(200)
+  })
+
+  it('keeps ordinary changed hunks on the lightweight row path', () => {
+    const { container } = render(<DiffBlock diffs={[{ path: 'ordinary.ts', oldText: null, newText: added(120) }]} variant="review" />)
+    expect(container.querySelector('[data-diff-virtual-rows]')).toBeNull()
+    expect(container.querySelectorAll('[data-diff-row]')).toHaveLength(120)
+  })
+
   it('shows no expand control at or under the cap', () => {
     const diffs: DiffHunk[] = [{ path: 'a.ts', oldText: null, newText: added(4) }]
     render(<DiffBlock diffs={diffs} />)
@@ -281,6 +295,29 @@ describe('DiffBlock context folding', () => {
     expect(container.textContent).toContain('line 12')
     expect(screen.getByRole('button', { name: '展开 2 行' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '展开 3 行' })).toBeTruthy()
+  })
+
+  it('loads full Review source only when an omitted-context fold opens', async () => {
+    const source = Array.from({ length: 20 }, (_value, index) => `line ${index + 1}`).join('\n')
+    const loadSource = vi.fn().mockResolvedValue(source)
+    const { container } = render(<DiffBlock
+      diffs={[{
+        path: 'lazy.ts', oldStart: 10, newStart: 10,
+        oldText: 'old value', newText: 'new value',
+        oldLineCount: 20, newLineCount: 20,
+      }]}
+      variant="review"
+      showPath={false}
+      showFooter={false}
+      loadSource={loadSource}
+    />)
+
+    expect(loadSource).not.toHaveBeenCalled()
+    expect(container.textContent).not.toContain('line 1')
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '展开 9 行' })) })
+    expect(loadSource).toHaveBeenCalledTimes(1)
+    expect(loadSource).toHaveBeenCalledWith('new')
+    expect(container.textContent).toContain('line 1')
   })
 
   it('keeps a 50k-line omitted source as lightweight ranges until a fold opens', () => {

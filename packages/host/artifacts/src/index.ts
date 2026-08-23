@@ -3,12 +3,16 @@ import { isAbsolute, relative, resolve, sep } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session } from '@deepseek-ai/dsh-session'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import type {} from '@ryanyujazz/dsh-presentation'
 import type { ArtifactReadResult } from './types.ts'
 export type { ArtifactReadError, ArtifactReadOk, ArtifactReadResult } from './types.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context { artifacts: ArtifactReader }
 }
+declare module '@ryanyujazz/dsh-presentation/types' { interface PresentationInputMap { artifact: { artifactId: string } } }
+
+export const inject = ['presentationRuntime']
 
 /**
  * Read-only workspace file reader for the Workbench Artifact panel. The panel
@@ -18,7 +22,25 @@ declare module '@deepseek-ai/cordis' {
  * session workspace.
  */
 export class ArtifactReader extends TypertRemoteService {
-  constructor(ctx: Context) { super(ctx, 'artifacts') }
+  static inject = inject
+  constructor(ctx: Context) {
+    super(ctx, 'artifacts')
+    const presentation = ctx.presentationRuntime
+    if (presentation === undefined) return
+    const dispose = presentation.registerResolver({
+      kind: 'artifact', description: 'Present a workspace artifact. Fields: kind="artifact", artifactId.',
+      inputSchema: { type: 'object', additionalProperties: false, properties: {
+        kind: { type: 'string', const: 'artifact', required: true }, artifactId: { type: 'string', required: true },
+      } },
+      parse: input => {
+        const value = input as Record<string, unknown>
+        if (value.kind !== 'artifact' || typeof value.artifactId !== 'string') throw new Error('artifact presentation requires string artifactId.')
+        return { kind: 'artifact' as const, artifactId: value.artifactId }
+      },
+      materialize: async (_context, input) => ({ kind: 'artifact', id: input.artifactId, mode: 'none' }),
+    })
+    ctx.effect(() => dispose, 'artifacts: presentation resolver')
+  }
 
   @Remote('read')
   async read(session: Session, path: string): Promise<ArtifactReadResult> {

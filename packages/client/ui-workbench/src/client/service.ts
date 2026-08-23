@@ -23,10 +23,12 @@ export class WorkbenchController extends Service implements WorkbenchService {
     typeListeners: new Set<() => void>(),
     commandListeners: new Set<() => void>(),
     visibilityListeners: new Set<() => void>(),
+    dismissalListeners: new Set<() => void>(),
     typeVersion: 0,
     visibilityVersion: 0,
     visibleTypeIds: [] as string[],
     command: EMPTY_COMMAND as WorkbenchCommand | null,
+    dismissal: null as { sequence: number; typeId: string; instanceId?: string } | null,
     sequence: 0,
   }
 
@@ -66,6 +68,11 @@ export class WorkbenchController extends Service implements WorkbenchService {
     },
   }
 
+  readonly dismissals = {
+    getSnapshot: (): { sequence: number; typeId: string; instanceId?: string } | null => this.state.dismissal,
+    subscribe: (listener: () => void): (() => void) => { this.state.dismissalListeners.add(listener); return () => { this.state.dismissalListeners.delete(listener) } },
+  }
+
   setVisibleTypes(typeIds: readonly string[]): void {
     if (typeIds.length === this.state.visibleTypeIds.length && typeIds.every((id, index) => id === this.state.visibleTypeIds[index])) return
     this.state.visibleTypeIds = [...typeIds]
@@ -97,10 +104,15 @@ export class WorkbenchController extends Service implements WorkbenchService {
     this.present({ typeId, target, reveal: true, reason: 'user' })
   }
 
-  hide(typeId: string): void { this.publishCommand({ kind: 'hide', typeId }) }
-  closeTab(typeId: string, instanceId: string): void { this.publishCommand({ kind: 'close-tab', typeId, instanceId }) }
+  hide(typeId: string): void { this.notifyDismissed(typeId); this.publishCommand({ kind: 'hide', typeId }) }
+  closeTab(typeId: string, instanceId: string): void { this.notifyDismissed(typeId, instanceId); this.publishCommand({ kind: 'close-tab', typeId, instanceId }) }
   focus(typeId: string): void { this.publishCommand({ kind: 'focus', typeId }) }
   restoreFocus(): void { this.publishCommand({ kind: 'restore-focus' }) }
+
+  notifyDismissed(typeId: string, instanceId?: string): void {
+    this.state.dismissal = { sequence: ++this.state.sequence, typeId, ...(instanceId === undefined ? {} : { instanceId }) }
+    for (const listener of this.state.dismissalListeners) listener()
+  }
 
   private publishTypes(): void {
     this.state.typeVersion += 1

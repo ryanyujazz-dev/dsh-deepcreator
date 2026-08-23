@@ -1,6 +1,6 @@
-import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import type { FormEvent, RefObject } from 'react'
+import { memo, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@ryanyujazz/dsh-review/remote'
 import type { ReviewFileStatus, ReviewFileSummary, ReviewScope } from '@ryanyujazz/dsh-review/types'
@@ -13,7 +13,6 @@ import {
   DiffBlock, FileIcon, IconChevronDownOutline14, IconFolderClose16, IconPlusOutline16, IconRefreshOutline14, IconUnfoldLessOutline16,
   IconUnfoldMoreOutline16, Menu, OverflowFadeText, WorkbenchPanelIconButton, type MenuEntry,
 } from '@ryanyujazz/dsh-client-ui-primitives'
-import { REVIEW_IDLE_PREFETCH_LIMIT } from './review-model.ts'
 import type { ReviewCacheController } from './review-cache.ts'
 import css from './Panels.module.css'
 import { TerminalEmulator } from './TerminalEmulator.tsx'
@@ -24,19 +23,6 @@ type Props = WorkbenchPanelProps & PropsLocale<'workbench-tools'>
 type RemoteProps = Props & { remote: TypertClientRemote }
 type TerminalProps = Props & { terminal: TypertClientRemote['terminal-workbench'] }
 
-interface DesktopBrowserBridge {
-  create(id: string, url: string, bounds: DOMRectLike): Promise<unknown>
-  navigate(id: string, url: string): Promise<unknown>
-  back(id: string): Promise<void>
-  forward(id: string): Promise<void>
-  reload(id: string): Promise<void>
-  setBounds(id: string, bounds: DOMRectLike): Promise<void>
-  close(id: string): Promise<void>
-  onState(listener: (state: { id: string; url: string; title: string; loading: boolean; canGoBack: boolean; canGoForward: boolean }) => void): () => void
-  onPopup(listener: (popup: { sourceId: string; url: string }) => void): () => void
-}
-interface DOMRectLike { x: number; y: number; width: number; height: number }
-declare global { interface Window { deepcreatorBrowser?: DesktopBrowserBridge } }
 
 function Empty({ title, body }: { title: string; body: string }) {
   return <div className={css.empty}><strong>{title}</strong><span>{body}</span></div>
@@ -77,474 +63,18 @@ function usePanelHeaderActions(
   useEffect(() => contribute(contribution), [contribute, contribution])
 }
 
-/** Heavy Diff bodies retained at rest; intersecting/focused rows may exceed it. */
-export const REVIEW_BODY_RESIDENT_LIMIT = 16
-
-/** Each successful boundary load unlocks roughly this much vertical content. */
-export const REVIEW_UNLOCK_SCREENS = 2
-
-/** Prevent a misleading height estimate from staging an oversized heavy batch. */
-export const REVIEW_BATCH_FILE_LIMIT = 16
-
-/** Used only before the Workbench scroll viewport has a measurable height. */
-const REVIEW_FALLBACK_VIEWPORT_HEIGHT = 720
-
-/** Near-viewport fills yield briefly while this panel's own viewport scrolls. */
-const BODY_FILL_SCROLL_IDLE_MS = 72
-
-/** Small React batches avoid both one-file starvation and large frame commits. */
-const BODY_FILL_MAX_PER_FRAME = 2
-const BODY_FILL_FRAME_BUDGET_MS = 6
-
-/**
- * Heavy body scheduler scoped to one Review panel. Near-viewport work yields
- * briefly during this panel's own scrolling; boundary preloads run behind the
- * fixed loading frontier even while wheel events continue, so Windows' longer
- * wheel-event tail cannot starve the next batch. Two fills per frame are
- * batched by React while the time budget prevents a large synchronous burst.
- */
-interface BodyFillTask { fill: () => void; cancelled: boolean; preload: boolean }
-
-function useReviewBodyFillScheduler(scrollRoot: HTMLElement | null) {
-  const queues = useRef<{ preload: BodyFillTask[]; viewport: BodyFillTask[] }>({ preload: [], viewport: [] })
-  const frame = useRef<number | null>(null)
-  const lastScrollAt = useRef(Number.NEGATIVE_INFINITY)
-  const disposed = useRef(false)
-  const tickRef = useRef<(now: number) => void>(() => undefined)
-
-  const schedule = useCallback(() => {
-    if (frame.current !== null || disposed.current || typeof requestAnimationFrame === 'undefined') return
-    frame.current = requestAnimationFrame(now => { tickRef.current(now) })
-  }, [])
-
-  tickRef.current = (now: number) => {
-    frame.current = null
-    const pending = queues.current
-    const hasPreload = pending.preload.some(task => !task.cancelled)
-    if (!hasPreload && now - lastScrollAt.current < BODY_FILL_SCROLL_IDLE_MS) {
-      schedule()
-      return
-    }
-
-    const startedAt = performance.now()
-    let filled = 0
-    while (filled < BODY_FILL_MAX_PER_FRAME) {
-      const queue = pending.preload.some(task => !task.cancelled) ? pending.preload : pending.viewport
-      let task = queue.shift()
-      while (task?.cancelled === true) task = queue.shift()
-      if (task === undefined) break
-      task.fill()
-      filled += 1
-      if (performance.now() - startedAt >= BODY_FILL_FRAME_BUDGET_MS) break
-    }
-    if (pending.preload.some(task => !task.cancelled) || pending.viewport.some(task => !task.cancelled)) schedule()
-  }
-
-  useEffect(() => {
-    if (scrollRoot === null) return
-    const onScroll = () => { lastScrollAt.current = performance.now() }
-    scrollRoot.addEventListener('scroll', onScroll, { passive: true })
-    return () => { scrollRoot.removeEventListener('scroll', onScroll) }
-  }, [scrollRoot])
-
-  useEffect(() => {
-    disposed.current = false
-    return () => {
-      disposed.current = true
-      if (frame.current !== null && typeof cancelAnimationFrame !== 'undefined') cancelAnimationFrame(frame.current)
-      frame.current = null
-      for (const task of [...queues.current.preload, ...queues.current.viewport]) task.cancelled = true
-      queues.current = { preload: [], viewport: [] }
-    }
-  }, [])
-
-  return useCallback((fill: () => void, preload = false): (() => void) => {
-    // jsdom and non-visual hosts keep the old synchronous fallback.
-    if (typeof requestAnimationFrame === 'undefined') { fill(); return () => undefined }
-    const task: BodyFillTask = { fill, cancelled: false, preload }
-    queues.current[preload ? 'preload' : 'viewport'].push(task)
-    schedule()
-    return () => { task.cancelled = true }
-  }, [schedule])
-}
-
 type ReviewPanelProps = WorkbenchPanelProps & PropsLocale<'workbench-tools'> & { controller: ReviewCacheController }
 const EMPTY_REVIEW_FILES: readonly ReviewFileStatus[] = []
 const EMPTY_FOLD_KEYS: ReadonlySet<string> = new Set()
 
-function scrollingParent(node: HTMLElement | null): HTMLElement | null {
-  let current = node?.parentElement ?? null
-  while (current !== null) {
-    const overflow = getComputedStyle(current).overflowY
-    if (overflow === 'auto' || overflow === 'scroll') return current
-    current = current.parentElement
-  }
-  return null
-}
-
-function useReviewResidency(options: {
-  controller: ReviewCacheController
-  files: readonly ReviewFileStatus[]
-  expanded: ReadonlySet<string>
-  forced: ReadonlySet<string>
-  eagerPath: string | null
-  listRef: RefObject<HTMLDivElement | null>
-}) {
-  const { controller, files, expanded, forced, eagerPath, listRef } = options
-  const [resident, setResident] = useState<ReadonlySet<string>>(new Set())
-  const [scrollRoot, setScrollRoot] = useState<HTMLElement | null>(null)
-  const requestBodyFill = useReviewBodyFillScheduler(scrollRoot)
-  const [widthBucket, setWidthBucket] = useState(0)
-  const expandedRef = useRef(expanded); expandedRef.current = expanded
-  const forcedRef = useRef(forced); forcedRef.current = forced
-  const eagerRef = useRef(eagerPath); eagerRef.current = eagerPath
-  const near = useRef(new Set<string>())
-  const stamps = useRef(new Map<string, number>())
-  const stamp = useRef(0)
-  const releaseTimers = useRef(new Map<string, number>())
-  const scheduled = useRef(new Map<string, () => void>())
-
-  const hydrate = useCallback((path: string, immediate = false, preload = false) => {
-    if (!expandedRef.current.has(path)) return
-    const timer = releaseTimers.current.get(path)
-    if (timer !== undefined) { window.clearTimeout(timer); releaseTimers.current.delete(path) }
-    controller.ensure(path, immediate ? 'focus' : 'viewport')
-    const commit = () => {
-      if (!expandedRef.current.has(path) || (!immediate && !near.current.has(path) && !forcedRef.current.has(path))) return
-      stamps.current.set(path, ++stamp.current)
-      setResident(current => {
-        const next = new Set(current); next.add(path)
-        if (next.size > REVIEW_BODY_RESIDENT_LIMIT) {
-          const removable = [...next]
-            .filter(candidate => !near.current.has(candidate) && !forcedRef.current.has(candidate) && candidate !== eagerRef.current)
-            .toSorted((left, right) => (stamps.current.get(left) ?? 0) - (stamps.current.get(right) ?? 0))
-          while (next.size > REVIEW_BODY_RESIDENT_LIMIT && removable.length > 0) {
-            const candidate = removable.shift()
-            if (candidate !== undefined) next.delete(candidate)
-          }
-        }
-        return next
-      })
-    }
-    if (immediate) {
-      scheduled.current.get(path)?.()
-      scheduled.current.delete(path)
-      commit()
-    } else if (!scheduled.current.has(path)) {
-      const cancel = requestBodyFill(() => { scheduled.current.delete(path); commit() }, preload)
-      scheduled.current.set(path, cancel)
-    }
-  }, [controller, requestBodyFill])
-
-  useEffect(() => {
-    const list = listRef.current
-    if (list === null || files.length === 0) return
-    const root = scrollingParent(list)
-    setScrollRoot(root)
-    const updateWidth = () => { setWidthBucket(Math.round((root?.clientWidth ?? list.clientWidth) / 32)) }
-    updateWidth()
-    const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateWidth)
-    resize?.observe(root ?? list)
-    const rows = [...list.querySelectorAll<HTMLElement>('[data-review-path]')]
-    if (typeof IntersectionObserver === 'undefined') {
-      for (const row of rows.slice(0, REVIEW_IDLE_PREFETCH_LIMIT)) {
-        const path = row.dataset.reviewPath ?? ''
-        near.current.add(path)
-        hydrate(path)
-      }
-      return () => { resize?.disconnect() }
-    }
-    const hydration = new IntersectionObserver(entries => {
-      for (const entry of entries) {
-        const path = (entry.target as HTMLElement).dataset.reviewPath
-        if (path === undefined) continue
-        if (entry.isIntersecting) { near.current.add(path); hydrate(path) }
-        else {
-          near.current.delete(path)
-          scheduled.current.get(path)?.()
-          scheduled.current.delete(path)
-        }
-      }
-    }, { root, rootMargin: '200% 0px' })
-    const retention = new IntersectionObserver(entries => {
-      for (const entry of entries) {
-        const path = (entry.target as HTMLElement).dataset.reviewPath
-        if (path === undefined) continue
-        const existing = releaseTimers.current.get(path)
-        if (entry.isIntersecting) {
-          if (existing !== undefined) { window.clearTimeout(existing); releaseTimers.current.delete(path) }
-          continue
-        }
-        if (existing !== undefined || path === eagerRef.current || forcedRef.current.has(path)) continue
-        const timer = window.setTimeout(() => {
-          releaseTimers.current.delete(path)
-          if (near.current.has(path) || path === eagerRef.current) return
-          setResident(current => {
-            if (!current.has(path)) return current
-            const next = new Set(current); next.delete(path); return next
-          })
-        }, 500)
-        releaseTimers.current.set(path, timer)
-      }
-    }, { root, rootMargin: '300% 0px' })
-    for (const row of rows) { hydration.observe(row); retention.observe(row) }
-    return () => {
-      hydration.disconnect(); retention.disconnect(); resize?.disconnect()
-      for (const timer of releaseTimers.current.values()) window.clearTimeout(timer)
-      releaseTimers.current.clear()
-      for (const cancel of scheduled.current.values()) cancel()
-      scheduled.current.clear()
-    }
-  }, [files, hydrate, listRef])
-
-  useEffect(() => {
-    if (eagerPath !== null) hydrate(eagerPath, true)
-  }, [eagerPath, hydrate])
-
-  useEffect(() => {
-    for (const path of forced) {
-      // Promote an already queued near-viewport task to the non-starving
-      // boundary queue; the invisible preload cannot extend scroll height.
-      scheduled.current.get(path)?.()
-      scheduled.current.delete(path)
-      hydrate(path, false, true)
-    }
-    setResident(current => {
-      if (current.size <= REVIEW_BODY_RESIDENT_LIMIT || forced.size > 0) return current
-      const next = new Set(current)
-      const removable = [...next]
-        .filter(path => !near.current.has(path) && path !== eagerRef.current)
-        .toSorted((left, right) => (stamps.current.get(left) ?? 0) - (stamps.current.get(right) ?? 0))
-      while (next.size > REVIEW_BODY_RESIDENT_LIMIT && removable.length > 0) {
-        const candidate = removable.shift()
-        if (candidate !== undefined) next.delete(candidate)
-      }
-      return next.size === current.size ? current : next
-    })
-  }, [forced, hydrate])
-
-  useEffect(() => {
-    const mounted = new Set(files.map(file => file.path))
-    for (const path of near.current) if (!mounted.has(path)) near.current.delete(path)
-    setResident(current => {
-      const next = new Set([...current].filter(path => mounted.has(path)))
-      return next.size === current.size ? current : next
-    })
-  }, [files])
-
-  useEffect(() => {
-    for (const path of near.current) if (expanded.has(path)) hydrate(path)
-    setResident(current => {
-      const next = new Set([...current].filter(path => expanded.has(path)))
-      return next.size === current.size ? current : next
-    })
-  }, [expanded])
-
-  useEffect(() => { controller.setResident(resident) }, [controller, resident])
-  return { resident, scrollRoot, widthBucket }
-}
-
 function reviewRowEstimate(summary: ReviewFileSummary | undefined, expanded: boolean): number {
   if (!expanded) return 36
   if (summary?.binary === true) return 156
-  const changed = (summary?.additions ?? 1) + (summary?.deletions ?? 1)
-  const context = Math.min(18, Math.max(6, Math.ceil(changed * 0.6)))
-  return 36 + Math.max(120, Math.min((changed + context) * 20 + 40, 600))
-}
-
-function reviewFileSettled(controller: ReviewCacheController, path: string): boolean {
-  const kind = controller.getFileSnapshot(path)?.cache.kind
-  return kind === 'ready' || kind === 'error'
-}
-
-/**
- * Keep the scroll range bounded by prepared content. The first six rows are
- * visible immediately; reaching the sentinel prepares a complete ~2-screen
- * batch off-DOM and unlocks it atomically. A focused reveal recenters the
- * window on its target and then grows through independent before/after gates,
- * so direct navigation never waits on every file that precedes it.
- */
-function useReviewProgressiveGate(options: {
-  controller: ReviewCacheController
-  files: readonly ReviewFileStatus[]
-  summaries: ReadonlyMap<string, ReviewFileSummary>
-  expanded: ReadonlySet<string>
-  eagerPath: string | null
-  listRef: RefObject<HTMLDivElement | null>
-  scopeKey: string
-}) {
-  const { controller, files, summaries, expanded, eagerPath, listRef, scopeKey } = options
-  const [unlockedStart, setUnlockedStart] = useState(0)
-  const [unlockedEnd, setUnlockedEnd] = useState(() => Math.min(REVIEW_IDLE_PREFETCH_LIMIT, files.length))
-  const [pendingBefore, setPendingBefore] = useState<number | null>(null)
-  const [pendingAfter, setPendingAfter] = useState<number | null>(null)
-  const [stagedStart, setStagedStart] = useState<number | null>(null)
-  const [stagedEnd, setStagedEnd] = useState<number | null>(null)
-  const [rangeSettled, setRangeSettled] = useState(false)
-  const beforeSentinelRef = useRef<HTMLDivElement | null>(null)
-  const afterSentinelRef = useRef<HTMLDivElement | null>(null)
-  const previousScope = useRef(scopeKey)
-
-  useEffect(() => {
-    if (previousScope.current !== scopeKey) {
-      previousScope.current = scopeKey
-      setUnlockedStart(0)
-      setUnlockedEnd(Math.min(REVIEW_IDLE_PREFETCH_LIMIT, files.length))
-      setPendingBefore(null)
-      setPendingAfter(null)
-      setStagedStart(null)
-      setStagedEnd(null)
-      setRangeSettled(false)
-      return
-    }
-    setUnlockedStart(current => Math.min(current, Math.max(0, files.length - 1)))
-    setUnlockedEnd(current => Math.min(files.length, Math.max(Math.min(REVIEW_IDLE_PREFETCH_LIMIT, files.length), current)))
-  }, [files, scopeKey])
-
-  useEffect(() => {
-    if (eagerPath === null) return
-    const index = files.findIndex(file => file.path === eagerPath)
-    if (index < 0 || (index >= unlockedStart && index < unlockedEnd)) return
-    // A direct reveal starts a fresh one-file window. Once the focused body is
-    // ready, the independent before/after sentinels unlock two screens in
-    // either direction without fetching every intervening path.
-    setUnlockedStart(index)
-    setUnlockedEnd(index + 1)
-    setPendingBefore(null)
-    setPendingAfter(null)
-    setStagedStart(null)
-    setStagedEnd(null)
-    setRangeSettled(false)
-  }, [eagerPath, files, unlockedEnd, unlockedStart])
-
-  const range = useMemo(() => files.slice(unlockedStart, unlockedEnd), [files, unlockedEnd, unlockedStart])
-  const rangeKey = useMemo(() => range.map(file => file.path).join('\n'), [range])
-  useEffect(() => {
-    const paths = range.map(file => file.path)
-    const check = () => { setRangeSettled(paths.every(path => reviewFileSettled(controller, path))) }
-    const off = paths.map(path => controller.subscribeFile(path, check))
-    check()
-    return () => { for (const unsubscribe of off) unsubscribe() }
-  }, [controller, rangeKey])
-
-  useEffect(() => {
-    if (pendingBefore === null) return
-    const paths = files.slice(pendingBefore, unlockedStart).map(file => file.path)
-    const check = () => {
-      if (!paths.every(path => reviewFileSettled(controller, path))) return
-      setStagedStart(pendingBefore)
-      setPendingBefore(null)
-    }
-    const off = paths.map(path => controller.subscribeFile(path, check))
-    check()
-    return () => { for (const unsubscribe of off) unsubscribe() }
-  }, [controller, files, pendingBefore, unlockedStart])
-
-  useEffect(() => {
-    if (pendingAfter === null) return
-    const paths = files.slice(unlockedEnd, pendingAfter).map(file => file.path)
-    const check = () => {
-      if (!paths.every(path => reviewFileSettled(controller, path))) return
-      setStagedEnd(pendingAfter)
-      setPendingAfter(null)
-    }
-    const off = paths.map(path => controller.subscribeFile(path, check))
-    check()
-    return () => { for (const unsubscribe of off) unsubscribe() }
-  }, [controller, files, pendingAfter, unlockedEnd])
-
-  const batchBudget = useCallback(() => {
-    const root = scrollingParent(listRef.current)
-    const measured = root?.clientHeight ?? 0
-    const viewportHeight = measured > 0 ? measured : REVIEW_FALLBACK_VIEWPORT_HEIGHT
-    return viewportHeight * REVIEW_UNLOCK_SCREENS
-  }, [listRef])
-
-  const beginBeforeBatch = useCallback(() => {
-    if (!rangeSettled || pendingBefore !== null || stagedStart !== null || unlockedStart <= 0) return
-    let height = 0
-    let start = unlockedStart
-    const budget = batchBudget()
-    while (start > 0 && unlockedStart - start < REVIEW_BATCH_FILE_LIMIT && (height < budget || start === unlockedStart)) {
-      const file = files[start - 1]
-      if (file === undefined) break
-      height += reviewRowEstimate(summaries.get(file.path), expanded.has(file.path))
-      start -= 1
-    }
-    if (start === unlockedStart) return
-    setPendingBefore(start)
-    for (const file of files.slice(start, unlockedStart)) controller.ensure(file.path, 'viewport')
-  }, [batchBudget, controller, expanded, files, pendingBefore, rangeSettled, stagedStart, summaries, unlockedStart])
-
-  const beginAfterBatch = useCallback(() => {
-    if (!rangeSettled || pendingAfter !== null || stagedEnd !== null || unlockedEnd >= files.length) return
-    let height = 0
-    let end = unlockedEnd
-    const budget = batchBudget()
-    while (end < files.length && end - unlockedEnd < REVIEW_BATCH_FILE_LIMIT && (height < budget || end === unlockedEnd)) {
-      const file = files[end]
-      if (file === undefined) break
-      height += reviewRowEstimate(summaries.get(file.path), expanded.has(file.path))
-      end += 1
-    }
-    if (end === unlockedEnd) return
-    setPendingAfter(end)
-    for (const file of files.slice(unlockedEnd, end)) controller.ensure(file.path, 'viewport')
-  }, [batchBudget, controller, expanded, files, pendingAfter, rangeSettled, stagedEnd, summaries, unlockedEnd])
-
-  useEffect(() => {
-    const sentinel = beforeSentinelRef.current
-    if (sentinel === null || unlockedStart <= 0 || typeof IntersectionObserver === 'undefined') return
-    const observer = new IntersectionObserver(entries => {
-      if (entries.some(entry => entry.isIntersecting)) beginBeforeBatch()
-    }, { root: scrollingParent(listRef.current), rootMargin: '200% 0px 0px 0px' })
-    observer.observe(sentinel)
-    return () => { observer.disconnect() }
-  }, [beginBeforeBatch, listRef, unlockedStart])
-
-  useEffect(() => {
-    const sentinel = afterSentinelRef.current
-    if (sentinel === null || unlockedEnd >= files.length || typeof IntersectionObserver === 'undefined') return
-    const observer = new IntersectionObserver(entries => {
-      if (entries.some(entry => entry.isIntersecting)) beginAfterBatch()
-    }, { root: scrollingParent(listRef.current), rootMargin: '0px 0px 200% 0px' })
-    observer.observe(sentinel)
-    return () => { observer.disconnect() }
-  }, [beginAfterBatch, files.length, listRef, unlockedEnd])
-
-  const renderStart = stagedStart ?? unlockedStart
-  const renderEnd = stagedEnd ?? unlockedEnd
-  const renderedFiles = useMemo(() => files.slice(renderStart, renderEnd), [files, renderEnd, renderStart])
-  const preloadPaths = useMemo(() => new Set([
-    ...(stagedStart === null ? [] : files.slice(stagedStart, unlockedStart).map(file => file.path)),
-    ...(stagedEnd === null ? [] : files.slice(unlockedEnd, stagedEnd).map(file => file.path)),
-  ]), [files, stagedEnd, stagedStart, unlockedEnd, unlockedStart])
-  const promoteResident = useCallback((resident: ReadonlySet<string>) => {
-    if (stagedStart !== null) {
-      const before = files.slice(stagedStart, unlockedStart)
-      if (before.every(file => resident.has(file.path))) {
-        setUnlockedStart(stagedStart)
-        setStagedStart(null)
-      }
-    }
-    if (stagedEnd !== null) {
-      const after = files.slice(unlockedEnd, stagedEnd)
-      if (after.every(file => resident.has(file.path))) {
-        setUnlockedEnd(stagedEnd)
-        setStagedEnd(null)
-      }
-    }
-  }, [files, stagedEnd, stagedStart, unlockedEnd, unlockedStart])
-
-  return {
-    files: renderedFiles,
-    preloadPaths,
-    promoteResident,
-    beforeSentinelRef,
-    afterSentinelRef,
-    hasBeforeBoundary: unlockedStart > 0,
-    hasAfterBoundary: unlockedEnd < files.length,
-  }
+  // An unseen expanded row contains only its 36px header and 72px loading
+  // body. Reserving the eventual diff height creates phantom blank regions
+  // when the scrollbar jumps over cold files; measured ready rows replace
+  // this compact estimate as soon as their patch mounts.
+  return 108
 }
 
 /**
@@ -553,24 +83,17 @@ function useReviewProgressiveGate(options: {
  * revalidate re-renders only its own row and the parse-once layer objects
  * keep DiffBlock's internal diff/highlight memos alive.
  *
- * Mounting is two-stage so scrolling never waits on heavy work. Approaching
- * the viewport mounts a light skeleton (an estimated-height box, ~1 ms);
- * the real DiffBlock mounts either immediately for a single-file expand
- * gesture, or through the panel-scoped, frame-budgeted body-fill queue after
- * a batch expand-all. Far bodies unmount behind an equal-height placeholder
- * while their logical expansion and controlled fold state remain intact.
+ * The outer virtualizer only mounts rows near the viewport. Logical expansion
+ * and controlled fold state survive unmounts, while lazy source loading keeps
+ * complete file contents out of the initial patch and highlighting pipeline.
  */
 const ReviewFileRow = memo(function ReviewFileRow({
-  file, summary, controller, expanded, resident, preload, scrollRoot, widthBucket, onToggle, onOpenRepository, t,
+  file, summary, controller, expanded, onToggle, onOpenRepository, t,
 }: {
   file: ReviewFileStatus
   summary: ReviewFileSummary | undefined
   controller: ReviewCacheController
   expanded: boolean
-  resident: boolean
-  preload: boolean
-  scrollRoot: HTMLElement | null
-  widthBucket: number
   onToggle: (path: string) => void
   onOpenRepository: (path: string) => void
   t: RemoteProps['t']
@@ -622,40 +145,16 @@ const ReviewFileRow = memo(function ReviewFileRow({
   const failed = entry.cache.kind === 'error' ? entry.cache.message : null
   const oldPath = ready?.raw.oldPath ?? file.oldPath
   const label = oldPath !== undefined && oldPath !== file.path ? `${oldPath} → ${file.path}` : file.path
-  const anchorRef = useRef<HTMLElement | null>(null)
-  const bodyRef = useRef<HTMLDivElement | null>(null)
-  const measuredHeights = useRef(new Map<number, number>())
-  const hunks = useMemo(() => ready?.layers.reduce((sum, layer) => sum + layer.files.reduce((files, parsed) => (
-    files + (parsed.binary ? 0 : parsed.hunks.length)
-  ), 0), 0) ?? 0, [ready])
-  const estimate = Math.max(120, Math.min(hunks * 16 + 40, 600))
-  const [bodyHeight, setBodyHeight] = useState(estimate)
-  useEffect(() => { setBodyHeight(measuredHeights.current.get(widthBucket) ?? estimate) }, [estimate, widthBucket])
-  useEffect(() => {
-    const node = bodyRef.current
-    if (preload || !resident || !expanded || node === null || typeof ResizeObserver === 'undefined') return
-    const measure = () => {
-      const next = Math.max(1, Math.ceil(node.getBoundingClientRect().height))
-      const previous = measuredHeights.current.get(widthBucket) ?? bodyHeight
-      measuredHeights.current.set(widthBucket, next)
-      if (next === bodyHeight) return
-      const article = anchorRef.current
-      if (scrollRoot !== null && article !== null && article.getBoundingClientRect().top < scrollRoot.getBoundingClientRect().top) {
-        scrollRoot.scrollTop += next - previous
-      }
-      setBodyHeight(next)
-    }
-    measure()
-    const observer = new ResizeObserver(measure)
-    observer.observe(node)
-    return () => { observer.disconnect() }
-  }, [bodyHeight, expanded, preload, resident, scrollRoot, widthBucket])
 
   const onHeaderClick = useCallback(() => {
     if (file.kind === 'repository' || file.kind === 'submodule') { onOpenRepository(file.path); return }
     if (!expanded) controller.ensure(file.path, 'focus')
     onToggle(file.path)
   }, [controller, expanded, file.kind, file.path, onOpenRepository, onToggle])
+  const loadSource = useCallback(
+    async (side: 'old' | 'new') => await controller.source(file.path, side),
+    [controller, file.path],
+  )
   const additions = summary?.additions ?? ready?.added
   const deletions = summary?.deletions ?? ready?.removed
   const lineStatsAvailable = summary?.lineStatsState === 'available'
@@ -666,7 +165,7 @@ const ReviewFileRow = memo(function ReviewFileRow({
   const atomic = file.kind === 'repository' || file.kind === 'submodule'
   const hasRenderableDiff = ready?.layers.some(layer => layer.files.some(parsed => parsed.binary || parsed.hunks.length > 0)) ?? false
   return (
-    <article ref={anchorRef} className={preload ? `${css.reviewFile} ${css.reviewFilePreload}` : css.reviewFile} data-review-path={file.path}>
+    <article className={css.reviewFile} data-review-path={file.path}>
       <button
         type="button"
         className={css.reviewFileHeader}
@@ -680,13 +179,8 @@ const ReviewFileRow = memo(function ReviewFileRow({
           ? <span className={css.reviewFileLoading}>{t('loading')}</span>
           : showCounts && <span className={css.reviewCounts}><b>{`+${additions}`}</b><i>{`-${deletions}`}</i></span>}
       </button>
-      {!atomic && expanded && !resident && (
-        <div className={css.reviewFileSkeleton} style={{ height: bodyHeight }} aria-hidden>
-          {t('loading')}
-        </div>
-      )}
-      {!atomic && resident && expanded && (
-        <div ref={bodyRef} className={css.reviewFileContent}>
+      {!atomic && expanded && (
+        <div className={css.reviewFileContent}>
           {pending && <div className={css.reviewFileMessage}>{t('loading')}</div>}
           {failed !== null && <div className={css.reviewFileError}>{failed}</div>}
           {ready !== null && !hasRenderableDiff && presentation !== 'text' && (
@@ -726,6 +220,7 @@ const ReviewFileRow = memo(function ReviewFileRow({
                     foldResetSignal={foldSignals[layer.kind] ?? 0}
                     onFoldStateChange={foldReporterFor(layer.kind, parsed.key)}
                     expandedFoldKeys={expandedFoldKeys[`${layer.kind}:${parsed.key}`] ?? EMPTY_FOLD_KEYS}
+                    loadSource={loadSource}
                     onExpandedFoldKeysChange={keys => {
                       setExpandedFoldKeys(current => ({ ...current, [`${layer.kind}:${parsed.key}`]: keys }))
                     }}
@@ -749,7 +244,6 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
   const meta = useSyncExternalStore(controller.subscribeMeta, controller.getMetaSnapshot, controller.getMetaSnapshot)
   const history = useSyncExternalStore(controller.subscribeHistory, controller.getHistorySnapshot, controller.getHistorySnapshot)
   const [expandedPaths, setExpandedPaths] = useState<ReadonlySet<string>>(new Set())
-  const [eagerPath, setEagerPath] = useState<string | null>(null)
   const [missedPath, setMissedPath] = useState<string | null>(null)
   const [scopeMenuOpen, setScopeMenuOpen] = useState(false)
   const listRef = useRef<HTMLDivElement | null>(null)
@@ -762,13 +256,91 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
   const files = meta.status?.files ?? EMPTY_REVIEW_FILES
   const summaries = useMemo(() => new Map(meta.summary?.files.map(file => [file.path, file]) ?? []), [meta.summary])
   const scopeId = typeof meta.scope === 'string' ? meta.scope : `turn:${meta.scope.turn}`
-  const gate = useReviewProgressiveGate({
-    controller, files, summaries, expanded: expandedPaths, eagerPath, listRef, scopeKey: `${meta.repository}\0${scopeId}`,
+  // A repository-relative path is not a global row identity: root and nested
+  // repositories commonly both contain README.md/package.json, and scopes can
+  // carry different hunk heights for the same path.
+  const rowKeyPrefix = useMemo(() => JSON.stringify([meta.repository, scopeId]), [meta.repository, scopeId])
+  const getScrollElement = useCallback(() => listRef.current, [])
+  const estimateRow = useCallback((index: number) => {
+    const file = files[index]
+    return file === undefined ? 36 : reviewRowEstimate(summaries.get(file.path), expandedPaths.has(file.path))
+  }, [expandedPaths, files, summaries])
+  const getRowKey = useCallback((index: number) => `${rowKeyPrefix}:${files[index]?.path ?? index}`, [files, rowKeyPrefix])
+  const virtualizer = useVirtualizer<HTMLDivElement, HTMLDivElement>({
+    count: files.length,
+    getScrollElement,
+    estimateSize: estimateRow,
+    measureElement: (element, entry) => {
+      const measured = entry?.borderBoxSize[0]?.blockSize ?? element.getBoundingClientRect().height
+      const index = Number(element.dataset.index)
+      return measured > 0 ? measured : estimateRow(Number.isSafeInteger(index) ? index : 0)
+    },
+    getItemKey: getRowKey,
+    overscan: 5,
+    initialRect: { width: 0, height: 720 },
+    observeElementRect: (instance, callback) => {
+      const element = instance.scrollElement
+      if (element === null) return undefined
+      const update = () => {
+        callback({ width: element.clientWidth || 320, height: element.clientHeight || 720 })
+      }
+      update()
+      if (typeof ResizeObserver === 'undefined') return undefined
+      const observer = new ResizeObserver(update)
+      observer.observe(element)
+      return () => { observer.disconnect() }
+    },
   })
-  const residency = useReviewResidency({
-    controller, files: gate.files, expanded: expandedPaths, forced: gate.preloadPaths, eagerPath, listRef,
-  })
-  useEffect(() => { gate.promoteResident(residency.resident) }, [gate.promoteResident, residency.resident])
+  const virtualItems = virtualizer.getVirtualItems()
+  const scrollOffset = virtualizer.scrollOffset ?? 0
+  const viewportHeight = listRef.current?.clientHeight ?? 720
+  const viewportEnd = scrollOffset + viewportHeight
+  const scrollReviewIndex = useCallback((index: number, behavior: ScrollBehavior = 'auto') => {
+    if (index < 0) return
+    const measured = virtualizer.getOffsetForIndex(index, 'start')?.[0]
+    let offset = measured ?? 0
+    if (index > 0 && offset <= 0) {
+      for (let cursor = 0; cursor < index; cursor += 1) offset += estimateRow(cursor)
+    }
+    listRef.current?.scrollTo({ top: offset, behavior })
+  }, [estimateRow, virtualizer])
+  const scrollReviewIndexRef = useRef(scrollReviewIndex); scrollReviewIndexRef.current = scrollReviewIndex
+  const resident = useMemo(() => new Set(virtualItems.flatMap(item => {
+    const path = files[item.index]?.path
+    return path === undefined ? [] : [path]
+  })), [files, virtualItems])
+  const visiblePaths = useMemo(() => new Set(virtualItems.flatMap(item => {
+    if (item.end <= scrollOffset || item.start >= viewportEnd) return []
+    const path = files[item.index]?.path
+    return path === undefined ? [] : [path]
+  })), [files, scrollOffset, viewportEnd, virtualItems])
+  const overscanPaths = useMemo(() => {
+    const paths = virtualItems.flatMap(item => {
+      const path = files[item.index]?.path
+      return path === undefined || visiblePaths.has(path) ? [] : [path]
+    })
+    return virtualizer.scrollDirection === 'backward' ? paths.toReversed() : paths
+  }, [files, virtualItems, virtualizer.scrollDirection, visiblePaths])
+  useEffect(() => {
+    controller.setResident(resident)
+    for (const path of visiblePaths) if (expandedPaths.has(path)) controller.ensure(path, 'viewport')
+    for (const path of overscanPaths) if (expandedPaths.has(path)) controller.ensure(path, 'overscan')
+  }, [controller, expandedPaths, overscanPaths, resident, visiblePaths])
+  useLayoutEffect(() => {
+    // measure() deliberately drops all cached sizes so offscreen rows return
+    // to the current expanded/collapsed estimates. Doing that in a passive
+    // effect can erase a warm body's already-correct ResizeObserver result
+    // after paint and leave every following absolute row at the 108px
+    // estimate. Reset before paint, then synchronously restore the bounded
+    // mounted viewport from its actual DOM boxes; later patch/wrap growth
+    // continues through the virtualizer's shared ResizeObserver.
+    virtualizer.measure()
+    listRef.current?.querySelectorAll<HTMLDivElement>('[data-review-virtual-row]').forEach(element => {
+      const index = Number(element.dataset.index)
+      const height = element.getBoundingClientRect().height
+      if (Number.isSafeInteger(index) && index >= 0 && height > 0) virtualizer.resizeItem(index, height)
+    })
+  }, [expandedPaths, rowKeyPrefix, virtualizer])
 
   // Opening the panel (first mount visible, or hidden→visible) means
   // expand-all with the list focused at the top — unless this open is driven
@@ -792,10 +364,7 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
     expandedRef.current = next
     startTransition(() => { setExpandedPaths(next) })
     // Focus the top after the expansion joins the layout.
-    requestAnimationFrame(() => {
-      listRef.current?.querySelector<HTMLElement>('[data-review-path]')
-        ?.scrollIntoView({ block: 'start' })
-    })
+    requestAnimationFrame(() => { scrollReviewIndexRef.current(0) })
   }, [meta.status, reveal, visible])
 
   // Publish the hidden→visible edge before processing its presentation. The
@@ -839,15 +408,10 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
         const next = new Set(paths)
         expandedRef.current = next
         const focus = outcome.kind === 'found' ? outcome.path : null
-        setEagerPath(focus)
         setExpandedPaths(next)
         requestAnimationFrame(() => {
-          const rows = [...(listRef.current?.querySelectorAll<HTMLElement>('[data-review-path]') ?? [])]
-          const row = focus === null
-            ? rows[0]
-            : rows.find(node => node.dataset.reviewPath === focus)
-          row?.scrollIntoView(focus === null ? { block: 'start' } : { behavior: 'smooth', block: 'start' })
-          if (focus !== null) window.setTimeout(() => { setEagerPath(current => current === focus ? null : current) }, 500)
+          const index = focus === null ? 0 : paths.indexOf(focus)
+          if (index >= 0) scrollReviewIndexRef.current(index, focus === null ? 'auto' : 'smooth')
         })
       }
     }).catch(() => {
@@ -859,9 +423,9 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
   const navigateRepository = useCallback((repository: string): void => {
     repositoryViews.current.set(meta.repository, {
       expanded: expandedRef.current,
-      scrollTop: residency.scrollRoot?.scrollTop ?? 0,
+      scrollTop: listRef.current?.scrollTop ?? 0,
     })
-    setMissedPath(null); setEagerPath(null); setExpandedPaths(new Set())
+    setMissedPath(null); setExpandedPaths(new Set())
     void controller.selectRepository(repository).then(outcome => {
       if (outcome.kind !== 'ready' && outcome.kind !== 'found') return
       const available = controller.getSnapshot().status?.files
@@ -873,11 +437,10 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
       expandedRef.current = next
       setExpandedPaths(next)
       if (retained !== undefined) requestAnimationFrame(() => {
-        const root = scrollingParent(listRef.current)
-        if (root !== null) root.scrollTop = retained.scrollTop
+        if (listRef.current !== null) listRef.current.scrollTop = retained.scrollTop
       })
     })
-  }, [controller, meta.repository, residency.scrollRoot])
+  }, [controller, meta.repository])
 
   const openRepository = useCallback((path: string): void => {
     const repository = [meta.repository, path].filter(Boolean).join('/')
@@ -906,8 +469,6 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
     // SWR on expand: a stale cache displays immediately and revalidates.
     if (opening) {
       controller.ensure(path, 'focus')
-      setEagerPath(path)
-      window.setTimeout(() => { setEagerPath(current => current === path ? null : current) }, 500)
     }
   }, [controller])
 
@@ -949,7 +510,6 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
         setScopeMenuOpen(false)
         const next: ReviewScope = id.startsWith('turn:') ? { turn: Number(id.slice(5)) } : id as Exclude<ReviewScope, { turn: number }>
         setMissedPath(null)
-        setEagerPath(null)
         setExpandedPaths(new Set())
         void controller.selectScope(next).then((outcome) => {
           if (outcome.kind !== 'ready' && outcome.kind !== 'found') return
@@ -958,10 +518,7 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
           const expanded = new Set(paths)
           expandedRef.current = expanded
           setExpandedPaths(expanded)
-          requestAnimationFrame(() => {
-            listRef.current?.querySelector<HTMLElement>('[data-review-path]')
-              ?.scrollIntoView({ block: 'start' })
-          })
+          requestAnimationFrame(() => { scrollReviewIndexRef.current(0) })
         })
       }}
       anchor={<button
@@ -1028,38 +585,34 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
           : meta.status.files.length === 0
             ? <div className={css.reviewPlaceholder}>{t('review.clean')}</div>
             : <div ref={listRef} className={css.fileList} role="list" aria-label={t('review.files')}>
-              {gate.hasBeforeBoundary && (
-                <div
-                  ref={gate.beforeSentinelRef}
-                  className={css.reviewLoadBoundary}
-                  data-review-boundary="before"
-                  role="status"
-                >{t('loading')}</div>
-              )}
-              {gate.files.map(file => (
-                <ReviewFileRow
-                  key={file.path}
-                  file={file}
-                  summary={summaries.get(file.path)}
-                  controller={controller}
-                  expanded={expandedPaths.has(file.path)}
-                  resident={residency.resident.has(file.path)}
-                  preload={gate.preloadPaths.has(file.path)}
-                  scrollRoot={residency.scrollRoot}
-                  widthBucket={residency.widthBucket}
-                  onToggle={toggleFile}
-                  onOpenRepository={openRepository}
-                  t={t}
-                />
-              ))}
-              {gate.hasAfterBoundary && (
-                <div
-                  ref={gate.afterSentinelRef}
-                  className={css.reviewLoadBoundary}
-                  data-review-boundary="after"
-                  role="status"
-                >{t('loading')}</div>
-              )}
+              <div className={css.reviewVirtualCanvas} style={{ height: virtualizer.getTotalSize() }}>
+                {virtualItems.map(item => {
+                  const file = files[item.index]
+                  if (file === undefined) return null
+                  return <div
+                    key={item.key}
+                    ref={virtualizer.measureElement}
+                    data-index={item.index}
+                    data-review-virtual-row=""
+                    className={css.reviewVirtualRow}
+                    // A transformed ancestor changes Chromium's containing
+                    // block for the sticky file header. Positioning the small
+                    // mounted window by `top` keeps the header attached to the
+                    // Review scroller and preserves file/diff association.
+                    style={{ top: item.start }}
+                  >
+                    <ReviewFileRow
+                      file={file}
+                      summary={summaries.get(file.path)}
+                      controller={controller}
+                      expanded={expandedPaths.has(file.path)}
+                      onToggle={toggleFile}
+                      onOpenRepository={openRepository}
+                      t={t}
+                    />
+                  </div>
+                })}
+              </div>
             </div>}
       </div>
     </div>
@@ -1165,53 +718,4 @@ export function TerminalPanel({ terminal, useSessions, sessionId, tabs, activeIn
         : <Empty title={active?.name ?? t('terminal')} body={t('terminal.legacy')} />}
     </div>
   )
-}
-
-function safeLoopback(raw: string): URL | null {
-  try {
-    const value = /^https?:\/\//i.test(raw) ? raw : `http://${raw}`
-    const url = new URL(value)
-    const host = url.hostname.toLowerCase()
-    if ((url.protocol !== 'http:' && url.protocol !== 'https:') || (host !== 'localhost' && host !== '127.0.0.1' && host !== '::1' && host !== '[::1]')) return null
-    return url
-  } catch { return null }
-}
-
-export function BrowserPanel({ sessionId, route, tabs, activeInstanceId, openInstance, showHome, contributeHeaderActions, t }: Props) {
-  const [draft, setDraft] = useState(activeInstanceId ?? 'http://localhost:3000')
-  const [error, setError] = useState<string | null>(null)
-  const activeUrl = activeInstanceId === undefined ? null : safeLoopback(activeInstanceId)
-  const desktopBridge = window.deepcreatorBrowser
-  const desktopViewport = useRef<HTMLDivElement | null>(null)
-  const desktopId = activeUrl === null ? null : `${sessionId}:${activeUrl.href}`
-  const openInstanceRef = useRef(openInstance); openInstanceRef.current = openInstance
-  const tabsRef = useRef(tabs); tabsRef.current = tabs
-
-  useEffect(() => {
-    if (desktopBridge === undefined || desktopId === null || activeUrl === null) return
-    const element = desktopViewport.current
-    if (element === null) return
-    const bounds = () => { const rect = element.getBoundingClientRect(); return { x: rect.x, y: rect.y, width: rect.width, height: rect.height } }
-    void desktopBridge.create(desktopId, activeUrl.href, bounds()).catch(() => { setError(t('browser.frameError')) })
-    const observer = new ResizeObserver(() => { void desktopBridge.setBounds(desktopId, bounds()) }); observer.observe(element)
-    const offPopup = desktopBridge.onPopup(popup => { if (popup.sourceId === desktopId) openInstanceRef.current(popup.url) })
-    return () => { observer.disconnect(); offPopup(); void desktopBridge.setBounds(desktopId, { x: 0, y: 0, width: 0, height: 0 }) }
-  }, [activeUrl?.href, desktopBridge, desktopId, t])
-
-  const previousTabs = useRef<readonly string[]>(tabs)
-  useEffect(() => { if (desktopBridge !== undefined) for (const tab of previousTabs.current) if (!tabs.includes(tab)) void desktopBridge.close(`${sessionId}:${tab}`); previousTabs.current = tabs }, [desktopBridge, sessionId, tabs])
-  useEffect(() => () => { if (desktopBridge !== undefined) for (const tab of tabsRef.current) void desktopBridge.close(`${sessionId}:${tab}`) }, [desktopBridge, sessionId])
-  const headerActions = useMemo<WorkbenchPanelHeaderContribution>(() => ({
-    left: <WorkbenchPanelIconButton label={t('browser.open')} onClick={showHome}><IconPlusOutline16 size={14} /></WorkbenchPanelIconButton>,
-  }), [showHome, t])
-  usePanelHeaderActions(contributeHeaderActions, headerActions)
-  const submit = (event: FormEvent) => { event.preventDefault(); const url = safeLoopback(draft); if (url === null) { setError(t('browser.invalid')); return }; setError(null); openInstance(url.href) }
-  return <div className={css.browser}>
-    {error !== null && <div className={css.error}>{error}</div>}
-    {route === 'instance' && activeUrl !== null
-      ? desktopBridge === undefined
-        ? <div className={css.viewport}><iframe title={activeUrl.href} src={activeUrl.href} sandbox="allow-forms allow-same-origin allow-scripts" onError={() => { setError(t('browser.frameError')) }} />{error === t('browser.frameError') && <button type="button" className={css.external} onClick={() => { window.open(activeUrl.href, '_blank', 'noopener,noreferrer') }}>{t('browser.external')}</button>}</div>
-        : <div ref={desktopViewport} className={css.viewport} data-desktop-browser-view />
-      : <div className={css.browserHome}><form className={css.address} onSubmit={submit}><input aria-label={t('browser.prompt')} value={draft} onChange={event => { setDraft(event.currentTarget.value) }} spellCheck={false} /><button type="submit">{t('browser.open')}</button></form></div>}
-  </div>
 }

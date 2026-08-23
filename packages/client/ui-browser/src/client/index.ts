@@ -1,0 +1,71 @@
+import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
+import { createElement, type ReactNode } from 'react'
+import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
+import type {} from '@ryanyujazz/dsh-browser/remote'
+import type {} from '@ryanyujazz/dsh-client-locale/client'
+import type {} from '@ryanyujazz/dsh-client-workbench-remotes/client'
+import type {} from '@ryanyujazz/dsh-client-presentation/client'
+import type { PresentationProvider } from '@ryanyujazz/dsh-client-presentation/client'
+import { DeepCreatorIconPreview16 } from '@ryanyujazz/dsh-client-ui-primitives'
+import type { WorkbenchPanelIconProps, WorkbenchPanelProps } from '@ryanyujazz/dsh-client-ui-workbench/client'
+import type {} from '@ryanyujazz/dsh-client-ui-workbench/client'
+import type {} from '@ryanyujazz/dsh-client-ui-settings/client'
+import { BrowserPanel } from './BrowserPanel.tsx'
+import { BrowserDataSetting } from './BrowserDataSetting.tsx'
+import { BrowserPreferenceSetting } from './BrowserPreferenceSetting.tsx'
+import { en, NS, zh, type BrowserLocaleKey } from './locales.ts'
+import { BrowserClientRuntime, type BrowserRemoteClient } from './runtime.ts'
+
+declare module '@deepseek-ai/dsh-client-ui-slots' { interface LocaleNamespaceMap { browser: BrowserLocaleKey } }
+export const inject = ['slots', 'workbench', 'locale', 'remote', 'remote.browser', 'sessions', 'presentation', 'settingsScope']
+type PanelComponent = (props: WorkbenchPanelProps & PropsLocale<'browser'>) => ReactNode
+
+export function apply(ctx: ClientContext): void {
+  const remote = (ctx.get('remote') as TypertClientRemote)['browser'] as unknown as BrowserRemoteClient
+  const browser = new BrowserClientRuntime(remote, () => ctx.sessions.list.getSnapshot().current)
+  const browserSettings = ctx.settingsScope.bind<import('@ryanyujazz/dsh-browser').BrowserSettings>({
+    namespace: 'browser',
+    decode: value => {
+      if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined
+      const candidate = value as Partial<import('@ryanyujazz/dsh-browser').BrowserSettings>
+      if (!['semantic', 'playwright'].includes(candidate.defaultAutomation ?? '') || !['chromium', 'firefox', 'webkit'].includes(candidate.playwrightDefaultEngine ?? '') || !Array.isArray(candidate.visibleProviderOrder) || !candidate.visibleProviderOrder.every(item => typeof item === 'string')) return undefined
+      return candidate as import('@ryanyujazz/dsh-browser').BrowserSettings
+    },
+  })
+  const presenter: PresentationProvider = {
+    id: 'workbench-browser', priority: 100, resourceKinds: ['browser-tab'],
+    modes: window.deepcreatorBrowserSurface === undefined ? ['snapshot'] : ['live', 'snapshot'],
+    surfaceHost: window.deepcreatorBrowserSurface !== undefined,
+    async present(request, resource) {
+      if (!ctx.workbench.types.list().some(type => type.id === 'browser')) return { status: 'unavailable', presenterId: 'workbench-browser', failure: { code: 'PANEL_UNAVAILABLE', stage: 'present', retryable: true, message: 'The Browser panel type is not registered in this client.' } }
+      ctx.workbench.present({ typeId: 'browser', instanceId: resource.id, route: 'instance', reveal: true, reason: 'agent' })
+      await browser.refresh()
+      const tab = browser.getSnapshot().state.tabs.find(candidate => candidate.tabId === resource.id)
+      if (tab === undefined) return { status: 'unavailable', presenterId: 'workbench-browser', failure: { code: 'PANEL_UNAVAILABLE', stage: 'present', retryable: true, message: 'The Browser tab is absent from the client state snapshot.' } }
+      if (tab.presentation === 'live' && window.deepcreatorBrowserSurface === undefined) return { status: 'unavailable', presenterId: 'workbench-browser', failure: { code: 'SURFACE_BRIDGE_UNAVAILABLE', stage: 'mount', retryable: false, message: 'This client has no native Browser surface bridge.' } }
+      const remaining = Math.max(1, request.deadlineAt - Date.now() - 500)
+      if (tab.presentation === 'live') {
+        const mounted = await browser.waitForSurface(resource.id, Math.min(remaining, 5_000))
+        if (!mounted.ok) return { status: 'unavailable', presenterId: 'workbench-browser', failure: { code: mounted.failure.code, stage: mounted.failure.code === 'PANEL_RENDER_TIMEOUT' ? 'present' : 'mount', retryable: false, message: mounted.failure.message } }
+      }
+      return { status: 'presented', presenterId: 'workbench-browser' }
+    }, dismiss() {},
+  }
+  const panel: PanelComponent = props => createElement(BrowserPanel, { ...props, browser })
+  ctx.effect(() => {
+    const disposers = [
+      ctx.workbench.registerType({ id: 'browser', label: () => ctx.locale.bind(NS)('browser'), scope: 'session', order: 5, supportsHome: true, supportsCreate: false, supportsMultipleInstances: true, minWidth: 150, minHeight: 280, preferredWidth: 640, initialWidthRatio: 1 / 2, closePolicy: 'provider-controlled', disabledWhenAddressed: true }),
+      ctx.slots.inject('deepcreator.workbench.panel', () => ctx.slots.register({ name: 'deepcreator.workbench.panel', id: 'browser', locale: NS }, panel)),
+      ctx.slots.inject('deepcreator.workbench.panel-icon', () => ctx.slots.register({ name: 'deepcreator.workbench.panel-icon', id: 'browser' }, ({ size }: WorkbenchPanelIconProps) => DeepCreatorIconPreview16({ size }))),
+      ctx.slots.inject('deepcreator.settings.preferences.item', () => ctx.slots.register({ name: 'deepcreator.settings.preferences.item', id: 'browser-data', order: 50, locale: NS, inject: () => ({ remote, browser }) }, BrowserDataSetting)),
+      ctx.slots.inject('deepcreator.settings.preferences.item', () => ctx.slots.register({ name: 'deepcreator.settings.preferences.item', id: 'browser-preferences', order: 40, locale: NS, inject: () => ({ settings: browserSettings }) }, BrowserPreferenceSetting)),
+      ctx.locale.register(NS, { zh, en }), ctx.presentation.providers.register(presenter),
+      ctx.workbench.dismissals.subscribe(() => { const dismissal = ctx.workbench.dismissals.getSnapshot(); if (dismissal?.typeId === 'browser') ctx.presentation.dismiss('browser-tab', dismissal.instanceId) }),
+    ]
+    return () => { for (const dispose of disposers.reverse()) dispose(); browser.dispose() }
+  }, 'ui-browser: client runtime and workbench presenter')
+}
+
+export { BrowserClientRuntime } from './runtime.ts'
+export type { BrowserSurfaceBridge } from './runtime.ts'

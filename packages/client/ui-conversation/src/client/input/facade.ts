@@ -6,7 +6,9 @@
  * sink). Package-private; the hub alone constructs it and wires the scoped
  * event listeners onto it.
  */
-import type { ClientContext, ObservableSnapshot, SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import type {
+  ClientContext, ConversationSnapshot, ObservableSnapshot, SnapshotStore,
+} from '@deepseek-ai/dsh-client-runtime/client'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 import type {
   ArbitrateKey, ArbitrateOutcome, CommandClaim, ConsumeTokenRequest, PickOutcome,
@@ -14,7 +16,7 @@ import type {
 } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import type {
   DraftAttachmentId, EditRange, EditSelection, InputActions, InputEffect, InputNotice, InputState,
-  PasteComponent, QueuedMessage, SessionInput, SubmitAttempt,
+  PasteComponent, PendingOutgoingMessage, QueuedMessage, SessionInput, SubmitAttempt,
 } from './contract.ts'
 import type { InputSubmitMode } from '../contract/composer-submission.ts'
 import { InputMachine } from './machine.ts'
@@ -39,6 +41,8 @@ export interface SessionInputDeps {
   popup?: (() => PopupDismissFace | undefined) | undefined
   /** Queue read face; overlaid onto InputState.queue (absent = empty). */
   queue?: ObservableSnapshot<readonly QueuedMessage[]> | undefined
+  /** Official Session snapshot used to pair local echoes with authoritative successors. */
+  authoritative?: ObservableSnapshot<ConversationSnapshot> | undefined
   /**
    * Steer every still-pending queued message into the running turn, in FIFO
    * order (the empty-draft accelerated-Enter gesture); absent = unsupported.
@@ -95,13 +99,31 @@ export class SessionInputShell implements SessionInput {
   private noticeSeq = 0
   private lastDraft = ''
   private imageIds: readonly DraftAttachmentId[] = []
+  private pendingOutgoing: readonly PendingOutgoingMessage[] = []
+  private outgoingSeq = 0
+  /** Queue occurrences currently known to the browser; queue identities need no historical ledger. */
+  private observedQueue = new Set<string>()
+  /** Durable chat seq is monotonic, so one watermark excludes history-page arrivals without an unbounded Set. */
+  private observedChatSeq = -1
+  private readonly sourceOffs: Array<() => void> = []
   private disposed = false
   /** Draft persistence mirror (chat store write; receives the clipboard projection, never raw placeholders). */
   private mirrorFn: ((text: string) => void) | undefined
 
   constructor(private readonly deps: SessionInputDeps) {
     this.state = createSnapshotStore<InputState>(this.compose())
-    deps.queue?.subscribe(() => { this.publish() })
+    if (deps.authoritative !== undefined) {
+      for (const item of authoritativeMessages(deps.authoritative.getSnapshot())) {
+        if (item.source === 'queue') this.observedQueue.add(item.id)
+        else this.observedChatSeq = Math.max(this.observedChatSeq, item.seq)
+      }
+      this.sourceOffs.push(deps.authoritative.subscribe(() => {
+        this.reconcileOutgoing(deps.authoritative?.getSnapshot())
+        this.publish()
+      }))
+    } else {
+      this.sourceOffs.push(deps.queue?.subscribe(() => { this.publish() }) ?? (() => {}))
+    }
   }
 
   // ---- SessionInput face ----
@@ -165,6 +187,48 @@ export class SessionInputShell implements SessionInput {
     const submitted = new Set(imageIds)
     this.imageIds = this.imageIds.filter(id => !submitted.has(id))
     this.run(this.core.dispatch({ type: 'send-committed' }))
+  }
+
+  /**
+   * Publish one local echo before the Host round trip begins.
+   * @returns the input-local identity used to withdraw a rejected attempt.
+   */
+  beginOutgoing(
+    text: string,
+    imageNames: readonly string[],
+    placement: PendingOutgoingMessage['placement'],
+  ): number {
+    this.outgoingSeq += 1
+    this.pendingOutgoing = [...this.pendingOutgoing, {
+      id: this.outgoingSeq,
+      text,
+      imageNames: [...imageNames],
+      placement,
+    }]
+    this.publish()
+    return this.outgoingSeq
+  }
+
+  /** Withdraw one local echo after Host rejection; accepted echoes retire from authoritative state. */
+  rejectOutgoing(id: number): void {
+    const next = this.pendingOutgoing.filter(item => item.id !== id)
+    if (next.length === this.pendingOutgoing.length) return
+    this.pendingOutgoing = next
+    this.publish()
+  }
+
+  /**
+   * Complete the visual handoff after the owning chat/queue surface committed
+   * the authoritative successor. Admission callbacks must not call this: the
+   * local row intentionally bridges the gap between admission and paint.
+   */
+  acknowledgeOutgoing(ids: readonly number[]): void {
+    if (ids.length === 0) return
+    const acknowledged = new Set(ids)
+    const next = this.pendingOutgoing.filter(item => !acknowledged.has(item.id))
+    if (next.length === this.pendingOutgoing.length) return
+    this.pendingOutgoing = next
+    this.publish()
   }
 
   /** Undo the latest transaction (InputBar intercepts the platform chord). */
@@ -361,6 +425,8 @@ export class SessionInputShell implements SessionInput {
   /** Teardown: abort any in-flight attempt and stop accepting async settlements. */
   dispose(): void {
     this.disposed = true
+    for (const off of this.sourceOffs.splice(0)) off()
+    this.pendingOutgoing = []
     this.run(this.core.dispatch({ type: 'release' }))
   }
 
@@ -514,9 +580,57 @@ export class SessionInputShell implements SessionInput {
     return this.disposed || attempt.signal.aborted
   }
 
+  /**
+   * Pair local echoes only when a newly observed official projection with the
+   * same complete prompt content reaches the surface it owns. Pairing does
+   * not retire the echo: the owning React surface acknowledges it after the
+   * successor is present in that surface's committed input. One authoritative
+   * occurrence pairs with at most one local occurrence, preserving FIFO
+   * behavior for rapid identical sends.
+   */
+  private reconcileOutgoing(snapshot: ConversationSnapshot | undefined): void {
+    if (snapshot === undefined) return
+    const authoritative = authoritativeMessages(snapshot)
+    const nextQueue = new Set(authoritative.filter(item => item.source === 'queue').map(item => item.id))
+    const fresh = authoritative.filter(item => item.source === 'queue'
+      ? !this.observedQueue.has(item.id)
+      : item.seq > this.observedChatSeq)
+    this.observedQueue = nextQueue
+    for (const item of authoritative) {
+      if (item.source === 'chat') this.observedChatSeq = Math.max(this.observedChatSeq, item.seq)
+    }
+    if (fresh.length === 0 || this.pendingOutgoing.length === 0) return
+    const pending = [...this.pendingOutgoing]
+    let changed = false
+    for (const authoritative of fresh) {
+      const index = pending.findIndex(candidate => (
+        candidate.successor === undefined
+        &&
+        authoritative.accepts.includes(candidate.placement)
+        && sameOutgoingContent(candidate, authoritative)
+      ))
+      if (index === -1) continue
+      const candidate = pending[index]
+      if (candidate === undefined) continue
+      pending[index] = {
+        ...candidate,
+        successor: { source: authoritative.source, id: authoritative.id },
+      }
+      changed = true
+    }
+    if (changed) this.pendingOutgoing = pending
+  }
+
   private compose(): InputState {
     const core = this.core.state
-    return { ...core, imageIds: this.imageIds, queue: this.deps.queue?.getSnapshot() ?? EMPTY_QUEUE }
+    return {
+      ...core,
+      imageIds: this.imageIds,
+      queue: this.deps.authoritative?.getSnapshot().queue
+        ?? this.deps.queue?.getSnapshot()
+        ?? EMPTY_QUEUE,
+      pendingOutgoing: this.pendingOutgoing,
+    }
   }
 
   private publish(): void {
@@ -527,4 +641,71 @@ export class SessionInputShell implements SessionInput {
       this.mirrorFn?.(next.draft)
     }
   }
+}
+
+interface AuthoritativeMessage {
+  readonly id: string
+  readonly source: 'queue' | 'chat'
+  /** Durable event sequence; queue occurrences use -1. */
+  readonly seq: number
+  readonly text: string
+  readonly imageNames: readonly string[]
+  readonly accepts: readonly PendingOutgoingMessage['placement'][]
+}
+
+/** Extract plain text and ordered image names from official prompt content. */
+function contentIdentity(content: readonly unknown[]): Pick<AuthoritativeMessage, 'text' | 'imageNames'> {
+  let text = ''
+  const imageNames: string[] = []
+  for (const block of content) {
+    if (typeof block !== 'object' || block === null || !('type' in block)) continue
+    if (block.type === 'text' && 'text' in block && typeof block.text === 'string') text += block.text
+    if (block.type === 'image' && 'attachment' in block && typeof block.attachment === 'object' && block.attachment !== null) {
+      const attachment = block.attachment as { name?: unknown }
+      imageNames.push(typeof attachment.name === 'string' ? attachment.name : '')
+    }
+  }
+  return { text, imageNames }
+}
+
+/** Enumerate the official queue/log occurrences that can replace local echoes. */
+function authoritativeMessages(snapshot: ConversationSnapshot): AuthoritativeMessage[] {
+  const messages: AuthoritativeMessage[] = []
+  for (const item of snapshot.queue) {
+    if (item.placement === 'context') continue
+    messages.push({
+      id: `queue:${String(item.id)}:${item.placement}`,
+      source: 'queue',
+      seq: -1,
+      ...contentIdentity(item.content),
+      // The running/idle bit is only the browser's pre-admission view. A
+      // queue send can race into a busy turn, and best-effort steer can fall
+      // back to Queue, so any local delivery expectation may hand off here.
+      accepts: item.placement === 'queued' ? ['turn', 'queue', 'steering'] : ['steering', 'queue'],
+    })
+  }
+  for (const key of snapshot.chat.order) {
+    const node = snapshot.chat.nodes.get(key)
+    if (node?.kind !== 'user' && node?.kind !== 'steering') continue
+    const data = node.data
+    if (typeof data !== 'object' || data === null
+      || !('seq' in data) || typeof data.seq !== 'number'
+      || !('content' in data) || !Array.isArray(data.content)) continue
+    messages.push({
+      id: `chat:${node.kind}:${String(data.seq)}`,
+      source: 'chat',
+      seq: data.seq,
+      ...contentIdentity(data.content),
+      // A queued message can be consumed before its queue frame reaches the
+      // browser; its durable user row is still the authoritative handoff.
+      accepts: node.kind === 'steering' ? ['steering', 'queue'] : ['turn', 'queue', 'steering'],
+    })
+  }
+  return messages
+}
+
+function sameOutgoingContent(left: PendingOutgoingMessage, right: AuthoritativeMessage): boolean {
+  return left.text === right.text
+    && left.imageNames.length === right.imageNames.length
+    && left.imageNames.every((name, index) => name === right.imageNames[index])
 }

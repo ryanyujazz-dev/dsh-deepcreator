@@ -9,7 +9,7 @@
  * packages/client/AGENTS.md.
  */
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext, SessionRuntime } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-api-remotes/client'
 import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale) and the
@@ -121,12 +121,11 @@ export function apply(ctx: ClientContext): void {
       const wire = await sessionAdmin.delete(sessionId)
       if (!wire.ok) throw new Error(wire.error.message)
       if (!wire.value.ok) throw new Error(wire.value.message)
-      // The Host removed the persisted log; re-list so the row disappears.
-      // The official ISessions face exposes no list refresh; the runtime's
-      // SessionRuntime carries the manager that does (private by type, stable
-      // by construction — the same object provides both faces).
-      const sessions = ctx.sessions as unknown as { manager: { refreshList(): Promise<void> } }
-      await sessions.manager.refreshList()
+      // The Host removed a cold persisted log; re-pull the authoritative list
+      // through SessionRuntime's documented refresh boundary so the row drops.
+      // ISessions omits this lifecycle method, but the installed service is the
+      // concrete SessionRuntime exported by the official client runtime.
+      await (ctx.sessions as SessionRuntime).refresh()
     },
     insertSessionBefore: async (workspaceId, sessionId, beforeSessionId) => {
       await ctx.workspaces.insertSessionBefore(workspaceId, sessionId, beforeSessionId)

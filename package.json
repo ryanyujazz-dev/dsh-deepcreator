@@ -7,10 +7,11 @@
   "scripts": {
     "build": "pnpm -r --if-present bundle",
     "bump": "node scripts/release/bump.mjs",
-    "dev:desktop": "pnpm --filter @ryanyujazz/dsh-deepcreator-desktop dev",
+    "dev:desktop": "pnpm run profile:ensure && pnpm --filter @ryanyujazz/dsh-deepcreator-desktop dev",
+    "profile:ensure": "node scripts/profile-migrate/ensure.mjs",
     "profile:migrate": "node scripts/profile-migrate/index.mjs",
     "publish": "node scripts/release/publish.mjs",
-    "start:desktop": "pnpm --filter @ryanyujazz/dsh-deepcreator-desktop start",
+    "start:desktop": "pnpm run profile:ensure && pnpm --filter @ryanyujazz/dsh-deepcreator-desktop start",
     "test": "node scripts/run-tests.mjs",
     "verify:harness": "node scripts/verify-harness/index.mjs",
     "typecheck": "pnpm -r --if-present typecheck"

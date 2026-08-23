@@ -4,7 +4,7 @@
 // ObservableSnapshot fake, no wire or Tool presentation plugin.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-library/react'
 import { useEffect } from 'react'
 import type {
   AssistantMessageNode, CommandNode, CompactionSummaryNode, ConversationNode, ConversationSnapshot,
@@ -20,6 +20,7 @@ import type {
   ChatNode, ChatNodeOwnerProps, ChatNodeViewProps, ChatRenderOwnerProps, ChatViewSlotProps, SelectionTarget,
   UseChatNodeTurnData,
 } from '@ryanyujazz/dsh-client-ui-conversation/client'
+import type { InputState } from '../src/client/input/contract.ts'
 import type { ChatRenderSlotProps } from '../src/client/contract/slots.ts'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@ryanyujazz/dsh-client-locale/src/locales/zh.ts'
@@ -99,6 +100,14 @@ const user = (seq: number, text: string): UserMessageNode => ({
 const assistant = (seq: number, text: string, turn = 1): AssistantMessageNode => ({
   kind: 'assistant', seq, time: seq * 1_000, turn, step: 1, blocks: [{ kind: 'text', text }],
 })
+const context = (seq: number, label = 'fixture'): ConversationNode => ({
+  kind: 'context',
+  seq,
+  content: [{ type: 'text', text: 'injected context' }],
+  source: { kind: 'plugin', plugin: label, empty: {}, list: [] },
+  provenance: { role: 'inject', label },
+  form: null,
+} as never)
 const retry = (seq: number): ModelRetryNode => ({
   kind: 'model-retry', retryId: 'chat-view-retry' as ModelRetryNode['retryId'],
   seq, time: seq * 1_000, turn: 1, step: 0,
@@ -196,6 +205,16 @@ function makeHarness(
   // Selection rides the REAL chat store (same construction path as
   // production; the view reads it through the PropsStore useStore share).
   const chat = createChatStore().create()
+  const input = createSnapshotStore<InputState>({
+    draft: '', imageIds: [], draftRev: 0, phase: 'plain', occurrences: [], queue: [], pendingOutgoing: [],
+  })
+  const acknowledgeOutgoing = vi.fn((ids: readonly number[]) => {
+    const acknowledged = new Set(ids)
+    input.set({
+      ...input.getSnapshot(),
+      pendingOutgoing: (input.getSnapshot().pendingOutgoing ?? []).filter(message => !acknowledged.has(message.id)),
+    })
+  })
   const t = makeTranslate(zh, commonZh)
   const toolOwners: Array<{
     callId: string
@@ -309,7 +328,7 @@ function makeHarness(
     useSessions: emptySessions(),
     useWorkspaces: emptyWorkspaces(),
     useProjection: (() => undefined),
-    useInput: (() => { throw new Error('unused') }),
+    useInput: bindSnapshotSelector(input),
     inputActions: {
       setDraft: () => {},
       addImages: () => true,
@@ -330,6 +349,7 @@ function makeHarness(
     forkAt,
     // Absent-service default; mention tests override with a real resolver.
     fileMentions: () => undefined,
+    acknowledgeOutgoing,
     // The render-mode ledger: only the shipped mode by default, so the
     // selector stays hidden and the ring dispatches `normal`.
     modes: {
@@ -347,7 +367,7 @@ function makeHarness(
   return {
     set, ChatView, props, openDetails, openFile, loadOlder, inspectCall,
     chatScroll, chatScrollFor, forkAt, setSelection, toolOwners, renderedOnly: () => renderedOnly,
-    snapshot: () => chat.getSnapshot(),
+    snapshot: () => chat.getSnapshot(), input, acknowledgeOutgoing,
   }
 }
 
@@ -378,6 +398,59 @@ function installScrollMetrics(element: HTMLElement, initialHeight: number, clien
 }
 
 describe('Chat node rendering', () => {
+
+  it('shows a local outgoing turn before the authoritative user node arrives', () => {
+    const h = makeHarness({ nodes: [assistant(1, 'older')] })
+    const view = render(<h.ChatView {...h.props} />)
+
+    act(() => {
+      h.input.set({
+        ...h.input.getSnapshot(),
+        pendingOutgoing: [{ id: 1, text: '立即出现', imageNames: [], placement: 'turn' }],
+      })
+    })
+    expect(view.getByText('立即出现').closest('[data-pending-outgoing]')).not.toBeNull()
+
+    act(() => {
+      h.set({ nodes: [assistant(1, 'older'), user(2, '立即出现')] })
+      h.input.set({ ...h.input.getSnapshot(), pendingOutgoing: [] })
+    })
+    expect(view.getAllByText('立即出现')).toHaveLength(1)
+    expect(view.container.querySelector('[data-pending-outgoing]')).toBeNull()
+  })
+
+  it('keeps a paired echo in the user row until the official bubble paints, ahead of later context', async () => {
+    const h = makeHarness({ nodes: [assistant(1, 'older')] })
+    const view = render(<h.ChatView {...h.props} />)
+
+    act(() => {
+      h.input.set({
+        ...h.input.getSnapshot(),
+        pendingOutgoing: [{
+          id: 9,
+          text: '连续交接',
+          imageNames: [],
+          placement: 'turn',
+          successor: { source: 'chat', id: 'chat:user:2' },
+        }],
+      })
+    })
+    expect(view.getByText('连续交接').closest('[data-pending-outgoing]')).not.toBeNull()
+    expect(h.acknowledgeOutgoing).not.toHaveBeenCalled()
+
+    act(() => { h.set({ nodes: [assistant(1, 'older'), user(2, '连续交接'), context(3)] }) })
+    const pending = view.container.querySelector('[data-pending-outgoing]')
+    const injection = view.getByRole('button', { name: /^上下文注入\s*fixture$/ })
+    expect(pending).not.toBeNull()
+    expect(pending?.compareDocumentPosition(injection) ?? 0)
+      .toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+
+    await waitFor(() => {
+      expect(view.getAllByText('连续交接')).toHaveLength(1)
+      expect(view.container.querySelector('[data-pending-outgoing]')).toBeNull()
+      expect(h.acknowledgeOutgoing).toHaveBeenCalledWith([9])
+    })
+  })
 
   it('renders the official produced-files tail above the independent change card', () => {
     const h = makeHarness({

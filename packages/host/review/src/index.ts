@@ -1,27 +1,96 @@
-import { execFile, spawn } from 'node:child_process'
-import { access, lstat, mkdir, mkdtemp, readFile, readlink, realpath, rm, writeFile } from 'node:fs/promises'
+import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { watch, type FSWatcher } from 'node:fs'
+import { access, lstat, mkdir, mkdtemp, readlink, realpath, rm, writeFile } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
+import { createRequire } from 'node:module'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
+import { Worker } from 'node:worker_threads'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session } from '@deepseek-ai/dsh-session'
+import type { ToolExecution, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import type {} from '@ryanyujazz/dsh-presentation'
 import type {
   ReviewChecksResult, ReviewDiffResult, ReviewEntryKind, ReviewFileStatus, ReviewFileSummary, ReviewHistoryResult,
-  ReviewLocation, ReviewPatchLayer, ReviewPresentation, ReviewScope, ReviewWorkspaceKind,
+  ReviewLocation, ReviewManifestFile, ReviewManifestResult, ReviewPatchFile, ReviewPatchesResult, ReviewPatchLayer,
+  ReviewPresentation, ReviewProbeResult, ReviewScope, ReviewSourceResult, ReviewSourceSide, ReviewWorkspaceKind,
   ReviewStatusResult, ReviewSummaryResult, ReviewTurnFile, ReviewTurnHistory, ReviewUndoTurnResult,
 } from './types.ts'
 
 export type {
-  ReviewChecksResult, ReviewDiffResult, ReviewEntryKind, ReviewFileStatus, ReviewFileSummary, ReviewHistoryResult,
-  ReviewLineStatsState, ReviewLocation, ReviewPatchLayer, ReviewPresentation, ReviewScope, ReviewSourceSnapshot, ReviewStatusResult, ReviewSummaryResult,
-  ReviewTurnFile, ReviewTurnFileState, ReviewTurnHistory, ReviewUndoTurnResult, ReviewWorkspaceKind,
+  ReviewChecksResult, ReviewConsistency, ReviewDiffResult, ReviewEntryKind, ReviewFileStatus, ReviewFileSummary, ReviewHistoryResult,
+  ReviewLineStatsState, ReviewLocation, ReviewManifestFile, ReviewManifestResult, ReviewPatchFile, ReviewPatchesResult,
+  ReviewPatchLayer, ReviewPatchLayerV2, ReviewPresentation, ReviewProbeResult, ReviewScope, ReviewSourceResult, ReviewSourceSide,
+  ReviewSourceSnapshot, ReviewStatusResult, ReviewSummaryResult, ReviewTurnFile, ReviewTurnFileState, ReviewTurnHistory,
+  ReviewUndoTurnResult, ReviewWorkspaceKind,
 } from './types.ts'
 
 const exec = promisify(execFile)
 const MAX_BUFFER = 16 * 1024 * 1024
 const REF_ROOT = 'refs/deepcreator/turns'
+const GIT_SCOPE_SNAPSHOT_TTL_MS = 5_000
+const REVIEW_GENERATION_TTL_MS = 60_000
+const REVIEW_GENERATION_LIMIT = 12
+const EXACT_DIFF_TEXT_LIMIT = 1024 * 1024
+const GENERATION_SOURCE_BYTES = 32 * 1024 * 1024
+const GENERATION_CACHE_BYTES = 64 * 1024 * 1024
+const AGGREGATE_PATCH_BATCH_THRESHOLD = 3
+const DIFF_MODULE_PATH = createRequire(import.meta.url).resolve('diff')
+
+interface ExactTurnFile {
+  path: string
+  before: string | null
+  after: string
+}
+
+interface TurnDiffTracker {
+  session: Session
+  turn: number
+  root: string
+  inputCwd: string
+  cwd: string
+  files: Map<string, ExactTurnFile>
+  dirty: boolean
+  dirtyReason?: 'unknown-write' | 'invalid-result' | 'outside-workspace' | 'discontinuous-edit'
+}
+
+interface GenerationFile extends ReviewManifestFile {
+  workspacePath: string
+  workspaceOldPath?: string
+}
+
+interface ReviewGeneration {
+  id: string
+  sessionId: string
+  epoch: number
+  expires: number
+  repository: ReviewRepository
+  scope: ReviewScope
+  location: ReviewLocation
+  files: GenerationFile[]
+  layerKind: ReviewPatchLayer['kind']
+  oldRevision: ReviewPatchFile['layers'][number]['oldRevision']
+  newRevision: ReviewPatchFile['layers'][number]['newRevision']
+  startTree?: string
+  endTree?: string
+  /** Lazy authoritative tree construction; viewport demand starts it. */
+  snapshot?: () => Promise<GitScopeSnapshot>
+  exact?: Map<string, ExactTurnFile>
+  /** Exact latest file texts from the current Turn, overlaid on a Git scope. */
+  overlay?: Map<string, ExactTurnFile>
+  patchCache?: Map<string, string>
+  patchTasks?: Map<string, Promise<void>>
+  patchBatchCount?: number
+  aggregateTask?: Promise<void>
+  aggregateTimer?: NodeJS.Timeout
+  patchBytes?: number
+  sourceCache?: Map<string, { text: string | null; bytes: number }>
+  sourceTasks?: Map<string, Promise<string | null>>
+  sourceBytes?: number
+  catFile?: GitCatFileBatch
+}
 
 interface PorcelainFile {
   index: string
@@ -66,6 +135,7 @@ interface ReviewRepository {
 }
 
 declare module '@deepseek-ai/cordis' { interface Context { review: ReviewService } }
+declare module '@ryanyujazz/dsh-presentation/types' { interface PresentationInputMap { review: { target?: string } } }
 
 class ReviewBoundaryError extends Error {
   constructor(readonly code: 'NO_WORKSPACE' | 'NOT_REPOSITORY' | 'OUTSIDE_WORKSPACE', message: string) { super(message) }
@@ -78,6 +148,76 @@ function isWithin(parent: string, child: string): boolean {
 
 function posixPath(path: string): string {
   return path.replaceAll('\\', '/').replace(/^\.\//, '').replace(/\/+$/, '')
+}
+
+function textLineCount(text: string | null): number {
+  if (text === null || text === '') return 0
+  return text.endsWith('\n') ? text.split('\n').length - 1 : text.split('\n').length
+}
+
+function patchStats(patch: string): { additions: number; deletions: number } {
+  let additions = 0
+  let deletions = 0
+  for (const line of patch.split('\n')) {
+    if (line.startsWith('+++') || line.startsWith('---')) continue
+    if (line.startsWith('+')) additions += 1
+    else if (line.startsWith('-')) deletions += 1
+  }
+  return { additions, deletions }
+}
+
+async function exactPatchMapInWorker(files: readonly ExactTurnFile[]): Promise<Map<string, string>> {
+  if (files.length === 0) return new Map()
+  const worker = new Worker(`
+    const { parentPort, workerData } = require('node:worker_threads')
+    import(workerData.diffUrl).then(({ createTwoFilesPatch }) => {
+      let emitted = 0
+      const rows = workerData.files.map(file => {
+        if ((file.before?.length || 0) + file.after.length > workerData.textLimit) return [file.path, '']
+        const started = performance.now()
+        const patch = createTwoFilesPatch(file.path, file.path, file.before || '', file.after, '', '', { context: 3 })
+        const complete = 'diff --git a/' + file.path + ' b/' + file.path + '\\n' + patch
+        if (performance.now() - started > workerData.budget || emitted + Buffer.byteLength(complete) > workerData.aggregateLimit) return [file.path, '']
+        emitted += Buffer.byteLength(complete)
+        return [file.path, complete]
+      })
+      parentPort.postMessage(rows)
+    }).catch(error => { throw error })
+  `, {
+    eval: true,
+    workerData: { files, textLimit: EXACT_DIFF_TEXT_LIMIT, aggregateLimit: MAX_BUFFER, budget: 100, diffUrl: DIFF_MODULE_PATH },
+  })
+  return await new Promise<Map<string, string>>((resolvePromise, reject) => {
+    worker.once('message', (rows: Array<[string, string]>) => { resolvePromise(new Map(rows)) })
+    worker.once('error', reject)
+    worker.once('exit', code => { if (code !== 0) reject(new Error(`Review diff worker exited with code ${String(code)}.`)) })
+  })
+}
+
+function splitPatchBlocks(patch: string): string[] {
+  if (patch === '') return []
+  const starts: number[] = []
+  const expression = /^diff --git /gm
+  for (let match = expression.exec(patch); match !== null; match = expression.exec(patch)) starts.push(match.index)
+  if (starts.length === 0) return [patch]
+  return starts.map((start, index) => patch.slice(start, starts[index + 1] ?? patch.length).trimEnd())
+}
+
+function mapPatchBlocks(patch: string, files: readonly GenerationFile[]): Map<string, string> {
+  const result = new Map<string, string>()
+  const byNew = new Map(files.map(file => [file.workspacePath, file] as const))
+  const byOld = new Map(files.map(file => [file.workspaceOldPath ?? file.workspacePath, file] as const))
+  for (const block of splitPatchBlocks(patch)) {
+    const newPath = /^\+\+\+ (?:b\/)?(.+)$/m.exec(block)?.[1]
+      ?? /^rename to (.+)$/m.exec(block)?.[1]
+    const oldPath = /^--- (?:a\/)?(.+)$/m.exec(block)?.[1]
+      ?? /^rename from (.+)$/m.exec(block)?.[1]
+    const file = (newPath === undefined || newPath === '/dev/null' ? undefined : byNew.get(newPath))
+      ?? (oldPath === undefined || oldPath === '/dev/null' ? undefined : byOld.get(oldPath))
+      ?? files.find(candidate => block.startsWith(`diff --git a/${candidate.workspaceOldPath ?? candidate.workspacePath} b/${candidate.workspacePath}`))
+    if (file !== undefined) result.set(file.path, block)
+  }
+  return result
 }
 
 function statusCode(value: string | undefined): string {
@@ -144,6 +284,81 @@ function gitPrefix(repository: ReviewRepository): string[] {
   return repository.kind === 'git'
     ? ['-C', repository.repository]
     : [`--git-dir=${repository.repository}`, `--work-tree=${repository.workspace}`]
+}
+
+/** One generation-scoped `git cat-file --batch` process for lazy source reads. */
+class GitCatFileBatch {
+  private readonly child: ChildProcessWithoutNullStreams
+  private buffer = Buffer.alloc(0)
+  private waiters: Array<() => void> = []
+  private failure: Error | null = null
+  private tail: Promise<void> = Promise.resolve()
+
+  constructor(repository: ReviewRepository) {
+    this.child = spawn('git', [...gitPrefix(repository), 'cat-file', '--batch'], { stdio: ['pipe', 'pipe', 'pipe'] })
+    this.child.stdout.on('data', (chunk: Buffer) => {
+      this.buffer = Buffer.concat([this.buffer, chunk])
+      this.wake()
+    })
+    this.child.stderr.resume()
+    const fail = (reason: unknown) => {
+      if (this.failure !== null) return
+      this.failure = reason instanceof Error ? reason : new Error(String(reason))
+      this.wake()
+    }
+    this.child.on('error', fail)
+    this.child.on('close', code => { if (code !== 0) fail(new Error(`git cat-file exited with code ${String(code)}.`)) })
+  }
+
+  private wake(): void {
+    const waiters = this.waiters.splice(0)
+    for (const waiter of waiters) waiter()
+  }
+
+  private async available(test: () => boolean): Promise<void> {
+    while (!test()) {
+      if (this.failure !== null) throw this.failure
+      await new Promise<void>(resolvePromise => { this.waiters.push(resolvePromise) })
+    }
+  }
+
+  private async line(): Promise<string> {
+    await this.available(() => this.buffer.indexOf(10) >= 0)
+    const newline = this.buffer.indexOf(10)
+    const value = this.buffer.subarray(0, newline).toString('utf8')
+    this.buffer = this.buffer.subarray(newline + 1)
+    return value
+  }
+
+  private async bytes(length: number): Promise<Buffer> {
+    await this.available(() => this.buffer.length >= length)
+    const value = this.buffer.subarray(0, length)
+    this.buffer = this.buffer.subarray(length)
+    return value
+  }
+
+  private async query(object: string): Promise<string | null> {
+    if (!this.child.stdin.write(`${object}\n`)) await new Promise<void>(resolvePromise => { this.child.stdin.once('drain', resolvePromise) })
+    const header = await this.line()
+    if (header.endsWith(' missing')) return null
+    const size = Number(header.split(' ').at(-1))
+    if (!Number.isSafeInteger(size) || size < 0 || size > MAX_BUFFER) throw new Error('Invalid or oversized git cat-file response.')
+    const content = await this.bytes(size)
+    await this.bytes(1) // protocol newline after the object payload
+    return content.toString('utf8')
+  }
+
+  read(tree: string, path: string): Promise<string | null> {
+    let resolveResult!: (value: string | null) => void
+    let rejectResult!: (reason: unknown) => void
+    const result = new Promise<string | null>((resolvePromise, reject) => { resolveResult = resolvePromise; rejectResult = reject })
+    this.tail = this.tail.then(async () => {
+      try { resolveResult(await this.query(`${tree}:${path}`)) } catch (error) { rejectResult(error) }
+    })
+    return result
+  }
+
+  close(): void { this.child.kill() }
 }
 
 async function git(repository: ReviewRepository, args: string[], options: { env?: NodeJS.ProcessEnv } = {}): Promise<string> {
@@ -372,22 +587,34 @@ async function head(repository: ReviewRepository): Promise<string | null> {
   return (await gitMaybe(repository, ['rev-parse', '--verify', 'HEAD']))?.trim() || null
 }
 
-async function snapshotWorktree(repository: ReviewRepository): Promise<string> {
+async function snapshotWorktree(repository: ReviewRepository, prepared?: {
+  head: string | null
+  nestedRepositories: readonly string[]
+  changedPaths?: readonly string[]
+}): Promise<string> {
   const temporary = await mkdtemp(join(tmpdir(), 'dsh-review-index-'))
   const indexPath = join(temporary, 'index')
   const env = { ...process.env, GIT_INDEX_FILE: indexPath }
   try {
-    if (repository.kind === 'filesystem' || await head(repository) === null) await git(repository, ['read-tree', '--empty'], { env })
-    else await git(repository, ['read-tree', 'HEAD'], { env })
-    const paths = ['.']
+    const currentHead = prepared === undefined ? await head(repository) : prepared.head
+    if (repository.kind === 'filesystem' || currentHead === null) await git(repository, ['read-tree', '--empty'], { env })
+    else await git(repository, ['read-tree', currentHead], { env })
+    const paths = prepared?.changedPaths === undefined
+      ? ['.']
+      : [...new Set(prepared.changedPaths.filter(path => path !== ''))]
     if (repository.kind === 'git') {
       // Git ranges stop at repository boundaries. An unborn nested repository
       // cannot be staged as a gitlink and would otherwise make `git add -A`
       // fail the entire Review scope, so exclude every atomic nested root.
-      const status = await porcelainStatus(repository)
-      for (const file of status.files) {
-        if (await nestedRepositoryKind(repository, file) !== 'repository') continue
-        paths.push(`:(exclude)${file.path}`, `:(exclude)${file.path}/**`)
+      const nestedRepositories = prepared?.nestedRepositories
+      if (nestedRepositories !== undefined && prepared?.changedPaths === undefined) {
+        for (const path of nestedRepositories) paths.push(`:(exclude)${path}`, `:(exclude)${path}/**`)
+      } else {
+        const status = await porcelainStatus(repository)
+        for (const file of status.files) {
+          if (await nestedRepositoryKind(repository, file) !== 'repository') continue
+          paths.push(`:(exclude)${file.path}`, `:(exclude)${file.path}/**`)
+        }
       }
     }
     if (repository.kind === 'filesystem') {
@@ -403,7 +630,10 @@ async function snapshotWorktree(repository: ReviewRepository): Promise<string> {
         if (ignored !== '') paths.push(`:(exclude)${ignored}`, `:(exclude)${ignored}/**`)
       }
     }
-    await git(repository, ['add', '-A', '--', ...paths], { env })
+    // A live Git generation starts from HEAD and only overlays paths reported
+    // by porcelain. This keeps tree construction proportional to the change
+    // set instead of re-hashing every tracked file in a large workspace.
+    if (paths.length > 0) await git(repository, ['add', '-A', '--', ...paths], { env })
     return (await git(repository, ['write-tree'], { env })).trim()
   } finally { await rm(temporary, { recursive: true, force: true }) }
 }
@@ -431,6 +661,84 @@ interface WorkspaceSnapshot {
   tree: string
   files: Map<string, WorkspaceSnapshotFile>
   repositories: TurnRepository[]
+}
+
+type GitReviewScope = Exclude<ReviewScope, { turn: number }>
+
+interface GitStatusSeed {
+  head: string | null
+  raw: { branch: string; files: PorcelainFile[] }
+  selectedFiles: ReviewFileStatus[]
+}
+
+interface GitScopeSnapshot extends GitStatusSeed {
+  baseline: string
+  index: string
+  live: string
+  start: string
+  end: string
+}
+
+interface GitScopeSnapshotEntry {
+  seed: Promise<GitStatusSeed>
+  full: () => Promise<GitScopeSnapshot>
+  settled: boolean
+  expires: number
+}
+
+interface ReconcileRepositoryState {
+  repository: ReviewRepository
+  head: string | null
+  dirty: Set<string>
+  fingerprint: string
+}
+
+interface ReconcileCacheEntry {
+  commit: string
+  signature: string
+  value: StoredTurn | null
+}
+
+function selectedPorcelainFiles(files: readonly PorcelainFile[], scope: GitReviewScope): PorcelainFile[] {
+  return files.filter(file => scope === 'uncommitted'
+    || (scope === 'staged' ? file.index !== ' ' && file.index !== '?' : file.workingTree !== ' ' || file.index === '?'))
+}
+
+async function gitStatusSeed(repository: ReviewRepository, scope: GitReviewScope): Promise<GitStatusSeed> {
+  const currentHead = await head(repository)
+  const raw = await porcelainStatus(repository)
+  const selectedFiles = await publicStatusFiles(repository, selectedPorcelainFiles(raw.files, scope))
+  return {
+    head: currentHead,
+    raw,
+    selectedFiles,
+  }
+}
+
+async function completeGitScopeSnapshot(repository: ReviewRepository, scope: GitReviewScope, seed: GitStatusSeed): Promise<GitScopeSnapshot> {
+  const baseline = seed.head ?? await emptyTree(repository)
+  const index = await indexTree(repository)
+  const nestedRepositories = scope === 'staged'
+    ? []
+    : (await Promise.all(seed.raw.files.map(async file => await nestedRepositoryKind(repository, file) === 'repository'
+        ? file.path
+        : null)))
+      .filter((path): path is string => path !== null)
+  const live = scope === 'staged'
+    ? index
+    : await snapshotWorktree(repository, {
+        head: seed.head,
+        nestedRepositories,
+        changedPaths: seed.raw.files.flatMap(file => file.oldPath === undefined ? [file.path] : [file.oldPath, file.path]),
+      })
+  return {
+    ...seed,
+    baseline,
+    index,
+    live,
+    start: scope === 'unstaged' ? index : baseline,
+    end: scope === 'staged' ? index : live,
+  }
 }
 
 async function childRepository(nativeRoot: string, location: string): Promise<ReviewRepository | null> {
@@ -686,26 +994,6 @@ async function treeText(repository: ReviewRepository, tree: string, path: string
   return await gitMaybe(repository, ['show', `${tree}:${path}`])
 }
 
-async function gitText(repository: ReviewRepository, revision: 'HEAD' | ':', path: string): Promise<string | null> {
-  return await gitMaybe(repository, ['show', revision === ':' ? `:${path}` : `${revision}:${path}`])
-}
-
-async function worktreeText(repository: ReviewRepository, path: string): Promise<string | null> {
-  const target = resolve(repository.root, path)
-  try {
-    if (!isWithin(repository.root, target)) throw new ReviewBoundaryError('OUTSIDE_WORKSPACE', 'Review path resolves outside the workspace.')
-    const metadata = await lstat(target)
-    // Git stores a symlink as the target string. Never follow it: an external
-    // target is valid source data but must not become readable through Review.
-    if (metadata.isSymbolicLink()) return await readlink(target)
-    if (!metadata.isFile()) return null
-    return await readFile(target, 'utf8')
-  } catch (error) {
-    if (error instanceof ReviewBoundaryError) throw error
-    return null
-  }
-}
-
 function turnState(files: readonly ReviewTurnFile[]): ReviewTurnHistory['state'] {
   const states = new Set(files.map(file => file.state))
   if (states.size > 1) return 'mixed'
@@ -715,15 +1003,45 @@ function turnState(files: readonly ReviewTurnFile[]): ReviewTurnHistory['state']
 
 /** Host repository review and turn-snapshot service (`ctx.review`). */
 export class ReviewService extends TypertRemoteService {
-  static inject = ['sessions']
+  static inject = ['sessions', 'presentationRuntime']
   private pendingSnapshots = new Map<string, Promise<void>>()
   /** One UI refresh fans out to history/status/summary/diff; share its live tree. */
   private liveSnapshots = new Map<string, { expires: number; value: StoredTurn | null }>()
+  /** One Git-scope refresh shares porcelain, index and worktree trees across summary/diff requests. */
+  private gitScopeSnapshots = new Map<string, GitScopeSnapshotEntry>()
+  /** Reconciliation is pure for one retained Turn commit plus current HEAD/status fingerprints. */
+  private reconcileCache = new Map<string, ReconcileCacheEntry>()
+  /** Ephemeral Codex-style exact delta projection for currently open Turns. */
+  private turnTrackers = new Map<string, TurnDiffTracker>()
+  private rootCallTurns = new Map<string, number>()
+  private sessionEpochs = new Map<string, number>()
+  private generations = new Map<string, ReviewGeneration>()
+  private watchers = new Map<string, { root: string; watcher: FSWatcher }>()
+  private generationSerial = 0
 
   constructor(ctx: Context) {
     super(ctx, 'review')
+    const presentation = ctx.presentationRuntime
+    if (presentation !== undefined) {
+      const disposePresentation = presentation.registerResolver({
+        kind: 'review', description: 'Present the repository review, optionally focused on a target. Fields: kind="review", optional target.',
+        inputSchema: { type: 'object', additionalProperties: false, properties: {
+          kind: { type: 'string', const: 'review', required: true }, target: { type: 'string' },
+        } },
+        parse: input => {
+          const value = input as Record<string, unknown>
+          if (value.kind !== 'review' || (value.target !== undefined && typeof value.target !== 'string')) throw new Error('review presentation accepts an optional string target.')
+          return { kind: 'review' as const, ...(value.target === undefined ? {} : { target: value.target }) }
+        },
+        materialize: async (_context, input) => ({ kind: 'review', id: input.target ?? 'home', mode: 'none' }),
+      })
+      ctx.effect(() => disposePresentation, 'review: presentation resolver')
+    }
     ctx.on('agent/pre-step', async ({ agent, turn, step }: { agent: Agent; turn: number; step: number }, next) => {
-      if (step === 1) await this.captureStart(agent.session, turn)
+      if (step === 1) {
+        await this.captureStart(agent.session, turn)
+        await this.ensureTracker(agent.session, turn)
+      }
       return next()
     })
     ctx.on('agent/turn-stopping', async ({ agent, turn }: { agent: Agent; turn: number }) => {
@@ -731,13 +1049,199 @@ export class ReviewService extends TypertRemoteService {
     })
     ctx.on('session/event', (session, event) => {
       this.invalidateLiveSnapshots(session)
+      if (event.type === 'tool/call') {
+        this.rootCallTurns.set(`${String(session.id)}\0${String(event.data.callId)}`, event.data.turn)
+      }
       if (event.type === 'turn/end') void this.captureEnd(session, event.data.turn)
     })
+    ctx.on('tools/result', (execution, result) => { this.observeToolResult(execution, result) })
+  }
+
+  private trackerKey(session: Session, turn: number): string {
+    return `${String(session.id)}\0${String(turn)}`
+  }
+
+  private latestExactTracker(session: Session): TurnDiffTracker | undefined {
+    let latest: TurnDiffTracker | undefined
+    for (const tracker of this.turnTrackers.values()) {
+      if (String(tracker.session.id) !== String(session.id) || tracker.dirty) continue
+      if (latest === undefined || tracker.turn > latest.turn) latest = tracker
+    }
+    return latest
+  }
+
+  private epoch(session: Session): number {
+    return this.sessionEpochs.get(String(session.id)) ?? 0
+  }
+
+  private bumpEpoch(session: Session): number {
+    const id = String(session.id)
+    const epoch = (this.sessionEpochs.get(id) ?? 0) + 1
+    this.sessionEpochs.set(id, epoch)
+    this.invalidateStableCaches(session)
+    return epoch
+  }
+
+  private async ensureTracker(session: Session, turn: number): Promise<TurnDiffTracker | null> {
+    const key = this.trackerKey(session, turn)
+    const existing = this.turnTrackers.get(key)
+    if (existing !== undefined) return existing
+    try {
+      const repository = await repositoryFor(session)
+      this.ensureWatcher(session, repository.root)
+      const configuredCwd = resolve(session.header.cwd ?? repository.root)
+      const cwd = await realpath(configuredCwd).catch(() => configuredCwd)
+      const tracker: TurnDiffTracker = { session, turn, root: repository.root, inputCwd: configuredCwd, cwd, files: new Map(), dirty: false }
+      this.turnTrackers.set(key, tracker)
+      return tracker
+    } catch { return null }
+  }
+
+  private ensureWatcher(session: Session, root: string): void {
+    const id = String(session.id)
+    const existing = this.watchers.get(id)
+    if (existing?.root === root) return
+    existing?.watcher.close()
+    try {
+      const watcher = watch(root, { recursive: true }, (_event, filename) => {
+        const path = filename?.toString().replaceAll('\\', '/') ?? ''
+        if (path === '.git' || path.startsWith('.git/')) return
+        this.bumpEpoch(session)
+      })
+      watcher.unref()
+      watcher.on('error', () => {
+        if (this.watchers.get(id)?.watcher === watcher) this.watchers.delete(id)
+        watcher.close()
+      })
+      this.watchers.set(id, { root, watcher })
+    } catch {
+      // Focus/visibility/manual refresh remains the documented fallback on
+      // platforms whose fs.watch implementation cannot recurse.
+    }
+  }
+
+  private toolResultValue(result: Readonly<ToolExecutionResult>): { path: string; before: string | null; after: string } | null {
+    if (result.isError || typeof result.value !== 'object' || result.value === null || Array.isArray(result.value)) return null
+    const value = result.value as Record<string, unknown>
+    if (typeof value.path !== 'string' || typeof value.after !== 'string'
+      || value.before !== null && typeof value.before !== 'string') return null
+    return { path: value.path, before: value.before as string | null, after: value.after }
+  }
+
+  private observeToolResult(execution: Readonly<ToolExecution>, result: Readonly<ToolExecutionResult>): void {
+    const agent = execution.agent
+    if (agent === undefined) return
+    const session = agent.session
+    const turn = this.rootCallTurns.get(`${String(session.id)}\0${String(execution.rootCallId)}`)
+    if (turn === undefined) return
+    const tracker = this.turnTrackers.get(this.trackerKey(session, turn))
+    if (tracker === undefined) return
+    if (execution.name === 'bash') {
+      tracker.dirty = true
+      tracker.dirtyReason = 'unknown-write'
+      this.bumpEpoch(session)
+      return
+    }
+    if (execution.name !== 'write' && execution.name !== 'edit') return
+    const value = this.toolResultValue(result)
+    if (value === null) {
+      tracker.dirty = true
+      tracker.dirtyReason = 'invalid-result'
+      this.bumpEpoch(session)
+      return
+    }
+    const inputTarget = isAbsolute(value.path) ? resolve(value.path) : resolve(tracker.inputCwd, nativePath(value.path))
+    const target = isWithin(tracker.inputCwd, inputTarget)
+      ? resolve(tracker.cwd, relative(tracker.inputCwd, inputTarget))
+      : inputTarget
+    if (!isWithin(tracker.root, target)) {
+      tracker.dirty = true
+      tracker.dirtyReason = 'outside-workspace'
+      this.bumpEpoch(session)
+      return
+    }
+    const path = posixPath(relative(tracker.root, target))
+    const existing = tracker.files.get(path)
+    if (existing !== undefined && existing.after !== value.before) {
+      tracker.dirty = true
+      tracker.dirtyReason = 'discontinuous-edit'
+      this.bumpEpoch(session)
+      return
+    }
+    const next: ExactTurnFile = { path, before: existing?.before ?? value.before, after: value.after }
+    if (next.before === next.after) tracker.files.delete(path)
+    else tracker.files.set(path, next)
+    this.bumpEpoch(session)
   }
 
   private invalidateLiveSnapshots(session: Session): void {
     const prefix = `${REF_ROOT}/${String(session.id)}/`
     for (const ref of this.liveSnapshots.keys()) if (ref.startsWith(prefix)) this.liveSnapshots.delete(ref)
+  }
+
+  private invalidateStableCaches(session: Session): void {
+    const prefix = `${REF_ROOT}/${String(session.id)}/`
+    for (const ref of this.reconcileCache.keys()) if (ref.startsWith(prefix)) this.reconcileCache.delete(ref)
+    const scopePrefix = `${String(session.id)}\0`
+    for (const key of this.gitScopeSnapshots.keys()) if (key.startsWith(scopePrefix)) this.gitScopeSnapshots.delete(key)
+  }
+
+  private gitScopeSnapshot(
+    session: Session,
+    repository: ReviewRepository,
+    scope: GitReviewScope,
+    refresh: boolean,
+  ): GitScopeSnapshotEntry {
+    const key = `${String(session.id)}\0${repository.repository}\0${scope}`
+    const now = Date.now()
+    const cached = this.gitScopeSnapshots.get(key)
+    if (cached !== undefined && (!cached.settled || (!refresh && cached.expires > now))) {
+      // Keep one sequential prefetch wave on the same captured tree even when
+      // a slow platform needs more than one fixed TTL to load every file.
+      if (!refresh && cached.settled) cached.expires = now + GIT_SCOPE_SNAPSHOT_TTL_MS
+      return cached
+    }
+
+    const seed = gitStatusSeed(repository, scope)
+    let full: Promise<GitScopeSnapshot> | undefined
+    const entry: GitScopeSnapshotEntry = {
+      seed,
+      full: () => {
+        if (full !== undefined) return full
+        entry.settled = false
+        entry.expires = Number.POSITIVE_INFINITY
+        full = seed.then(async value => await completeGitScopeSnapshot(repository, scope, value))
+        void full.then(
+          () => {
+            entry.settled = true
+            entry.expires = Date.now() + GIT_SCOPE_SNAPSHOT_TTL_MS
+          },
+          () => {
+            entry.settled = true
+            entry.expires = 0
+            if (this.gitScopeSnapshots.get(key) === entry) this.gitScopeSnapshots.delete(key)
+          },
+        )
+        return full
+      },
+      settled: false,
+      expires: Number.POSITIVE_INFINITY,
+    }
+    this.gitScopeSnapshots.set(key, entry)
+    void seed.then(
+      () => {
+        if (full === undefined) {
+          entry.settled = true
+          entry.expires = Date.now() + GIT_SCOPE_SNAPSHOT_TTL_MS
+        }
+      },
+      () => {
+        entry.settled = true
+        entry.expires = 0
+        if (this.gitScopeSnapshots.get(key) === entry) this.gitScopeSnapshots.delete(key)
+      },
+    )
+    return entry
   }
 
   private enqueue(key: string, task: () => Promise<void>): Promise<void> {
@@ -805,6 +1309,12 @@ export class ReviewService extends TypertRemoteService {
       const completed = await readTurn(repository, ref)
       if (completed !== null && repository.kind === 'git') await this.reconcile(repository, completed)
     })
+    this.turnTrackers.delete(this.trackerKey(session, turn))
+    const prefix = `${String(session.id)}\0`
+    for (const [key, ownerTurn] of this.rootCallTurns) {
+      if (key.startsWith(prefix) && ownerTurn === turn) this.rootCallTurns.delete(key)
+    }
+    this.bumpEpoch(session)
   }
 
   private async storedTurns(session: Session, repository: ReviewRepository): Promise<StoredTurn[]> {
@@ -812,12 +1322,43 @@ export class ReviewService extends TypertRemoteService {
     const refs = (await gitMaybe(repository, ['for-each-ref', '--format=%(refname)', prefix]))?.trim().split('\n').filter(Boolean) ?? []
     const turns = (await Promise.all(refs.map(ref => readTurn(repository, ref))))
       .filter((turn): turn is StoredTurn => turn !== null)
+    const retained = new Set(turns.map(turn => turn.ref))
+    for (const ref of this.reconcileCache.keys()) {
+      if (ref.startsWith(prefix) && !retained.has(ref)) this.reconcileCache.delete(ref)
+    }
     turns.sort((left, right) => right.manifest.turn - left.manifest.turn)
     return turns
   }
 
+  private async reconciliationStates(repository: ReviewRepository, turns: readonly StoredTurn[]): Promise<Map<string, ReconcileRepositoryState>> {
+    const paths = new Set(turns.flatMap(turn => manifestRepositories(turn.manifest).map(item => item.path)))
+    const rows = await Promise.all([...paths].map(async path => {
+      const current = path === '' ? repository : await childRepository(resolve(repository.root, nativePath(path)), path)
+      if (current === null) return null
+      const currentHead = await head(current)
+      const status = await porcelainStatus(current)
+      const dirty = new Set(status.files.flatMap(file => [file.path, ...(file.oldPath === undefined ? [] : [file.oldPath])]))
+      return [path, {
+        repository: current,
+        head: currentHead,
+        dirty,
+        fingerprint: JSON.stringify([currentHead, status.files]),
+      }] as const
+    }))
+    return new Map(rows.filter((row): row is NonNullable<typeof row> => row !== null))
+  }
+
   /** Remove every private snapshot ref owned by a deleted session. */
   async deleteSessionSnapshots(session: Session): Promise<void> {
+    this.invalidateLiveSnapshots(session)
+    this.invalidateStableCaches(session)
+    const sessionId = String(session.id)
+    for (const [key, tracker] of this.turnTrackers) if (String(tracker.session.id) === sessionId) this.turnTrackers.delete(key)
+    for (const [key, generation] of this.generations) if (generation.sessionId === sessionId) this.dropGeneration(key)
+    for (const key of this.rootCallTurns.keys()) if (key.startsWith(`${sessionId}\0`)) this.rootCallTurns.delete(key)
+    this.sessionEpochs.delete(sessionId)
+    this.watchers.get(sessionId)?.watcher.close()
+    this.watchers.delete(sessionId)
     const repository = await repositoryFor(session)
     const prefix = `${REF_ROOT}/${String(session.id)}/`
     const refs = (await gitMaybe(repository, ['for-each-ref', '--format=%(refname)', prefix]))?.trim().split('\n').filter(Boolean) ?? []
@@ -825,7 +1366,11 @@ export class ReviewService extends TypertRemoteService {
     await rm(resolve(filesystemRepositoryPath(session), '..'), { recursive: true, force: true })
   }
 
-  private async reconcile(repository: ReviewRepository, input: StoredTurn): Promise<StoredTurn | null> {
+  private async reconcile(
+    repository: ReviewRepository,
+    input: StoredTurn,
+    preparedStates?: ReadonlyMap<string, ReconcileRepositoryState>,
+  ): Promise<StoredTurn | null> {
     if (repository.kind === 'filesystem') return input
     let stored = input
     if (stored.parent !== undefined && stored.manifest.files.some(file => file.additions === undefined || file.deletions === undefined)) {
@@ -838,7 +1383,6 @@ export class ReviewService extends TypertRemoteService {
       const commit = await writeTurn(repository, stored.ref, stored.tree, manifest, stored.parent)
       stored = { ...stored, commit, manifest }
     }
-    const currentHead = await head(repository)
     if (stored.parent === undefined) {
       if (stored.manifest.files.every(file => file.state === 'committed')) {
         await git(repository, ['update-ref', '-d', stored.ref])
@@ -846,6 +1390,16 @@ export class ReviewService extends TypertRemoteService {
       }
       return stored
     }
+    const currentStates = preparedStates ?? await this.reconciliationStates(repository, [stored])
+    const signature = manifestRepositories(stored.manifest)
+      .map(item => `${item.path}\0${currentStates.get(item.path)?.fingerprint ?? 'unavailable'}`).join('\0')
+    const cached = this.reconcileCache.get(stored.ref)
+    if (cached !== undefined && cached.commit === stored.commit && cached.signature === signature) return cached.value
+    const remember = (value: StoredTurn | null): StoredTurn | null => {
+      this.reconcileCache.set(stored.ref, { commit: value?.commit ?? stored.commit, signature, value })
+      return value
+    }
+    const currentHead = currentStates.get('')?.head ?? await head(repository)
     const repositoryRows = new Map<string, {
       repository: ReviewRepository
       head: string | null
@@ -855,11 +1409,10 @@ export class ReviewService extends TypertRemoteService {
       dirty: Set<string>
     }>()
     for (const baseline of manifestRepositories(stored.manifest)) {
-      const child = baseline.path === '' ? repository : await childRepository(
-        resolve(repository.root, nativePath(baseline.path)), baseline.path,
-      )
-      if (child === null) continue
-      const nextHead = await head(child)
+      const current = currentStates.get(baseline.path)
+      if (current === undefined) continue
+      const child = current.repository
+      const nextHead = current.head
       const headChanged = baseline.head !== nextHead
       const fastForward = baseline.head === null
         ? nextHead !== null
@@ -870,10 +1423,9 @@ export class ReviewService extends TypertRemoteService {
         const names = await gitDiff(child, ['--name-only', '-z', base, nextHead])
         for (const name of names.split('\0')) if (name !== '') changed.add(posixPath(name))
       }
-      const status = await porcelainStatus(child)
       repositoryRows.set(baseline.path, {
         repository: child, head: nextHead, headChanged, fastForward, changed,
-        dirty: new Set(status.files.flatMap(file => [file.path, ...(file.oldPath === undefined ? [] : [file.oldPath])])),
+        dirty: current.dirty,
       })
     }
     let moved = false
@@ -905,7 +1457,7 @@ export class ReviewService extends TypertRemoteService {
       files.push(file.state === state ? file : { ...file, state })
       if (file.state !== state) moved = true
     }
-    if (!moved) return stored
+    if (!moved) return remember(stored)
     const manifest: TurnManifest = stored.manifest.version === 1
       ? { ...stored.manifest, head: currentHead, files }
       : {
@@ -915,10 +1467,10 @@ export class ReviewService extends TypertRemoteService {
         }
     if (files.every(file => file.state !== 'pending')) {
       await git(repository, ['update-ref', '-d', stored.ref])
-      return null
+      return remember(null)
     }
     const commit = await writeTurn(repository, stored.ref, stored.tree, manifest, stored.parent)
-    return { ...stored, commit, manifest }
+    return remember({ ...stored, commit, manifest })
   }
 
   /** Compare an open turn's retained start tree with the live worktree. */
@@ -964,40 +1516,434 @@ export class ReviewService extends TypertRemoteService {
     return stored === null ? null : { stored, current: false }
   }
 
+  private exactTurnFiles(tracker: TurnDiffTracker): ReviewTurnFile[] {
+    return [...tracker.files.values()].map(file => ({
+      path: file.path, state: 'pending' as const,
+      kind: 'file' as const, presentation: 'text' as const, lineStatsState: 'unknown' as const,
+    }))
+  }
+
+  private async historyView(session: Session, repository: ReviewRepository, preferExact: boolean): Promise<Extract<ReviewHistoryResult, { ok: true }>> {
+    const retainedTurns = await this.storedTurns(session, repository)
+    const completed = retainedTurns.filter(turn => turn.manifest.phase === 'end')
+    const states = repository.kind === 'git' && completed.length > 0
+      ? await this.reconciliationStates(repository, completed)
+      : undefined
+    const projected = (await Promise.all(retainedTurns.map(async retained => {
+      if (retained.manifest.phase === 'start') {
+        const tracker = this.turnTrackers.get(this.trackerKey(session, retained.manifest.turn))
+        if (preferExact && tracker !== undefined && !tracker.dirty) {
+          const files = this.exactTurnFiles(tracker)
+          return files.length === 0 ? null : { manifest: { ...retained.manifest, phase: 'end' as const, files }, current: true }
+        }
+        const current = await this.materializeCurrent(repository, retained)
+        return current === null ? null : { manifest: current.manifest, current: true }
+      }
+      const stored = await this.reconcile(repository, retained, states)
+      return stored === null ? null : { manifest: stored.manifest, current: false }
+    }))).filter((turn): turn is { manifest: TurnManifest; current: boolean } => turn !== null)
+    const latestActive = repository.kind === 'git'
+      ? projected.find(turn => !turn.current && turn.manifest.files.some(file => file.state === 'pending'))?.manifest.turn
+      : undefined
+    return {
+      ok: true, repositoryRoot: repository.root, workspaceKind: repository.kind,
+      head: states?.get('')?.head ?? await head(repository),
+      turns: projected.map(({ manifest, current }) => ({
+        turn: manifest.turn, ...(current ? { current: true } : {}), totalFiles: manifest.files.length,
+        remainingFiles: manifest.files.filter(file => file.state === 'pending').length,
+        additions: manifest.files.reduce((sum, file) => sum + (file.additions ?? 0), 0),
+        deletions: manifest.files.reduce((sum, file) => sum + (file.deletions ?? 0), 0),
+        state: turnState(manifest.files),
+        undoable: repository.kind === 'git' && !current && manifest.turn === latestActive
+          && new Set(manifest.files.filter(file => file.state === 'pending').map(file => file.repository ?? '')).size <= 1,
+        ...(new Set(manifest.files.filter(file => file.state === 'pending').map(file => file.repository ?? '')).size > 1
+          ? { undoDisabledReason: 'cross-repository' as const } : {}),
+        files: manifest.files,
+      })),
+    }
+  }
+
   @Remote('history')
   async history(session: Session): Promise<ReviewHistoryResult> {
     let repository: ReviewRepository
     try { repository = await repositoryFor(session) } catch (error) { return boundaryFailure(error) }
+    try { return await this.historyView(session, repository, false) }
+    catch (error) { return { ok: false, code: 'READ_FAILED', message: error instanceof Error ? error.message : String(error) } }
+  }
+
+  private retainGeneration(input: Omit<ReviewGeneration, 'id' | 'expires'>): ReviewGeneration {
+    const id = `${input.sessionId}:${String(input.epoch)}:${String(++this.generationSerial)}`
+    const generation: ReviewGeneration = { ...input, id, expires: Date.now() + REVIEW_GENERATION_TTL_MS }
+    this.generations.set(id, generation)
+    for (const [key, candidate] of this.generations) {
+      if (candidate.expires <= Date.now()) this.dropGeneration(key)
+    }
+    while (this.generations.size > REVIEW_GENERATION_LIMIT) {
+      const oldest = this.generations.keys().next().value as string | undefined
+      if (oldest === undefined) break
+      this.dropGeneration(oldest)
+    }
+    return generation
+  }
+
+  private generationFor(session: Session, id: string): ReviewGeneration | null {
+    const generation = this.generations.get(id)
+    if (generation === undefined || generation.sessionId !== String(session.id) || generation.expires <= Date.now()) {
+      if (generation !== undefined) this.dropGeneration(id)
+      return null
+    }
+    generation.expires = Date.now() + REVIEW_GENERATION_TTL_MS
+    return generation
+  }
+
+  private dropGeneration(id: string): void {
+    const generation = this.generations.get(id)
+    if (generation?.aggregateTimer !== undefined) clearTimeout(generation.aggregateTimer)
+    generation?.catFile?.close()
+    this.generations.delete(id)
+  }
+
+  private trimGenerationBytes(preserveId: string): void {
+    let retained = [...this.generations.values()].reduce((sum, generation) => (
+      sum + (generation.patchBytes ?? 0) + (generation.sourceBytes ?? 0)
+    ), 0)
+    if (retained <= GENERATION_CACHE_BYTES) return
+    for (const [id, generation] of this.generations) {
+      if (id === preserveId) continue
+      retained -= (generation.patchBytes ?? 0) + (generation.sourceBytes ?? 0)
+      this.dropGeneration(id)
+      if (retained <= GENERATION_CACHE_BYTES) break
+    }
+  }
+
+  @Remote('manifest')
+  async manifest(session: Session, scope?: ReviewScope, location?: ReviewLocation): Promise<ReviewManifestResult> {
+    let root: ReviewRepository
+    let repository: ReviewRepository
     try {
-      const turns = (await Promise.all((await this.storedTurns(session, repository)).map(async retained => {
-        if (retained.manifest.phase === 'start') {
-          const current = await this.materializeCurrent(repository, retained)
-          return current === null ? null : { stored: current, current: true }
+      root = await repositoryFor(session)
+      this.ensureWatcher(session, root.root)
+      repository = await repositoryAt(root, location)
+    } catch (error) { return boundaryFailure(error) }
+    try {
+      const selected = scope ?? 'uncommitted'
+      // Git worktree scopes publish their file shell first. Historical
+      // reconciliation is independent and the client fills it through the
+      // existing history RPC without delaying the first Review frame.
+      const deferHistory = repository.kind === 'git' && typeof selected === 'string'
+      const history = deferHistory ? null : await this.historyView(session, root, true)
+      const tracker = typeof selected === 'object' ? this.turnTrackers.get(this.trackerKey(session, selected.turn)) : undefined
+      const exact = tracker !== undefined && !tracker.dirty
+      let branch = ''
+      let files: GenerationFile[] = []
+      let additions = 0
+      let deletions = 0
+      let startTree: string | undefined
+      let endTree: string | undefined
+      let exactFiles: Map<string, ExactTurnFile> | undefined
+      let overlayFiles: Map<string, ExactTurnFile> | undefined
+      let snapshot: (() => Promise<GitScopeSnapshot>) | undefined
+      let generationHead = history?.head
+      let generationRepository = repository
+
+      if (exact && tracker !== undefined) {
+        branch = repository.kind === 'git' ? (await porcelainStatus(repository)).branch : ''
+        const prefix = repository.location === '' ? '' : `${repository.location}/`
+        exactFiles = new Map()
+        for (const input of tracker.files.values()) {
+          if (prefix !== '' && !input.path.startsWith(prefix)) continue
+          const path = prefix === '' ? input.path : input.path.slice(prefix.length)
+          const local: ExactTurnFile = { ...input, path }
+          exactFiles.set(path, local)
+          const renderable = (input.before?.length ?? 0) + input.after.length <= EXACT_DIFF_TEXT_LIMIT
+          files.push({
+            path, index: ' ', workingTree: 'M', kind: 'file', presentation: renderable ? 'text' : 'unknown',
+            lineStatsState: 'pending',
+            workspacePath: path,
+          })
         }
-        const stored = await this.reconcile(repository, retained)
-        return stored === null ? null : { stored, current: false }
-      }))).filter((turn): turn is { stored: StoredTurn; current: boolean } => turn !== null)
-      const latestActive = repository.kind === 'git'
-        ? turns.find(turn => !turn.current && turn.stored.manifest.files.some(file => file.state === 'pending'))?.stored.manifest.turn
-        : undefined
+      } else if (typeof selected === 'string' && repository.kind === 'git') {
+        // Metadata-first Git manifest: porcelain supplies the stable file
+        // shell. Authoritative tree construction stays lazy so exact tracker
+        // overlays and the first paint never compete with an unused full
+        // workspace snapshot.
+        const entry = this.gitScopeSnapshot(session, repository, selected, true)
+        const seed = await entry.seed
+        snapshot = entry.full
+        branch = seed.raw.branch
+        generationHead = seed.head
+        files = seed.selectedFiles.map(file => ({
+          ...file,
+          lineStatsState: file.kind === 'repository' || file.kind === 'submodule' ? 'not-applicable' : 'pending',
+          workspacePath: file.path,
+          ...(file.oldPath === undefined ? {} : { workspaceOldPath: file.oldPath }),
+        }))
+        if (selected === 'uncommitted') {
+          const live = this.latestExactTracker(session)
+          if (live !== undefined) {
+            const prefix = repository.location === '' ? '' : `${repository.location}/`
+            const available = new Set(files.map(file => file.path))
+            overlayFiles = new Map()
+            for (const row of live.files.values()) {
+              if (prefix !== '' && !row.path.startsWith(prefix)) continue
+              const path = prefix === '' ? row.path : row.path.slice(prefix.length)
+              if (available.has(path)) overlayFiles.set(path, { ...row, path })
+            }
+            if (overlayFiles.size === 0) overlayFiles = undefined
+          }
+          // The overlay needs only the baseline object, not a synthetic live
+          // tree. An unborn repository pays the empty-tree command once.
+          startTree = seed.head ?? await emptyTree(repository)
+        }
+      } else {
+        const [statusResult, summaryResult] = await Promise.all([
+          this.status(session, selected, location),
+          this.summary(session, selected, location),
+        ])
+        if (!statusResult.ok) return statusResult
+        if (!summaryResult.ok) return summaryResult
+        branch = statusResult.branch
+        additions = summaryResult.additions
+        deletions = summaryResult.deletions
+        const summaries = new Map(summaryResult.files.map(file => [file.path, file] as const))
+        files = statusResult.files.map(file => {
+          const summary = summaries.get(file.path)
+          const workspacePath = typeof selected === 'object' && repository.location !== ''
+            ? posixPath(`${repository.location}/${file.path}`) : file.path
+          const workspaceOldPath = file.oldPath === undefined ? undefined
+            : typeof selected === 'object' && repository.location !== '' ? posixPath(`${repository.location}/${file.oldPath}`) : file.oldPath
+          return { ...file, ...summary, workspacePath, ...(workspaceOldPath === undefined ? {} : { workspaceOldPath }) }
+        })
+        if (typeof selected === 'object') {
+          const turn = await this.selectedTurn(session, root, selected.turn)
+          if (turn?.stored.parent !== undefined) {
+            startTree = (await git(root, ['show', '-s', '--format=%T', turn.stored.parent])).trim()
+            endTree = turn.stored.tree
+            generationRepository = root
+          }
+        }
+      }
+
+      const layerKind: ReviewPatchLayer['kind'] = typeof selected === 'object' ? 'turn'
+        : selected === 'staged' ? 'staged' : selected === 'unstaged' ? 'working-tree' : 'uncommitted'
+      const oldRevision = typeof selected === 'object' ? 'turn-start' : selected === 'unstaged' ? 'index' : 'head'
+      const newRevision = typeof selected === 'object' ? 'turn-end' : selected === 'staged' ? 'index' : 'worktree'
+      const epoch = this.epoch(session)
+      const generation = this.retainGeneration({
+        sessionId: String(session.id), epoch, repository: generationRepository, scope: selected,
+        location: { repository: repository.location }, files, layerKind, oldRevision, newRevision,
+        ...(startTree === undefined ? {} : { startTree }), ...(endTree === undefined ? {} : { endTree }),
+        ...(snapshot === undefined ? {} : { snapshot }),
+        ...(exactFiles === undefined ? {} : { exact: exactFiles }),
+        ...(overlayFiles === undefined ? {} : { overlay: overlayFiles }),
+      })
       return {
-        ok: true, repositoryRoot: repository.root, workspaceKind: repository.kind, head: await head(repository),
-        turns: turns.map(({ stored: { manifest }, current }) => ({
-          turn: manifest.turn,
-          ...(current ? { current: true } : {}),
-          totalFiles: manifest.files.length,
-          remainingFiles: manifest.files.filter(file => file.state === 'pending').length,
-          additions: manifest.files.reduce((sum, file) => sum + (file.additions ?? 0), 0),
-          deletions: manifest.files.reduce((sum, file) => sum + (file.deletions ?? 0), 0),
-          state: turnState(manifest.files),
-          undoable: repository.kind === 'git' && !current && manifest.turn === latestActive
-            && new Set(manifest.files.filter(file => file.state === 'pending').map(file => file.repository ?? '')).size <= 1,
-          ...(new Set(manifest.files.filter(file => file.state === 'pending').map(file => file.repository ?? '')).size > 1
-            ? { undoDisabledReason: 'cross-repository' as const } : {}),
-          files: manifest.files,
-        })),
+        ok: true, generation: generation.id, epoch,
+        consistency: exact ? 'live-exact' : tracker?.dirty === true ? 'live-reconciling' : 'authoritative',
+        repositoryRoot: repository.root, workspaceKind: repository.kind, ...(generationHead === undefined ? {} : { head: generationHead }),
+        branch, scope: selected, location: { repository: repository.location }, additions, deletions,
+        files: files.map(({ workspacePath: _workspacePath, workspaceOldPath: _workspaceOldPath, ...file }) => file),
+        turns: history?.turns ?? [],
+        ...(snapshot === undefined ? {} : { summaryPending: true }),
+        ...(deferHistory ? { historyPending: true } : {}),
       }
     } catch (error) { return { ok: false, code: 'READ_FAILED', message: error instanceof Error ? error.message : String(error) } }
+  }
+
+  private async ensureGenerationTrees(generation: ReviewGeneration): Promise<void> {
+    if (generation.startTree !== undefined && generation.endTree !== undefined) return
+    if (generation.snapshot === undefined) return
+    const snapshot = await generation.snapshot()
+    generation.startTree = snapshot.start
+    generation.endTree = snapshot.end
+  }
+
+  private retainPatchRows(generation: ReviewGeneration, files: readonly GenerationFile[], rows: ReadonlyMap<string, string>): void {
+    generation.patchCache ??= new Map()
+    for (const file of files) generation.patchCache.set(file.path, rows.get(file.path) ?? '')
+    generation.patchBytes = [...generation.patchCache.values()].reduce((sum, patch) => sum + Buffer.byteLength(patch), 0)
+    this.trimGenerationBytes(generation.id)
+  }
+
+  private async computeGenerationPatches(generation: ReviewGeneration, files: readonly GenerationFile[]): Promise<Map<string, string>> {
+    if (files.length === 0) return new Map()
+    if (generation.exact !== undefined) {
+      const exact = files.flatMap(file => {
+        const row = generation.exact?.get(file.path)
+        return row === undefined ? [] : [row]
+      })
+      return await exactPatchMapInWorker(exact)
+    }
+    const result = new Map<string, string>()
+    const overlayFiles = generation.startTree === undefined ? [] : files.filter(file => (
+      file.workspaceOldPath === undefined && generation.overlay?.has(file.path)
+    ))
+    if (overlayFiles.length > 0 && generation.startTree !== undefined) {
+      generation.catFile ??= new GitCatFileBatch(generation.repository)
+      const exact = await Promise.all(overlayFiles.map(async file => ({
+        path: file.path,
+        before: await generation.catFile?.read(generation.startTree as string, file.workspacePath) ?? null,
+        after: generation.overlay?.get(file.path)?.after ?? '',
+      })))
+      for (const [path, patch] of await exactPatchMapInWorker(exact)) result.set(path, patch)
+    }
+    const remaining = files.filter(file => !overlayFiles.includes(file))
+    if (remaining.length === 0) return result
+    await this.ensureGenerationTrees(generation)
+    if (generation.startTree === undefined || generation.endTree === undefined) return result
+    const pathspec = [...new Set(remaining.flatMap(file => [file.workspaceOldPath, file.workspacePath]
+      .filter((path): path is string => path !== undefined)))]
+    const patch = await gitDiff(generation.repository, [
+      '--find-renames', '--find-copies', '--unified=3', '--no-prefix', generation.startTree, generation.endTree,
+      ...(pathspec.length === 0 ? [] : ['--', ...pathspec]),
+    ])
+    for (const [path, value] of mapPatchBlocks(patch, remaining)) result.set(path, value)
+    return result
+  }
+
+  private scheduleAggregatePatches(generation: ReviewGeneration): void {
+    if ((generation.patchBatchCount ?? 0) < AGGREGATE_PATCH_BATCH_THRESHOLD
+      || generation.aggregateTask !== undefined || generation.patchCache?.size === generation.files.length) return
+    if (generation.aggregateTimer !== undefined) clearTimeout(generation.aggregateTimer)
+    generation.aggregateTimer = setTimeout(() => {
+      delete generation.aggregateTimer
+      if (!this.generations.has(generation.id)) return
+      generation.aggregateTask = this.computeGenerationPatches(generation, generation.files).then(rows => {
+        if (this.generations.has(generation.id)) this.retainPatchRows(generation, generation.files, rows)
+      }).finally(() => { delete generation.aggregateTask })
+    }, 500)
+    generation.aggregateTimer.unref?.()
+  }
+
+  private async generationPatches(generation: ReviewGeneration, paths: ReadonlySet<string>): Promise<Map<string, string>> {
+    generation.patchCache ??= new Map()
+    generation.patchTasks ??= new Map()
+    if (generation.aggregateTimer !== undefined) {
+      clearTimeout(generation.aggregateTimer)
+      delete generation.aggregateTimer
+    }
+    const files = generation.files.filter(file => paths.has(file.path))
+    const waiting = new Set<Promise<void>>()
+    const missing = files.filter(file => {
+      if (generation.patchCache?.has(file.path)) return false
+      const task = generation.patchTasks?.get(file.path)
+      if (task !== undefined) waiting.add(task)
+      return task === undefined
+    })
+    if (missing.length > 0) {
+      generation.patchBatchCount = (generation.patchBatchCount ?? 0) + 1
+      const task = this.computeGenerationPatches(generation, missing).then(rows => {
+        if (this.generations.has(generation.id)) this.retainPatchRows(generation, missing, rows)
+      }).finally(() => {
+        for (const file of missing) {
+          if (generation.patchTasks?.get(file.path) === task) generation.patchTasks.delete(file.path)
+        }
+      })
+      for (const file of missing) generation.patchTasks.set(file.path, task)
+      waiting.add(task)
+    }
+    await Promise.all(waiting)
+    this.scheduleAggregatePatches(generation)
+    return new Map(files.map(file => [file.path, generation.patchCache?.get(file.path) ?? '']))
+  }
+
+  @Remote('patches')
+  async patches(session: Session, generationId: string, paths: string[]): Promise<ReviewPatchesResult> {
+    const generation = this.generationFor(session, generationId)
+    if (generation === null) return { ok: false, code: 'STALE_GENERATION', message: 'Review generation expired; refresh the manifest.' }
+    try {
+      const requested = new Set(paths.map(posixPath))
+      const patchMap = await this.generationPatches(generation, requested)
+      const files: ReviewPatchFile[] = []
+      for (const file of generation.files) {
+        if (!requested.has(file.path) || file.kind === 'repository' || file.kind === 'submodule') continue
+        const patch = patchMap.get(file.path) ?? ''
+        const stats = patch === '' ? undefined : patchStats(patch)
+        const exact = generation.exact?.get(file.path)
+        files.push({
+          path: file.path, ...(file.oldPath === undefined ? {} : { oldPath: file.oldPath }),
+          ...(file.kind === undefined ? {} : { kind: file.kind }),
+          presentation: patch === '' ? file.presentation ?? 'unknown' : file.presentation ?? 'text',
+          lineStatsState: patch === '' ? file.lineStatsState === 'not-applicable' ? 'not-applicable' : 'unknown' : 'available',
+          ...(stats === undefined ? {} : stats),
+          layers: patch === '' ? [] : [{
+            kind: generation.layerKind, patch, oldRevision: generation.oldRevision, newRevision: generation.newRevision,
+            ...(exact === undefined ? {} : { oldLineCount: textLineCount(exact.before), newLineCount: textLineCount(exact.after) }),
+          }],
+        })
+      }
+      return { ok: true, generation: generation.id, files }
+    } catch (error) { return { ok: false, code: 'READ_FAILED', message: error instanceof Error ? error.message : String(error) } }
+  }
+
+  @Remote('source')
+  async source(session: Session, generationId: string, path: string, side: ReviewSourceSide): Promise<ReviewSourceResult> {
+    const generation = this.generationFor(session, generationId)
+    if (generation === null) return { ok: false, code: 'STALE_GENERATION', message: 'Review generation expired; refresh the manifest.' }
+    const normalized = posixPath(path)
+    const file = generation.files.find(candidate => candidate.path === normalized)
+    if (file === undefined) return { ok: false, code: 'OUTSIDE_REPOSITORY', message: 'Review path is outside this generation.' }
+    try {
+      const cacheKey = `${file.path}\0${side}`
+      generation.sourceCache ??= new Map()
+      const cached = generation.sourceCache.get(cacheKey)
+      let text: string | null
+      if (cached !== undefined) {
+        generation.sourceCache.delete(cacheKey)
+        generation.sourceCache.set(cacheKey, cached)
+        text = cached.text
+      } else {
+        generation.sourceTasks ??= new Map()
+        let task = generation.sourceTasks.get(cacheKey)
+        if (task === undefined) {
+          task = (async () => {
+            const exact = generation.exact?.get(file.path)
+            if (exact !== undefined) return side === 'old' ? exact.before : exact.after
+            const overlay = generation.overlay?.get(file.path)
+            if (overlay !== undefined && side === 'new') return overlay.after
+            await this.ensureGenerationTrees(generation)
+            const tree = side === 'old' ? generation.startTree : generation.endTree
+            if (tree === undefined) return null
+            const objectPath = side === 'old' ? file.workspaceOldPath ?? file.workspacePath : file.workspacePath
+            if (objectPath.includes('\n')) return await treeText(generation.repository, tree, objectPath)
+            generation.catFile ??= new GitCatFileBatch(generation.repository)
+            return await generation.catFile.read(tree, objectPath)
+          })()
+          generation.sourceTasks.set(cacheKey, task)
+        }
+        try { text = await task } finally { generation.sourceTasks.delete(cacheKey) }
+        const settled = generation.sourceCache.get(cacheKey)
+        const bytes = text === null ? 1 : Buffer.byteLength(text)
+        if (settled === undefined) {
+          generation.sourceCache.set(cacheKey, { text, bytes })
+          generation.sourceBytes = (generation.sourceBytes ?? 0) + bytes
+        } else {
+          text = settled.text
+        }
+        while ((generation.sourceBytes ?? 0) > GENERATION_SOURCE_BYTES) {
+          const oldest = generation.sourceCache.keys().next().value as string | undefined
+          if (oldest === undefined) break
+          const removed = generation.sourceCache.get(oldest)
+          generation.sourceCache.delete(oldest)
+          generation.sourceBytes = Math.max(0, (generation.sourceBytes ?? 0) - (removed?.bytes ?? 0))
+        }
+        this.trimGenerationBytes(generation.id)
+      }
+      return { ok: true, generation: generation.id, path: normalized, side, text }
+    } catch (error) { return { ok: false, code: 'READ_FAILED', message: error instanceof Error ? error.message : String(error) } }
+  }
+
+  @Remote('probe')
+  async probe(session: Session, knownEpoch: number): Promise<ReviewProbeResult> {
+    try {
+      const repository = await repositoryFor(session)
+      this.ensureWatcher(session, repository.root)
+      const epoch = this.epoch(session)
+      return { ok: true, epoch, changed: epoch !== knownEpoch }
+    } catch (error) {
+      if (error instanceof ReviewBoundaryError) return { ok: false, code: 'NO_WORKSPACE', message: error.message }
+      return { ok: false, code: 'READ_FAILED', message: error instanceof Error ? error.message : String(error) }
+    }
   }
 
   @Remote('status')
@@ -1010,10 +1956,10 @@ export class ReviewService extends TypertRemoteService {
       if (repository.kind === 'filesystem' && typeof selected === 'string') {
         return { ok: true, repositoryRoot: repository.root, workspaceKind: repository.kind, branch: '', scope: selected, location: { repository: repository.location }, files: [] }
       }
-      const raw = repository.kind === 'git'
-        ? await porcelainStatus(repository)
-        : { branch: '', files: [] }
       if (typeof selected === 'object') {
+        const raw = repository.kind === 'git'
+          ? await porcelainStatus(repository)
+          : { branch: '', files: [] }
         const selectedTurn = await this.selectedTurn(session, root, selected.turn)
         if (selectedTurn === null) return { ok: false, code: 'TURN_NOT_FOUND', message: `Turn ${selected.turn} has no retained changes.` }
         const { stored } = selectedTurn
@@ -1028,10 +1974,11 @@ export class ReviewService extends TypertRemoteService {
         }))
         return { ok: true, repositoryRoot: repository.root, workspaceKind: repository.kind, branch: raw.branch, scope: selected, location: { repository: repository.location }, files }
       }
-      const selectedFiles = raw.files.filter(file => selected === 'uncommitted'
-        || (selected === 'staged' ? file.index !== ' ' && file.index !== '?' : file.workingTree !== ' ' || file.index === '?'))
-      const files = await publicStatusFiles(repository, selectedFiles)
-      return { ok: true, repositoryRoot: repository.root, workspaceKind: repository.kind, branch: raw.branch, scope: selected, location: { repository: repository.location }, files }
+      const seed = await this.gitScopeSnapshot(session, repository, selected, true).seed
+      return {
+        ok: true, repositoryRoot: repository.root, workspaceKind: repository.kind, branch: seed.raw.branch,
+        scope: selected, location: { repository: repository.location }, files: seed.selectedFiles,
+      }
     } catch (error) { return { ok: false, code: 'READ_FAILED', message: error instanceof Error ? error.message : String(error) } }
   }
 
@@ -1090,22 +2037,10 @@ export class ReviewService extends TypertRemoteService {
           deletions: summarized.reduce((sum, file) => sum + (file.deletions ?? 0), 0), files: summarized,
         }
       } else {
-        const baseline = await head(repository) ?? await emptyTree(repository)
-        const raw = await porcelainStatus(repository)
-        const selectedRows = raw.files
-          .filter(file => selected === 'uncommitted'
-            || (selected === 'staged' ? file.index !== ' ' && file.index !== '?' : file.workingTree !== ' ' || file.index === '?'))
-        files = await publicStatusFiles(repository, selectedRows)
-        if (selected === 'staged') {
-          startTree = baseline
-          endTree = await indexTree(repository)
-        } else if (selected === 'unstaged') {
-          startTree = await indexTree(repository)
-          endTree = await snapshotWorktree(repository)
-        } else {
-          startTree = baseline
-          endTree = await snapshotWorktree(repository)
-        }
+        const snapshot = await this.gitScopeSnapshot(session, repository, selected, false).full()
+        startTree = snapshot.start
+        endTree = snapshot.end
+        files = snapshot.selectedFiles
         const atomic = files.filter(file => file.kind === 'repository' || file.kind === 'submodule')
         const byPath = new Map(files.flatMap(file => [
           [file.path, file] as const,
@@ -1224,11 +2159,12 @@ export class ReviewService extends TypertRemoteService {
           lineStatsState: file.lineStatsState ?? 'unknown', layers,
         }
       }
-      const raw = await porcelainStatus(repository)
-      const status = raw.files.find(file => file.path === rel || file.oldPath === rel)
+      const snapshot = await this.gitScopeSnapshot(session, repository, selected, false).full()
+      const status = snapshot.raw.files.find(file => file.path === rel || file.oldPath === rel)
       const oldPath = status?.oldPath ?? rel
-      const kind = status === undefined ? 'file' : await fileKind(repository, status)
-      const hintedPresentation = status === undefined ? 'unknown' : await statusPresentation(repository, status, kind)
+      const publicFile = snapshot.selectedFiles.find(file => file.path === status?.path)
+      const kind = publicFile?.kind ?? 'file'
+      const hintedPresentation = publicFile?.presentation ?? 'unknown'
       if (kind === 'repository' || kind === 'submodule') return {
         ok: true, repositoryRoot: repository.root, workspaceKind: repository.kind, scope: selected,
         location: { repository: repository.location }, path: rel, kind, presentation: kind,
@@ -1236,24 +2172,21 @@ export class ReviewService extends TypertRemoteService {
       }
       let patch = ''
       let layerKind: ReviewPatchLayer['kind']
-      const baseline = await head(repository) ?? await emptyTree(repository)
-      const stagedTree = await indexTree(repository)
-      const liveTree = selected === 'staged' ? stagedTree : await snapshotWorktree(repository)
       if (selected === 'staged') {
-        patch = await gitDiff(repository, ['--find-renames', '--find-copies', '--unified=3', baseline, stagedTree, '--', oldPath, rel])
+        patch = await gitDiff(repository, ['--find-renames', '--find-copies', '--unified=3', snapshot.baseline, snapshot.index, '--', oldPath, rel])
         layerKind = 'staged'
       } else if (selected === 'unstaged') {
-        patch = await gitDiff(repository, ['--find-renames', '--find-copies', '--unified=3', stagedTree, liveTree, '--', oldPath, rel])
+        patch = await gitDiff(repository, ['--find-renames', '--find-copies', '--unified=3', snapshot.index, snapshot.live, '--', oldPath, rel])
         layerKind = 'working-tree'
       } else {
-        patch = await gitDiff(repository, ['--find-renames', '--find-copies', '--unified=3', baseline, liveTree, '--', oldPath, rel])
+        patch = await gitDiff(repository, ['--find-renames', '--find-copies', '--unified=3', snapshot.baseline, snapshot.live, '--', oldPath, rel])
         layerKind = 'uncommitted'
       }
       const binary = patch.includes('GIT binary patch') || patch.includes('Binary files ')
       const oldText = binary ? null : selected === 'unstaged'
-        ? await gitText(repository, ':', oldPath) : await gitText(repository, 'HEAD', oldPath)
+        ? await treeText(repository, snapshot.index, oldPath) : await treeText(repository, snapshot.baseline, oldPath)
       const newText = binary ? null : selected === 'staged'
-        ? await gitText(repository, ':', rel) : await worktreeText(repository, rel)
+        ? await treeText(repository, snapshot.index, rel) : await treeText(repository, snapshot.live, rel)
       const presentation = patchPresentation(patch, hintedPresentation, oldText, newText)
       const hasLineChanges = /^(?:\+(?!\+\+)|-(?!--))/m.test(patch)
       const outputLayer: ReviewPatchLayer | undefined = patch === '' ? undefined : {
@@ -1279,7 +2212,8 @@ export class ReviewService extends TypertRemoteService {
     }
     try {
       const completed = (await this.storedTurns(session, repository)).filter(row => row.manifest.phase === 'end')
-      const turns = (await Promise.all(completed.map(row => this.reconcile(repository, row))))
+      const states = await this.reconciliationStates(repository, completed)
+      const turns = (await Promise.all(completed.map(row => this.reconcile(repository, row, states))))
         .filter((turn): turn is StoredTurn => turn !== null)
       const latest = turns.find(row => row.manifest.files.some(file => file.state === 'pending'))
       const stored = turns.find(row => row.manifest.turn === turn)

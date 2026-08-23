@@ -14,13 +14,13 @@
 // ChatNodeSeat subscribes to one Node key, so Assistant deltas and Tool
 // lifecycle updates replace only their own row without remounting it.
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type {  } from '@deepseek-ai/dsh-client-runtime/client'
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { IconChevronDownOutline14 } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { ChatRenderSlotProps } from '../contract/slots.ts'
-import { PendingSteeringBubble } from './MessageItem.tsx'
+import { PendingOutgoingBubble, PendingSteeringBubble } from './MessageItem.tsx'
 import { ChatNodeSeat } from './ChatNodeSeat.tsx'
 import { formatRunDuration } from './message-chrome.ts'
+import { useVisibleChatOutgoing } from './outgoing-handoff.ts'
 import css from './ChatView.module.css'
 import { flowTop, pagingAnchor, runningTurnStartTime, scrollPosition } from './scroll-anchor.ts'
 
@@ -89,7 +89,8 @@ function TurnStatus({ startTime, t }: {
  * keyed renderer seat.
  */
 export function ChatRenderStandard({
-  useSession, useSessions, useStore, sessionId, openFile, revealChange, loadOlder, loadImage, renderMessageImages, inspectCall, chatScroll, forkAt,
+  useSession, useSessions, useInput, useStore, sessionId, openFile, revealChange, loadOlder, loadImage, renderMessageImages, inspectCall, chatScroll, forkAt,
+  acknowledgeOutgoing,
   fileMentions, renderSlot, t,
 }: ChatRenderSlotProps) {
   const order = useSession(s => s.chat.order)
@@ -104,14 +105,48 @@ export function ChatRenderStandard({
   const hasMore = useSession(s => s.hasMore)
   const loadingOlder = useSession(s => s.loadingOlder)
   const selectedCallId = useStore(s => s.selection?.callId)
+  const pendingOutgoing = useInput(s => s.pendingOutgoing)
+  const listRef = useRef<HTMLDivElement | null>(null)
+  const visibleOutgoing = useVisibleChatOutgoing(pendingOutgoing, listRef, acknowledgeOutgoing)
+
+  // Once Host admission identifies the durable user row, keep the local echo
+  // at that exact place in the ordered flow until the official bubble paints.
+  // Context-injection rows may already follow the durable key while its slot
+  // is still settling; leaving the echo at the generic tail would put the
+  // user's own words below those later rows and then make them jump upward.
+  const successorNodeKey = new Map<string, string>()
+  for (const nodeKey of order) {
+    const node = nodeStore.get(nodeKey)
+    const data = node?.data
+    if ((node?.kind === 'user' || node?.kind === 'steering')
+      && typeof data === 'object' && data !== null && 'seq' in data && typeof data.seq === 'number') {
+      successorNodeKey.set(`chat:${node.kind}:${String(data.seq)}`, nodeKey)
+    }
+  }
+  const pairedOutgoingByNodeKey = new Map<string, typeof visibleOutgoing>()
+  const placedOutgoingIds = new Set<number>()
+  for (const message of visibleOutgoing) {
+    if (message.successor?.source !== 'chat') continue
+    const nodeKey = successorNodeKey.get(message.successor.id)
+    if (nodeKey === undefined) continue
+    pairedOutgoingByNodeKey.set(nodeKey, [...(pairedOutgoingByNodeKey.get(nodeKey) ?? []), message])
+    placedOutgoingIds.add(message.id)
+  }
 
   const pendingSteering = useMemo(
     () => inbox.filter(item => item.placement === 'steering'),
     [inbox],
   )
+  const pendingTurns = useMemo(
+    () => visibleOutgoing.filter(item => item.placement === 'turn' && !placedOutgoingIds.has(item.id)),
+    [placedOutgoingIds, visibleOutgoing],
+  )
+  const pendingOutgoingSteering = useMemo(
+    () => visibleOutgoing.filter(item => item.placement === 'steering' && !placedOutgoingIds.has(item.id)),
+    [placedOutgoingIds, visibleOutgoing],
+  )
   const runningTurnStart = useMemo(() => runningTurnStartTime(timeline), [timeline])
 
-  const listRef = useRef<HTMLDivElement | null>(null)
   const columnRef = useRef<HTMLDivElement | null>(null)
   const atBottomRef = useRef(true)
   const [atBottom, setAtBottom] = useState(true)
@@ -124,6 +159,7 @@ export function ChatRenderStandard({
   const openedRef = useRef(false)
   const lastKeyRef = useRef<string | null>(null)
   const lastSteeringIdRef = useRef<string | null>(null)
+  const lastOutgoingIdRef = useRef<number | null>(null)
   /** Flow tip signature — follow-scroll only when this moves, never on a
    *  scroll-driven at-bottom chrome re-render (which would snap inertial
    *  scrolls the rest of the way to the floor). */
@@ -134,7 +170,8 @@ export function ChatRenderStandard({
   const lastKey = order.at(-1) ?? null
   const lastNode = lastKey === null ? undefined : nodeStore.get(lastKey)
   const lastSteeringId = pendingSteering[pendingSteering.length - 1]?.id ?? null
-  const followSig = `${openState}:${firstSeq}:${lastKey}:${order.length}:${running ? 1 : 0}:${lastSteeringId ?? ''}`
+  const lastOutgoingId = pendingOutgoing?.findLast(item => item.placement !== 'queue')?.id ?? null
+  const followSig = `${openState}:${firstSeq}:${lastKey}:${order.length}:${running ? 1 : 0}:${lastSteeringId ?? ''}:${lastOutgoingId ?? ''}`
   const toBottom = (el: HTMLElement): void => {
     anchorRef.current = null
     el.scrollTop = el.scrollHeight
@@ -172,6 +209,7 @@ export function ChatRenderStandard({
       firstSeqRef.current = firstSeq
       lastKeyRef.current = lastKey
       lastSteeringIdRef.current = lastSteeringId
+      lastOutgoingIdRef.current = lastOutgoingId
       followSigRef.current = followSig
       return
     }
@@ -188,6 +226,7 @@ export function ChatRenderStandard({
       /* v8 ignore next -- ?? arm: a prepend adds nodes, so the flow list here is never empty. */
       lastKeyRef.current = lastKey
       lastSteeringIdRef.current = lastSteeringId
+      lastOutgoingIdRef.current = lastOutgoingId
       followSigRef.current = followSig
       return
     }
@@ -196,13 +235,15 @@ export function ChatRenderStandard({
     // (send lives in the composer, so arrival is detected here, not armed there).
     const appendedUser = lastKey !== lastKeyRef.current && lastNode?.kind === 'user'
     const appendedSteering = lastSteeringId !== null && lastSteeringId !== lastSteeringIdRef.current
+    const appendedOutgoing = lastOutgoingId !== null && lastOutgoingId !== lastOutgoingIdRef.current
     const tipMoved = followSigRef.current !== followSig
     lastKeyRef.current = lastKey
     lastSteeringIdRef.current = lastSteeringId
+    lastOutgoingIdRef.current = lastOutgoingId
     followSigRef.current = followSig
     // Follow new flow content while pinned; do NOT re-pin on every render
     // merely because atBottomRef is true (scroll threshold → setState → snap).
-    if (appendedUser || appendedSteering || (tipMoved && atBottomRef.current)) toBottom(el)
+    if (appendedUser || appendedSteering || appendedOutgoing || (tipMoved && atBottomRef.current)) toBottom(el)
   })
 
   const onScrollRef = useRef(() => {})
@@ -325,23 +366,28 @@ export function ChatRenderStandard({
             </div>
           )}
           {order.map(nodeKey => (
-            <ChatNodeSeat
-              key={nodeKey}
-              nodeKey={nodeKey}
-              useSession={useSession}
-              selectedCallId={selectedCallId}
-              cwd={cwd}
-              openFile={openFile}
-              revealChange={revealChange}
-              inspectCall={inspectCall}
-              forkAt={forkAt}
-              loadImage={loadImage}
-              renderMessageImages={renderMessageImages}
-              fileMentions={fileMentions}
-              renderSlot={renderSlot}
-              t={t}
-            />
+            <Fragment key={nodeKey}>
+              <ChatNodeSeat
+                nodeKey={nodeKey}
+                useSession={useSession}
+                selectedCallId={selectedCallId}
+                cwd={cwd}
+                openFile={openFile}
+                revealChange={revealChange}
+                inspectCall={inspectCall}
+                forkAt={forkAt}
+                loadImage={loadImage}
+                renderMessageImages={renderMessageImages}
+                fileMentions={fileMentions}
+                renderSlot={renderSlot}
+                t={t}
+              />
+              {(pairedOutgoingByNodeKey.get(nodeKey) ?? []).map(message => (
+                <PendingOutgoingBubble key={message.id} message={message} t={t} />
+              ))}
+            </Fragment>
           ))}
+          {pendingTurns.map(message => <PendingOutgoingBubble key={message.id} message={message} t={t} />)}
           {/* No pending placeholders: questions (ui-user-questions) and approvals
               (ApprovalPanel) both take over the composer, so a flow card would
               double-render the same wait. */}
@@ -355,6 +401,9 @@ export function ChatRenderStandard({
               renderMessageImages={renderMessageImages}
               t={t}
             />
+          ))}
+          {pendingOutgoingSteering.map(message => (
+            <PendingOutgoingBubble key={message.id} message={message} t={t} />
           ))}
         </div>
         {!atBottom && (

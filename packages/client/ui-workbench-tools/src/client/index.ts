@@ -6,12 +6,12 @@ import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { createElement, type ReactNode } from 'react'
 import type {} from '@ryanyujazz/dsh-client-locale/client'
 import type {} from '@ryanyujazz/dsh-client-workbench-remotes/client'
-import {
-  DeepCreatorIconPreview16, DeepCreatorIconReview16, DeepCreatorIconTerminal16,
-} from '@ryanyujazz/dsh-client-ui-primitives'
+import type {} from '@ryanyujazz/dsh-client-presentation/client'
+import type { PresentationProvider } from '@ryanyujazz/dsh-client-presentation/client'
+import { DeepCreatorIconReview16, DeepCreatorIconTerminal16 } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { PanelTypeDefinition, WorkbenchPanelIconProps, WorkbenchPanelProps } from '@ryanyujazz/dsh-client-ui-workbench/client'
 import type {} from '@ryanyujazz/dsh-client-ui-workbench/client'
-import { BrowserPanel, ReviewPanel, TerminalPanel } from './Panels.tsx'
+import { ReviewPanel, TerminalPanel } from './Panels.tsx'
 import { TurnChangeCard } from './TurnChangeCard.tsx'
 import { ReviewCacheController } from './review-cache.ts'
 import { en, NS, zh, type ToolsKey } from './locales.ts'
@@ -26,6 +26,7 @@ function iconRenderer(Icon: IconComponent) { return ({ size }: WorkbenchPanelIco
 export const inject = [
   'slots', 'workbench', 'locale', 'remote', 'sessions',
   'remote.review', 'remote.terminal-workbench',
+  'presentation',
 ]
 
 export function apply(ctx: ClientContext): void {
@@ -122,8 +123,15 @@ export function apply(ctx: ClientContext): void {
   const providers: Array<{ definition: PanelTypeDefinition; panel: PanelComponent; icon: IconComponent }> = [
     { definition: { id:'review',label:()=>t('review'),scope:'workspace',order:4,supportsHome:true,supportsCreate:false,supportsMultipleInstances:true,minWidth:150,minHeight:260,preferredWidth:560,initialWidthRatio:1/2,closePolicy:'dispose',openParameters:{scope:'unstaged',expand:'all'} }, panel: reviewPanel, icon: DeepCreatorIconReview16 },
     { definition: { id:'terminal',label:()=>t('terminal'),scope:'session',order:1,supportsHome:false,supportsCreate:true,supportsMultipleInstances:true,minWidth:150,minHeight:220,preferredWidth:520,initialWidthRatio:1/3,closePolicy:'provider-controlled',disabledWhenAddressed:true }, panel: terminalPanel, icon: DeepCreatorIconTerminal16 },
-    { definition: { id:'browser',label:()=>t('browser'),scope:'session',order:5,supportsHome:true,supportsCreate:true,supportsMultipleInstances:true,minWidth:150,minHeight:280,preferredWidth:640,initialWidthRatio:1/2,closePolicy:'provider-controlled' }, panel: BrowserPanel, icon: DeepCreatorIconPreview16 },
   ]
+  const reviewPresenter: PresentationProvider = {
+    id: 'workbench-review', priority: 100, resourceKinds: ['review'], modes: ['none'], surfaceHost: false,
+    async present(_request, resource) {
+      if (!ctx.workbench.types.list().some(type => type.id === 'review')) return { status: 'unavailable', presenterId: 'workbench-review', failure: { code: 'PANEL_UNAVAILABLE', stage: 'present', retryable: true, message: 'The Review panel type is not registered in this client.' } }
+      ctx.workbench.present({ typeId: 'review', ...(resource.id === 'home' ? {} : { target: resource.id }), reveal: true, reason: 'agent' })
+      return { status: 'presented', presenterId: 'workbench-review' }
+    },
+  }
   ctx.effect(() => {
     const disposers: Array<() => void> = []
     try {
@@ -136,6 +144,10 @@ export function apply(ctx: ClientContext): void {
         name: 'deepcreator.conversation.chat.turnChanges', id: 'review', locale: NS,
       }, turnChangeCard)))
       disposers.push(ctx.locale.register(NS, { zh, en }))
+      if (ctx.presentation !== undefined) {
+        disposers.push(ctx.presentation.providers.register(reviewPresenter))
+        if (ctx.workbench.dismissals !== undefined) disposers.push(ctx.workbench.dismissals.subscribe(() => { const dismissal = ctx.workbench.dismissals.getSnapshot(); if (dismissal?.typeId === 'review') ctx.presentation.dismiss('review', dismissal.instanceId) }))
+      }
     } catch (error) {
       for (const dispose of disposers.reverse()) dispose()
       throw error

@@ -8,7 +8,7 @@ function clampToStage(target: number, stageWidth: number): number {
   return Math.max(MIN_PANEL_COLUMN_WIDTH, Math.min(target, maximum))
 }
 
-/** First type: Provider selects one third (Activity/Artifact/Terminal) or one half (Review/Preview). */
+/** First type: Provider selects one third (Activity/Artifact/Terminal) or one half (Review/Browser). */
 export function initialWorkbenchWidth(stageWidth: number, ratio: number): number {
   return Math.round(clampToStage(stageWidth * ratio, stageWidth))
 }

@@ -849,6 +849,8 @@ export interface ChatRenderOwnerProps {
     mode: string,
     write: (mode: string) => void,
   ) => void
+  /** Retire local echoes whose authoritative Chat rows committed in this surface. */
+  acknowledgeOutgoing: (ids: readonly number[]) => void
 }
 
 /** Full props of one registered chat render-mode body: standard kit, owner verbs, shared store, and locale. */
@@ -912,6 +914,8 @@ export interface ChatViewInjected {
    * absent or the turn produced nothing worth linking.
    */
   fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined
+  /** Retire local echoes after the delegated render surface confirms handoff. */
+  acknowledgeOutgoing: (ids: readonly number[]) => void
 }
 
 /** Full chat-view component props: runtime & its render-mode/Tool render shares & store & injected & locale seat. */

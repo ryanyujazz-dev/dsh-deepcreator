@@ -1,13 +1,16 @@
 .empty { min-height: 100%; display: grid; place-content: center; gap: 5px; padding: 24px; box-sizing: border-box; color: var(--dsw-alias-label-tertiary); text-align: center; font-size: 12px; line-height: 18px; }
 .empty strong { color: var(--dsw-alias-label-secondary); font-size: 13px; font-weight: 500; }
-.tool, .browser, .review { display: flex; min-height: 100%; flex-direction: column; }
+.tool, .review { display: flex; min-height: 100%; flex-direction: column; }
 .review {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
   --dsh-review-surface: var(--dsw-alias-bg-base);
   --dsw-diff-fold-bg: color-mix(in srgb, var(--dsw-alias-label-primary) 2.5%, var(--dsh-review-surface));
   background: var(--dsh-review-surface);
 }
 :global(body[data-ds-dark-theme]) .review { --dsh-review-surface: var(--dsw-specific-sidebar-fill); }
-.reviewBody { min-height: 0; flex: 1; overflow: visible; color: var(--dsw-alias-label-primary); background: var(--dsh-review-surface); }
+.reviewBody { min-height: 0; flex: 1; display: flex; flex-direction: column; overflow: hidden; color: var(--dsw-alias-label-primary); background: var(--dsh-review-surface); }
 .reviewWarning { padding: 6px 10px; border-bottom: 1px solid var(--dsw-alias-border-l1); color: var(--dsw-alias-label-secondary); background: var(--dsh-review-surface); font-size: 10px; line-height: 16px; }
 .reviewBreadcrumb { min-height: 30px; box-sizing: border-box; display: flex; align-items: center; gap: 6px; padding: 0 10px; border-bottom: 1px solid var(--dsw-alias-border-l1); color: var(--dsw-alias-label-tertiary); font-size: 10px; }
 .reviewBreadcrumb button { flex: none; border: 0; border-radius: 5px; padding: 2px 4px; color: var(--dsw-alias-label-secondary); background: transparent; cursor: pointer; font: inherit; }
@@ -25,12 +28,12 @@
 .reviewScopeButton:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: -2px; }
 .reviewScopeButton span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reviewScopeButton svg { flex: none; }
-.fileList { min-width: 0; }
+.fileList { position: relative; min-width: 0; min-height: 0; flex: 1; overflow: auto; contain: strict; }
+.reviewVirtualCanvas { position: relative; min-width: 0; width: 100%; }
+.reviewVirtualRow { position: absolute; top: 0; left: 0; width: 100%; min-width: 0; box-sizing: border-box; }
 .reviewLoadBoundary { min-height: 36px; box-sizing: border-box; display: grid; place-items: center; border-bottom: 1px solid var(--dsw-alias-border-l1); color: var(--dsw-alias-label-tertiary); background: var(--dsh-review-surface); font-size: 10px; line-height: 16px; }
 .reviewLoadBoundary:first-child { border-top: 1px solid var(--dsw-alias-border-l1); }
-.reviewFile { position: relative; min-width: 0; content-visibility: auto; contain-intrinsic-size: auto 36px; }
-.reviewFilePreload { position: absolute; inset-inline: 0; visibility: hidden; pointer-events: none; }
-.reviewFileSkeleton { box-sizing: border-box; display: grid; place-items: center; border-bottom: 1px solid var(--dsw-alias-border-l1); color: var(--dsw-alias-label-tertiary); font-size: 10px; }
+.reviewFile { position: relative; min-width: 0; }
 .reviewFile + .reviewFile { border-top: 1px solid var(--dsw-alias-border-l1); }
 .reviewFileHeader { position: sticky; z-index: 3; top: 0; width: 100%; min-height: 36px; box-sizing: border-box; display: flex; align-items: center; gap: 5px; border: 0; border-bottom: 1px solid var(--dsw-alias-border-l1); padding: 0 10px; color: var(--dsw-alias-label-secondary); background: color-mix(in srgb, var(--dsw-alias-label-primary) 5%, var(--dsh-review-surface)); text-align: left; cursor: pointer; font-size: 11px; }
 .reviewFileHeader:hover { background: color-mix(in srgb, var(--dsw-alias-label-primary) 8%, var(--dsh-review-surface)); }
@@ -55,12 +58,4 @@
 .terminalCanvas { min-width: 0; min-height: 0; flex: 1; box-sizing: border-box; padding: 8px 6px 6px 10px; outline: none; }
 .terminalCanvas :global(.xterm) { width: 100%; height: 100%; }
 .terminalCanvas :global(.xterm-viewport) { background: transparent !important; }
-.browserHome { flex: 1; display: grid; place-items: center; min-height: 0; padding: 18px; box-sizing: border-box; }
-.address { width: min(100%, 520px); display: flex; gap: 6px; }
-.address input { min-width: 0; flex: 1; height: 28px; box-sizing: border-box; border: 1px solid var(--dsw-alias-border-l2); border-radius: 7px; padding: 0 9px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-base); font-family: var(--dsw-font-mono); font-size: 11px; outline: none; }
-.address input:focus { border-color: var(--dsw-alias-state-business-primary); }
-.address button, .external { height: 28px; border: 0; border-radius: 7px; padding: 0 10px; color: var(--dsw-static-neutral-bluish-00); background: var(--dsw-alias-button-info-fill); cursor: pointer; }
 .error { padding: 6px 10px; color: var(--dsw-alias-label-error); background: var(--dsw-alias-fill-error); font-size: 11px; line-height: 16px; }
-.viewport { position: relative; flex: 1; min-height: 0; }
-.viewport iframe { width: 100%; height: 100%; border: 0; background: white; }
-.external { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }

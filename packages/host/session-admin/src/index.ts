@@ -3,12 +3,9 @@ import { homedir } from 'node:os'
 import { join, resolve, sep } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
-// Type-only: pulls the `agents`/`sessions`/`jobs` Context merges into this program.
-import type {} from '@deepseek-ai/dsh-agent'
+// Type-only: pulls the `sessions` Context merge into this program.
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session'
-import type {} from '@deepseek-ai/dsh-jobs'
-import type {} from '@ryanyujazz/dsh-review'
 import type { SessionDeleteResult } from './types.ts'
 export type { SessionDeleteError, SessionDeleteOk, SessionDeleteResult } from './types.ts'
 
@@ -19,14 +16,14 @@ const SESSION_ID_PATTERN = /^session-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
  * Session lifecycle administration the official harness does not expose.
  * `delete` destroys one persisted session: its directory under the shared
  * sessions root (the official jsonl backend names each session directory by
- * the raw id — a UUID needs no escaping). A session whose agent is running
- * is refused (its log would keep growing); an idle open session is flushed
- * through the official durability checkpoint first so no write-behind can
- * recreate the log afterwards.
+ * the raw id — a UUID needs no escaping). Every live session is refused: the
+ * official Session owner is the only holder of its teardown capability, and
+ * deleting its artifact underneath that owner would leave `session.list`
+ * authoritative for the still-live row and allow later writes to recreate it.
  */
 export class SessionAdmin extends TypertRemoteService {
-  /** Required services: the official agent/job/session registries. */
-  static inject = ['agents', 'jobs', 'sessions', 'review']
+  /** Required service: the official live-session registry. */
+  static inject = ['sessions']
 
   constructor(ctx: Context) { super(ctx, 'session-admin') }
 
@@ -35,15 +32,10 @@ export class SessionAdmin extends TypertRemoteService {
     if (!SESSION_ID_PATTERN.test(sessionId)) {
       return { ok: false, code: 'INVALID_ID', message: `Session id ${sessionId} is not a valid session id.` }
     }
-    const agent = this.ctx.agents.get(sessionId as SessionId)
-    if (agent !== undefined) {
-      const running = this.ctx.jobs.list(agent).some(job => job.status === 'running' || job.status === 'stopping')
-      if (running) {
-        return { ok: false, code: 'SESSION_ACTIVE', message: 'Session is running; stop it before deleting.' }
-      }
-    }
     const live = this.ctx.sessions.get(sessionId as SessionId)
-    if (live !== undefined) await this.ctx.sessions.flush(live)
+    if (live !== undefined) {
+      return { ok: false, code: 'SESSION_ACTIVE', message: 'Session is open; restart the Host before deleting it.' }
+    }
     const root = resolve(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'sessions')
     const matches: string[] = []
     try {
@@ -63,13 +55,6 @@ export class SessionAdmin extends TypertRemoteService {
     }
     if (matches.length > 1) {
       return { ok: false, code: 'AMBIGUOUS', message: `Session ${sessionId} exists in multiple workspaces; refusing to delete.` }
-    }
-    const review = this.ctx.get('review')
-    if (live !== undefined && review !== undefined) {
-      try { await review.deleteSessionSnapshots(live) }
-      catch (error) {
-        return { ok: false, code: 'CLEANUP_FAILED', message: `Turn snapshot cleanup failed: ${error instanceof Error ? error.message : String(error)}` }
-      }
     }
     const target = matches[0]!
     await rm(target, { recursive: true, force: true })

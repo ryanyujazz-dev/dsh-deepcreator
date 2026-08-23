@@ -183,6 +183,35 @@ describe('ConversationController', () => {
   })
 })
 
+describe('InputHub outgoing presentation', () => {
+  it('waits for the official Host projection instead of publishing a local echo', async () => {
+    const b = await bench()
+    await b.runtime.sessions.updateSnapshot('s1', (draft) => { draft.running = true })
+
+    b.shell.setDraft('hello now')
+    b.shell.submit()
+    expect(b.shell.snapshot.draft).toBe('')
+    expect(b.shell.snapshot.pendingOutgoing).toEqual([])
+    await vi.waitFor(() => {
+      expect(b.prompt).toHaveBeenCalledWith([{ type: 'text', text: 'hello now' }], 'queue')
+    })
+    await b.runtime.dispose()
+  })
+
+  it('restores an untouched draft when Host submission is rejected', async () => {
+    const b = await bench()
+    b.prompt.mockRejectedValueOnce(new Error('offline'))
+
+    b.shell.setDraft('try again')
+    b.shell.submit()
+    expect(b.shell.snapshot.pendingOutgoing).toEqual([])
+    await vi.waitFor(() => {
+      expect(b.shell.snapshot.draft).toBe('try again')
+    })
+    await b.runtime.dispose()
+  })
+})
+
 describe('InputHub queue steering (empty-draft accelerated Enter)', () => {
   const row = (id: string): QueuedMessage => ({
     id: id as never,

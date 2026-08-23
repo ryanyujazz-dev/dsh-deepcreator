@@ -58,13 +58,13 @@ export function resolveDesktopDshLaunch(
     const tsxEsm = pathToFileURL(resolver.resolveTsx(repoRoot)).href
     return {
       command: env.NODE ?? env.npm_node_execpath ?? 'node',
-      args: ['--import', tsxEsm, sourceEntry, '--profile', 'deepcreator', '--port', '0'],
+      args: ['--import', tsxEsm, sourceEntry, '--profile', 'deepcreator', '--port', '0', '--no-open'],
       env: { ...env, TSX_TSCONFIG_PATH: join(repoRoot, 'tsconfig.json') },
     }
   }
   return {
     command: env.NODE ?? env.npm_node_execpath ?? 'node',
-    args: [join(cliRoot, 'lib', 'bin.js'), '--profile', 'deepcreator', '--port', '0'],
+    args: [join(cliRoot, 'lib', 'bin.js'), '--profile', 'deepcreator', '--port', '0', '--no-open'],
     env: { ...env },
   }
 }

@@ -4,7 +4,7 @@
 // The 'conversation.input.dock' SlotMap declaration lives in
 // ../contract/slots.ts beside the other input-region slots.
 import type { Context } from '@deepseek-ai/cordis'
-import { useEffect, useId, useMemo, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useMemo, useState } from 'react'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import {
@@ -19,6 +19,7 @@ import css from './QueueDock.module.css'
 export interface QueueDockInjected {
   updateQueue: (itemId: QueueItemId, action: QueueAction) => Promise<void>
   notify: (level: 'info' | 'error', text: string) => void
+  acknowledgeOutgoing: (ids: readonly number[]) => void
 }
 
 /** Full props of a dock entry: InputZone owner share + session standard kit + global seat + the locale seat. */
@@ -28,9 +29,31 @@ export type QueueDockProps = PropsRuntime<'conversation.input.dock'> & QueueDock
  * Queue strip: one item renders directly; multiple items default to a
  * collapsible count header; an empty queue renders nothing.
  */
-export function QueueDock({ useSession, updateQueue, notify, t }: QueueDockProps) {
+export function QueueDock({ useSession, useInput, updateQueue, notify, acknowledgeOutgoing, t }: QueueDockProps) {
   const inbox = useSession(s => s.queue)
   const queue = useMemo(() => inbox.filter(row => row.placement === 'queued'), [inbox])
+  const pendingOutgoing = useInput(s => s.pendingOutgoing)
+  const queueSuccessors = useMemo(
+    () => new Set(queue.map(row => `queue:${String(row.id)}:${row.placement}`)),
+    [queue],
+  )
+  const readyOutgoing = useMemo(
+    () => (pendingOutgoing ?? []).filter(row => (
+      row.successor?.source === 'queue'
+      && queueSuccessors.has(row.successor.id)
+    )).map(row => row.id),
+    [pendingOutgoing, queueSuccessors],
+  )
+  const readyKey = readyOutgoing.join(',')
+  useLayoutEffect(() => {
+    if (readyOutgoing.length > 0) acknowledgeOutgoing(readyOutgoing)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [acknowledgeOutgoing, readyKey])
+  const optimistic = useMemo(
+    () => (pendingOutgoing ?? []).filter(row => row.placement === 'queue'),
+    [pendingOutgoing],
+  )
+  const total = queue.length + optimistic.length
   const running = useSession(s => s.running)
   const queueMutable = useSession(s => s.subagent === null)
   const [editing, setEditing] = useState<{ id: QueueItemId; text: string } | null>(null)
@@ -39,15 +62,15 @@ export function QueueDock({ useSession, updateQueue, notify, t }: QueueDockProps
   const listId = useId()
 
   useEffect(() => {
-    if (queue.length === 0 && !collapsed) setCollapsed(true)
+    if (total === 0 && !collapsed) setCollapsed(true)
     if (editing !== null && (!queueMutable || !queue.some(row => row.id === editing.id))) setEditing(null)
-  }, [collapsed, editing, queue, queueMutable])
+  }, [collapsed, editing, queue, queueMutable, total])
 
-  if (queue.length === 0) return null
+  if (total === 0) return null
 
   const interactionActive = queueMutable && (editing !== null || busy !== null)
   const expanded = !collapsed || interactionActive
-  const listVisible = queue.length === 1 || expanded
+  const listVisible = total === 1 || expanded
 
   const applyAction = async (
     itemId: QueueItemId,
@@ -78,7 +101,7 @@ export function QueueDock({ useSession, updateQueue, notify, t }: QueueDockProps
   return (
     <div className={css.dock} data-queue-dock="">
       <div className={css.panel}>
-        {queue.length > 1 && (
+        {total > 1 && (
           <button
             type="button"
             className={css.header}
@@ -88,7 +111,7 @@ export function QueueDock({ useSession, updateQueue, notify, t }: QueueDockProps
             onClick={() => { setCollapsed(value => !value) }}
           >
             <span className={css.lead} aria-hidden><IconQueueOutline14 /></span>
-            <span className={css.count}>{t('queue.count', { n: queue.length })}</span>
+            <span className={css.count}>{t('queue.count', { n: total })}</span>
             <span className={css.chevron} aria-hidden>
               {expanded ? <IconChevronDownOutline14 /> : <IconChevronUpOutline14 />}
             </span>
@@ -98,7 +121,7 @@ export function QueueDock({ useSession, updateQueue, notify, t }: QueueDockProps
           {listVisible && queue.map(row => (
             <li key={row.id} className={css.row}>
               {/* Single-item strip has no count header, so the row itself carries the queue glyph. */}
-              {queue.length === 1 && <span className={css.lead} aria-hidden><IconQueueOutline14 /></span>}
+              {total === 1 && <span className={css.lead} aria-hidden><IconQueueOutline14 /></span>}
               {editing?.id === row.id
                 ? (
                   <input
@@ -206,6 +229,14 @@ export function QueueDock({ useSession, updateQueue, notify, t }: QueueDockProps
               </div>}
             </li>
           ))}
+          {listVisible && optimistic.map(row => (
+            <li key={`outgoing-${String(row.id)}`} className={css.row} data-pending-outgoing>
+              {total === 1 && <span className={css.lead} aria-hidden><IconQueueOutline14 /></span>}
+              <span className={css.preview}>
+                {row.text || `${t('image.pending')}${row.imageNames.length > 1 ? ` × ${String(row.imageNames.length)}` : ''}`}
+              </span>
+            </li>
+          ))}
         </ul>
       </div>
     </div>
@@ -237,6 +268,7 @@ export const queueDockEntry = {
         return {
           updateQueue: (itemId, action) => conversation.updateQueue(itemId, action),
           notify: (level, text) => { conversation.input.for(actx).notify(level, text) },
+          acknowledgeOutgoing: ids => { conversation.input.for(actx).acknowledgeOutgoing(ids) },
         }
       },
     }, QueueDock))

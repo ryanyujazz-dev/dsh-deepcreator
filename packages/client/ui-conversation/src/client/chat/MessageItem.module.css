@@ -8,6 +8,15 @@
   gap: 6px;
 }
 
+/* A paired local echo sits immediately after its official user row. Keep the
+   stateful echo alive through render-body settling, but let CSS perform the
+   visual handoff atomically: no duplicate paint, and if the official sibling
+   is transiently removed the echo becomes visible again in the same style
+   recalculation. */
+.userRow[data-chat-message-successor-id] + .userRow[data-pending-outgoing] {
+  display: none;
+}
+
 .userStack {
   display: flex;
   flex-direction: column;

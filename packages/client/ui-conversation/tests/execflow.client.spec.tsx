@@ -24,6 +24,7 @@ import { ExecFlowBody, type ExecFlowBodyProps } from '../src/client/chat/ExecFlo
 import { zh } from '../src/client/locales.ts'
 import { chatSnapshotFixture } from './chat-snapshot-fixture.client.ts'
 import type { AssistantMessageNode, UserMessageNode } from '@deepseek-ai/dsh-client-runtime/client'
+import type { InputState } from '../src/client/input/contract.ts'
 
 afterEach(() => {
   cleanup()
@@ -120,6 +121,9 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
   const forkAt = vi.fn()
   const selectRenderMode = vi.fn<ChatRenderSlotProps['selectRenderMode']>()
   const chat = createChatStore().create()
+  const input = createSnapshotStore<InputState>({
+    draft: '', imageIds: [], draftRev: 0, phase: 'plain', occurrences: [], queue: [], pendingOutgoing: [],
+  })
   const t = makeTranslate(zh, commonZh)
   const renderSlot = ((_key: string, _owner: object, opts?: { fallback?: React.ReactNode }) =>
     opts?.fallback ?? null) as unknown as ChatRenderSlotProps['renderSlot']
@@ -129,7 +133,7 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
     useSessions: emptySessions(),
     useWorkspaces: emptyWorkspaces(),
     useProjection: (() => undefined),
-    useInput: (() => { throw new Error('unused') }),
+    useInput: bindSnapshotSelector(input),
     inputActions: {
       setDraft: () => {},
       addImages: () => true,
@@ -148,6 +152,7 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
     chatScroll,
     forkAt,
     fileMentions: () => undefined,
+    acknowledgeOutgoing: vi.fn(),
     selectRenderMode,
     t,
     thinkForm: 'compact',
@@ -155,11 +160,27 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
   }
   return {
     set, Body: ExecFlowBody, props, openDetails, openFile, loadOlder, inspectCall,
-    chatScroll, forkAt, selectRenderMode,
+    chatScroll, forkAt, selectRenderMode, input,
   }
 }
 
 describe('ExecFlow partition and slot forms', () => {
+
+  it('shows a steering local echo at the flow tail while the turn is running', () => {
+    const h = makeHarness({ nodes: [assistant(1, 'working')], running: true })
+    const view = render(<h.Body {...h.props} />)
+
+    act(() => {
+      h.input.set({
+        ...h.input.getSnapshot(),
+        pendingOutgoing: [{ id: 1, text: '调整一下', imageNames: [], placement: 'steering' }],
+      })
+    })
+    const bubble = view.getByText('调整一下').closest('[data-pending-outgoing]')
+    expect(bubble).not.toBeNull()
+    expect(view.getByRole('status').compareDocumentPosition(bubble as HTMLElement)
+      & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
+  })
 
   it('mounts the same complete execution-run window in Activity as in main', () => {
     const h = makeHarness({

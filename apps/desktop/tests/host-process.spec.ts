@@ -85,7 +85,7 @@ describe('desktop DSH launch', () => {
         '--import',
         pathToFileURL(join(root, 'node_modules', 'tsx', 'dist', 'esm', 'index.mjs')).href,
         join(root, 'apps', 'cli', 'src', 'bin.ts'),
-        '--profile', 'deepcreator', '--port', '0',
+        '--profile', 'deepcreator', '--port', '0', '--no-open',
       ],
       env: { NODE: 'node-bin', TSX_TSCONFIG_PATH: join(root, 'tsconfig.json') },
     })
@@ -101,7 +101,7 @@ describe('desktop DSH launch', () => {
       command: 'node',
       args: [
         join(root, 'install', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js'),
-        '--profile', 'deepcreator', '--port', '0',
+        '--profile', 'deepcreator', '--port', '0', '--no-open',
       ],
       env: {},
     })

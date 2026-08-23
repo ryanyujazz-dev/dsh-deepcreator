@@ -73,7 +73,7 @@ function commandEffect(
 }
 
 function Group({
-  group, definition, focused, visible, reveal, renderPanel, renderArtifact, onHide, onFocus, onRestore, actions, t,
+  group, definition, focused, visible, reveal, renderPanel, renderArtifact, onHide, onCloseInstance, onFocus, onRestore, actions, t,
 }: {
   group: WorkbenchGroupState
   definition: PanelTypeDefinition | undefined
@@ -85,6 +85,7 @@ function Group({
   renderPanel(owner: WorkbenchPanelOwnerProps): ReactNode
   renderArtifact: WorkbenchPanelOwnerProps['renderArtifact']
   onHide(): void
+  onCloseInstance(instanceId: string): void
   onFocus(): void
   onRestore(): void
   actions: WorkbenchRootProps['actions']
@@ -112,7 +113,7 @@ function Group({
     }
   }, [])
   const openInstance = useCallback((instanceId: string) => { actions.present(group.typeId, instanceId, 'instance') }, [actions, group.typeId])
-  const closeInstance = useCallback((instanceId: string) => { actions.closeTab(group.typeId, instanceId) }, [actions, group.typeId])
+  const closeInstance = useCallback((instanceId: string) => { onCloseInstance(instanceId) }, [onCloseInstance])
   const showHome = useCallback(() => { actions.showHome(group.typeId) }, [actions, group.typeId])
   const owner = {
     typeId: group.typeId,
@@ -148,7 +149,7 @@ function Group({
       closeTabLabel={tab => t('closeTab', { tab: panelInfo.tabLabels?.[tab] ?? tab })}
       onShowHome={() => { actions.showHome(group.typeId) }}
       onActivateTab={tab => { actions.present(group.typeId, tab, 'instance') }}
-      onCloseTab={tab => { actions.closeTab(group.typeId, tab) }}
+      onCloseTab={onCloseInstance}
       onHide={onHide}
       onFocus={onFocus}
       onRestore={onRestore}
@@ -311,7 +312,8 @@ export function WorkbenchRoot({
                       : undefined}
                     actions={actions}
                     t={t}
-                    onHide={() => { actions.hide(group.typeId) }}
+                    onHide={() => { controller.notifyDismissed(group.typeId); actions.hide(group.typeId) }}
+                    onCloseInstance={(instanceId) => { controller.notifyDismissed(group.typeId, instanceId); actions.closeTab(group.typeId, instanceId) }}
                     onFocus={() => { actions.focus(group.typeId) }}
                     onRestore={() => { actions.restoreFocus() }}
                     renderPanel={(owner) => renderSlot('deepcreator.workbench.panel', owner, { only: group.typeId })}

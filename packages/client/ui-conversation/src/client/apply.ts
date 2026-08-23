@@ -457,6 +457,7 @@ export function apply(ctx: Context): void {
           actions.select(target)
         },
         fileMentions: owner => ctx.get('chatFileMentions')?.forClosing(owner),
+        acknowledgeOutgoing: ids => { inputHub.shell(sessionId).acknowledgeOutgoing(ids) },
         openFile: (path) => {
           const cwd = sessions.list.getSnapshot().byId[sessionId]?.cwd
           const resolved = resolveWorkspacePath(cwd, path)
