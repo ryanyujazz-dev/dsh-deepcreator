@@ -1,17 +1,20 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
+import { resolveWorkspacePath, type SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 // Type-only: pulls the `artifacts` remote namespace merge (TypertRemoteNamespaceMap)
 // into this program so TypertClientRemote['artifacts'] resolves.
 import type {} from '@ryanyujazz/dsh-artifacts/remote'
+import type { ArtifactReadOk } from '@ryanyujazz/dsh-artifacts/types'
 import {
   DeepCreatorIconAnimatedFolder16, DeepCreatorIconMarkdownCode16, DeepCreatorIconMarkdownPreview16, FileIcon, FileLabel,
-  IconChevronRightOutline14, IconRefreshOutline14, MarkdownText, Tooltip, WorkbenchPanelIconButton,
+  IconChevronDownOutline14, IconChevronRightOutline14, IconRefreshOutline14, MarkdownText, Menu, Tooltip, WorkbenchPanelIconButton,
 } from '@ryanyujazz/dsh-client-ui-primitives'
+import type { MenuEntry } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { WorkbenchPanelProps } from '@ryanyujazz/dsh-client-ui-workbench/client'
 import { EMPTY_ARTIFACTS_SNAPSHOT } from './artifact-contract.ts'
 import {
-  artifactPathSegments, artifactTabFilePaths, artifactTabLabels, basename, formatAge, isMarkdownArtifactPath,
+  artifactPathSegments, artifactTabFilePaths, artifactTabLabels, basename, formatAge, isHtmlArtifactPath, isMarkdownArtifactPath,
 } from './artifact-view-model.ts'
 import type { MarkdownRenderMode } from './artifact-view-model.ts'
 import css from './ArtifactPanel.module.css'
@@ -19,6 +22,9 @@ import css from './ArtifactPanel.module.css'
 type Props = WorkbenchPanelProps & PropsLocale<'workbench-artifact'> & {
   artifacts: TypertClientRemote['artifacts']
   openContainingFolder(path: string): void
+  openInDeepCreator(sessionId: SessionId, path: string): Promise<void>
+  openInSystemBrowser(sessionId: SessionId, path: string): Promise<void>
+  workspaceRoot?: string | undefined
 }
 
 function Empty({ title, body, filePath }: { title: string; body: string; filePath?: string | undefined }) {
@@ -51,6 +57,60 @@ function MarkdownModeSwitch({ mode, onChange, label, previewLabel, codeLabel }: 
         </Tooltip>
       ))}
     </div>
+  )
+}
+
+function HtmlArtifactOpenControl({ path, openInDeepCreator, openInSystemBrowser, onError, t }: {
+  path: string
+  openInDeepCreator(): Promise<void>
+  openInSystemBrowser(): Promise<void>
+  onError(message: string | null): void
+  t(key: 'open' | 'openMenu' | 'openInDeepCreator' | 'openInSystemBrowser'): string
+}) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [opening, setOpening] = useState(false)
+  const run = (action: () => Promise<void>) => {
+    if (opening) return
+    setOpening(true)
+    onError(null)
+    void action().catch(reason => { onError(reason instanceof Error ? reason.message : String(reason)) })
+      .finally(() => { setOpening(false) })
+  }
+  const items: MenuEntry[] = [
+    { id: 'deepcreator', label: t('openInDeepCreator') },
+    { id: 'system', label: t('openInSystemBrowser') },
+  ]
+  return (
+    <Menu
+      open={menuOpen}
+      onClose={() => { setMenuOpen(false) }}
+      items={items}
+      onSelect={(id) => {
+        setMenuOpen(false)
+        run(id === 'system' ? openInSystemBrowser : openInDeepCreator)
+      }}
+      portal
+      compact
+      align="end"
+      anchor={(
+        <span className={css.openSplit} data-artifact-html-open={path} data-opening={opening || undefined}>
+          <button type="button" className={css.openPrimary} disabled={opening} onClick={() => { run(openInDeepCreator) }}>
+            {t('open')}
+          </button>
+          <button
+            type="button"
+            className={css.openMenu}
+            aria-label={t('openMenu')}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            disabled={opening}
+            onClick={() => { setMenuOpen(value => !value) }}
+          >
+            <IconChevronDownOutline14 size={12} />
+          </button>
+        </span>
+      )}
+    />
   )
 }
 
@@ -121,34 +181,45 @@ function ArtifactPath({ path, openContainingFolder, openFolderLabel, markdownMod
  * plugin-owned copy. Only instance content goes through the mounted
  * `artifacts` remote namespace, keyed by path.
  */
-export function ArtifactPanel({ artifacts, sessionId, route, tabs, activeInstanceId, openInstance, openContainingFolder, useSession, contributeHeaderActions, contributePanelInfo, renderArtifact, t }: Props) {
+export function ArtifactPanel({ artifacts, sessionId, route, tabs, activeInstanceId, openInstance, replaceInstanceId, openContainingFolder, openInDeepCreator, openInSystemBrowser, workspaceRoot, useSession, contributeHeaderActions, contributePanelInfo, renderArtifact, t }: Props) {
   const snapshot = useSession(selector => selector.views.get('artifacts') ?? EMPTY_ARTIFACTS_SNAPSHOT)
-  const [content, setContent] = useState<string | null>(null)
+  const [content, setContent] = useState<ArtifactReadOk | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
   const [refreshTick, setRefreshTick] = useState(0)
   const [markdownModes, setMarkdownModes] = useState<Readonly<Record<string, MarkdownRenderMode>>>({})
   const [now] = useState(() => Date.now())
-  const active = snapshot.records.find(item => item.path === activeInstanceId)
+  const normalizeInstanceId = useCallback((path: string) => resolveWorkspacePath(workspaceRoot, path), [workspaceRoot])
+  const normalizedActiveInstanceId = activeInstanceId === undefined ? undefined : normalizeInstanceId(activeInstanceId)
+  const active = snapshot.records.find(item => normalizeInstanceId(item.path) === normalizedActiveInstanceId)
+
+  useLayoutEffect(() => {
+    for (const tab of tabs) {
+      const normalized = normalizeInstanceId(tab)
+      if (normalized !== tab) replaceInstanceId(tab, normalized)
+    }
+  }, [normalizeInstanceId, replaceInstanceId, tabs])
 
   const readContent = useCallback(() => {
     setContent(null)
-    if (activeInstanceId === undefined) return
+    setError(null)
+    if (normalizedActiveInstanceId === undefined) return
     let live = true
-    void artifacts.read(sessionId, activeInstanceId).then((wire) => {
+    void artifacts.read(sessionId, normalizedActiveInstanceId).then((wire) => {
       if (!live) return
       if (!wire.ok) throw new Error(wire.error.message)
       if (!wire.value.ok) throw new Error(wire.value.message)
-      setContent(wire.value.content)
+      setContent(wire.value)
       setError(null)
     }).catch(reason => { if (live) setError(reason instanceof Error ? reason.message : String(reason)) })
     return () => { live = false }
-  }, [artifacts, activeInstanceId, sessionId])
+  }, [artifacts, normalizedActiveInstanceId, sessionId])
   useEffect(() => readContent(), [readContent, refreshTick])
 
   const panelInfo = useMemo(() => ({
-    tabLabels: artifactTabLabels(snapshot.records, tabs),
-    tabFilePaths: artifactTabFilePaths(snapshot.records, tabs),
-  }), [snapshot.records, tabs])
+    tabLabels: artifactTabLabels(snapshot.records, tabs, normalizeInstanceId),
+    tabFilePaths: artifactTabFilePaths(snapshot.records, tabs, normalizeInstanceId),
+  }), [normalizeInstanceId, snapshot.records, tabs])
   useEffect(() => contributePanelInfo(panelInfo), [contributePanelInfo, panelInfo])
   const headerActions = useMemo(() => ({
     right: <WorkbenchPanelIconButton label={t('refresh')} onClick={() => { setRefreshTick(tick => tick + 1) }}><IconRefreshOutline14 /></WorkbenchPanelIconButton>,
@@ -156,8 +227,8 @@ export function ArtifactPanel({ artifacts, sessionId, route, tabs, activeInstanc
   useEffect(() => contributeHeaderActions(headerActions), [contributeHeaderActions, headerActions])
   const markdownCodeLabels = useMemo(() => ({ copyLabel: t('copy'), copiedLabel: t('copied') }), [t])
 
-  if (route === 'instance' && activeInstanceId !== undefined) {
-    const activePath = active?.path ?? activeInstanceId
+  if (route === 'instance' && normalizedActiveInstanceId !== undefined) {
+    const activePath = normalizeInstanceId(active?.path ?? normalizedActiveInstanceId)
     const markdown = isMarkdownArtifactPath(activePath)
     const markdownMode = markdownModes[activePath] ?? 'preview'
     const changeMarkdownMode = (mode: MarkdownRenderMode) => {
@@ -177,14 +248,18 @@ export function ArtifactPanel({ artifacts, sessionId, route, tabs, activeInstanc
         {error !== null && <div className={css.error}>{error}</div>}
         {content !== null
           ? (
-            <div className={`${css.content}${markdown && markdownMode === 'preview' ? ` ${css.markdownPreview}` : ''}`}>
-              {markdown && markdownMode === 'preview'
+            <div className={`${css.content}${content.kind === 'text' && markdown && markdownMode === 'preview' ? ` ${css.markdownPreview}` : ''}`}>
+              {content.kind === 'text' && markdown && markdownMode === 'preview'
                 ? (
                   <div className={css.markdownDocument} data-artifact-markdown-document>
-                    <MarkdownText text={content} codeLabels={markdownCodeLabels} />
+                    <MarkdownText text={content.content} codeLabels={markdownCodeLabels} />
                   </div>
                 )
-                : renderArtifact({ artifactId: activePath, content })}
+                : content.kind === 'text'
+                  ? renderArtifact({ artifactId: activePath, kind: 'code', content: content.content })
+                  : content.kind === 'document'
+                    ? renderArtifact({ artifactId: activePath, kind: `document-${content.contentType}`, content: content.content })
+                    : renderArtifact({ artifactId: activePath, kind: content.kind, mime: content.mediaType, content: content.url })}
             </div>
           )
           : error === null && <Empty title={basename(activePath)} body={t('loading')} filePath={activePath} />}
@@ -193,19 +268,31 @@ export function ArtifactPanel({ artifacts, sessionId, route, tabs, activeInstanc
   }
   return (
     <div className={css.panel}>
+      {actionError !== null && <div className={css.error} role="alert">{actionError}</div>}
       {snapshot.records.length === 0
         ? <Empty title={t('empty.title')} body={t('empty.body')} />
         : <div className={css.list}>{snapshot.records.map(artifact => (
-          <button type="button" key={artifact.path} onClick={() => { openInstance(artifact.path) }}>
-            <span className={css.identity}>
-              <FileIcon path={artifact.path} size={16} />
-              <span className={css.copy}>
-                <strong>{basename(artifact.path)}</strong>
-                <span className={css.meta}>{artifact.path}</span>
+          <div className={css.row} key={artifact.path}>
+            <button type="button" className={css.rowMain} onClick={() => { openInstance(normalizeInstanceId(artifact.path)) }}>
+              <span className={css.identity}>
+                <FileIcon path={artifact.path} size={16} />
+                <span className={css.copy}>
+                  <strong>{basename(artifact.path)}</strong>
+                  <span className={css.meta}>{artifact.path}</span>
+                </span>
               </span>
-            </span>
-            <time>{formatAge(artifact.updatedAt, now)}</time>
-          </button>
+              <time>{formatAge(artifact.updatedAt, now)}</time>
+            </button>
+            {isHtmlArtifactPath(artifact.path) && (
+              <HtmlArtifactOpenControl
+                path={artifact.path}
+                openInDeepCreator={() => openInDeepCreator(sessionId, artifact.path)}
+                openInSystemBrowser={() => openInSystemBrowser(sessionId, artifact.path)}
+                onError={setActionError}
+                t={t}
+              />
+            )}
+          </div>
         ))}</div>}
     </div>
   )

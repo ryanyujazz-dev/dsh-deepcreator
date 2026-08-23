@@ -5,9 +5,11 @@ import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { PresentationRuntime } from './runtime.ts'
 import { createOpenInDeepCreatorTool } from './tool.ts'
 import type {
+  OpenInDeepCreatorResult,
   PresentationClaimResult, PresentationClientDescriptor, PresentationPendingSnapshot, PresentationReceipt,
   PresentationRemoteResult, PresentationResourceResolver,
 } from './types.ts'
+import { presentationSignal } from './types.ts'
 
 export * from './runtime.ts'
 export * from './tool.ts'
@@ -25,6 +27,7 @@ export class PresentationHostService extends TypertRemoteService {
   // Proxy receiver, so service methods must use ordinary instance properties.
   private readonly runtime: PresentationRuntime = new PresentationRuntime()
   private readonly turns = new Map<string, number>()
+  private userOpenSequence = 0
 
   constructor(ctx: Context) {
     super(ctx, 'presentationRuntime', { namespace: 'presentation' })
@@ -74,7 +77,33 @@ export class PresentationHostService extends TypertRemoteService {
   @Remote('dismiss')
   dismiss(agent: Agent, turn: number, resourceKey: string): PresentationRemoteResult<{ dismissed: true }> {
     this.runtime.dismiss(String(agent.id), turn, resourceKey)
+    if (turn < 0) this.runtime.endTurn(String(agent.id), turn)
     return { ok: true, value: { dismissed: true } }
+  }
+
+  /**
+   * User-initiated counterpart to the Agent tool. It uses the same resolvers,
+   * client claim and receipt protocol, but a synthetic turn keeps explicit UI
+   * actions available even while the Agent is idle.
+   */
+  @Remote('open')
+  async open(agent: Agent, inputJson: string): Promise<PresentationRemoteResult<OpenInDeepCreatorResult>> {
+    const sessionId = String(agent.id)
+    const turn = -(++this.userOpenSequence)
+    try {
+      if (inputJson.length > 65_536) throw new Error('Presentation input exceeds the 64 KiB client boundary.')
+      const parsed = this.runtime.parse(JSON.parse(inputJson))
+      const value = await this.runtime.open({
+        sessionId, turn,
+        workspaceRoot: agent.session.header.cwd ?? process.cwd(),
+        signal: presentationSignal({ aborted: false }),
+      }, parsed)
+      if (value.status !== 'presented') this.runtime.endTurn(sessionId, turn)
+      return { ok: true, value }
+    } catch (error) {
+      this.runtime.endTurn(sessionId, turn)
+      return { ok: false, code: 'PRESENTATION_UNAVAILABLE', message: error instanceof Error ? error.message : String(error) }
+    }
   }
 
   private turnOf(agent: Agent): number {

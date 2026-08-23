@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { resolveDesktopDshLaunch, resolveDesktopWorkspace } from '../src/dsh-launch.ts'
+import { firstSystemProxy, IMAGE_PROXY_PROBE_URL, resolveDesktopDshLaunch, resolveDesktopWorkspace, resolveSystemProxyEnvironment } from '../src/dsh-launch.ts'
 import { parseDesktopHostUrl, startDesktopHost } from '../src/host-process.ts'
 
 const noop = (): void => {}
@@ -115,5 +115,31 @@ describe('desktop DSH launch', () => {
       .toBe(chosen)
     expect(resolveDesktopWorkspace({ INIT_CWD: packageDir }, current)).toBe(packageDir)
     expect(resolveDesktopWorkspace({}, current)).toBe(current)
+  })
+
+  it('projects the operating system HTTP proxy into the Host environment', async () => {
+    const resolveProxy = async (url: string) => {
+      expect(url).toBe(IMAGE_PROXY_PROBE_URL)
+      return 'PROXY 127.0.0.1:7890; DIRECT'
+    }
+    await expect(resolveSystemProxyEnvironment({}, resolveProxy)).resolves.toEqual({
+      HTTPS_PROXY: 'http://127.0.0.1:7890',
+      HTTP_PROXY: 'http://127.0.0.1:7890',
+      NO_PROXY: '127.0.0.1,localhost,::1',
+    })
+  })
+
+  it('preserves explicit deployment proxy settings instead of consulting the system', async () => {
+    let called = false
+    await expect(resolveSystemProxyEnvironment({ HTTPS_PROXY: 'http://deployment.proxy:8080' }, async () => {
+      called = true
+      return 'PROXY 127.0.0.1:7890'
+    })).resolves.toEqual({})
+    expect(called).toBe(false)
+  })
+
+  it('supports system SOCKS routes and leaves a DIRECT route unset', () => {
+    expect(firstSystemProxy('SOCKS5 127.0.0.1:1080; DIRECT')).toBe('socks5://127.0.0.1:1080')
+    expect(firstSystemProxy('DIRECT')).toBeUndefined()
   })
 })

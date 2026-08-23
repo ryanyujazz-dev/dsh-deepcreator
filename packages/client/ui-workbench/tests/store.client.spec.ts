@@ -21,6 +21,17 @@ describe('Workbench store topology', () => {
     expect(state.tracks.map(track => track.typeIds)).toEqual([['artifact']])
   })
 
+  it('merges equivalent instance ids without treating normalization as a close', () => {
+    const store = createWorkbenchStore().create('s1')
+    store.actions.present('artifact', 'image.png', 'instance', placement())
+    store.actions.present('artifact', '/workspace/image.png', 'instance', placement(1200, ['artifact']))
+    store.actions.present('artifact', 'image.png', 'instance', placement(1200, ['artifact']))
+    store.actions.replaceTab('artifact', 'image.png', '/workspace/image.png')
+    expect(store.store.getSnapshot().groups[0]).toMatchObject({
+      tabs: ['/workspace/image.png'], activeInstanceId: '/workspace/image.png', activeRoute: 'instance',
+    })
+  })
+
   it('uses the first type ratio and keeps a user-adjusted width for the second type', () => {
     const store = createWorkbenchStore().create('s1')
     store.actions.present('activity', undefined, 'home', placement(1200))

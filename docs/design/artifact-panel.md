@@ -1,6 +1,6 @@
 # Artifact Panel Design
 
-Status: **phase 1 implemented on the official deliverables fact**. This
+Status: **official deliverables fact, rich text/binary document rendering, and explicit HTML Browser handoff implemented**. This
 document defines the DeepCreator Workbench Artifact panel (产物面板). The
 panel is a read-only window into the official produced-files mechanism:
 the same session events the official `ui-deliverables` plugin renders at the
@@ -51,8 +51,10 @@ DeepCreator keeps the official row composed for its Turn facts, closing-prose
 links, and model guidance. Artifact contributes the higher-priority visual
 winner to the same selector chain: an expandable card containing only that
 closing Turn's produced files. Review renders its independent change card in
-the additive DeepCreator slot immediately below it, so a path may appear in
-both cards with different navigation.
+the additive DeepCreator slot immediately below it. Its repository truth still
+tracks binary paths for reconciliation and Undo, but the conversation card
+filters those rows so images and document outputs are not duplicated as source
+changes.
 
 ## Data flow (phase 1, implemented)
 
@@ -79,12 +81,19 @@ retracts, so a produced path stays listed.
 ### Content reads
 
 - The active instance body reads through the Host `artifacts` remote
-  (`@ryanyujazz/dsh-artifacts`, now a read-only workspace file reader): the
-  path is canonicalized and fenced to the session workspace, utf8 content
-  returns, and escaping paths / missing files / workspace-less sessions fail
-  with explicit codes. The read is keyed by path — unchanged paths keep
-  content.
+  (`@ryanyujazz/dsh-artifacts`, a read-only workspace file reader): the path is
+  canonicalized and fenced to the session workspace, then `read` returns a
+  tagged text/image/PDF/document payload. Text remains UTF-8; image and PDF
+  payloads carry a fenced loopback URL; DOCX is structural HTML converted by
+  Mammoth; legacy DOC is extracted text from `word-extractor`. Escaping paths,
+  missing files, and workspace-less sessions fail with explicit codes. The read
+  is keyed by path — unchanged paths keep content.
 - **Truncation** stays deferred (phase 2): `read` has no cap today.
+- HTML/HTM rows may call the separate `preview` Remote. It reuses the same
+  canonical workspace fence, then starts a loopback-only static origin rooted
+  at the entry's containing directory. Hidden paths, symlink escapes and
+  non-web resource extensions are rejected. The returned HTTP URL is a
+  materialized transport for Browser Runtime, not a second artifact identity.
 
 ### New-artifact dot (phase 1, implemented)
 
@@ -118,31 +127,39 @@ no central switch. Unresolved keys fall through to the fallback with a visible
 | `plan`, `document`, `report`, `mime:text/markdown` | `MarkdownText` | artifact package assembles from ui-primitives |
 | `code`, `mime:text/*` source files | `CodeBlock` (syntax-aware, code-theme registry) | artifact package assembles |
 | JSON (`mime:application/json`, `.json` path) | `JsonBlock` | artifact package assembles |
-| `image` + `mime:image/*` | binary read (phase 2) | artifact package |
-| `mime:text/html`, `mime:image/svg+xml` | sandboxed preview (phase 3) | artifact package |
+| `image` + `mime:image/*` | native image in a contained Artifact surface | artifact package |
+| `application/pdf` | Chromium embedded PDF renderer inside Artifact | artifact package |
+| `.docx` / `.doc` | sandboxed Mammoth HTML / extracted legacy text | artifact + Host reader |
+| `.html`, `.htm` | source renderer plus explicit IAB/system-browser split action | artifact + Presentation/Browser adapters |
+| `mime:image/svg+xml` | native image element over fenced loopback transport | artifact package |
 
 ui-primitives stays business-state-free; the artifact package owns only
 assembly and the truncation/notice UX. If a renderer becomes shared by another
 domain later, it graduates to ui-primitives at that point, not before.
 
-### Binary content (phase 2)
+### Binary content (implemented)
 
-`remote.artifacts` gains `readBlob(sessionId, path)` returning
-`{ ok: true, mime, data: base64 }` for image mimes and workspace-path
-locators, with the same sandbox checks and a `maxReadBlobBytes` Config cap.
-No data-URL smuggling through `read`.
+`remote.artifacts.read` never transports arbitrary binary bytes through the
+Typert response. Images and PDFs receive a per-directory loopback URL from the
+same fenced preview registry used by HTML assets. DOCX conversion happens on
+the Host; its HTML is rendered in a scriptless sandboxed iframe. Legacy DOC
+returns extracted text. The Client never receives a native filesystem URL.
 
 ### Untrusted content rules
 
 - Artifact paths render as plain text, never as markdown.
 - Markdown/code/JSON render through the shared ui-primitives renderers already
   hardened for untrusted model output.
-- HTML/SVG preview (phase 3) renders in `<iframe sandbox srcdoc>` with
-  **no** `allow-scripts`, `allow-same-origin` off, and a restrictive CSP —
-  strictly stricter than the Browser panel's loopback policy, because artifact
-  files are arbitrary workspace content, not a navigated origin. This is a
-  product security decision recorded here; enabling script execution requires
-  a new design review.
+- Artifact content never executes inside the Artifact renderer. HTML remains
+  source until the user explicitly chooses an Open destination. DeepCreator
+  preview executes in the isolated persistent IAB profile through the normal
+  Browser network policy and native Surface boundary; system-browser opening
+  is an equally explicit OS action. The loopback server is rooted at the
+  entry directory, rejects hidden paths, symlink escape, directory listing and
+  non-web resource extensions, and stops with the Host plugin.
+- DOCX-derived HTML is untrusted and therefore receives no script or
+  same-origin capability in its iframe. Embedded images are data-only; legacy
+  DOC text is rendered as text, never injected markup.
 
 ## Package boundaries
 
@@ -159,8 +176,8 @@ Client package `packages/client/ui-workbench-artifact`
   any terminal/review code.
 
 Host package `packages/host/artifacts` (`@ryanyujazz/dsh-artifacts`) is a
-read-only workspace file reader (one Typert Remote `read`); no registry, no
-events, no fold.
+workspace file reader plus loopback HTML preview materializer (Typert Remotes
+`read` and `preview`); no registry, events, or produced-file fold lives there.
 
 `ui-workbench-tools` retains Review and Terminal; Browser presentation is owned by `ui-browser`. Bundle changes ride
 the existing `deepcreator-web` patch (`deepcreator-workbench-artifact` Client
@@ -174,6 +191,15 @@ row is removed).
   pattern).
 - **List (home route)**: rows carry basename, full path, and relative time;
   sorted by production time desc. Selecting a row opens its instance tab.
+- **HTML split action**: only HTML/HTM rows carry a trailing split Open
+  control. The primary action and DeepCreator menu item use the public
+  Presentation Client with strict `browserId: "iab"`; the other menu item uses
+  the official Workspace/OS path opener. The source-row action remains
+  independent.
+- **Binary/document instance**: clicking an image, PDF, DOCX, or DOC in either
+  the Home list or the Turn artifact card opens its Artifact tab and renders in
+  that panel. It never activates Browser; Browser is reserved for the explicit
+  HTML Open action.
 - **New-artifact dot**: the type entry icon shows a blue dot while unviewed
   produced files exist (see above).
 - **Empty states**: no artifacts (explain what produces them), read failure
@@ -196,13 +222,13 @@ row is removed).
   official deliverables derivation; live list; basename tab labels; the
   new-artifact dot; read-only Host file reader. Renderer stays the text
   fallback.
-- **Phase 2 — rendering quality and classification**: markdown/code/JSON
-  renderers with the two-segment key space; kind derivation from paths;
-  truncation Config + notice; `readBlob` and image rendering; list groups
-  (分类) on the home route.
-- **Phase 3 — discoverability and depth**: conversation artifact cards;
-  revision timeline (the log already holds full history); HTML/SVG sandboxed
-  preview.
+- **Phase 2 — rendering quality and classification (partially implemented)**:
+  markdown/code, image, PDF, DOCX and DOC rendering are implemented. JSON
+  specialization, truncation Config + notice, and list groups (分类) remain.
+- **Phase 3 — discoverability and depth (partially implemented)**: conversation
+  artifact cards and explicit HTML Browser handoff are implemented; revision
+  timeline (the log already holds full history) remains deferred; SVG uses the
+  fenced native image branch.
 
 ## Verification plan (per phase)
 

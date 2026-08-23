@@ -12,6 +12,12 @@ describe('Browser generated Remote boundary', () => {
     expect(invocation).toBeDefined()
   })
 
+  it('exposes client-owned new-tab and exact-tab navigation operations', () => {
+    const invocations = (TYPERT as { invocations: GeneratedInvocation[] }).invocations
+    expect(invocations.find(item => item.id.endsWith('#browser/newTab'))).toBeDefined()
+    expect(invocations.find(item => item.id.endsWith('#browser/navigateTab'))).toBeDefined()
+  })
+
   it('accepts provider-contributed namespaced capabilities in browser/state', () => {
     const invocation = (TYPERT as { invocations: GeneratedInvocation[] }).invocations.find(item => item.id.endsWith('#browser/state'))
     expect(invocation).toBeDefined()

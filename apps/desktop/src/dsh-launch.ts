@@ -23,6 +23,43 @@ export interface DesktopDshLaunchResolver {
   resolveTsx(repoRoot: string): string
 }
 
+/** Chromium URL used to resolve the operating system route for image providers. */
+export const IMAGE_PROXY_PROBE_URL = 'https://generativelanguage.googleapis.com/'
+
+const PROXY_ENV_KEYS = ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy'] as const
+
+/** Convert Chromium's ordered proxy rules into one URL understood by Host HTTP clients. */
+export function firstSystemProxy(rules: string): string | undefined {
+  for (const rule of rules.split(';').map(value => value.trim()).filter(Boolean)) {
+    const [kind = '', address] = rule.split(/\s+/, 2)
+    const upper = kind.toUpperCase()
+    if (upper === 'DIRECT') return undefined
+    if (address === undefined || address === '') continue
+    if (upper === 'PROXY' || upper === 'HTTP') return `http://${address}`
+    if (upper === 'HTTPS') return `https://${address}`
+    if (upper === 'SOCKS' || upper === 'SOCKS5') return `socks5://${address}`
+  }
+  return undefined
+}
+
+/**
+ * Preserve explicit deployment proxy variables; otherwise project Electron's
+ * system/PAC route into the standard environment consumed by the Host.
+ */
+export async function resolveSystemProxyEnvironment(
+  env: NodeJS.ProcessEnv,
+  resolveProxy: (url: string) => Promise<string>,
+): Promise<NodeJS.ProcessEnv> {
+  if (PROXY_ENV_KEYS.some(key => env[key]?.trim())) return {}
+  const proxy = firstSystemProxy(await resolveProxy(IMAGE_PROXY_PROBE_URL))
+  if (proxy === undefined) return {}
+  return {
+    HTTPS_PROXY: proxy,
+    HTTP_PROXY: proxy,
+    NO_PROXY: env.NO_PROXY ?? env.no_proxy ?? '127.0.0.1,localhost,::1',
+  }
+}
+
 const defaultResolver: DesktopDshLaunchResolver = {
   exists: existsSync,
   resolveTsx: repoRoot => createRequire(join(repoRoot, 'package.json')).resolve('tsx/esm'),

@@ -8,4 +8,8 @@ On Windows, the native title bar is hidden too, but the native minimize/maximize
 
 Run `pnpm run profile:migrate` for initial setup, then use `pnpm run dev:desktop` from the repository root. Desktop launch runs `profile:ensure`, which automatically refreshes an outdated managed profile when the presentation bundle gains or retires workspace plugins.
 
+At startup, Desktop resolves the operating system proxy/PAC route through Electron and projects it into the official Host's standard proxy environment when the deployment did not already provide one. Host plugins such as image generation therefore follow Clash and other system proxies when the app is launched from Finder, Dock, or Start Menu; explicit deployment proxy variables retain priority.
+
 The main renderer keeps `sandbox`, `contextIsolation`, and `webSecurity` enabled and does not enable Node integration. Its window-state bridge exposes only zoom/fullscreen presentation state. The separate Browser Surface bridge exposes only mount, bounds, visibility, and unmount for an existing `surfaceId`; renderer code cannot create or navigate pages, inspect DOM, automate input, or access files. Electron Main owns IAB `WebContentsView` instances in a dedicated persistent partition and serves Host Browser commands over an owner-only Unix socket or Windows named pipe authenticated with a random process token. No remote-debugging port is opened.
+
+Browser Surface bounds remain the real panel rectangle. Responsive pages render at 100% zoom; after navigation or panel resize, Electron Main measures root horizontal overflow and only fixed-width desktop pages receive a bounded fit zoom. This avoids a horizontal scrollbar in narrow panels without changing UA, Profile, cookies, DOM, or the renderer bridge contract.

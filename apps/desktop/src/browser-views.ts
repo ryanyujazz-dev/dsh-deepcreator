@@ -5,7 +5,7 @@ import { BrowserNetworkPolicy, BrowserRuntimeError, INTERACTIVE_SNAPSHOT_SCRIPT,
 import type { BrowserCommand, BrowserCommandResult, BrowserLocator, BrowserNodeRef, ProviderTab, UserTabCandidate } from '@ryanyujazz/dsh-browser/types'
 import type { IabRpcNotification } from '@ryanyujazz/dsh-browser-iab'
 import { BrowserWindow, WebContentsView, ipcMain, session, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
-import { normalizeBrowserViewBounds, type BrowserViewBounds } from './browser-view-policy.ts'
+import { browserPanelFitZoom, normalizeBrowserViewBounds, type BrowserViewBounds } from './browser-view-policy.ts'
 
 export const BROWSER_SURFACE_CHANNELS = {
   mount: 'deepcreator:browser-surface:mount', bounds: 'deepcreator:browser-surface:bounds',
@@ -15,7 +15,7 @@ export const BROWSER_SURFACE_CHANNELS = {
 
 interface SurfaceRecord {
   providerTabId: string; surfaceId: string; view: WebContentsView; ownerAutomationSessionId?: string
-  revision: number; mounted: boolean; interruptSerial: number
+  revision: number; mounted: boolean; interruptSerial: number; fitSerial: number
   snapshot?: { snapshotId: string; selectors: Map<string, string> }
 }
 interface DownloadResult { artifactId: string; fileName: string }
@@ -81,10 +81,11 @@ export class BrowserSurfaceDriver {
       partition: this.#partition, preload: join(import.meta.dirname, 'browser-surface-preload.cjs'),
       additionalArguments: [`--deepcreator-surface-id=${surfaceId}`], sandbox: true, contextIsolation: true, webSecurity: true, nodeIntegration: false,
     } })
-    const record: SurfaceRecord = { providerTabId, surfaceId, view, ownerAutomationSessionId: automationSessionId, revision: 0, mounted: false, interruptSerial: 0 }
+    const record: SurfaceRecord = { providerTabId, surfaceId, view, ownerAutomationSessionId: automationSessionId, revision: 0, mounted: false, interruptSerial: 0, fitSerial: 0 }
     this.#tabs.set(providerTabId, record); this.#surfaceToTab.set(surfaceId, providerTabId)
     const changed = () => { record.revision++; this.#notify({ event: 'state-changed', params: { surfaceId, providerTabId } }) }
-    view.webContents.on('did-start-loading', changed); view.webContents.on('did-stop-loading', changed)
+    view.webContents.on('did-start-loading', changed)
+    view.webContents.on('did-stop-loading', () => { changed(); if (record.mounted) void this.#fitPageToSurface(record) })
     view.webContents.on('page-title-updated', changed); view.webContents.on('did-navigate', changed); view.webContents.on('render-process-gone', changed)
     view.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
     try { if (request.url !== undefined) { await this.#network.assertAllowed(request.url); await view.webContents.loadURL(request.url) } }
@@ -136,10 +137,10 @@ export class BrowserSurfaceDriver {
 
   release(owner: string, id: string): void { delete this.#owned(owner, id).ownerAutomationSessionId }
   close(owner: string, id: string): void { const r = this.#owned(owner, id); this.#tabs.delete(id); this.#surfaceToTab.delete(r.surfaceId); if (r.mounted) this.window.contentView.removeChildView(r.view); r.view.webContents.close() }
-  mount(id: string, bounds: BrowserViewBounds): void { const r = this.#recordBySurface(id); if (!r.mounted) { this.window.contentView.addChildView(r.view); r.mounted = true } r.view.setBounds(normalizeBrowserViewBounds(bounds)); r.view.setVisible(true) }
-  setBounds(id: string, bounds: BrowserViewBounds): void { this.#recordBySurface(id).view.setBounds(normalizeBrowserViewBounds(bounds)) }
+  mount(id: string, bounds: BrowserViewBounds): void { const r = this.#recordBySurface(id); if (!r.mounted) { this.window.contentView.addChildView(r.view); r.mounted = true } r.view.setBounds(normalizeBrowserViewBounds(bounds)); r.view.setVisible(true); void this.#fitPageToSurface(r) }
+  setBounds(id: string, bounds: BrowserViewBounds): void { const r = this.#recordBySurface(id); r.view.setBounds(normalizeBrowserViewBounds(bounds)); void this.#fitPageToSurface(r) }
   setVisible(id: string, visible: boolean): void { this.#recordBySurface(id).view.setVisible(visible) }
-  unmount(id: string): void { const r = this.#recordBySurface(id); if (!r.mounted) return; r.view.setVisible(false); this.window.contentView.removeChildView(r.view); r.mounted = false }
+  unmount(id: string): void { const r = this.#recordBySurface(id); if (!r.mounted) return; r.fitSerial++; r.view.setVisible(false); this.window.contentView.removeChildView(r.view); r.mounted = false }
   async clearData(): Promise<void> {
     for (const r of this.#tabs.values()) { if (r.mounted) this.window.contentView.removeChildView(r.view); r.view.webContents.close() }
     this.#tabs.clear(); this.#surfaceToTab.clear(); this.#downloads.clear()
@@ -148,6 +149,17 @@ export class BrowserSurfaceDriver {
   dispose(): void { for (const dispose of this.#disposers.splice(0)) dispose(); for (const r of this.#tabs.values()) { if (r.mounted) this.window.contentView.removeChildView(r.view); r.view.webContents.close() } this.#tabs.clear(); this.#surfaceToTab.clear(); this.#downloads.clear() }
 
   #state(r: SurfaceRecord): ProviderTab { const c = r.view.webContents; return { providerTabId: r.providerTabId, surfaceId: r.surfaceId, url: c.getURL(), title: c.getTitle(), loading: c.isLoading(), canGoBack: c.canGoBack(), canGoForward: c.canGoForward() } }
+  async #fitPageToSurface(r: SurfaceRecord): Promise<void> {
+    const contents = r.view.webContents
+    if (!r.mounted || contents.isDestroyed() || contents.getURL() === '') return
+    const serial = ++r.fitSerial
+    try {
+      contents.setZoomFactor(1)
+      const metrics = await contents.executeJavaScript(`(()=>{const root=document.documentElement,body=document.body;return{viewportWidth:Math.max(1,root?.clientWidth||innerWidth||1),contentWidth:Math.max(root?.scrollWidth||0,body?.scrollWidth||0)}})()`, true) as { viewportWidth: number; contentWidth: number }
+      if (serial !== r.fitSerial || !r.mounted || contents.isDestroyed()) return
+      contents.setZoomFactor(browserPanelFitZoom(metrics.viewportWidth, metrics.contentWidth))
+    } catch { /* Navigation or teardown can invalidate the document between measurements. */ }
+  }
   #tab(id: string): SurfaceRecord { const r = this.#tabs.get(id); if (r === undefined || r.view.webContents.isDestroyed()) throw new BrowserRuntimeError('TAB_NOT_FOUND', `IAB tab ${id} is gone.`); return r }
   #owned(owner: string, id: string): SurfaceRecord { const r = this.#tab(id); if (r.ownerAutomationSessionId !== owner) throw new BrowserRuntimeError('TAB_NOT_OWNED', `IAB tab ${id} is not leased to this automation session.`); return r }
   #recordBySurface(id: string): SurfaceRecord { const tab = this.#surfaceToTab.get(id); if (tab === undefined) throw new BrowserRuntimeError('TAB_NOT_FOUND', `Surface ${id} is gone.`); return this.#tab(tab) }

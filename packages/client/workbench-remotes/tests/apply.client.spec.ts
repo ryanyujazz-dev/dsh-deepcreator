@@ -48,4 +48,12 @@ describe('Workbench Remote BFF', () => {
     })
     expect(result.success, result.success ? undefined : String(result.error)).toBe(true)
   })
+
+  it('mounts the complete client-owned Browser lifecycle surface', () => {
+    const ids = new Set(BROWSER_REMOTE.descriptors.map(item => item.id))
+    expect([...ids].some(id => id.endsWith('#browser/newTab'))).toBe(true)
+    expect([...ids].some(id => id.endsWith('#browser/navigateTab'))).toBe(true)
+    expect([...ids].some(id => id.endsWith('#browser/closeTab'))).toBe(true)
+    expect([...ids].some(id => id.endsWith('#browser/snapshotImage'))).toBe(true)
+  })
 })

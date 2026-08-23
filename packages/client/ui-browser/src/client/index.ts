@@ -39,11 +39,14 @@ export function apply(ctx: ClientContext): void {
     surfaceHost: window.deepcreatorBrowserSurface !== undefined,
     async present(request, resource) {
       if (!ctx.workbench.types.list().some(type => type.id === 'browser')) return { status: 'unavailable', presenterId: 'workbench-browser', failure: { code: 'PANEL_UNAVAILABLE', stage: 'present', retryable: true, message: 'The Browser panel type is not registered in this client.' } }
-      ctx.workbench.present({ typeId: 'browser', instanceId: resource.id, route: 'instance', reveal: true, reason: 'agent' })
+      // Hydrate and verify the authoritative Browser identity before changing
+      // the Workbench route. Routing first exposes a false "stale page" while
+      // the matching full state snapshot is still in flight.
       await browser.refresh()
       const tab = browser.getSnapshot().state.tabs.find(candidate => candidate.tabId === resource.id)
       if (tab === undefined) return { status: 'unavailable', presenterId: 'workbench-browser', failure: { code: 'PANEL_UNAVAILABLE', stage: 'present', retryable: true, message: 'The Browser tab is absent from the client state snapshot.' } }
       if (tab.presentation === 'live' && window.deepcreatorBrowserSurface === undefined) return { status: 'unavailable', presenterId: 'workbench-browser', failure: { code: 'SURFACE_BRIDGE_UNAVAILABLE', stage: 'mount', retryable: false, message: 'This client has no native Browser surface bridge.' } }
+      ctx.workbench.present({ typeId: 'browser', instanceId: resource.id, route: 'instance', reveal: true, reason: 'agent' })
       const remaining = Math.max(1, request.deadlineAt - Date.now() - 500)
       if (tab.presentation === 'live') {
         const mounted = await browser.waitForSurface(resource.id, Math.min(remaining, 5_000))
@@ -52,7 +55,20 @@ export function apply(ctx: ClientContext): void {
       return { status: 'presented', presenterId: 'workbench-browser' }
     }, dismiss() {},
   }
-  const panel: PanelComponent = props => createElement(BrowserPanel, { ...props, browser })
+  const createTab = async () => {
+    const tab = await browser.newTab()
+    try {
+      const result = await ctx.presentation.open({ kind: 'browser-tab', tabId: tab.tabId })
+      if (result.status !== 'presented') throw new Error(result.failure?.message ?? `Browser presentation ${result.status}.`)
+    } catch (error) {
+      // A user-created blank tab has no useful background lifetime when its
+      // exact Surface cannot be shown. Roll it back instead of leaking it.
+      await browser.closeTab(tab.tabId)
+      throw error
+    }
+    return tab.tabId
+  }
+  const panel: PanelComponent = props => createElement(BrowserPanel, { ...props, browser, createTab })
   ctx.effect(() => {
     const disposers = [
       ctx.workbench.registerType({ id: 'browser', label: () => ctx.locale.bind(NS)('browser'), scope: 'session', order: 5, supportsHome: true, supportsCreate: false, supportsMultipleInstances: true, minWidth: 150, minHeight: 280, preferredWidth: 640, initialWidthRatio: 1 / 2, closePolicy: 'provider-controlled', disabledWhenAddressed: true }),

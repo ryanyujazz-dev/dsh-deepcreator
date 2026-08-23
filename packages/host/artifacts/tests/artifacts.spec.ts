@@ -1,4 +1,4 @@
-import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -6,7 +6,7 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
-  ARTIFACT_PRESENTATION_PROMPT, ARTIFACT_RESOLVER_DESCRIPTION, ArtifactReader,
+  ARTIFACT_PRESENTATION_PROMPT, ARTIFACT_RESOLVER_DESCRIPTION, ArtifactReader, resolveArtifactInstanceId,
 } from '../src/index.ts'
 
 const temporary: string[] = []
@@ -34,8 +34,16 @@ describe('ArtifactReader', () => {
     await writeFile(join(workspace, 'plan.md'), '# plan')
     const session = { id: 's1', header: { cwd: workspace } } as unknown as Session
     const reader = new ArtifactReader(new Context())
-    await expect(reader.read(session, join(workspace, 'plan.md'))).resolves.toMatchObject({ ok: true, content: '# plan' })
-    await expect(reader.read(session, 'plan.md')).resolves.toMatchObject({ ok: true, content: '# plan' })
+    await expect(reader.read(session, join(workspace, 'plan.md'))).resolves.toMatchObject({ ok: true, kind: 'text', content: '# plan' })
+    await expect(reader.read(session, 'plan.md')).resolves.toMatchObject({ ok: true, kind: 'text', content: '# plan' })
+  })
+
+  it('gives relative and absolute presentation inputs one workspace-rooted instance id', async () => {
+    const workspace = await mkdtemp(join(tmpdir(), 'dsh-artifacts-workspace-')); temporary.push(workspace)
+    const path = join(workspace, 'image.png')
+    await writeFile(path, 'image')
+    await expect(resolveArtifactInstanceId(workspace, 'image.png')).resolves.toBe(path)
+    await expect(resolveArtifactInstanceId(workspace, path)).resolves.toBe(path)
   })
 
   it('reads absolute paths that carry a symlinked workspace prefix', async () => {
@@ -48,7 +56,7 @@ describe('ArtifactReader', () => {
     await writeFile(join(workspace, 'plan.md'), '# plan')
     const session = { id: 's1', header: { cwd: linked } } as unknown as Session
     const reader = new ArtifactReader(new Context())
-    await expect(reader.read(session, join(linked, 'plan.md'))).resolves.toMatchObject({ ok: true, content: '# plan' })
+    await expect(reader.read(session, join(linked, 'plan.md'))).resolves.toMatchObject({ ok: true, kind: 'text', content: '# plan' })
   })
 
   it('rejects paths that escape the canonical workspace', async () => {
@@ -67,5 +75,69 @@ describe('ArtifactReader', () => {
     const reader = new ArtifactReader(new Context())
     await expect(reader.read(session, 'missing.md')).resolves.toMatchObject({ ok: false, code: 'NOT_FOUND' })
     await expect(reader.read({ id: 's1', header: {} } as unknown as Session, 'a.md')).resolves.toMatchObject({ ok: false, code: 'NO_WORKSPACE' })
+  })
+
+  it('returns fenced in-panel render payloads for images, PDFs and DOCX documents', async () => {
+    const workspace = await mkdtemp(join(tmpdir(), 'dsh-artifacts-workspace-')); temporary.push(workspace)
+    await writeFile(join(workspace, 'chart.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]))
+    await writeFile(join(workspace, 'report.pdf'), '%PDF-1.4\n%%EOF')
+    const docxFixture = join(process.cwd(), 'packages/host/artifacts/node_modules/mammoth/test/test-data/single-paragraph.docx')
+    await writeFile(join(workspace, 'brief.docx'), await readFile(docxFixture))
+    const session = { id: 's1', header: { cwd: workspace } } as unknown as Session
+    const ctx = new Context()
+    const reader = new ArtifactReader(ctx)
+
+    const image = await reader.read(session, 'chart.png')
+    expect(image).toMatchObject({ ok: true, kind: 'image', mediaType: 'image/png', url: expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+\/chart\.png$/) })
+    if (!image.ok || image.kind !== 'image') throw new Error('image payload missing')
+    await expect(fetch(image.url).then(response => ({
+      contentType: response.headers.get('content-type'),
+      resourcePolicy: response.headers.get('cross-origin-resource-policy'),
+      corsOrigin: response.headers.get('access-control-allow-origin'),
+    }))).resolves.toEqual({
+      contentType: 'image/png',
+      resourcePolicy: 'cross-origin',
+      corsOrigin: null,
+    })
+
+    const pdf = await reader.read(session, 'report.pdf')
+    expect(pdf).toMatchObject({ ok: true, kind: 'pdf', mediaType: 'application/pdf', url: expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+\/report\.pdf$/) })
+    if (!pdf.ok || pdf.kind !== 'pdf') throw new Error('pdf payload missing')
+    await expect(fetch(pdf.url).then(response => response.headers.get('content-type'))).resolves.toBe('application/pdf')
+
+    await expect(reader.read(session, 'brief.docx')).resolves.toMatchObject({
+      ok: true, kind: 'document', contentType: 'html', content: expect.stringContaining('<p>'),
+    })
+    await ctx.fiber.dispose()
+  })
+
+  it('serves HTML artifacts and their web assets from a fenced loopback preview', async () => {
+    const workspace = await mkdtemp(join(tmpdir(), 'dsh-artifacts-workspace-')); temporary.push(workspace)
+    const site = join(workspace, 'site')
+    await mkdir(join(site, 'assets'), { recursive: true })
+    await writeFile(join(site, 'index.html'), '<!doctype html><link rel="stylesheet" href="/assets/app.css"><h1>Preview</h1>')
+    await writeFile(join(site, 'assets', 'app.css'), 'h1 { color: red; }')
+    await writeFile(join(site, '.env'), 'SECRET=hidden')
+    const session = { id: 's1', header: { cwd: workspace } } as unknown as Session
+    const ctx = new Context()
+    const reader = new ArtifactReader(ctx)
+
+    const preview = await reader.preview(session, 'site/index.html')
+    expect(preview).toMatchObject({ ok: true, url: expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+\/index\.html$/) })
+    if (!preview.ok) throw new Error(preview.message)
+    await expect(fetch(preview.url).then(response => response.text())).resolves.toContain('<h1>Preview</h1>')
+    await expect(fetch(new URL('/assets/app.css', preview.url)).then(response => ({ status: response.status, text: response.text() })))
+      .resolves.toMatchObject({ status: 200 })
+    await expect(fetch(new URL('/.env', preview.url)).then(response => response.status)).resolves.toBe(404)
+
+    await ctx.fiber.dispose()
+  })
+
+  it('refuses browser previews for non-HTML artifacts', async () => {
+    const workspace = await mkdtemp(join(tmpdir(), 'dsh-artifacts-workspace-')); temporary.push(workspace)
+    await writeFile(join(workspace, 'plan.md'), '# plan')
+    const session = { id: 's1', header: { cwd: workspace } } as unknown as Session
+    const reader = new ArtifactReader(new Context())
+    await expect(reader.preview(session, 'plan.md')).resolves.toMatchObject({ ok: false, code: 'NOT_PREVIEWABLE' })
   })
 })

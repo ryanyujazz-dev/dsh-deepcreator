@@ -151,6 +151,12 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * only to return null; an all-declined chain renders nothing.
      */
     'conversation.chat.turnTail': { kind: 'chain'; scope: 'session'; owner: TurnTailOwnerProps }
+    /** Generated media rendered independently before the produced-files card. */
+    'deepcreator.conversation.chat.turnMedia': {
+      kind: 'list'
+      scope: 'session'
+      owner: TurnMediaOwnerProps
+    }
     /**
      * DeepCreator-owned additive rows immediately after the official Turn
      * tail and before the finalized message's IconActions. The official
@@ -403,6 +409,11 @@ export interface TurnTailOwnerProps {
    * back to the Host; the chat view resolves it against the session cwd.
    */
   openFile: (path: string) => void
+}
+
+/** Additive generated-media currency, retaining the official attachment presenter. */
+export interface TurnMediaOwnerProps extends TurnTailOwnerProps {
+  renderMessageImages: RenderMessageImages
 }
 
 /**

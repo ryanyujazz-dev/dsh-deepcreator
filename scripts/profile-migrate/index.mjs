@@ -28,6 +28,7 @@ const OWNED_DEPENDENCIES = new Set([
   '@ryanyujazz/dsh-client-ui-agent-preset',
   '@ryanyujazz/dsh-client-ui-browser',
   '@ryanyujazz/dsh-client-ui-conversation',
+  '@ryanyujazz/dsh-client-ui-image-generation',
   '@ryanyujazz/dsh-client-ui-layout',
   '@ryanyujazz/dsh-client-ui-model-selection',
   '@ryanyujazz/dsh-client-ui-permission-presets',
@@ -48,6 +49,7 @@ const OWNED_DEPENDENCIES = new Set([
   '@ryanyujazz/dsh-client-ui-workspace',
   '@ryanyujazz/dsh-artifacts',
   '@ryanyujazz/dsh-browser',
+  '@ryanyujazz/dsh-image-generation',
   '@ryanyujazz/dsh-presentation',
   '@ryanyujazz/dsh-browser-mcp',
   '@ryanyujazz/dsh-jobs-admin',
@@ -226,7 +228,10 @@ const inheritedPatch = existsSync(inheritedPatchPath)
   : '[]'
 writeFileSync(join(targetDir, 'cordis.patch.yml'), `${migratePatch(inheritedPatch)}\n`)
 
-execFileSync('pnpm', ['install', '--dir', targetDir], { stdio: 'inherit', shell: process.platform === 'win32' })
+// The migration just rewrote package.json, so a frozen pre-migration lockfile
+// cannot be authoritative. CI enables frozen lockfiles implicitly; opt out for
+// this managed, reproducible profile install.
+execFileSync('pnpm', ['install', '--no-frozen-lockfile', '--dir', targetDir], { stdio: 'inherit', shell: process.platform === 'win32' })
 if (!existsSync(dshBin)) {
   throw new Error(`DeepCreator profile migration: dsh CLI is unavailable at ${dshBin}; run pnpm install in ${root}`)
 }
@@ -258,9 +263,11 @@ if (!dump.includes('@ryanyujazz/dsh-client-ui-conversation')
   || !activeCompositionRow('ui-settings-models', '@deepseek-ai/dsh-client-ui-settings-models')
   || !activeCompositionRow('ui-settings-plugins', '@deepseek-ai/dsh-client-ui-settings-plugins')
   || !activeCompositionRow('deepcreator-browser', '@ryanyujazz/dsh-browser')
+  || !activeCompositionRow('deepcreator-image-generation', '@ryanyujazz/dsh-image-generation')
   || !activeCompositionRow('deepcreator-presentation', '@ryanyujazz/dsh-presentation')
   || !activeCompositionRow('deepcreator-client-presentation', '@ryanyujazz/dsh-client-presentation')
   || !activeCompositionRow('deepcreator-ui-browser', '@ryanyujazz/dsh-client-ui-browser')
+  || !activeCompositionRow('deepcreator-ui-image-generation', '@ryanyujazz/dsh-client-ui-image-generation')
   || dump.includes('deepcreator-browser-mcp')
   || dump.includes('execflow-conversation')
   || dump.includes('execflow-tool')) {

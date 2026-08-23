@@ -2,6 +2,7 @@
 import type { PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ToolCallBlock } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@ryanyujazz/dsh-client-ui-conversation/client'
+import type { RenderMessageImages } from '@ryanyujazz/dsh-client-ui-conversation/client'
 import type {} from '@ryanyujazz/dsh-client-locale/client'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -51,6 +52,8 @@ export interface ToolCallOwnerProps {
    * owner's think form.
    */
   execflow?: boolean | undefined
+  /** Render durable result images through the conversation's attachment owner. */
+  renderMessageImages: RenderMessageImages
 }
 
 /** Full props of a registered atomic Tool view. */

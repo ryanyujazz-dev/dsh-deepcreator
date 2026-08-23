@@ -1,12 +1,19 @@
 import { readFile, realpath } from 'node:fs/promises'
-import { isAbsolute, relative, resolve, sep } from 'node:path'
+import { extname, isAbsolute, relative, resolve, sep } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@ryanyujazz/dsh-presentation'
-import type { ArtifactReadResult } from './types.ts'
-export type { ArtifactReadError, ArtifactReadOk, ArtifactReadResult } from './types.ts'
+import mammoth from 'mammoth'
+import WordExtractor from 'word-extractor'
+import { ArtifactPreviewRegistry } from './preview-server.ts'
+import type { ArtifactPreviewResult, ArtifactReadError, ArtifactReadResult } from './types.ts'
+export type {
+  ArtifactDocumentReadOk, ArtifactImageReadOk, ArtifactPdfReadOk, ArtifactPreviewError,
+  ArtifactPreviewOk, ArtifactPreviewResult, ArtifactReadError, ArtifactReadOk, ArtifactReadResult,
+  ArtifactTextReadOk,
+} from './types.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context { artifacts: ArtifactReader }
@@ -40,8 +47,11 @@ export const ARTIFACT_RESOLVER_DESCRIPTION = [
  */
 export class ArtifactReader extends TypertRemoteService {
   static inject = inject
+  private readonly previews = new ArtifactPreviewRegistry()
+  private readonly wordExtractor = new WordExtractor()
   constructor(ctx: Context) {
     super(ctx, 'artifacts')
+    ctx.effect(() => () => { void this.previews.dispose() }, 'artifacts: preview server')
     ctx.systemPrompt?.section({
       name: 'deepcreator:artifact-presentation',
       order: 191,
@@ -59,7 +69,7 @@ export class ArtifactReader extends TypertRemoteService {
         if (value.kind !== 'artifact' || typeof value.artifactId !== 'string') throw new Error('artifact presentation requires string artifactId.')
         return { kind: 'artifact' as const, artifactId: value.artifactId }
       },
-      materialize: async (_context, input) => ({ kind: 'artifact', id: input.artifactId, mode: 'none' }),
+      materialize: async (context, input) => ({ kind: 'artifact', id: await resolveArtifactInstanceId(context.workspaceRoot, input.artifactId), mode: 'none' }),
     })
     ctx.effect(() => dispose, 'artifacts: presentation resolver')
   }
@@ -69,32 +79,96 @@ export class ArtifactReader extends TypertRemoteService {
     const cwd = session.header.cwd
     if (cwd === undefined) return { ok: false, code: 'NO_WORKSPACE', message: 'This session has no workspace.' }
     try {
-      const root = await realpath(cwd)
-      const candidate = resolve(root, path)
-      // Fence on the canonical form: an absolute input may carry a symlinked
-      // prefix (macOS temp roots sit behind /var) that a lexical comparison
-      // misreads as an escape. A missing target is fenced lexically first —
-      // a path that escapes and does not exist is still an escape.
-      let target: string
-      try {
-        target = await realpath(candidate)
-      } catch (error) {
-        if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error
-        const lexical = relative(root, candidate)
-        if (isAbsolute(lexical) || lexical === '..' || lexical.startsWith(`..${sep}`)) {
-          return { ok: false, code: 'OUTSIDE_WORKSPACE', message: 'Artifact path is outside the session workspace.' }
-        }
-        return { ok: false, code: 'NOT_FOUND', message: `File ${path} was not found.` }
+      const resolved = await resolveArtifact(cwd, path)
+      if (!resolved.ok) return resolved
+      const { target } = resolved
+      const extension = extname(target).toLowerCase()
+      const imageType = IMAGE_MEDIA_TYPES[extension]
+      if (imageType !== undefined) {
+        return { ok: true, kind: 'image', url: await this.previews.urlFor(target), mediaType: imageType }
       }
-      const rel = relative(root, target)
-      if (isAbsolute(rel) || rel === '..' || rel.startsWith(`..${sep}`)) {
-        return { ok: false, code: 'OUTSIDE_WORKSPACE', message: 'Artifact path resolves outside the session workspace.' }
+      if (extension === '.pdf') {
+        return { ok: true, kind: 'pdf', url: await this.previews.urlFor(target), mediaType: 'application/pdf' }
       }
-      return { ok: true, content: await readFile(target, 'utf8') }
+      if (extension === '.docx') {
+        const result = await mammoth.convertToHtml(
+          { path: target },
+          { convertImage: mammoth.images.dataUri, externalFileAccess: false },
+        )
+        return { ok: true, kind: 'document', contentType: 'html', content: result.value }
+      }
+      if (extension === '.doc') {
+        const document = await this.wordExtractor.extract(target)
+        return { ok: true, kind: 'document', contentType: 'text', content: document.getBody() }
+      }
+      return { ok: true, kind: 'text', content: await readFile(target, 'utf8') }
     } catch (error) {
       return { ok: false, code: 'READ_FAILED', message: error instanceof Error ? error.message : String(error) }
     }
   }
+
+  /** Materialize an HTML artifact as a loopback URL for Browser/Presentation. */
+  @Remote('preview')
+  async preview(session: Session, path: string): Promise<ArtifactPreviewResult> {
+    const cwd = session.header.cwd
+    if (cwd === undefined) return { ok: false, code: 'NO_WORKSPACE', message: 'This session has no workspace.' }
+    try {
+      const resolved = await resolveArtifact(cwd, path)
+      if (!resolved.ok) return resolved
+      if (!['.html', '.htm'].includes(extname(resolved.target).toLowerCase())) {
+        return { ok: false, code: 'NOT_PREVIEWABLE', message: 'Only HTML artifacts can be opened as a browser preview.' }
+      }
+      return { ok: true, url: await this.previews.urlFor(resolved.target), path: resolved.target }
+    } catch (error) {
+      return { ok: false, code: 'PREVIEW_FAILED', message: error instanceof Error ? error.message : String(error) }
+    }
+  }
+}
+
+const IMAGE_MEDIA_TYPES: Readonly<Record<string, string>> = {
+  '.avif': 'image/avif',
+  '.bmp': 'image/bmp',
+  '.gif': 'image/gif',
+  '.ico': 'image/x-icon',
+  '.jpeg': 'image/jpeg',
+  '.jpg': 'image/jpeg',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.webp': 'image/webp',
+}
+
+type ResolvedArtifact = { ok: true; target: string } | ArtifactReadError
+
+/** Stable presentation identity under the Session workspace's lexical root. */
+export async function resolveArtifactInstanceId(cwd: string, path: string): Promise<string> {
+  const resolved = await resolveArtifact(cwd, path)
+  if (!resolved.ok) throw new Error(`${resolved.code}: ${resolved.message}`)
+  const canonicalRoot = await realpath(cwd)
+  return resolve(cwd, relative(canonicalRoot, resolved.target))
+}
+
+async function resolveArtifact(cwd: string, path: string): Promise<ResolvedArtifact> {
+  const root = await realpath(cwd)
+  const candidate = resolve(root, path)
+  // Fence on the canonical form: an absolute input may carry a symlinked
+  // prefix (macOS temp roots sit behind /var) that a lexical comparison
+  // misreads as an escape. A missing target is fenced lexically first.
+  let target: string
+  try {
+    target = await realpath(candidate)
+  } catch (error) {
+    if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error
+    const lexical = relative(root, candidate)
+    if (isAbsolute(lexical) || lexical === '..' || lexical.startsWith(`..${sep}`)) {
+      return { ok: false, code: 'OUTSIDE_WORKSPACE', message: 'Artifact path is outside the session workspace.' }
+    }
+    return { ok: false, code: 'NOT_FOUND', message: `File ${path} was not found.` }
+  }
+  const rel = relative(root, target)
+  if (isAbsolute(rel) || rel === '..' || rel.startsWith(`..${sep}`)) {
+    return { ok: false, code: 'OUTSIDE_WORKSPACE', message: 'Artifact path resolves outside the session workspace.' }
+  }
+  return { ok: true, target }
 }
 
 export default ArtifactReader

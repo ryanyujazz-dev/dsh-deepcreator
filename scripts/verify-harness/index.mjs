@@ -95,6 +95,7 @@ for (const required of [
   '@ryanyujazz/dsh-client-ui-permission-presets',
   '@ryanyujazz/dsh-client-ui-subagent',
   '@ryanyujazz/dsh-client-ui-user-questions',
+  '@ryanyujazz/dsh-client-ui-image-generation',
   '@ryanyujazz/dsh-client-workbench-remotes',
   '@ryanyujazz/dsh-client-presentation',
   '@ryanyujazz/dsh-client-ui-workbench',
@@ -106,6 +107,7 @@ for (const required of [
   '@ryanyujazz/dsh-session-admin',
   '@ryanyujazz/dsh-review',
   '@ryanyujazz/dsh-terminal-workbench',
+  '@ryanyujazz/dsh-image-generation',
   '@deepseek-ai/dsh-terminal',
   '@deepseek-ai/dsh-terminal-bash',
 ]) {

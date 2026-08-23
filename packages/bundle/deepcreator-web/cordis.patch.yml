@@ -50,6 +50,9 @@
     - id: deepcreator-browser
       name: '@ryanyujazz/dsh-browser'
 
+    - id: deepcreator-image-generation
+      name: '@ryanyujazz/dsh-image-generation'
+
     - id: deepcreator-browser-playwright
       name: '@ryanyujazz/dsh-browser-playwright'
 
@@ -124,6 +127,9 @@
 
     - id: deepcreator-tool
       name: '@ryanyujazz/dsh-client-ui-tool'
+
+    - id: deepcreator-ui-image-generation
+      name: '@ryanyujazz/dsh-client-ui-image-generation'
 
     - id: deepcreator-trajectory
       name: '@ryanyujazz/dsh-client-ui-trajectory'

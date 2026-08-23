@@ -1,4 +1,4 @@
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import { resolveWorkspacePath, type ClientContext, type SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { createElement, type ReactNode } from 'react'
@@ -12,6 +12,9 @@ import type {} from '@ryanyujazz/dsh-client-ui-workbench/client'
 import { ArtifactIcon } from './ArtifactIcon.tsx'
 import { ArtifactPanel } from './ArtifactPanel.tsx'
 import { ArtifactCodeRenderer } from './ArtifactCodeRenderer.tsx'
+import {
+  ArtifactDocumentHtmlRenderer, ArtifactDocumentTextRenderer, ArtifactImageRenderer, ArtifactPdfRenderer,
+} from './ArtifactBinaryRenderers.tsx'
 import { ArtifactTurnCard } from './ArtifactTurnCard.tsx'
 import { producedForClosing, registerArtifactNodeDefinition } from './artifact-node-definition.ts'
 import { registerArtifactsConversationView } from './artifacts-snapshot-builder.ts'
@@ -22,7 +25,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' { interface LocaleNamespaceMap
 
 /** Required services: Workbench panel Slots, the locale service, the mounted artifacts remote, and the conversation projection registries. */
 export const inject = [
-  'slots', 'workbench', 'workspaces', 'locale', 'remote', 'remote.artifacts',
+  'slots', 'workbench', 'workspaces', 'sessions', 'locale', 'remote', 'remote.artifacts',
   'conversationEvents', 'conversationViews',
   'presentation',
 ]
@@ -42,8 +45,33 @@ export function apply(ctx: ClientContext): void {
       console.warn('artifact containing folder open rejected:', reason)
     })
   }
+  const previewHtml = async (sessionId: SessionId, path: string) => {
+    const wire = await artifacts.preview(sessionId, path)
+    if (!wire.ok) throw new Error(`${wire.error.code}: ${wire.error.message}`)
+    if (!wire.value.ok) throw new Error(`${wire.value.code}: ${wire.value.message}`)
+    return wire.value
+  }
+  const openInSystemBrowser = async (sessionId: SessionId, path: string) => {
+    const preview = await previewHtml(sessionId, path)
+    await ctx.workspaces.openPath(preview.path)
+  }
+  const openInDeepCreator = async (sessionId: SessionId, path: string) => {
+    const preview = await previewHtml(sessionId, path)
+    // The row promises the built-in Browser specifically. An explicit id is
+    // strict at Browser Runtime, so a missing IAB reports unavailable instead
+    // of silently changing the user's chosen destination.
+    const result = await ctx.presentation.open({ kind: 'url', url: preview.url, browserId: 'iab' })
+    if (result.status !== 'presented') {
+      throw new Error(result.failure === undefined
+        ? `PRESENTATION_UNAVAILABLE: HTML preview was ${result.status}.`
+        : `${result.failure.code}: ${result.failure.message}`)
+    }
+  }
   const panel = (props: WorkbenchPanelProps & PropsLocale<'workbench-artifact'>): ReactNode =>
-    createElement(ArtifactPanel, { ...props, artifacts, openContainingFolder })
+    createElement(ArtifactPanel, {
+      ...props, artifacts, openContainingFolder, openInDeepCreator, openInSystemBrowser,
+      workspaceRoot: ctx.sessions.list.getSnapshot().byId[props.sessionId]?.cwd,
+    })
   const turnCard = (props: PropsRuntime<'conversation.chat.turnTail'> & PropsLocale<'workbench-artifact'> & { matched: readonly string[] }): ReactNode =>
     createElement(ArtifactTurnCard, {
       ...props,
@@ -55,9 +83,10 @@ export function apply(ctx: ClientContext): void {
   }
   const presenter: PresentationProvider = {
     id: 'workbench-artifact', priority: 100, resourceKinds: ['artifact'], modes: ['none'], surfaceHost: false,
-    async present(_request, resource) {
+    async present(request, resource) {
       if (!ctx.workbench.types.list().some(type => type.id === 'artifact')) return { status: 'unavailable', presenterId: 'workbench-artifact', failure: { code: 'PANEL_UNAVAILABLE', stage: 'present', retryable: true, message: 'The Artifact panel type is not registered in this client.' } }
-      ctx.workbench.present({ typeId: 'artifact', instanceId: resource.id, route: 'instance', reveal: true, reason: 'agent' })
+      const workspaceRoot = ctx.sessions.list.getSnapshot().byId[request.sessionId as SessionId]?.cwd
+      ctx.workbench.present({ typeId: 'artifact', instanceId: resolveWorkspacePath(workspaceRoot, resource.id), route: 'instance', reveal: true, reason: 'agent' })
       return { status: 'presented', presenterId: 'workbench-artifact' }
     },
   }
@@ -68,6 +97,10 @@ export function apply(ctx: ClientContext): void {
       disposers.push(ctx.slots.inject('deepcreator.workbench.panel', () => ctx.slots.register({ name: 'deepcreator.workbench.panel', id: 'artifact', locale: NS }, panel)))
       disposers.push(ctx.slots.inject('deepcreator.workbench.panel-icon', () => ctx.slots.register({ name: 'deepcreator.workbench.panel-icon', id: 'artifact' }, ArtifactIcon)))
       disposers.push(ctx.slots.inject('deepcreator.workbench.artifact.renderer', () => ctx.slots.register({ name: 'deepcreator.workbench.artifact.renderer', id: 'code' }, ArtifactCodeRenderer)))
+      disposers.push(ctx.slots.inject('deepcreator.workbench.artifact.renderer', () => ctx.slots.register({ name: 'deepcreator.workbench.artifact.renderer', id: 'image' }, ArtifactImageRenderer)))
+      disposers.push(ctx.slots.inject('deepcreator.workbench.artifact.renderer', () => ctx.slots.register({ name: 'deepcreator.workbench.artifact.renderer', id: 'pdf' }, ArtifactPdfRenderer)))
+      disposers.push(ctx.slots.inject('deepcreator.workbench.artifact.renderer', () => ctx.slots.register({ name: 'deepcreator.workbench.artifact.renderer', id: 'document-html' }, ArtifactDocumentHtmlRenderer)))
+      disposers.push(ctx.slots.inject('deepcreator.workbench.artifact.renderer', () => ctx.slots.register({ name: 'deepcreator.workbench.artifact.renderer', id: 'document-text' }, ArtifactDocumentTextRenderer)))
       disposers.push(ctx.slots.inject('conversation.chat.turnTail', () => ctx.slots.register({
         name: 'conversation.chat.turnTail',
         priority: -100,

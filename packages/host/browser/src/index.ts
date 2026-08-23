@@ -10,7 +10,7 @@ import { BrowserRuntimeError, browserFailure } from './errors.ts'
 import { BrowserRuntime } from './runtime.ts'
 import { createBrowserToolDefinitions } from './tools.ts'
 import { BROWSER_SETTINGS_KEY, BrowserSettingsSchema, type BrowserSettings } from './settings.ts'
-import type { BrowserProvider, BrowserRemoteResult, BrowserStateSnapshot, BrowserTabState } from './types.ts'
+import type { BrowserNextAction, BrowserProvider, BrowserRemoteResult, BrowserStateSnapshot, BrowserTabState } from './types.ts'
 
 export * from './errors.ts'
 export * from './network-policy.ts'
@@ -54,6 +54,7 @@ export class BrowserHostService extends TypertRemoteService {
   // native `#private` fields are therefore invalid receivers in public calls.
   private readonly browser: BrowserRuntime
   private readonly turns = new Map<string, number>()
+  private userTabSequence = 0
 
   constructor(ctx: Context, config: Config = {}) {
     super(ctx, 'browserRuntime', { namespace: 'browser' })
@@ -111,6 +112,34 @@ export class BrowserHostService extends TypertRemoteService {
     try {
       await this.browser.close(String(agent.id), tabId, AbortSignal.timeout(5_000))
       return { ok: true, value: { closed: true, tabId } }
+    } catch (error) { return browserFailure(error) }
+  }
+
+  /** Explicit user action: create one persistent blank built-in Browser tab. */
+  @Remote('newTab')
+  async newTab(agent: Agent): Promise<BrowserRemoteResult<{ tab: BrowserTabState; nextAction: BrowserNextAction }>> {
+    const sessionId = String(agent.id)
+    try {
+      const created = await this.browser.createTab({
+        sessionId,
+        // Keep client-owned tabs outside Agent turn numbers. Their deliverable
+        // lifecycle means they remain until the user closes the exact tab.
+        turn: -1_000_000_000 - (++this.userTabSequence),
+        workspaceRoot: agent.session.header.cwd ?? process.cwd(),
+        selection: { preference: { browserId: 'iab' } },
+        lifecycle: 'deliverable',
+        signal: AbortSignal.timeout(10_000),
+      })
+      return { ok: true, value: created }
+    } catch (error) { return browserFailure(error) }
+  }
+
+  /** Explicit user action: navigate the exact logical tab from the panel URL bar. */
+  @Remote('navigateTab')
+  async navigateTab(agent: Agent, tabId: string, url: string): Promise<BrowserRemoteResult<{ tab: BrowserTabState }>> {
+    try {
+      const tab = await this.browser.navigateFromClient(String(agent.id), tabId, url, AbortSignal.timeout(30_000))
+      return { ok: true, value: { tab } }
     } catch (error) { return browserFailure(error) }
   }
 

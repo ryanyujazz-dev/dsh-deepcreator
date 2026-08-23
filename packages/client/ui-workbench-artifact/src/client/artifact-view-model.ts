@@ -9,6 +9,11 @@ export function isMarkdownArtifactPath(path: string): boolean {
   return lang === 'markdown' || lang === 'mdx'
 }
 
+/** Browser-previewable produced entry files. */
+export function isHtmlArtifactPath(path: string): boolean {
+  return /\.html?$/i.test(path)
+}
+
 /** Trailing path segment, the part that identifies the file at a glance. */
 export function basename(path: string): string {
   const at = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'))
@@ -20,10 +25,11 @@ export function basename(path: string): string {
  * counter, mirroring the terminal project-name pattern. A later production
  * of the same path keeps its pill identity.
  */
-function artifactTabPaths(records: readonly FileArtifactRecord[], tabs: readonly string[]): string[] {
-  const paths = records.map(record => record.path)
+function artifactTabPaths(records: readonly FileArtifactRecord[], tabs: readonly string[], normalize: (path: string) => string): string[] {
+  const paths = records.map(record => normalize(record.path))
   const seen = new Set(paths)
-  for (const path of tabs) {
+  for (const value of tabs) {
+    const path = normalize(value)
     if (seen.has(path)) continue
     seen.add(path)
     paths.push(path)
@@ -31,10 +37,10 @@ function artifactTabPaths(records: readonly FileArtifactRecord[], tabs: readonly
   return paths
 }
 
-export function artifactTabLabels(records: readonly FileArtifactRecord[], tabs: readonly string[] = []): Record<string, string> {
+export function artifactTabLabels(records: readonly FileArtifactRecord[], tabs: readonly string[] = [], normalize: (path: string) => string = path => path): Record<string, string> {
   const counts = new Map<string, number>()
   const labels: Record<string, string> = {}
-  for (const path of artifactTabPaths(records, tabs)) {
+  for (const path of artifactTabPaths(records, tabs, normalize)) {
     const name = basename(path)
     const seen = (counts.get(name) ?? 0) + 1
     counts.set(name, seen)
@@ -44,8 +50,8 @@ export function artifactTabLabels(records: readonly FileArtifactRecord[], tabs: 
 }
 
 /** Artifact instance ids are the real file paths used to resolve tab glyphs. */
-export function artifactTabFilePaths(records: readonly FileArtifactRecord[], tabs: readonly string[] = []): Record<string, string> {
-  return Object.fromEntries(artifactTabPaths(records, tabs).map(path => [path, path]))
+export function artifactTabFilePaths(records: readonly FileArtifactRecord[], tabs: readonly string[] = [], normalize: (path: string) => string = path => path): Record<string, string> {
+  return Object.fromEntries(artifactTabPaths(records, tabs, normalize).map(path => [path, path]))
 }
 
 /** Visible breadcrumb segments; absolute slash roots stay in the accessible full path only. */
