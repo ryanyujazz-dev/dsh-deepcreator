@@ -10,6 +10,7 @@ import type {
 } from '@deepseek-ai/dsh-client-runtime/client'
 import { JsonBlock, MessageText, StateDot } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { ChatNodeViewProps, ChatViewSlotProps } from '../contract/slots.ts'
+import type { PendingOutgoingMessage } from '../input/contract.ts'
 import { CompactionItem } from './CompactionItem.tsx'
 import { ContextInjectionRow } from './ContextInjectionRow.tsx'
 import { MessageIconActions } from './MessageIconActions.tsx'
@@ -175,21 +176,29 @@ function projectUserText(text: string): ReactNode {
 
 /** Right-aligned bubble shared by user and steering rows. */
 function UserStyleBubble({
-  content, renderMessageImages, actions, pending = false, t,
+  content, renderMessageImages, actions, pending, successorId, t,
 }: {
   content: readonly unknown[]
   renderMessageImages: ChatNodeViewProps['renderMessageImages']
   /** Optional IconActions (or similar) below the bubble; receives the joined text. */
   actions?: (text: string) => ReactNode
-  /** Whether this is the Host-authoritative pre-admission steering projection. */
-  pending?: boolean
+  /** Which transient handoff this bubble presents before durable admission. */
+  pending?: 'steering' | 'outgoing'
+  /** Durable Chat successor identity; present only on official user/steering rows. */
+  successorId?: string
   t: ChatViewSlotProps['t']
 }): ReactNode {
   const { text, images, rest } = contentParts(content)
   const truncated = (total: number): string => t('json.truncated', { total })
   const showBubble = text !== '' || rest.length > 0
   return (
-    <div className={css.userRow} data-pending-steering={pending || undefined} data-time-hover-root>
+    <div
+      className={css.userRow}
+      data-pending-steering={pending === 'steering' || undefined}
+      data-pending-outgoing={pending === 'outgoing' || undefined}
+      data-chat-message-successor-id={successorId}
+      data-time-hover-root
+    >
       <div className={css.userStack}>
         {renderMessageImages({ images, align: 'end' })}
         {showBubble && <div className={css.bubble}>
@@ -217,11 +226,42 @@ export function PendingSteeringBubble({ content, renderMessageImages = () => nul
     <UserStyleBubble
       content={content}
       renderMessageImages={renderMessageImages}
-      pending
+      pending="steering"
       t={t}
       actions={text => (
         <MessageIconActions
           text={text}
+          clock="start"
+          className={css.actions}
+          t={t}
+        />
+      )}
+    />
+  )
+}
+
+/**
+ * Render one browser-local ordinary send until the official queue/log
+ * projection arrives. Image bytes remain owned by the attachment pipeline;
+ * an image-only send uses the existing pending-image copy as its brief echo.
+ */
+export function PendingOutgoingBubble({ message, t }: {
+  message: PendingOutgoingMessage
+  t: ChatViewSlotProps['t']
+}): ReactNode {
+  const imageOnly = message.text === '' && message.imageNames.length > 0
+  const text = imageOnly
+    ? `${t('image.pending')}${message.imageNames.length > 1 ? ` × ${String(message.imageNames.length)}` : ''}`
+    : message.text
+  return (
+    <UserStyleBubble
+      content={text === '' ? [] : [{ type: 'text', text }]}
+      renderMessageImages={() => null}
+      pending="outgoing"
+      t={t}
+      actions={copy => (
+        <MessageIconActions
+          text={copy}
           clock="start"
           className={css.actions}
           t={t}
@@ -240,6 +280,7 @@ export const UserMessageNodeView = memo(function UserMessageNodeView({
     <UserStyleBubble
       content={data.content}
       renderMessageImages={renderMessageImages}
+      successorId={`chat:${node.kind}:${String(data.seq)}`}
       t={t}
       actions={text => (
         <MessageIconActions

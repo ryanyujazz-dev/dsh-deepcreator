@@ -11,7 +11,6 @@
 import type { ClientContext, ISessions, SessionBinding, SessionFace, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { InputTriggerController } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import type { TranslateNS } from '@ryanyujazz/dsh-client-locale/client'
-import { queueReadFaceOf } from '../queue/store.ts'
 import type { ComposerKeyboard, DraftAttachmentId, SessionInputResolver, SessionInput } from './contract.ts'
 import type { InputSubmitMode } from '../contract/composer-submission.ts'
 import type { PopupDismissFace } from './facade.ts'
@@ -79,7 +78,7 @@ export class InputHub implements SessionInputResolver {
       actx,
       inputTriggers: () => this.controller(actx),
       popup: () => this.popup(actx),
-      queue: queueReadFaceOf(session),
+      authoritative: session,
       defaultSink: (text, imageIds, mode) => { this.sink(session, text, imageIds, mode) },
       commandImages: {
         serialize: ids => this.conversation().serializeDraftImages(ids),

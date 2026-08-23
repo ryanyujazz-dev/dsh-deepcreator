@@ -18,6 +18,32 @@ import type { InputSubmitMode } from '../contract/composer-submission.ts'
 export type DraftAttachmentId = Branded<'DraftAttachmentId'>
 
 /**
+ * Browser-local presentation of one ordinary message between the submit
+ * gesture and the first authoritative Host projection that represents it.
+ * It is deliberately not durable session state: the Host queue/log remains
+ * the sole business authority and replaces this row as soon as it arrives.
+ */
+export interface PendingOutgoingMessage {
+  /** Session-input-local identity used only as a React key and settlement handle. */
+  readonly id: number
+  /** Exact serialized text sent to the ordinary prompt path. */
+  readonly text: string
+  /** Browser draft image names, used only to match the later durable content. */
+  readonly imageNames: readonly string[]
+  /** Where the eventual authoritative projection belongs. */
+  readonly placement: 'turn' | 'queue' | 'steering'
+  /**
+   * Official projection that accepted this echo. The echo remains visible
+   * until that projection's owning React surface confirms it has committed;
+   * network admission alone is not a visual handoff.
+   */
+  readonly successor?: {
+    readonly source: 'queue' | 'chat'
+    readonly id: string
+  }
+}
+
+/**
  * The scoped-event application verbs: the hub's bail listeners call these,
  * and the boolean answer IS the event's bail value (true ⟺ the machine
  * accepted after phase and span/bare-token guards).
@@ -54,6 +80,8 @@ export interface SessionInput extends InputTarget {
    * @param text - notice body.
    */
   notify(level: 'info' | 'error', text: string): void
+  /** Retire local echoes only after their authoritative presentation committed. */
+  acknowledgeOutgoing(ids: readonly number[]): void
   /** Input state store (InputZone currency + decorations read here). */
   readonly state: SnapshotStore<InputState>
 }
@@ -221,6 +249,11 @@ export interface InputState {
   readonly paste?: PasteAttemptState
   /** Read-only transient inbox projection (`session/queue`, including pending steering). */
   readonly queue: readonly QueuedMessage[]
+  /**
+   * Ephemeral local echoes awaiting an authoritative queue row or durable
+   * user message. Absent on older/input-machine-only snapshots.
+   */
+  readonly pendingOutgoing?: readonly PendingOutgoingMessage[]
 }
 
 /**

@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { useSyncExternalStore } from 'react'
 import {
-  EMPTY_CHAT_SNAPSHOT, EMPTY_CONVERSATION_VIEWS,
+  createSnapshotStore, EMPTY_CHAT_SNAPSHOT, EMPTY_CONVERSATION_VIEWS,
 } from '@deepseek-ai/dsh-client-runtime/client'
 import type {
   ConversationSnapshot, QueuedMessage, SessionId, SessionListState,
@@ -76,12 +76,13 @@ function kitFor(snapshot: ConversationSnapshot, injected: Partial<QueueDockInjec
     useSessions: (() => { throw new Error('unused') }) as unknown as SnapshotSelectorHook<SessionListState>,
     useWorkspaces: (() => { throw new Error('unused') }) as never,
     useProjection: (() => undefined) as never,
-    useInput: (() => { throw new Error('unused') }) as never,
+    useInput: ((selector: (state: InputState) => unknown) => selector(INPUT_STATE)) as never,
     inputActions: { setDraft: () => {}, submit: () => {} } as never,
     session: snapshot,
     input: INPUT_STATE,
     updateQueue: vi.fn(() => Promise.resolve()),
     notify: vi.fn(),
+    acknowledgeOutgoing: vi.fn(),
     ...injected,
   }
 }
@@ -100,6 +101,58 @@ describe('QueueDock', () => {
     const source = liveSession(snap)
     const { container } = render(<QueueDock {...kitFor(snap)} useSession={source.useSession} />)
     expect(container.innerHTML).toBe('')
+  })
+
+  it('shows a queued local echo immediately and keeps it read-only', () => {
+    const snap = snapshotWith([])
+    const source = liveSession(snap)
+    const input: InputState = {
+      ...INPUT_STATE,
+      pendingOutgoing: [{ id: 1, text: '马上显示', imageNames: [], placement: 'queue' }],
+    }
+    const useInput = ((selector: (state: InputState) => unknown) => selector(input)) as never
+    const view = render(<QueueDock {...kitFor(snap, { useInput })} useSession={source.useSession} />)
+
+    expect(view.getByText('马上显示').closest('[data-pending-outgoing]')).not.toBeNull()
+    expect(view.queryByLabelText('编辑排队消息')).toBeNull()
+    expect(view.queryByLabelText('删除排队消息')).toBeNull()
+  })
+
+  it('hands a paired local echo to the committed authoritative queue row', () => {
+    const snap = snapshotWith([row('q-ready', '马上显示')])
+    const source = liveSession(snap)
+    const inputStore = createSnapshotStore<InputState>({
+      ...INPUT_STATE,
+      pendingOutgoing: [{
+        id: 7,
+        text: '马上显示',
+        imageNames: [],
+        placement: 'queue',
+        successor: { source: 'queue', id: 'queue:q-ready:queued' },
+      }],
+    })
+    const acknowledgeOutgoing = vi.fn((ids: readonly number[]) => {
+      const acknowledged = new Set(ids)
+      inputStore.set({
+        ...inputStore.getSnapshot(),
+        pendingOutgoing: (inputStore.getSnapshot().pendingOutgoing ?? [])
+          .filter(message => !acknowledged.has(message.id)),
+      })
+    })
+    const useInput = ((selector: (state: InputState) => unknown) => useSyncExternalStore(
+      inputStore.subscribe,
+      () => selector(inputStore.getSnapshot()),
+    )) as never
+    const view = render(
+      <QueueDock
+        {...kitFor(snap, { useInput, acknowledgeOutgoing })}
+        useSession={source.useSession}
+      />,
+    )
+
+    expect(view.getAllByText('马上显示')).toHaveLength(1)
+    expect(view.container.querySelector('[data-pending-outgoing]')).toBeNull()
+    expect(acknowledgeOutgoing).toHaveBeenCalledWith([7])
   })
 
   it('renders one row directly and defaults multiple rows to a collapsible count header', () => {
