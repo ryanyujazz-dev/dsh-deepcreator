@@ -61,7 +61,14 @@ export function apply(ctx: ClientContext): void {
       ctx.slots.inject('deepcreator.settings.preferences.item', () => ctx.slots.register({ name: 'deepcreator.settings.preferences.item', id: 'browser-data', order: 50, locale: NS, inject: () => ({ remote, browser }) }, BrowserDataSetting)),
       ctx.slots.inject('deepcreator.settings.preferences.item', () => ctx.slots.register({ name: 'deepcreator.settings.preferences.item', id: 'browser-preferences', order: 40, locale: NS, inject: () => ({ settings: browserSettings }) }, BrowserPreferenceSetting)),
       ctx.locale.register(NS, { zh, en }), ctx.presentation.providers.register(presenter),
-      ctx.workbench.dismissals.subscribe(() => { const dismissal = ctx.workbench.dismissals.getSnapshot(); if (dismissal?.typeId === 'browser') ctx.presentation.dismiss('browser-tab', dismissal.instanceId) }),
+      ctx.workbench.dismissals.subscribe(() => {
+        const dismissal = ctx.workbench.dismissals.getSnapshot()
+        if (dismissal?.typeId !== 'browser') return
+        ctx.presentation.dismiss('browser-tab', dismissal.instanceId)
+        // Hiding the Browser group is presentation-only. Closing one of its
+        // instance tabs is an explicit resource-destruction request.
+        if (dismissal.instanceId !== undefined) void browser.closeTab(dismissal.instanceId)
+      }),
     ]
     return () => { for (const dispose of disposers.reverse()) dispose(); browser.dispose() }
   }, 'ui-browser: client runtime and workbench presenter')

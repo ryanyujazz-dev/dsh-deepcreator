@@ -98,7 +98,7 @@ Every client advertises exact `(resourceKind, modes, surfaceHost)` capabilities 
 
 Failures are structured as `code`, `stage`, `retryable`, and `message`. Codes distinguish no capable client, no presenter, panel render timeout, missing native bridge, native mount rejection/timeout/destruction, presenter exception, receipt timeout, disconnect, resolver absence, and materialization failure. `presented` exclusively means the Browser panel committed the exact logical tab and its native Surface completed mount and visibility acknowledgement; a Workbench shell or loaded Provider page is insufficient. It is never reused for “headless is controllable”. A newly materialized URL tab—and any fresh temporary live IAB tab that never became visible—is rolled back when presentation does not complete, so callers cannot continue against a half-success tab.
 
-A dismissal tombstone is keyed by session, turn, and canonical resource. Once the user closes a resource, repeated presentation in that turn returns `suppressed`; closing presentation does not itself close an already-owned Browser tab. Non-retryable presentation failures are separately tombstoned by session, turn, and canonical tool input before any repeat materialization, so an Agent cannot create duplicate tabs or repeatedly churn the same broken panel. Both tombstone classes expire at turn end.
+A dismissal tombstone is keyed by session, turn, and canonical resource. Once the user hides a presented resource, repeated presentation in that turn returns `suppressed`; hiding or unmounting presentation does not itself close an already-owned Browser tab. Closing an individual Browser instance is a different, explicit lifecycle command: the Client calls the agent-fenced Browser `closeTab` Remote, which drains the exact tab, closes its Provider page, removes its logical identity, and bumps Browser state. Non-retryable presentation failures are separately tombstoned by session, turn, and canonical tool input before any repeat materialization, so an Agent cannot create duplicate tabs or repeatedly churn the same broken panel. Both tombstone classes expire at turn end.
 
 The React-free `@ryanyujazz/dsh-client-presentation` package owns the claim loop and `PresentationProviderRegistry`. `BrowserClientRuntime` now consumes Browser state only. Browser, Artifact, and Review UI packages independently register their default Workbench presenters. `typeId: "browser"` remains only inside the Browser Workbench adapter for layout compatibility.
 
@@ -122,7 +122,7 @@ const dispose = presentation.providers.register({
 })
 ```
 
-For live IAB content the UI additionally supplies a `BrowserSurfaceBridge`; snapshot Providers need only render URL, state, action history, and the latest event-driven screenshot. Screenshot bytes live in Browser artifacts and are fetched through a separate agent-fenced preview Remote keyed by `snapshotArtifactId`; the atomic Browser state snapshot never carries multi-megabyte image data. Replacing the Presenter changes no Agent tool, Host Runtime, Browser Provider, network policy, or approval rule.
+For live IAB content the UI additionally supplies a `BrowserSurfaceBridge`; snapshot Providers need only render URL, state, action history, and the latest event-driven screenshot. Screenshot bytes live in Browser artifacts and are fetched through a separate agent-fenced preview Remote keyed by `snapshotArtifactId`; the atomic Browser state snapshot never carries multi-megabyte image data. Preview hydration publishes independently of Host revision, reports fetch errors instead of presenting them as “not yet captured”, and uses bounded automatic plus explicit retries. Replacing the Presenter changes no Agent tool, Host Runtime, Browser Provider, network policy, or approval rule.
 
 The Workbench adapter sends the panel-body rectangle when mounting a Surface and measures it again after the asynchronous native mount resolves. Subsequent element resize notifications update the exact same `surfaceId`, so Electron's WebContents viewport tracks the panel width instead of retaining a pre-layout rectangle. Bounds are expressed in renderer CSS pixels/Electron DIPs; the page receives a real narrower viewport and reflows normally rather than being visually transformed.
 
@@ -134,6 +134,7 @@ The Workbench adapter sends the panel-body rectangle when mounting a Surface and
 - `markDeliverable` preserves a result for the user.
 - `markHandoff` preserves one next-turn continuation and resets to temporary.
 - Agent/Host teardown drains commands and releases all Provider resources.
+- Hiding the Browser Group retains its tabs; closing one Browser instance immediately closes the exact Provider page and invalidates its `tabId`.
 - Restored Session logs never fabricate old tabs; stale ids return `TAB_NOT_FOUND`.
 
 ## Security
