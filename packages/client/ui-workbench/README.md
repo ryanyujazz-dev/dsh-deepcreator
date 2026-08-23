@@ -8,6 +8,8 @@ Every Mosaic cell uses the `WorkbenchPanelShell` exported by ui-primitives. The 
 
 When Workbench Focus covers the Stage while the Sidebar is closed, the shared Header's left tabs/title consume AppFrame's platform-safe leading inset, clearing the macOS traffic lights and Sidebar reopen button. Maximized, fullscreen, and non-macOS states automatically fall back to clearing only the reopen control; ordinary right-column panels retain the compact inset.
 
+Providers may replace an instance id with its canonical identity through the panel owner. The store atomically rewrites and deduplicates the tab list while retaining the active route; this presentation-state migration deliberately emits no dismissal edge.
+
 Topology is deterministic. The second type vertically splits the first column without changing its width. The third creates two equal columns at one-half Stage, the fourth splits the second column, and the fifth creates three equal columns at two-thirds Stage. A cell deletion lets its sibling fill the column; an empty column is removed while survivor pixel widths remain unchanged and right-aligned. Every panel column has a 150px floor; Conversation has a 360px floor.
 
 Responsive layout removes whole columns from right to left without rewriting topology. Activating a responsive-hidden type swaps its real cell with the real top-left cell, so later widening reveals the updated topology. If a type absent from topology needs a new odd column that cannot fit, it atomically replaces the top-left type. Same-type instances always remain tabs and do not consume cells. Hidden Groups stay mounted so visibility never implies resource disposal.

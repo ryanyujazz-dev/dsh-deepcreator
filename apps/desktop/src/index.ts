@@ -7,8 +7,8 @@
 
 import { join } from 'node:path'
 import { createRequire } from 'node:module'
-import { app, BrowserWindow, dialog, shell, type Event } from 'electron'
-import { resolveDesktopDshLaunch, resolveDesktopWorkspace } from './dsh-launch.ts'
+import { app, BrowserWindow, dialog, session, shell, type Event } from 'electron'
+import { resolveDesktopDshLaunch, resolveDesktopWorkspace, resolveSystemProxyEnvironment } from './dsh-launch.ts'
 import { startDesktopHost, type DesktopHost } from './host-process.ts'
 import { nativeWindowChromeOptions } from './window-options.ts'
 import { BrowserRpcServer } from './browser-rpc-server.ts'
@@ -112,13 +112,22 @@ async function start(): Promise<void> {
     require.resolve('@deepseek-ai/dsh/package.json'),
     process.env,
   )
+  let systemProxyEnv: NodeJS.ProcessEnv = {}
+  try {
+    systemProxyEnv = await resolveSystemProxyEnvironment(
+      process.env,
+      url => session.defaultSession.resolveProxy(url),
+    )
+  } catch (error) {
+    console.warn(`[deepcreator] Could not resolve the operating system proxy: ${error instanceof Error ? error.message : String(error)}`)
+  }
   let activeHost: DesktopHost
   try {
     activeHost = await startDesktopHost({
       command: launch.command,
       args: launch.args,
       cwd: resolveDesktopWorkspace(process.env, process.cwd()),
-      env: { ...launch.env, ...activeBrowserRpc.hostEnv() },
+      env: { ...launch.env, ...systemProxyEnv, ...activeBrowserRpc.hostEnv() },
       startupTimeoutMs: STARTUP_TIMEOUT_MS,
       shutdownTimeoutMs: SHUTDOWN_TIMEOUT_MS,
       onStdout: (line) => { console.log(`[dsh-host] ${line}`) },

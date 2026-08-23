@@ -15,3 +15,12 @@ export function normalizeBrowserViewBounds(value: BrowserViewBounds): BrowserVie
     width: Math.max(0, finite(value.width)), height: Math.max(0, finite(value.height)),
   }
 }
+
+/**
+ * Keep fixed-width desktop pages inside a narrow Browser Surface without
+ * changing UA/profile identity. Responsive pages remain at 100% zoom.
+ */
+export function browserPanelFitZoom(viewportWidth: number, contentWidth: number): number {
+  if (!Number.isFinite(viewportWidth) || !Number.isFinite(contentWidth) || viewportWidth <= 0 || contentWidth <= viewportWidth + 1) return 1
+  return Math.max(0.25, Math.min(1, Math.round((viewportWidth / contentWidth) * 1_000) / 1_000))
+}

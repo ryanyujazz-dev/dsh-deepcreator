@@ -91,6 +91,39 @@ describe('TurnChangeCard', () => {
     expect((view.getByRole('button', { name: '撤销' }) as HTMLButtonElement).disabled).toBe(true)
   })
 
+  it('leaves binary outputs to the Artifact card instead of duplicating them as changes', () => {
+    const binaryOnly = props({
+      status: null, checks: null, scope: 'uncommitted', entries: {}, error: null,
+      history: { ok: true, repositoryRoot: '/workspace', turns: [{
+        turn: 7, totalFiles: 2, remainingFiles: 2, state: 'active', undoable: true,
+        files: [
+          // The extension fallback covers the short settling window before the
+          // Host has replaced its provisional text classification.
+          { path: 'output/chart.PNG', state: 'pending', presentation: 'text' },
+          { path: 'output/report.pdf', state: 'pending', presentation: 'binary', lineStatsState: 'not-applicable' },
+        ],
+      }] },
+    })
+    const view = render(<TurnChangeCard {...binaryOnly} />)
+    expect(view.container.innerHTML).toBe('')
+
+    const mixed = props({
+      status: null, checks: null, scope: 'uncommitted', entries: {}, error: null,
+      history: { ok: true, repositoryRoot: '/workspace', turns: [{
+        turn: 7, totalFiles: 2, remainingFiles: 2, state: 'active', undoable: true,
+        files: [
+          { path: 'src/index.ts', state: 'pending', additions: 3, deletions: 1, presentation: 'text', lineStatsState: 'available' },
+          { path: 'output/chart.png', state: 'pending', presentation: 'text' },
+        ],
+      }] },
+    })
+    const mixedView = render(<TurnChangeCard {...mixed} />)
+    expect(mixedView.getByText('变更 1 个文件')).toBeTruthy()
+    fireEvent.click(mixedView.getByText('变更 1 个文件'))
+    expect(mixedView.getByText('src/index.ts')).toBeTruthy()
+    expect(mixedView.queryByText('output/chart.png')).toBeNull()
+  })
+
   it('keeps the card and actions on the shared panel interaction tokens', () => {
     expect(sharedStylesheet).toContain('background: var(--dsw-specific-sidebar-fill);')
     expect(sharedStylesheet).toMatch(/\.card\s*\{[^}]*border: 1px solid var\(--dsw-alias-border-l1\);[^}]*border-radius: 12px;[^}]*\}/s)

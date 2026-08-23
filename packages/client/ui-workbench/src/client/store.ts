@@ -55,6 +55,7 @@ type WorkbenchActions = {
   ) => void
   hide: (draft: WorkbenchState, typeId: string) => void
   closeTab: (draft: WorkbenchState, typeId: string, instanceId: string) => void
+  replaceTab: (draft: WorkbenchState, typeId: string, fromInstanceId: string, toInstanceId: string) => void
   showHome: (draft: WorkbenchState, typeId: string) => void
   setOuterWidth: (draft: WorkbenchState, width: number) => void
   completeOuterResize: (draft: WorkbenchState, startWidth: number, endWidth: number) => void
@@ -211,6 +212,13 @@ export function createWorkbenchStore(): EngineStoreHandle<WorkbenchState, Workbe
         if (replacement === undefined) delete group.activeInstanceId
         else group.activeInstanceId = replacement
         group.activeRoute = replacement === undefined ? 'home' : 'instance'
+      },
+      replaceTab: (d, typeId, fromInstanceId, toInstanceId) => {
+        if (fromInstanceId === toInstanceId) return
+        const group = groupOf(d, typeId)
+        if (group === undefined || !group.tabs.includes(fromInstanceId)) return
+        group.tabs = [...new Set(group.tabs.map(id => id === fromInstanceId ? toInstanceId : id))]
+        if (group.activeInstanceId === fromInstanceId) group.activeInstanceId = toInstanceId
       },
       showHome: (d, typeId) => {
         const group = groupOf(d, typeId)

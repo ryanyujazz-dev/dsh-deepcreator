@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import { PresentationHostService } from '../src/index.ts'
 import { PresentationRuntime } from '../src/runtime.ts'
 import type { PresentationClientDescriptor } from '../src/types.ts'
@@ -30,6 +31,27 @@ describe('PresentationRuntime', () => {
     })
     expect(dispose).toBeTypeOf('function')
     dispose()
+  })
+
+  it('lets an explicit client action use the same resolver and receipt protocol while the Agent is idle', async () => {
+    const ctx = new Context()
+    const service = new PresentationHostService(ctx)
+    service.registerResolver({
+      kind: 'user-demo', description: 'user demo',
+      inputSchema: { type: 'object', additionalProperties: false, properties: { kind: { type: 'string', const: 'user-demo', required: true }, id: { type: 'string', required: true } } },
+      parse: input => input as { kind: 'user-demo'; id: string },
+      materialize: async (_context, input) => ({ kind: 'demo', id: input.id, mode: 'live' }),
+    })
+    const agent = { id: 'agent-user-open', session: { header: { cwd: '/tmp' } } } as unknown as Agent
+    const opened = service.open(agent, JSON.stringify({ kind: 'user-demo', id: 'from-row' }))
+    await new Promise(resolve => setTimeout(resolve, 0))
+    const pending = service.pending(agent, liveClient('desktop'))
+    if (!pending.ok) throw new Error(pending.message)
+    const request = pending.value.requests[0]!
+    expect(request.turn).toBeLessThan(0)
+    expect(service.claim(agent, request.requestId, liveClient('desktop'))).toMatchObject({ ok: true, value: { claimed: true } })
+    expect(service.acknowledge(agent, { requestId: request.requestId, resourceKey: 'demo:from-row', clientId: 'desktop', status: 'presented' })).toMatchObject({ ok: true, value: { acknowledged: true } })
+    await expect(opened).resolves.toMatchObject({ ok: true, value: { status: 'presented', resource: { id: 'from-row' } } })
   })
 
   it('filters incapable clients and fences claim/acknowledge by client id', async () => {

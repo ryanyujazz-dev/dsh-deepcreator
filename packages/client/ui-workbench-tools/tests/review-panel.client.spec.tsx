@@ -346,6 +346,49 @@ describe('Review Panel file stream', () => {
     input.controller.dispose()
   })
 
+  it('tracks async patch growth when the viewport and its first virtual rows mount together', async () => {
+    let grown = false
+    const observers = new Set<ResizeObserverProbe>()
+    class ResizeObserverProbe implements ResizeObserver {
+      readonly observed = new Set<Element>()
+      constructor(readonly callback: ResizeObserverCallback) { observers.add(this) }
+      observe(target: Element): void { this.observed.add(target) }
+      unobserve(target: Element): void { this.observed.delete(target) }
+      disconnect(): void { this.observed.clear(); observers.delete(this) }
+      trigger(): void {
+        const entries = [...this.observed].map(target => {
+          const rect = target.getBoundingClientRect()
+          return { target, borderBoxSize: [{ blockSize: rect.height, inlineSize: rect.width }] } as ResizeObserverEntry
+        })
+        if (entries.length > 0) this.callback(entries, this)
+      }
+    }
+    vi.stubGlobal('ResizeObserver', ResizeObserverProbe)
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+      const element = this as HTMLElement
+      if (!element.hasAttribute('data-review-virtual-row')) return domRect(480, 720)
+      if (!grown) return domRect(480, 108)
+      return domRect(480, element.dataset.index === '0' ? 3046 : 508)
+    })
+    const input = props()
+    const view = render(<ReviewPanel {...input} />)
+
+    await waitFor(() => { expect(view.container.textContent).toContain('const value = 2') })
+    await waitFor(() => {
+      const rows = [...view.container.querySelectorAll<HTMLElement>('[data-review-virtual-row]')]
+      expect(rows[1]?.style.top).toBe('108px')
+    })
+
+    grown = true
+    act(() => { for (const observer of [...observers]) observer.trigger() })
+    await waitFor(() => {
+      const rows = [...view.container.querySelectorAll<HTMLElement>('[data-review-virtual-row]')]
+      expect(rows[0]?.getBoundingClientRect().height).toBe(3046)
+      expect(rows[1]?.style.top).toBe('3046px')
+    })
+    input.controller.dispose()
+  })
+
   it('preserves the path tail with a left-edge fade in file headers', async () => {
     const input = props()
     const view = render(<ReviewPanel {...input} />)

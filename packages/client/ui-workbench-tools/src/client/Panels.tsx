@@ -291,6 +291,56 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
       return () => { observer.disconnect() }
     },
   })
+  // TanStack registers a measured element before its scroll element may have
+  // established targetWindow when the viewport and its first rows mount in
+  // the same commit. In that ordering the node enters elementsCache but no
+  // ResizeObserver subscription is created, so an async patch can grow from
+  // the 108px loading estimate to thousands of pixels while every following
+  // row keeps its estimated top. Own an explicit, disposable observation at
+  // the Review adapter boundary and feed exact border-box growth back into
+  // the public resizeItem API. The library observer remains useful for normal
+  // later mounts; duplicate identical measurements are idempotent.
+  const rowResizeObserver = useRef<ResizeObserver | null>(null)
+  const observedRows = useRef(new Set<HTMLDivElement>())
+  const measureVirtualRow = useCallback((element: HTMLDivElement | null) => {
+    virtualizer.measureElement(element)
+    const observer = rowResizeObserver.current
+    if (element !== null) {
+      observedRows.current.add(element)
+      observer?.observe(element, { box: 'border-box' })
+    }
+    for (const candidate of observedRows.current) {
+      if (candidate.isConnected) continue
+      observer?.unobserve(candidate)
+      observedRows.current.delete(candidate)
+    }
+  }, [virtualizer])
+  useLayoutEffect(() => {
+    if (typeof ResizeObserver === 'undefined') return undefined
+    const observer = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        const element = entry.target as HTMLDivElement
+        if (!element.isConnected) {
+          observer.unobserve(element)
+          observedRows.current.delete(element)
+          continue
+        }
+        const index = Number(element.dataset.index)
+        const measured = entry.borderBoxSize[0]?.blockSize ?? element.getBoundingClientRect().height
+        if (Number.isSafeInteger(index) && index >= 0 && measured > 0) virtualizer.resizeItem(index, measured)
+      }
+    })
+    rowResizeObserver.current = observer
+    listRef.current?.querySelectorAll<HTMLDivElement>('[data-review-virtual-row]').forEach(element => {
+      observedRows.current.add(element)
+      observer.observe(element, { box: 'border-box' })
+    })
+    return () => {
+      if (rowResizeObserver.current === observer) rowResizeObserver.current = null
+      observer.disconnect()
+      observedRows.current.clear()
+    }
+  }, [rowKeyPrefix, virtualizer])
   const virtualItems = virtualizer.getVirtualItems()
   const scrollOffset = virtualizer.scrollOffset ?? 0
   const viewportHeight = listRef.current?.clientHeight ?? 720
@@ -591,7 +641,7 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
                   if (file === undefined) return null
                   return <div
                     key={item.key}
-                    ref={virtualizer.measureElement}
+                    ref={measureVirtualRow}
                     data-index={item.index}
                     data-review-virtual-row=""
                     className={css.reviewVirtualRow}

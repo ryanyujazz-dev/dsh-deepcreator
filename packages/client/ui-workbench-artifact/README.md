@@ -34,12 +34,36 @@ without competing with or scrolling away with the breadcrumb. A
 missing or escaped path surfaces the reader's error code; there is no tombstone
 state because the official fact never retracts.
 
+Every Artifact entry point resolves its instance id against the owning Session workspace before opening a tab. Home rows, conversation file links, Agent presentation, and restored legacy relative ids therefore converge on one absolute path identity. Existing relative/absolute duplicates are atomically merged without emitting a user-dismissal edge, so one file owns exactly one tab.
+
+The read boundary returns a tagged presentation payload instead of decoding
+every file as UTF-8. Images render directly inside the Artifact instance from
+a fenced loopback URL, and PDFs stay in the same instance while Chromium's
+embedded PDF renderer consumes that URL. DOCX files are converted to
+structural HTML with Mammoth and rendered in a scriptless sandboxed iframe;
+legacy DOC files use `word-extractor` and render their extracted body as a
+readable document surface. None of these paths activates the Browser panel.
+HTML/HTM remains the deliberate exception described below: its row's explicit
+Open action runs the page in Browser, while clicking the file body still opens
+its source in Artifact.
+
 Produced-file rows and instance loading states use the shared Material-backed
 `FileIcon`/`FileLabel`. The Provider contributes both deduplicated basename
 labels and `tabFilePaths`, so Artifact tabs carry the same file identity while
 non-file Workbench tabs remain unaffected. Tabs opened directly from a
 conversation Read row are included even when that path has never appeared in
 the produced-file list; the same workspace reader renders their full content.
+
+HTML and HTM stay ordinary entries in that same official produced-files list;
+they do not gain a parallel artifact registry or event. Their home rows add a
+trailing split Open control. The primary action and “Open in DeepCreator” menu
+item request a fenced loopback preview URL from `remote.artifacts.preview`,
+then call the public Presentation Client with an explicit `browserId: "iab"`.
+The Browser URL resolver therefore creates the exact built-in Browser tab and
+the normal Workbench Browser Presenter owns visibility and mount receipt.
+“Open in system browser” sends the real HTML path to the official Workspace/OS
+path opener. Selecting the row outside that split control still opens the
+read-only source artifact tab.
 
 Content rendering goes through the `deepcreator.workbench.artifact.renderer`
 slot (declared by `ui-workbench`, consumed through the panel's
@@ -70,6 +94,11 @@ The type entry icon carries a blue dot while the session has produced files
 the user has not looked at yet: the dot advances the per-session seen
 watermark only while the panel group is visible (hidden groups stay mounted,
 so a hidden panel keeps its dot until opened).
+
+Binary outputs remain part of Review's repository truth for reconciliation and
+Undo, but the conversation Turn change card omits binary rows. The same image,
+PDF, or Office document therefore appears as a produced artifact rather than
+being duplicated as a source-code change card entry.
 
 Truncated-window semantics: a turn whose `turn/start` lives in an unloaded
 older page stays invisible until that page loads — same semantics as every

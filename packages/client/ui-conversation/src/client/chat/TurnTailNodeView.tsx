@@ -1,12 +1,14 @@
 import { memo } from 'react'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
-import type { ChatNodeViewProps, TurnTailOwnerProps } from '../contract/slots.ts'
+import type { ChatNodeViewProps, TurnMediaOwnerProps, TurnTailOwnerProps } from '../contract/slots.ts'
 import { MessageIconActions } from './MessageIconActions.tsx'
 import { assistantText } from './turn-assistant.ts'
 import css from './TurnTailNodeView.module.css'
 
 type TurnTailNodeViewProps = ChatNodeViewProps<'turn-tail'>
   & PropsRenderSlots<
+    'deepcreator.conversation.chat.turnMedia'
+    |
     'conversation.chat.turnTail'
     | 'deepcreator.conversation.chat.turnChanges'
     | 'conversation.chat.assistant-actions'
@@ -14,7 +16,7 @@ type TurnTailNodeViewProps = ChatNodeViewProps<'turn-tail'>
 
 /** Turn-local actions and feature tail over the Location index, independent of Assistant placement. */
 export const TurnTailNodeView = memo(function TurnTailNodeView({
-  node, openFile, forkAt, renderSlot, renderSlotChain, t, useSession,
+  node, openFile, forkAt, renderSlot, renderSlotChain, renderMessageImages, t, useSession,
 }: TurnTailNodeViewProps) {
   const data = node.data
   const hasLaterChatNode = useSession(snapshot =>
@@ -25,12 +27,14 @@ export const TurnTailNodeView = memo(function TurnTailNodeView({
   if (turn === undefined) return null
   const closing = data.closing
   const owner: TurnTailOwnerProps = { turn, seq: closing?.finalNode.seq ?? data.seq, openFile }
+  const mediaOwner: TurnMediaOwnerProps = { ...owner, renderMessageImages }
+  const turnMedia = renderSlot('deepcreator.conversation.chat.turnMedia', mediaOwner)
   const tail = renderSlotChain('conversation.chat.turnTail', owner)
   const turnChanges = renderSlot('deepcreator.conversation.chat.turnChanges', owner)
   if (closing === null) {
-    return tail === null && turnChanges === null
+    return turnMedia === null && tail === null && turnChanges === null
       ? null
-      : <div className={css.root}>{tail}{turnChanges}</div>
+      : <div className={css.root}>{turnMedia}{tail}{turnChanges}</div>
   }
   const runMs = turn.start === undefined || turn.end === undefined
     ? undefined
@@ -43,6 +47,7 @@ export const TurnTailNodeView = memo(function TurnTailNodeView({
     : renderSlot('conversation.chat.assistant-actions', { messageId })
   return (
     <div className={css.root} data-turn-tail={data.turn} data-time-hover-root>
+      {turnMedia}
       {tail}
       {turnChanges}
       <MessageIconActions

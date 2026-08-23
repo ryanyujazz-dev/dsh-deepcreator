@@ -1,0 +1,4 @@
+.list { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; width: 100%; min-width: 0; }
+.image { width: 50%; max-width: 100%; min-width: 0; }
+.image :global([data-align='start']) { width: 100%; max-width: 100%; }
+.image :global(button[data-variant='single']) { width: 100% !important; height: auto !important; aspect-ratio: var(--dsh-generated-image-ratio); }

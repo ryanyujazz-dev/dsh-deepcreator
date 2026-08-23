@@ -15,6 +15,12 @@ type Props = PropsRuntime<'deepcreator.conversation.chat.turnChanges'>
   & PropsLocale<'workbench-tools'>
   & { controller: ReviewCacheController; workbench: WorkbenchService }
 
+const artifactOnlyExtension = /\.(?:avif|bmp|gif|ico|jpe?g|png|svg|webp|pdf|docx?)$/i
+
+function belongsOnlyToArtifactCard(path: string, presentation?: string) {
+  return presentation === 'binary' || artifactOnlyExtension.test(path)
+}
+
 export function TurnChangeCard({ turn, controller, workbench, openFile, t }: Props) {
   const history = useSyncExternalStore(controller.subscribeHistory, controller.getHistorySnapshot, controller.getHistorySnapshot)
   const [expanded, setExpanded] = useState(false)
@@ -52,11 +58,31 @@ export function TurnChangeCard({ turn, controller, workbench, openFile, t }: Pro
   // The provider mounts for every closed turn because history arrives
   // asynchronously. A zero-change turn has no host record and renders no tail.
   if (record === undefined) return null
-  const active = record.remainingFiles > 0
-  const stateKey = `turnCard.state.${record.state}` as ToolsKey
-  const additions = record.additions ?? record.files.reduce((sum, file) => sum + (file.additions ?? 0), 0)
-  const deletions = record.deletions ?? record.files.reduce((sum, file) => sum + (file.deletions ?? 0), 0)
-  const showTotals = record.additions !== undefined && record.deletions !== undefined && (additions > 0 || deletions > 0)
+  // Binary outputs belong to the produced-artifact card. Review still keeps
+  // them in its repository truth for reconciliation/Undo, but the chat tail
+  // must not classify the same image, PDF, or Office document as a source
+  // change as well.
+  const files = record.files.filter(file => !belongsOnlyToArtifactCard(file.path, file.presentation))
+  if (files.length === 0) return null
+  const remainingFiles = files.filter(file => file.state === 'pending').length
+  const active = remainingFiles > 0
+  const visibleState = files.every(file => file.state === 'committed')
+    ? 'committed'
+    : files.every(file => file.state === 'reverted')
+      ? 'reverted'
+      : active ? 'active' : 'mixed'
+  const stateKey = `turnCard.state.${visibleState}` as ToolsKey
+  const filteredBinary = files.length !== record.files.length
+  const additions = !filteredBinary && record.additions !== undefined
+    ? record.additions
+    : files.reduce((sum, file) => sum + (file.additions ?? 0), 0)
+  const deletions = !filteredBinary && record.deletions !== undefined
+    ? record.deletions
+    : files.reduce((sum, file) => sum + (file.deletions ?? 0), 0)
+  const hasLineStats = filteredBinary
+    ? files.some(file => file.lineStatsState === 'available')
+    : record.additions !== undefined && record.deletions !== undefined
+  const showTotals = hasLineStats && (additions > 0 || deletions > 0)
   return (
     <>
       <ConversationFileCard
@@ -64,13 +90,13 @@ export function TurnChangeCard({ turn, controller, workbench, openFile, t }: Pro
           expanded={expanded}
           onToggle={() => { setExpanded(value => !value) }}
           icon={<DeepCreatorIconReview16 size={16} />}
-          label={t('turnCard.files', { count: record.totalFiles })}
+          label={t('turnCard.files', { count: files.length })}
           sectionProps={{ 'data-turn-change-card': record.turn } as HTMLAttributes<HTMLElement>}
           meta={(
             <>
             {showTotals && <span className={css.diffCounts}><b>{`+${additions}`}</b><i>{`-${deletions}`}</i></span>}
-            {record.remainingFiles < record.totalFiles && record.remainingFiles > 0 && (
-              <span className={css.remaining}>{t('turnCard.remaining', { count: record.remainingFiles })}</span>
+            {remainingFiles < files.length && remainingFiles > 0 && (
+              <span className={css.remaining}>{t('turnCard.remaining', { count: remainingFiles })}</span>
             )}
             {!active && <span className={css.remaining}>{t(stateKey)}</span>}
             </>
@@ -92,7 +118,7 @@ export function TurnChangeCard({ turn, controller, workbench, openFile, t }: Pro
           )}
         >
           <ConversationFileCardList>
-            {record.files.map(file => (
+            {files.map(file => (
               <ConversationFileCardFile
                 key={`${file.oldPath ?? ''}\0${file.path}`}
                 path={file.path}

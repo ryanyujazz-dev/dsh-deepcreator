@@ -32,6 +32,7 @@ describe('ui-workbench-artifact registration', () => {
     const ctx = {
       get: () => remote,
       provide,
+      sessions: { list: { getSnapshot: () => ({ byId: {} }) } },
       locale: {
         bind: () => (key: string) => key,
         register: (ns: string) => { localeNamespaces.push(ns); return dispose(`locale:${ns}`) },
@@ -60,10 +61,15 @@ describe('ui-workbench-artifact registration', () => {
       id: 'artifact', order: 3, scope: 'session', closePolicy: 'detach',
       supportsHome: true, supportsMultipleInstances: true,
     })
-    expect(injectedSlots).toEqual(['deepcreator.workbench.panel', 'deepcreator.workbench.panel-icon', 'deepcreator.workbench.artifact.renderer', 'conversation.chat.turnTail'])
+    expect(injectedSlots).toEqual([
+      'deepcreator.workbench.panel', 'deepcreator.workbench.panel-icon',
+      'deepcreator.workbench.artifact.renderer', 'deepcreator.workbench.artifact.renderer',
+      'deepcreator.workbench.artifact.renderer', 'deepcreator.workbench.artifact.renderer',
+      'deepcreator.workbench.artifact.renderer', 'conversation.chat.turnTail',
+    ])
     expect(panels.has('artifact')).toBe(true)
     expect(icons.has('artifact')).toBe(true)
-    expect(renderers.has('code')).toBe(true)
+    expect([...renderers.keys()]).toEqual(['code', 'image', 'pdf', 'document-html', 'document-text'])
     expect(turnTailEntries[0]).toMatchObject({ priority: -100 })
     expect(nodeDefinitions[0]).toMatchObject({ kind: 'workbench-artifact', target: 'artifacts' })
     expect(viewDefinitions[0]).toMatchObject({ target: 'artifacts' })
@@ -83,6 +89,10 @@ describe('ui-workbench-artifact registration', () => {
     expect(disposed).toEqual([
       'locale:workbench-artifact', 'view', 'node',
       'inject:conversation.chat.turnTail',
+      'inject:deepcreator.workbench.artifact.renderer',
+      'inject:deepcreator.workbench.artifact.renderer',
+      'inject:deepcreator.workbench.artifact.renderer',
+      'inject:deepcreator.workbench.artifact.renderer',
       'inject:deepcreator.workbench.artifact.renderer',
       'inject:deepcreator.workbench.panel-icon',
       'inject:deepcreator.workbench.panel',

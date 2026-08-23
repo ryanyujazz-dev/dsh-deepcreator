@@ -50,4 +50,17 @@ describe('PresentationClientRuntime', () => {
     expect(dismissPresenter).toHaveBeenCalledWith('browser-tab:tab-1')
     expect(dismissRemote).toHaveBeenCalledWith('s1', 4, 'browser-tab:tab-1')
   })
+
+  it('opens explicit user presentation inputs through the same Host boundary', async () => {
+    const open = vi.fn(async (_sessionId, inputJson: string) => ok({
+      requestId: 'user-1', resource: { kind: 'browser-tab', id: 'tab-1' }, status: 'presented' as const,
+    }))
+    const remote = {
+      pending: vi.fn(async () => ok({ revision: 0, requests: [] })),
+      claim: vi.fn(), acknowledge: vi.fn(), dismiss: vi.fn(), open,
+    }
+    const runtime = new PresentationClientRuntime(remote, () => 's1' as never)
+    await expect(runtime.open({ kind: 'url', url: 'http://127.0.0.1:4312/index.html' })).resolves.toMatchObject({ status: 'presented' })
+    expect(open).toHaveBeenCalledWith('s1', JSON.stringify({ kind: 'url', url: 'http://127.0.0.1:4312/index.html' }))
+  })
 })

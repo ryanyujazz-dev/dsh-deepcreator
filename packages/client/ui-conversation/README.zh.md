@@ -58,7 +58,7 @@ Host 带 placement 的 `session/queue` 快照也会携带待处理 steering。Qu
 
 `src/client/` 按领域组织。`contract/` 是 slot 声明、组合 props 与跨领域类型的共享表层；`skeleton/`、`chat/`、`input/`、`queue/` 和 `settings/` 保持内部实现，`apply.ts` 是它们的组装点。`/client` 导出表层只包含 loader entry、service class 和 contract 类型；组件与 store factory 经 slot 注册抵达页面。
 
-完成的一轮会物化一个有序的 `turn-tail` Conversation Node。它由引擎维护的 `TurnLocation` 提供收尾 Assistant 和 Turn data。renderer 先派发官方 `conversation.chat.turnTail` selector chain，由 Artifact 把当前 Turn 的产物渲染成可展开文件卡；再渲染 additive 的 `deepcreator.conversation.chat.turnChanges` list，由 Review 贡献独立的未解决变更卡；最后才是 IconActions。官方 `ui-deliverables` row 保持组合，继续持有 Turn 产物事实、收尾正文 `chatFileMentions` 与模型提示。同一路径可同时出现在两张卡中：产物文件打开完整 Artifact 标签，变更文件打开所属历史 Review 范围。
+完成的一轮会物化一个有序的 `turn-tail` Conversation Node。它由引擎维护的 `TurnLocation` 提供收尾 Assistant 和 Turn data。renderer 先派发 additive 的 `deepcreator.conversation.chat.turnMedia` list 来显示独立生成媒体；再派发官方 `conversation.chat.turnTail` selector chain，由 Artifact 把当前 Turn 的产物渲染成可展开文件卡；随后渲染 additive 的 `deepcreator.conversation.chat.turnChanges` list，由 Review 贡献独立的未解决变更卡；最后才是 IconActions。官方 `ui-deliverables` row 保持组合，继续持有 Turn 产物事实、收尾正文 `chatFileMentions` 与模型提示。同一路径可同时出现在两张卡中：产物文件打开完整 Artifact 标签，变更文件打开所属历史 Review 范围。
 
 ## 模型体验
 

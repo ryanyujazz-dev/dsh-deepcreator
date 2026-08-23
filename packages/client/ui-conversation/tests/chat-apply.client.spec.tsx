@@ -71,6 +71,7 @@ describe('apply wiring', () => {
     expect(nodeSlot).toMatchObject({ kind: 'keyed', scope: 'session' })
     expect(nodeSlot?.inject?.hooks?.turnData).toBeTypeOf('function')
     expect(b.slots.spec('conversation.chat.turnTail')).toEqual({ kind: 'chain', scope: 'session' })
+    expect(b.slots.spec('deepcreator.conversation.chat.turnMedia')).toEqual({ kind: 'list', scope: 'session' })
     expect(b.slots.spec('deepcreator.conversation.chat.turnChanges')).toEqual({ kind: 'list', scope: 'session' })
     await b.runtime.dispose()
   })

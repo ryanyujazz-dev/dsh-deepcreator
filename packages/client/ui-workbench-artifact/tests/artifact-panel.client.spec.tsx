@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { ArtifactRendererProps } from '@ryanyujazz/dsh-client-ui-workbench/client'
 
 vi.mock('lottie-web/build/player/lottie_light', () => ({
   default: {
@@ -22,6 +23,9 @@ vi.mock('lottie-web/build/player/lottie_light', () => ({
 }))
 
 import { ArtifactPanel } from '../src/client/ArtifactPanel.tsx'
+import {
+  ArtifactDocumentHtmlRenderer, ArtifactDocumentTextRenderer, ArtifactImageRenderer, ArtifactPdfRenderer,
+} from '../src/client/ArtifactBinaryRenderers.tsx'
 import { EMPTY_ARTIFACTS_SNAPSHOT } from '../src/client/artifact-contract.ts'
 import type { ArtifactsSnapshot } from '../src/client/artifact-contract.ts'
 import { artifactParentDirectory, artifactPathSegments } from '../src/client/artifact-view-model.ts'
@@ -44,12 +48,20 @@ function props(snapshot: ArtifactsSnapshot, read: ReturnType<typeof vi.fn> = vi.
       tabs: [],
       openInstance: vi.fn(),
       openContainingFolder: vi.fn(),
+      openInDeepCreator: vi.fn(async () => {}),
+      openInSystemBrowser: vi.fn(async () => {}),
       activateInstance: vi.fn(),
       closeInstance: vi.fn(),
       showHome: vi.fn(),
       contributeHeaderActions: () => () => undefined,
       contributePanelInfo: (contribution: { tabLabels: Record<string, string>; tabFilePaths: Record<string, string> }) => { contributions.push(contribution); return () => undefined },
-      renderArtifact: (owner: { artifactId: string; content: string }) => <pre data-artifact={owner.artifactId}>{owner.content}</pre>,
+      renderArtifact: (owner: ArtifactRendererProps) => {
+        if (owner.kind === 'image') return <ArtifactImageRenderer {...owner} />
+        if (owner.kind === 'pdf') return <ArtifactPdfRenderer {...owner} />
+        if (owner.kind === 'document-html') return <ArtifactDocumentHtmlRenderer {...owner} />
+        if (owner.kind === 'document-text') return <ArtifactDocumentTextRenderer {...owner} />
+        return <pre data-artifact={owner.artifactId}>{owner.content}</pre>
+      },
       t: (key: string) => key,
     } as unknown as ComponentProps<typeof ArtifactPanel>,
     contributions,
@@ -97,6 +109,47 @@ describe('ArtifactPanel', () => {
     expect(input.input.openInstance).toHaveBeenCalledWith('E:/repo/plan.md')
   })
 
+  it('normalizes every entry point and merges restored relative tabs into one file identity', () => {
+    const input = props(snapshotOf([{ path: 'image.png', updatedAt: 1_000, turn: 1 }]))
+    const replaceInstanceId = vi.fn()
+    const view = render(<ArtifactPanel
+      {...input.input}
+      workspaceRoot="/workspace"
+      tabs={['image.png', '/workspace/image.png']}
+      replaceInstanceId={replaceInstanceId}
+    />)
+
+    expect(replaceInstanceId).toHaveBeenCalledWith('image.png', '/workspace/image.png')
+    fireEvent.click(view.getAllByText('image.png').find(node => node.tagName === 'STRONG')!.closest('button')!)
+    expect(input.input.openInstance).toHaveBeenCalledWith('/workspace/image.png')
+    expect(input.contributions.at(-1)).toEqual({
+      tabLabels: { '/workspace/image.png': 'image.png' },
+      tabFilePaths: { '/workspace/image.png': '/workspace/image.png' },
+    })
+  })
+
+  it('treats HTML as an artifact and gives its row a split Browser open action', async () => {
+    const path = 'E:/repo/prototype/index.html'
+    const input = props(snapshotOf([
+      { path, updatedAt: 2_000, turn: 2 },
+      { path: 'E:/repo/app.ts', updatedAt: 1_000, turn: 1 },
+    ]))
+    const view = render(<ArtifactPanel {...input.input} />)
+
+    expect(view.getByText('index.html')).toBeTruthy()
+    expect(view.container.querySelector(`[data-artifact-html-open="${path}"]`)).not.toBeNull()
+    expect(view.getAllByRole('button', { name: 'open' })).toHaveLength(1)
+    expect(view.queryByText('app.ts')?.closest('[class*="_row_"]')?.querySelector('[data-artifact-html-open]')).toBeNull()
+
+    fireEvent.click(view.getByRole('button', { name: 'open' }))
+    await waitFor(() => { expect(input.input.openInDeepCreator).toHaveBeenCalledWith('session-1', path) })
+
+    fireEvent.click(view.getByRole('button', { name: 'openMenu' }))
+    expect(view.getByRole('menuitem', { name: 'openInDeepCreator' })).toBeTruthy()
+    fireEvent.click(view.getByRole('menuitem', { name: 'openInSystemBrowser' }))
+    await waitFor(() => { expect(input.input.openInSystemBrowser).toHaveBeenCalledWith('session-1', path) })
+  })
+
   it('shows the empty state when the projection has no records', () => {
     const input = props(EMPTY_ARTIFACTS_SNAPSHOT)
     const view = render(<ArtifactPanel {...input.input} />)
@@ -120,7 +173,7 @@ describe('ArtifactPanel', () => {
 
   it('renders a Read-opened workspace file even when it is not a produced record', async () => {
     const path = '/workspace/src/read-only.ts'
-    const read = vi.fn(async () => ({ ok: true as const, value: { ok: true as const, content: 'export const value = 1' } }))
+    const read = vi.fn(async () => ({ ok: true as const, value: { ok: true as const, kind: 'text' as const, content: 'export const value = 1' } }))
     const input = props(EMPTY_ARTIFACTS_SNAPSHOT, read)
     const view = render(<ArtifactPanel {...input.input} tabs={[path]} route="instance" activeInstanceId={path} />)
 
@@ -134,7 +187,7 @@ describe('ArtifactPanel', () => {
 
   it('re-reads instance content only when the active path changes', async () => {
     let content = 'v1'
-    const read = vi.fn(async () => ({ ok: true as const, value: { ok: true as const, content } }))
+    const read = vi.fn(async () => ({ ok: true as const, value: { ok: true as const, kind: 'text' as const, content } }))
     const artifacts = { read }
     const openContainingFolder = vi.fn()
     const instanceProps = (snapshot: ArtifactsSnapshot, active: string) => ({
@@ -173,7 +226,7 @@ describe('ArtifactPanel', () => {
 
   it('defaults Markdown to conversation-grade preview and switches to the code renderer', async () => {
     const path = 'E:/repo/report.md'
-    const read = vi.fn(async () => ({ ok: true as const, value: { ok: true as const, content: '# 标题\n\n正文' } }))
+    const read = vi.fn(async () => ({ ok: true as const, value: { ok: true as const, kind: 'text' as const, content: '# 标题\n\n正文' } }))
     const input = props(snapshotOf([{ path, updatedAt: 1_000, turn: 1 }]), read)
     const view = render(<ArtifactPanel {...{ ...input.input, route: 'instance', activeInstanceId: path }} />)
 
@@ -204,13 +257,53 @@ describe('ArtifactPanel', () => {
 
   it('keeps non-Markdown artifacts on code rendering without a mode switch', async () => {
     const path = 'E:/repo/index.ts'
-    const read = vi.fn(async () => ({ ok: true as const, value: { ok: true as const, content: 'export const ok = true' } }))
+    const read = vi.fn(async () => ({ ok: true as const, value: { ok: true as const, kind: 'text' as const, content: 'export const ok = true' } }))
     const input = props(snapshotOf([{ path, updatedAt: 1_000, turn: 1 }]), read)
     const view = render(<ArtifactPanel {...{ ...input.input, route: 'instance', activeInstanceId: path }} />)
 
     await waitFor(() => { expect(view.getByText('export const ok = true')).toBeTruthy() })
     expect(view.queryByRole('group', { name: 'renderMode' })).toBeNull()
     expect(view.container.querySelector('[data-artifact]')).not.toBeNull()
+  })
+
+  it('renders images, PDFs, DOCX HTML and legacy DOC text inside the Artifact instance', async () => {
+    const imagePath = 'E:/repo/output.png'
+    const imageInput = props(snapshotOf([{ path: imagePath, updatedAt: 1_000, turn: 1 }]), vi.fn(async () => ({
+      ok: true as const,
+      value: { ok: true as const, kind: 'image' as const, url: 'http://127.0.0.1:1234/output.png', mediaType: 'image/png' },
+    })))
+    const view = render(<ArtifactPanel {...{ ...imageInput.input, route: 'instance', activeInstanceId: imagePath }} />)
+    await waitFor(() => { expect(view.container.querySelector(`[data-artifact-image="${imagePath}"]`)).not.toBeNull() })
+    expect(view.getByRole('img', { name: 'output.png' }).getAttribute('src')).toBe('http://127.0.0.1:1234/output.png')
+
+    const pdfPath = 'E:/repo/report.pdf'
+    const pdfInput = props(snapshotOf([{ path: pdfPath, updatedAt: 2_000, turn: 1 }]), vi.fn(async () => ({
+      ok: true as const,
+      value: { ok: true as const, kind: 'pdf' as const, url: 'http://127.0.0.1:1234/report.pdf', mediaType: 'application/pdf' as const },
+    })))
+    view.rerender(<ArtifactPanel {...{ ...pdfInput.input, route: 'instance', activeInstanceId: pdfPath }} />)
+    await waitFor(() => { expect(view.container.querySelector(`[data-artifact-pdf="${pdfPath}"]`)).not.toBeNull() })
+    expect(view.getByTitle('report.pdf').getAttribute('src')).toBe('http://127.0.0.1:1234/report.pdf')
+
+    const docxPath = 'E:/repo/brief.docx'
+    const docxInput = props(snapshotOf([{ path: docxPath, updatedAt: 3_000, turn: 1 }]), vi.fn(async () => ({
+      ok: true as const,
+      value: { ok: true as const, kind: 'document' as const, contentType: 'html' as const, content: '<h1>Brief</h1><p>Body</p>' },
+    })))
+    view.rerender(<ArtifactPanel {...{ ...docxInput.input, route: 'instance', activeInstanceId: docxPath }} />)
+    await waitFor(() => { expect(view.container.querySelector('[data-artifact-document="docx"]')).not.toBeNull() })
+    const docx = view.getByTitle('brief.docx')
+    expect(docx.getAttribute('sandbox')).toBe('')
+    expect(docx.getAttribute('srcdoc')).toContain('<h1>Brief</h1>')
+
+    const docPath = 'E:/repo/legacy.doc'
+    const docInput = props(snapshotOf([{ path: docPath, updatedAt: 4_000, turn: 1 }]), vi.fn(async () => ({
+      ok: true as const,
+      value: { ok: true as const, kind: 'document' as const, contentType: 'text' as const, content: 'Legacy body' },
+    })))
+    view.rerender(<ArtifactPanel {...{ ...docInput.input, route: 'instance', activeInstanceId: docPath }} />)
+    await waitFor(() => { expect(view.getByText('Legacy body')).toBeTruthy() })
+    expect(view.container.querySelector('[data-artifact-document="doc"]')).not.toBeNull()
   })
 
   it('surfaces a read failure for an active path absent from the projection', async () => {

@@ -181,6 +181,42 @@ export class BrowserRuntime {
     finally { release() }
   }
 
+  /**
+   * Navigate from an explicit client UI action. This shares the Provider queue
+   * and network policy with Agent commands, but the user's action interrupts
+   * (rather than reacquires) the Agent lease and is therefore allowed to run
+   * while the tab remains in user control.
+   */
+  async navigateFromClient(sessionId: string, tabId: string, url: string, signal: BrowserSignalInput): Promise<BrowserTabState> {
+    await this.networkPolicy.assertAllowed(url)
+    const managed = this.#owned(sessionId, tabId)
+    managed.interrupted = true
+    managed.state.controlState = 'interrupted'
+    this.#bump(sessionId)
+    const previous = managed.queue
+    let release!: () => void
+    const occupied = new Promise<void>(resolve => { release = resolve })
+    managed.queue = previous.catch(() => undefined).then(() => occupied)
+    await previous.catch(() => undefined)
+    try {
+      const provider = this.#providers.get(managed.state.browserId)
+      if (provider === undefined) throw new BrowserRuntimeError('PROVIDER_UNAVAILABLE', `Provider ${managed.state.browserId} is unavailable.`)
+      const result = await provider.execute(this.#context(managed.automationSessionId, managed.workspaceRoot, signal), managed.providerTab, { kind: 'navigate', action: 'goto', url })
+      managed.providerTab = result.tab
+      this.#syncState(managed, result.tab)
+      managed.state.lastAction = { action: 'user:navigate', at: Date.now(), result: 'ok' }
+      delete managed.state.snapshotId
+      this.#selected.set(sessionId, tabId)
+      this.#bump(sessionId)
+      return { ...managed.state }
+    } catch (error) {
+      const code = error instanceof BrowserRuntimeError ? error.code : 'BROWSER_UNAVAILABLE'
+      managed.state.lastAction = { action: 'user:navigate', at: Date.now(), result: code }
+      this.#bump(sessionId)
+      throw error
+    } finally { release() }
+  }
+
   async #executeNow(sessionId: string, tabId: string, managed: ManagedTab, command: BrowserCommand, signal: BrowserSignalInput): Promise<BrowserCommandResult> {
     if (signal.aborted) throw new BrowserRuntimeError('CONTROL_INTERRUPTED', 'Browser command was cancelled before execution.')
     if (managed.interrupted || managed.state.controlState === 'interrupted' || managed.state.controlState === 'user-control') throw new BrowserRuntimeError('CONTROL_INTERRUPTED', 'The user has control of this browser tab. Resume control explicitly before continuing.')
@@ -356,7 +392,11 @@ export class BrowserRuntime {
   }
 
   async close(sessionId: string, tabId: string, signal: BrowserSignalInput): Promise<void> {
-    const managed = this.#owned(sessionId, tabId)
+    const managed = this.#tabs.get(tabId)
+    // Resource destruction is idempotent: Workbench dismissal, Presenter
+    // teardown, and a direct Home-row close may converge on the same tab.
+    if (managed === undefined) return
+    if (managed.ownerSessionId !== sessionId) throw new BrowserRuntimeError('TAB_NOT_OWNED', `Browser tab ${tabId} is owned by another session.`)
     await this.#drain(managed)
     const provider = this.#providers.get(managed.state.browserId)
     if (provider !== undefined) await provider.close(this.#context(managed.automationSessionId, managed.workspaceRoot, signal), managed.providerTab)

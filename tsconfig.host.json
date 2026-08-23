@@ -21,6 +21,7 @@
     { "path": "./packages/internal/agent-face" },
     { "path": "./packages/host/artifacts" },
     { "path": "./packages/host/browser" },
+    { "path": "./packages/host/image-generation" },
     { "path": "./packages/host/browser-playwright" },
     { "path": "./packages/host/browser-iab" },
     { "path": "./packages/host/browser-chrome" },

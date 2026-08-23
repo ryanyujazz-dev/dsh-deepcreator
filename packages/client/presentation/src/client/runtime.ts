@@ -1,6 +1,7 @@
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
+  OpenInDeepCreatorResult,
   PresentationClaimResult, PresentationClientDescriptor, PresentationFailure, PresentationMode,
   PresentationPendingSnapshot, PresentationReceipt, PresentationRemoteResult, PresentationRequest, PresentationResource,
 } from '@ryanyujazz/dsh-presentation/types'
@@ -11,6 +12,7 @@ export interface PresentationRemoteClient {
   claim(sessionId: SessionId, requestId: string, client: PresentationClientDescriptor): Promise<RemoteResult<PresentationRemoteResult<PresentationClaimResult>>>
   acknowledge(sessionId: SessionId, receipt: PresentationReceipt): Promise<RemoteResult<PresentationRemoteResult<{ acknowledged: boolean }>>>
   dismiss(sessionId: SessionId, turn: number, resourceKey: string): Promise<RemoteResult<PresentationRemoteResult<{ dismissed: true }>>>
+  open?(sessionId: SessionId, inputJson: string): Promise<RemoteResult<PresentationRemoteResult<OpenInDeepCreatorResult>>>
 }
 
 export type PresenterOutcome = {
@@ -76,6 +78,17 @@ export class PresentationClientRuntime {
     if (this.remote.waitRevision === undefined) { this.#timer = setInterval(() => { void this.poll() }, 250); void this.poll() }
     else { this.#watching = true; void this.poll().then(() => this.#watch()) }
     return () => { this.#watching = false; if (this.#timer !== undefined) clearInterval(this.#timer); this.#timer = undefined }
+  }
+
+  /** Materialize and present a resource from an explicit user UI action. */
+  async open(input: { kind: string } & Record<string, unknown>): Promise<OpenInDeepCreatorResult> {
+    const sessionId = this.currentSessionId()
+    if (sessionId === undefined) throw new Error('PRESENTATION_UNAVAILABLE: No active session can own this presentation.')
+    if (this.remote.open === undefined) throw new Error('PRESENTATION_UNAVAILABLE: This Host does not support user-initiated presentation.')
+    const wire = await this.remote.open(sessionId, JSON.stringify(input))
+    if (!wire.ok) throw new Error(`${wire.error.code}: ${wire.error.message}`)
+    if (!wire.value.ok) throw new Error(`${wire.value.code}: ${wire.value.message}`)
+    return wire.value.value
   }
 
   async poll(): Promise<void> {

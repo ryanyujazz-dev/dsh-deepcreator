@@ -114,6 +114,7 @@ function Group({
   }, [])
   const openInstance = useCallback((instanceId: string) => { actions.present(group.typeId, instanceId, 'instance') }, [actions, group.typeId])
   const closeInstance = useCallback((instanceId: string) => { onCloseInstance(instanceId) }, [onCloseInstance])
+  const replaceInstanceId = useCallback((fromInstanceId: string, toInstanceId: string) => { actions.replaceTab(group.typeId, fromInstanceId, toInstanceId) }, [actions, group.typeId])
   const showHome = useCallback(() => { actions.showHome(group.typeId) }, [actions, group.typeId])
   const owner = {
     typeId: group.typeId,
@@ -123,6 +124,7 @@ function Group({
     openInstance,
     activateInstance: openInstance,
     closeInstance,
+    replaceInstanceId,
     showHome,
     contributeHeaderActions,
     contributePanelInfo,

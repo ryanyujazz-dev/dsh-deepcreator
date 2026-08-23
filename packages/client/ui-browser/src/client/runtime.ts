@@ -1,4 +1,4 @@
-import type { BrowserRemoteResult, BrowserStateSnapshot } from '@ryanyujazz/dsh-browser/types'
+import type { BrowserNextAction, BrowserRemoteResult, BrowserStateSnapshot, BrowserTabState } from '@ryanyujazz/dsh-browser/types'
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 
@@ -11,10 +11,12 @@ export interface BrowserSurfaceBridge {
 export interface BrowserRemoteClient {
   state(sessionId: SessionId): Promise<RemoteResult<BrowserRemoteResult<BrowserStateSnapshot>>>
   waitStateRevision?(sessionId: SessionId, afterRevision: number): Promise<RemoteResult<BrowserRemoteResult<{ revision: number }>>>
-  closeTab?(tabId: string): Promise<RemoteResult<BrowserRemoteResult<{ closed: true; tabId: string }>>>
+  newTab?(sessionId: SessionId): Promise<RemoteResult<BrowserRemoteResult<{ tab: BrowserTabState; nextAction: BrowserNextAction }>>>
+  navigateTab?(sessionId: SessionId, tabId: string, url: string): Promise<RemoteResult<BrowserRemoteResult<{ tab: BrowserTabState }>>>
+  closeTab?(sessionId: SessionId, tabId: string): Promise<RemoteResult<BrowserRemoteResult<{ closed: true; tabId: string }>>>
   clearBrowserData?(browserId: string): Promise<RemoteResult<BrowserRemoteResult<{ cleared: string[]; unavailable: string[] }>>>
   manageProvider?(browserId: string, action: 'install' | 'repair' | 'uninstall'): Promise<RemoteResult<BrowserRemoteResult<{ status: 'ready' | 'unavailable' | 'removed'; diagnostic?: string }>>>
-  snapshotImage?(tabId: string): Promise<RemoteResult<BrowserRemoteResult<{ artifactId: string; dataUrl: string }>>>
+  snapshotImage?(sessionId: SessionId, tabId: string): Promise<RemoteResult<BrowserRemoteResult<{ artifactId: string; dataUrl: string }>>>
 }
 
 const EMPTY_STATE: BrowserStateSnapshot = { sessionId: '', revision: 0, browsers: [], tabs: [] }
@@ -46,6 +48,10 @@ export class BrowserClientRuntime {
 
   /** useSyncExternalStore requires referential stability until a real publish. */
   getSnapshot = (): BrowserClientSnapshot => this.#snapshot
+  hasCurrentSessionSnapshot(): boolean {
+    const sessionId = this.currentSessionId()
+    return sessionId !== undefined && this.#state.sessionId === String(sessionId)
+  }
   subscribe = (listener: () => void): (() => void) => {
     this.#listeners.add(listener)
     if (!this.#watching && this.#timer === undefined) {
@@ -55,12 +61,22 @@ export class BrowserClientRuntime {
     return () => { this.#listeners.delete(listener); if (this.#listeners.size === 0) { this.#watching = false; if (this.#timer !== undefined) clearInterval(this.#timer); this.#timer = undefined } }
   }
   async refresh(): Promise<void> {
-    if (this.#busy) return
+    // A caller that awaits refresh is asking for a snapshot fetched no earlier
+    // than this call. Do not silently succeed against an older in-flight read:
+    // presentation may otherwise route to a tab that the client has not seen.
+    if (this.#busy) {
+      while (this.#busy) await this.#delay(10)
+      return this.refresh()
+    }
     this.#busy = true
     try {
       const sessionId = this.currentSessionId()
       if (sessionId === undefined) return
       const wire = await this.remote.state(sessionId)
+      // Session-scoped Browser state cannot cross an address change. A late
+      // response is discarded; a refresh queued behind this one will fetch the
+      // newly-current session.
+      if (this.currentSessionId() !== sessionId) return
       if (!wire.ok) { this.#setError(`${wire.error.code}: ${wire.error.message}`); return }
       if (!wire.value.ok) { this.#setError(`${wire.value.code}: ${wire.value.message}`); return }
       let next = wire.value.value
@@ -84,16 +100,39 @@ export class BrowserClientRuntime {
     this.#surfaces.delete(tabId)
     if (state?.phase === 'started') this.#settleSurface(tabId, { ok: false, failure: { code: 'SURFACE_DESTROYED', message: 'The Browser panel unmounted before its native surface became ready.' } })
   }
+  async newTab(): Promise<BrowserTabState> {
+    if (this.remote.newTab === undefined) throw new Error('PRESENTATION_UNAVAILABLE: Browser tab creation is unavailable in this deployment.')
+    const sessionId = this.#requireSession()
+    const wire = await this.remote.newTab(sessionId)
+    if (!wire.ok) throw new Error(`${wire.error.code}: ${wire.error.message}`)
+    if (!wire.value.ok) throw new Error(`${wire.value.code}: ${wire.value.message}`)
+    await this.#refreshAfterMutation()
+    return wire.value.value.tab
+  }
+  async navigateTab(tabId: string, url: string): Promise<void> {
+    if (this.remote.navigateTab === undefined) throw new Error('PRESENTATION_UNAVAILABLE: Browser navigation is unavailable in this deployment.')
+    const sessionId = this.#requireSession()
+    const wire = await this.remote.navigateTab(sessionId, tabId, url)
+    if (!wire.ok) throw new Error(`${wire.error.code}: ${wire.error.message}`)
+    if (!wire.value.ok) throw new Error(`${wire.value.code}: ${wire.value.message}`)
+    await this.#refreshAfterMutation()
+  }
   async closeTab(tabId: string): Promise<void> {
     if (this.#closingTabs.has(tabId)) return
     if (this.remote.closeTab === undefined) { this.#setError('PRESENTATION_UNAVAILABLE: Browser tab closing is unavailable in this deployment.'); return }
     this.#closingTabs.add(tabId)
     try {
-      const wire = await this.remote.closeTab(tabId)
+      const sessionId = this.#requireSession()
+      const wire = await this.remote.closeTab(sessionId, tabId)
       if (!wire.ok) { this.#setError(`${wire.error.code}: ${wire.error.message}`); return }
-      if (!wire.value.ok) { this.#setError(`${wire.value.code}: ${wire.value.message}`); return }
+      if (!wire.value.ok) {
+        // Older Hosts may still report a duplicate destruction as missing.
+        // It is already the desired end state, not a Runtime outage.
+        if (wire.value.code === 'TAB_NOT_FOUND') { this.#dropTabPreview(tabId); await this.#refreshAfterMutation(); return }
+        this.#setError(`${wire.value.code}: ${wire.value.message}`); return
+      }
       this.#dropTabPreview(tabId)
-      await this.refresh()
+      await this.#refreshAfterMutation()
     } catch (error) { this.#setError(error instanceof Error ? error.message : String(error)) }
     finally { this.#closingTabs.delete(tabId) }
   }
@@ -145,6 +184,9 @@ export class BrowserClientRuntime {
     }
   }
   #delay(ms: number): Promise<void> { return new Promise(resolve => setTimeout(resolve, ms)) }
+  async #refreshAfterMutation(): Promise<void> {
+    await this.refresh()
+  }
   async #hydrateSnapshots(state: BrowserStateSnapshot): Promise<void> {
     let changed = false
     await Promise.all(state.tabs.map(async tab => {
@@ -157,7 +199,8 @@ export class BrowserClientRuntime {
         return
       }
       try {
-        const image = await this.remote.snapshotImage(tab.tabId)
+        const sessionId = this.#requireSession()
+        const image = await this.remote.snapshotImage(sessionId, tab.tabId)
         if (!image.ok) throw new Error(`${image.error.code}: ${image.error.message}`)
         if (!image.value.ok) throw new Error(`${image.value.code}: ${image.value.message}`)
         if (image.value.value.artifactId !== artifactId) throw new Error(`STALE_SNAPSHOT: Expected ${artifactId}, received ${image.value.value.artifactId}.`)
@@ -218,6 +261,11 @@ export class BrowserClientRuntime {
   }
   #settleSurface(tabId: string, outcome: BrowserSurfaceMountOutcome): void { for (const resolve of this.#surfaceWaiters.get(tabId) ?? []) resolve(outcome); this.#surfaceWaiters.delete(tabId) }
   #setError(error: string): void { if (this.#error === error) return; this.#error = error; this.#publish() }
+  #requireSession(): SessionId {
+    const sessionId = this.currentSessionId()
+    if (sessionId === undefined) throw new Error('TAB_NOT_OWNED: No active session owns this Browser operation.')
+    return sessionId
+  }
   #publish(): void {
     const snapshotErrors = Object.fromEntries([...this.#snapshotErrors].flatMap(([tabId, failure]) => this.#state.tabs.some(tab => tab.tabId === tabId && tab.snapshotArtifactId === failure.artifactId) ? [[tabId, failure.message]] : []))
     this.#snapshot = { state: this.#state, snapshotErrors, ...(this.#error === undefined ? {} : { error: this.#error }) }; this.#emit()

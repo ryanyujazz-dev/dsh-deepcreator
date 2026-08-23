@@ -10,6 +10,7 @@ class FakeProvider implements BrowserProvider {
     if (command.kind === 'inspect' && command.action === 'snapshot') {
       return { kind: 'snapshot', snapshot: { snapshotId: 'snapshot-1', url: tab.url, title: tab.title, text: 'n1 button "Continue"', nodes: [{ nodeRef: 'n1', role: 'button', name: 'Continue' }] }, tab }
     }
+    if (command.kind === 'navigate' && command.action === 'goto') return { kind: 'state', tab: { ...tab, url: command.url! } }
     return { kind: 'state', tab }
   })
   constructor(readonly info: BrowserDescriptor) {}
@@ -71,7 +72,9 @@ describe('BrowserRuntime', () => {
     runtime.markPresentationPending('agent-1', created.tab.tabId)
     runtime.settlePresentation('agent-1', created.tab.tabId, 'presented')
 
+    await expect(runtime.close('agent-2', created.tab.tabId, signal)).rejects.toMatchObject({ code: 'TAB_NOT_OWNED' })
     await runtime.close('agent-1', created.tab.tabId, signal)
+    await expect(runtime.close('agent-1', created.tab.tabId, signal)).resolves.toBeUndefined()
 
     expect(provider.close).toHaveBeenCalledOnce()
     expect(() => runtime.tab('agent-1', created.tab.tabId)).toThrowError(expect.objectContaining({ code: 'TAB_NOT_FOUND' }))
@@ -89,6 +92,19 @@ describe('BrowserRuntime', () => {
     await expect(runtime.execute('agent-1', created.tab.tabId, { kind: 'inspect', action: 'title' }, signal)).rejects.toMatchObject({ code: 'CONTROL_INTERRUPTED' })
     runtime.reacquire('agent-1', created.tab.tabId)
     await expect(runtime.execute('agent-1', created.tab.tabId, { kind: 'inspect', action: 'title' }, signal)).resolves.toMatchObject({ kind: 'state' })
+  })
+
+  it('lets an explicit panel address action navigate while interrupting Agent control', async () => {
+    const provider = visible(); const runtime = new BrowserRuntime(); runtime.registerProvider(provider)
+    const created = await runtime.createTab({ sessionId: 'agent-1', turn: 0, workspaceRoot: process.cwd(), selection: { browserId: 'visible' }, lifecycle: 'deliverable', signal })
+    runtime.markPresentationPending('agent-1', created.tab.tabId)
+    runtime.settlePresentation('agent-1', created.tab.tabId, 'presented')
+
+    await expect(runtime.navigateFromClient('agent-1', created.tab.tabId, 'http://127.0.0.1:4173/path', signal)).resolves.toMatchObject({
+      url: 'http://127.0.0.1:4173/path', controlState: 'interrupted', lifecycle: 'deliverable',
+    })
+    await expect(runtime.execute('agent-1', created.tab.tabId, { kind: 'inspect', action: 'title' }, signal)).rejects.toMatchObject({ code: 'CONTROL_INTERRUPTED' })
+    expect(provider.execute).toHaveBeenCalledWith(expect.anything(), expect.anything(), { kind: 'navigate', action: 'goto', url: 'http://127.0.0.1:4173/path' })
   })
 
   it('closes temporary tabs, releases claimed tabs, and preserves one-turn handoff', async () => {

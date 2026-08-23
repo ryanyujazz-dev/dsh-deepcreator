@@ -1,6 +1,6 @@
 {
   "name": "@ryanyujazz/dsh-artifacts",
-  "description": "Read-only workspace file reader for the DeepCreator Workbench Artifact panel",
+  "description": "Workspace artifact reader and fenced preview materializer for DeepCreator",
   "version": "0.1.0",
   "type": "module",
   "main": "lib/index.js",
@@ -43,7 +43,8 @@
     "@deepseek-ai/dsh-system-prompt": "0.1.1-rc.2",
     "@deepseek-ai/dsh-typert-protocol": "0.1.1-rc.2",
     "@ryanyujazz/dsh-presentation": "workspace:^",
-    "@types/node": "^22.20.0"
+    "@types/node": "^22.20.0",
+    "@types/word-extractor": "^1.0.6"
   },
   "files": [
     "lib/index.js",
@@ -52,5 +53,9 @@
     "lib/typert.host.d.ts",
     "lib/typert.remote-client.js",
     "lib/typert.remote-client.d.ts"
-  ]
+  ],
+  "dependencies": {
+    "mammoth": "^1.12.1",
+    "word-extractor": "^1.0.4"
+  }
 }
