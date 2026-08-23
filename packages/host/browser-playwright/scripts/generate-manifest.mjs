@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 import ts from 'typescript'
 
@@ -26,4 +27,4 @@ for (const required of ['BrowserType', 'Browser', 'BrowserContext', 'Page', 'Fra
 if (Object.keys(api).length < 50 || api.Page.length < 40) throw new Error(`Playwright API manifest coverage is unexpectedly small (${Object.keys(api).length} types, ${api.Page.length} Page members).`)
 const manifest = { playwrightVersion: installed.version, source: 'playwright-core/types/types.d.ts', generatedAtBuild: true, api }
 if (process.argv.includes('--check')) process.stdout.write(`Playwright ${installed.version}: ${Object.keys(api).length} types, ${Object.values(api).reduce((sum, members) => sum + members.length, 0)} members\n`)
-else { const output = new URL('../lib/playwright-api-manifest.json', import.meta.url); await mkdir(dirname(output.pathname), { recursive: true }); await writeFile(output, `${JSON.stringify(manifest, null, 2)}\n`) }
+else { const output = fileURLToPath(new URL('../lib/playwright-api-manifest.json', import.meta.url)); await mkdir(dirname(output), { recursive: true }); await writeFile(output, `${JSON.stringify(manifest, null, 2)}\n`) }
