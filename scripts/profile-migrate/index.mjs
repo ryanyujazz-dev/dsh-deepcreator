@@ -35,6 +35,7 @@ const OWNED_DEPENDENCIES = new Set([
   '@ryanyujazz/dsh-client-ui-primitives',
   '@ryanyujazz/dsh-client-ui-settings',
   '@ryanyujazz/dsh-client-ui-settings-general',
+  '@ryanyujazz/dsh-client-ui-remote-access',
   '@ryanyujazz/dsh-client-ui-skills',
   '@ryanyujazz/dsh-client-ui-sidebar',
   '@ryanyujazz/dsh-client-ui-subagent',
@@ -49,6 +50,7 @@ const OWNED_DEPENDENCIES = new Set([
   '@ryanyujazz/dsh-client-workbench-remotes',
   '@ryanyujazz/dsh-client-ui-workspace',
   '@ryanyujazz/dsh-artifacts',
+  '@ryanyujazz/dsh-remote-access',
   '@ryanyujazz/dsh-browser',
   '@ryanyujazz/dsh-image-generation',
   '@ryanyujazz/dsh-presentation',
@@ -259,6 +261,7 @@ if (!dump.includes('@ryanyujazz/dsh-client-ui-conversation')
   || !dump.includes('@ryanyujazz/dsh-client-workbench-remotes')
   || !dump.includes('@ryanyujazz/dsh-client-presentation')
   || !dump.includes('@ryanyujazz/dsh-artifacts')
+  || !dump.includes('@ryanyujazz/dsh-remote-access')
   || !dump.includes('@ryanyujazz/dsh-review')
   || !dump.includes('@ryanyujazz/dsh-terminal-workbench')
   || !activeCompositionRow('ui-settings', '@deepseek-ai/dsh-client-ui-settings')
@@ -270,6 +273,8 @@ if (!dump.includes('@ryanyujazz/dsh-client-ui-conversation')
   || !activeCompositionRow('deepcreator-client-presentation', '@ryanyujazz/dsh-client-presentation')
   || !activeCompositionRow('deepcreator-ui-browser', '@ryanyujazz/dsh-client-ui-browser')
   || !activeCompositionRow('deepcreator-ui-image-generation', '@ryanyujazz/dsh-client-ui-image-generation')
+  || !activeCompositionRow('deepcreator-remote-access', '@ryanyujazz/dsh-remote-access')
+  || !activeCompositionRow('deepcreator-ui-remote-access', '@ryanyujazz/dsh-client-ui-remote-access')
   || !activeCompositionRow('deepcreator-skill-admin', '@ryanyujazz/dsh-skill-admin')
   || !activeCompositionRow('deepcreator-ui-skills', '@ryanyujazz/dsh-client-ui-skills')
   || dump.includes('deepcreator-browser-mcp')

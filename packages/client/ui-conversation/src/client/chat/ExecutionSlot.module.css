@@ -113,6 +113,16 @@
   opacity: 1;
 }
 
+@media (pointer: coarse) {
+  .aggregate .leadingIcon {
+    opacity: 0;
+  }
+
+  .aggregate .leadingChevron {
+    opacity: 1;
+  }
+}
+
 .chevron {
   color: var(--dsw-alias-label-secondary);
   flex: none;

@@ -14,7 +14,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
   DeepCreatorIconSkillOutline16, IconAgentPresetOutline16, IconCloseOutline16, IconDataOutline16,
-  IconPersonalizationOutline16, IconSettingsOutline16,
+  IconPersonalizationOutline16, IconSettingsOutline16, IconShareOutline16,
   SidebarRow,
 } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { SettingsRootComponentProps, SettingsSectionRow } from './shell-contract.ts'
@@ -26,6 +26,7 @@ function navIcon(id: string) {
   if (id === 'agent-presets') return <IconAgentPresetOutline16 className={css.navIcon} size={16} />
   if (id === 'plugins') return <IconPersonalizationOutline16 className={css.navIcon} size={16} />
   if (id === 'skills') return <DeepCreatorIconSkillOutline16 className={css.navIcon} size={16} />
+  if (id === 'remote') return <IconShareOutline16 className={css.navIcon} size={16} />
   return <IconSettingsOutline16 className={css.navIcon} size={16} />
 }
 
@@ -33,7 +34,7 @@ type PanelProps = {
   rows: readonly SettingsSectionRow[]
   renderSlot: SettingsRootComponentProps['renderSlot']
   activeId: string | undefined
-  onSelect: (id: string) => void
+  onSelect: (id: string | undefined) => void
   onClose: () => void
 }
 
@@ -47,6 +48,7 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
   // projection falls back to the first row when the id is gone.
   const active = rows.find(r => r.id === activeId)?.id ?? rows[0]?.id
   const titleId = useId()
+  const mobileCloseLabelId = useId()
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -63,9 +65,15 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
   return (
     <div className={css.overlay} role="presentation">
       <div className={css.mask} aria-hidden="true" onClick={onClose} />
-      <div className={css.panel} role="dialog" aria-modal="true" aria-labelledby={titleId}>
+      <div className={css.panel} role="dialog" aria-modal="true" aria-labelledby={titleId} data-section-selected={activeId !== undefined || undefined}>
         <nav className={css.nav}>
-          <div className={css.navTitle} id={titleId}>{renderSlot('settings.header', {})}</div>
+          <div className={css.navTitle}>
+            <span id={titleId}>{renderSlot('settings.header', {})}</span>
+            <button type="button" className={css.mobileClose} onClick={onClose} aria-labelledby={`${titleId} ${mobileCloseLabelId}`}>
+              <IconCloseOutline16 size={16} />
+              <span id={mobileCloseLabelId} className={css.hiddenLabel}>{renderSlot('settings.close', {})}</span>
+            </button>
+          </div>
           <div className={css.navList}>
             {rows.map(row => (
               <button
@@ -83,6 +91,9 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
         </nav>
         <div className={css.content}>
           <div className={css.header}>
+            <button type="button" className={css.mobileBack} onClick={() => { onSelect(undefined) }} aria-labelledby={titleId}>
+              <span aria-hidden="true">‹</span>
+            </button>
             <div className={css.actions}>{renderSlot('settings.action', {})}</div>
             <button ref={closeButton} type="button" className={css.close} onClick={onClose}>
               <IconCloseOutline16 size={14} />
@@ -104,7 +115,7 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
  * @returns the settings shell element tree.
  */
 export function SettingsRoot(props: SettingsRootComponentProps) {
-  const { wide, useSections, useOnboardingSteps, useNavigation, useSessions, renderSlot } = props
+  const { wide, remote, useSections, useOnboardingSteps, useNavigation, useSessions, renderSlot } = props
   const [open, setOpen] = useState(false)
   const [activeId, setActiveId] = useState<string | undefined>(undefined)
   const [completedOnboarding, setCompletedOnboarding] = useState<ReadonlySet<string>>(() => new Set())
@@ -120,7 +131,8 @@ export function SettingsRoot(props: SettingsRootComponentProps) {
   // The ledger tick keeps the nav rows fresh: registrants re-register with
   // freshly localized text on locale change, and the trigger/header/close
   // seats re-render through their own outlets' subscriptions.
-  const rows = useSections(s => s)
+  const registeredRows = useSections(s => s)
+  const rows = remote ? registeredRows.filter(row => row.id === 'remote') : registeredRows
   const onboardingSteps = useOnboardingSteps(s => s)
   const navigation = useNavigation(snapshot => snapshot)
   const navigationWatermark = useRef(navigation.sequence)

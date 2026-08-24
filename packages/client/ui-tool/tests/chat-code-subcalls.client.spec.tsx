@@ -100,7 +100,7 @@ function AppRoot({ renderSlot }: AppRootProps) {
  * Same real-stack bench as the toolview-slot spec: SlotRegistry + renderer +
  * both owning package applies; fakes only at service boundaries.
  */
-async function bench(snapshot: ConversationSnapshot) {
+async function bench(snapshot: ConversationSnapshot, isLoopback = false) {
   const ctx = new Context()
   const slotsFiber = ctx.plugin(SlotRegistry)
   await slotsFiber.await()
@@ -158,7 +158,7 @@ async function bench(snapshot: ConversationSnapshot) {
   }
   ctx.provide('workspaces', workspaces)
   ctx.provide('layout', layout)
-  ctx.provide('connection', { api: { settings: {} }, isLoopback: false } as never)
+  ctx.provide('connection', { api: { settings: {} }, isLoopback } as never)
   // ui-theme's Appearance row binds a durable scope through these two.
   ctx.provide('remote', { $on: () => () => {} } as never)
   ctx.provide('settingsScope', { bind: () => stubSettingsScope().scope } as never)
@@ -267,7 +267,7 @@ describe('run_code sub-calls through the real chat machinery', () => {
       subCall(11, parent, 1, 'read', { path: 'notes/demo.txt' }, 'ok'),
       subCall(12, parent, 2, 'bash', { command: 'ls notes', description: 'List notes' }, 'demo.txt'),
     ]
-    const b = await bench(snapshotWith([codeResult(10, parent)], subCalls))
+    const b = await bench(snapshotWith([codeResult(10, parent)], subCalls), true)
     const view = mountApp(b.slots)
     view.getByText('demo.txt').click()
     expect(b.layout.openDetails).not.toHaveBeenCalled()

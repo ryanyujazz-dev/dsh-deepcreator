@@ -1,4 +1,5 @@
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
@@ -27,6 +28,7 @@ export const inject = [
   'slots', 'workbench', 'locale', 'remote', 'sessions',
   'remote.review', 'remote.terminal-workbench',
   'presentation',
+  'connection',
 ]
 
 export function apply(ctx: ClientContext): void {
@@ -35,10 +37,11 @@ export function apply(ctx: ClientContext): void {
   // service once so Cordis does not treat later namespace reads as undeclared
   // `remote.*` context injections.
   const remote = ctx.get('remote') as TypertClientRemote
+  const loopback = (ctx.get('connection') as ConnectionHandle).isLoopback
   // Cordis returns a fresh traced Proxy for every associated namespace read.
   // Capture this namespace once: using remote['terminal-workbench'] inside a
   // React render would invalidate every Terminal effect on every render.
-  const terminal = remote['terminal-workbench']
+  const terminal = loopback ? remote['terminal-workbench'] : undefined
   // Review caches are session data planes, not panel state: one controller
   // per session starts when the session becomes current (before any panel
   // opens, so review data is warm on first open) and dies when the session
@@ -114,7 +117,6 @@ export function apply(ctx: ClientContext): void {
     }
   }, 'ui-workbench-tools: review caches')
   const reviewPanel: PanelComponent = props => createElement(ReviewPanel, { ...props, controller: reviewCacheFor(props.sessionId) })
-  const terminalPanel: PanelComponent = props => createElement(TerminalPanel, { ...props, terminal })
   const turnChangeCard = (props: PropsRuntime<'deepcreator.conversation.chat.turnChanges'> & PropsLocale<'workbench-tools'>) => createElement(TurnChangeCard, {
     ...props,
     controller: reviewCacheFor(props.sessionId),
@@ -122,8 +124,12 @@ export function apply(ctx: ClientContext): void {
   })
   const providers: Array<{ definition: PanelTypeDefinition; panel: PanelComponent; icon: IconComponent }> = [
     { definition: { id:'review',label:()=>t('review'),scope:'workspace',order:4,supportsHome:true,supportsCreate:false,supportsMultipleInstances:true,minWidth:150,minHeight:260,preferredWidth:560,initialWidthRatio:1/2,closePolicy:'dispose',openParameters:{scope:'unstaged',expand:'all'} }, panel: reviewPanel, icon: DeepCreatorIconReview16 },
-    { definition: { id:'terminal',label:()=>t('terminal'),scope:'session',order:1,supportsHome:false,supportsCreate:true,supportsMultipleInstances:true,minWidth:150,minHeight:220,preferredWidth:520,initialWidthRatio:1/3,closePolicy:'provider-controlled',disabledWhenAddressed:true }, panel: terminalPanel, icon: DeepCreatorIconTerminal16 },
   ]
+  if (terminal !== undefined) providers.push({
+    definition: { id:'terminal',label:()=>t('terminal'),scope:'session',order:1,supportsHome:false,supportsCreate:true,supportsMultipleInstances:true,minWidth:150,minHeight:220,preferredWidth:520,initialWidthRatio:1/3,closePolicy:'provider-controlled',disabledWhenAddressed:true },
+    panel: props => createElement(TerminalPanel, { ...props, terminal }),
+    icon: DeepCreatorIconTerminal16,
+  })
   const reviewPresenter: PresentationProvider = {
     id: 'workbench-review', priority: 100, resourceKinds: ['review'], modes: ['none'], surfaceHost: false,
     async present(_request, resource) {

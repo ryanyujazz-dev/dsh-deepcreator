@@ -14,8 +14,8 @@ type Props = PropsRuntime<'conversation.chat.turnTail'>
   & {
     matched: readonly string[]
     openArtifacts: () => void
-    openInDeepCreator(path: string): Promise<void>
-    openInSystemBrowser(path: string): Promise<void>
+    openInDeepCreator?: ((path: string) => Promise<void>) | undefined
+    openInSystemBrowser?: ((path: string) => Promise<void>) | undefined
   }
 
 /** Official per-Turn produced-files fact in DeepCreator's shared file-card chrome. */
@@ -42,7 +42,7 @@ export function ArtifactTurnCard({ turn, matched: paths, openFile, openArtifacts
               key={path}
               path={path}
               onClick={() => { openFile(path) }}
-              actions={isHtmlArtifactPath(path) ? (
+              actions={isHtmlArtifactPath(path) && openInDeepCreator !== undefined && openInSystemBrowser !== undefined ? (
                 <HtmlArtifactOpenControl
                   path={path}
                   openInDeepCreator={() => openInDeepCreator(path)}

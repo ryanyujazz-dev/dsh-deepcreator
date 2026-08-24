@@ -349,3 +349,21 @@
     transition: none;
   }
 }
+
+@media (max-width: 640px) and (pointer: coarse) {
+  .rowActions,
+  .projectRow .rowActions,
+  .sessionRow .rowActions {
+    display: inline-flex;
+  }
+
+  .sessionRow .time {
+    display: none;
+  }
+
+  .iconButton,
+  .projectRow .iconButton {
+    width: 44px;
+    height: 44px;
+  }
+}

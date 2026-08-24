@@ -47,6 +47,19 @@
   padding: 16px calc(var(--dsh-composer-side-clearance) + 16px);
 }
 
+@media (max-width: 640px) {
+  .scroll {
+    overscroll-behavior-y: contain;
+    padding-right: calc(var(--dsh-composer-side-clearance) + 8px);
+    padding-left: calc(var(--dsh-composer-side-clearance) + 8px);
+  }
+
+  .toBottom {
+    width: 44px;
+    height: 44px;
+  }
+}
+
 :global([data-conversation-scroll]) .root {
   flex: 0 0 auto;
   min-height: auto;

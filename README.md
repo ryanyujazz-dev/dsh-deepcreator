@@ -57,6 +57,7 @@ The conversation flow comes first; the rest of the product is shaped into a rest
 - A shared token system controls typography, spacing, color, states, menus, scrollbars, and light/dark appearance across every plugin.
 - Consistent rows, controls, focus states, disclosures, inspectors, and code surfaces reduce visual noise during long sessions.
 - Model selection, permission presets, agent presets, subagent routing, workspaces, settings, and user questions follow the same interaction grammar.
+- Optional same-Wi-Fi mobile access serves this same Web UI over a paired trusted-LAN HTTP gateway, with no certificate installation; phone changes are responsive layout, touch, safe-area, and capability adaptations rather than a separate mobile interface. The transport is unencrypted and must not be exposed to public networks or the internet.
 
 ## A growing set of useful plugins
 

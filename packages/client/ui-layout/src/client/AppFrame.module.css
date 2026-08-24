@@ -107,6 +107,7 @@
 }
 
 .sidebarCol {
+  grid-column: 1;
   min-width: 0;
   overflow: hidden;
   background: var(--dsw-specific-sidebar-fill);
@@ -130,6 +131,7 @@
 }
 
 .centerCol {
+  grid-column: 2;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -137,6 +139,7 @@
 }
 
 .detailsCol {
+  grid-column: 3;
   min-width: 0;
   overflow: hidden;
 }
@@ -233,4 +236,58 @@
 
 .overlayLayer > * {
   pointer-events: auto;
+}
+
+.mobileSidebarMask {
+  display: none;
+}
+
+/* Phone layout is a responsive projection of the same three occupants. The
+   existing SidebarRoot becomes a drawer and the existing Workbench details
+   occupant becomes a full-stage layer; neither subtree is replaced. */
+.frame[data-phone] {
+  height: 100dvh;
+  transition: none;
+}
+
+.frame[data-phone] .sidebarCol {
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: 31;
+  width: min(86vw, 320px);
+  max-width: 100%;
+  transform: translateX(-100%);
+  box-shadow: var(--dsw-shadow-lv3);
+  transition: transform var(--ds-transition-duration-slow) var(--ds-ease-in-out);
+}
+
+.frame[data-phone][data-mobile-sidebar-open] .sidebarCol {
+  transform: translateX(0);
+}
+
+.frame[data-phone] .mobileSidebarMask {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: block;
+  padding: 0;
+  border: 0;
+  background: var(--dsw-alias-bg-mask-1);
+  backdrop-filter: var(--dsw-mask-blur);
+}
+
+.frame[data-phone][data-mobile-details-open] .detailsCol {
+  position: absolute;
+  inset: 0;
+  z-index: 18;
+  width: 100%;
+  background: var(--dsw-alias-bg-base);
+}
+
+.frame[data-phone] .sidebarToggleSeat {
+  left: max(10px, env(safe-area-inset-left));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .frame[data-phone] .sidebarCol { transition: none; }
 }

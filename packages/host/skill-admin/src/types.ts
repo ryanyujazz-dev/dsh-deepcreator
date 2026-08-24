@@ -2,6 +2,12 @@ import type { SkillInvocationPolicy, SkillResourceBase } from '@deepseek-ai/dsh-
 
 export type SkillInstallKind = 'copy' | 'link' | 'git'
 
+/** Workspace and optional live Agent whose effective Skill layers are managed. */
+export interface SkillAdminTarget {
+  cwd?: string
+  sessionId?: string
+}
+
 /** Optional bilingual UI descriptions; `description` remains the canonical fallback. */
 export interface SkillLocalizedDescriptions {
   readonly zh: string

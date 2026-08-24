@@ -22,7 +22,7 @@ describe('Terminal Remote identity', () => {
     const definitions: Array<{ id: string; supportsHome: boolean }> = []
     const dispose = () => undefined
     const ctx = {
-      get: () => remote,
+      get: (name: string) => name === 'connection' ? { isLoopback: true } : remote,
       locale: {
         bind: () => ((key: string) => key),
         register: () => dispose,

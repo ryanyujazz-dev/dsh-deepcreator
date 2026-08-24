@@ -215,6 +215,17 @@ describe('ArtifactPanel', () => {
     expect(read).toHaveBeenCalledTimes(2)
   })
 
+  it('omits the native containing-folder action for a remote surface', async () => {
+    const path = 'E:/repo/a.md'
+    const read = vi.fn(async () => ({ ok: true as const, value: { ok: true as const, kind: 'text' as const, content: 'remote' } }))
+    const input = props(snapshotOf([{ path, updatedAt: 1_000, turn: 1 }]), read)
+    const { openContainingFolder: _openContainingFolder, ...remoteInput } = input.input
+    const view = render(<ArtifactPanel {...remoteInput} route="instance" activeInstanceId={path} />)
+
+    await waitFor(() => { expect(view.getByText('remote')).toBeTruthy() })
+    expect(view.queryByRole('button', { name: 'openFolder' })).toBeNull()
+  })
+
   it('defaults Markdown to conversation-grade preview and switches to the code renderer', async () => {
     const path = 'E:/repo/report.md'
     const read = vi.fn(async () => ({ ok: true as const, value: { ok: true as const, kind: 'text' as const, content: '# 标题\n\n正文' } }))

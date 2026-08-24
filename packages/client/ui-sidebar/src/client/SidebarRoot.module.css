@@ -211,3 +211,22 @@
     animation: none;
   }
 }
+
+@media (max-width: 640px) {
+  .root {
+    height: 100dvh;
+    padding-bottom: max(6px, env(safe-area-inset-bottom));
+  }
+
+  .logoRow {
+    height: calc(48px + env(safe-area-inset-top));
+    padding-top: env(safe-area-inset-top);
+  }
+}
+
+@media (max-width: 640px) and (pointer: coarse) {
+  .root {
+    --dsw-sidebar-row-height: 44px;
+    --dsh-icon-toolbar-button-size: 44px;
+  }
+}

@@ -220,7 +220,7 @@ type SessionTreeProps = Pick<
   WorkspaceBrowserProps,
   'useSessions' | 'startSession' | 'open' | 'forkSession'
   | 'insertWorkspaceBefore' | 'insertSessionBefore'
-  | 'openWorkspaceLocation' | 'fileManager' | 't'
+  | 'openWorkspaceLocation' | 'fileManager' | 'canManageWorkspaces' | 'canPermanentlyDelete' | 't'
 > & {
   workspaces: readonly WorkspaceView[]
   /** Explicit persisted zero-or-five-session state by Workspace group. */
@@ -261,6 +261,7 @@ type SessionTreeProps = Pick<
 function SessionTree({
   useSessions, startSession, open, forkSession, workspaces, archivedSessionIds,
   onRenameRequest, onDeleteRequest, onSessionRename, onSessionArchive, onSessionDelete,
+  canManageWorkspaces, canPermanentlyDelete,
   pinnedSessionIds, setSessionPinned, openWorkspaceLocation, canOpenPath, fileManager,
   insertWorkspaceBefore, insertSessionBefore, orderBy,
   groupExpansion, setGroupExpanded,
@@ -410,7 +411,7 @@ function SessionTree({
           const workspaceMarker = workspaceId !== undefined && workspaceDrag?.over?.id === workspaceId
             ? workspaceDrag.over.half
             : null
-          const workspaceDragProps = workspaceId === undefined ? undefined : {
+          const workspaceDragProps = workspaceId === undefined || !canManageWorkspaces ? undefined : {
             start: () => {
               workspaceDropCommitted.current = false
               setWorkspaceDrag({ workspaceId, over: null })
@@ -478,7 +479,7 @@ function SessionTree({
                   }
                 }}
                 drag={workspaceDragProps}
-                actions={group.workspaceId === undefined
+                actions={group.workspaceId === undefined || !canManageWorkspaces
                   ? undefined
                   : {
                     rename: () => {
@@ -531,11 +532,12 @@ function SessionTree({
                     onFork={forkSession}
                     onArchive={onSessionArchive}
                     onSessionDelete={onSessionDelete}
+                    allowDelete={canPermanentlyDelete}
                     onPinnedChange={setSessionPinned}
                     onOpenLocation={openWorkspaceLocation}
                     canOpenLocation={canOpenPath}
                     fileManager={fileManager}
-                    drag={dragProps}
+                    drag={canManageWorkspaces ? dragProps : undefined}
                     t={t}
                   />
                 )
@@ -564,6 +566,7 @@ function SessionTree({
 /** The flat "In one list" body: every session is one draggable top-level row. */
 function FlatList({
   useSessions, open, forkSession, onSessionRename, onSessionArchive, onSessionDelete, archivedSessionIds,
+  canPermanentlyDelete,
   pinnedSessionIds, setSessionPinned, openWorkspaceLocation, canOpenPath, fileManager,
   orderBy, sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder, t,
 }: Pick<
@@ -574,6 +577,7 @@ function FlatList({
   | 'onSessionRename'
   | 'onSessionArchive'
   | 'onSessionDelete'
+  | 'canPermanentlyDelete'
   | 'archivedSessionIds'
   | 'pinnedSessionIds'
   | 'setSessionPinned'
@@ -659,6 +663,7 @@ function FlatList({
               onFork={forkSession}
               onArchive={onSessionArchive}
               onSessionDelete={onSessionDelete}
+              allowDelete={canPermanentlyDelete}
               onPinnedChange={setSessionPinned}
               onOpenLocation={openWorkspaceLocation}
               canOpenLocation={canOpenPath}
@@ -701,6 +706,7 @@ function PinnedSessions({
   onSessionRename,
   onSessionArchive,
   onSessionDelete,
+  canPermanentlyDelete,
   workspaces,
   archivedSessionIds,
   pinnedSessionIds,
@@ -718,6 +724,7 @@ function PinnedSessions({
   | 'onSessionRename'
   | 'onSessionArchive'
   | 'onSessionDelete'
+  | 'canPermanentlyDelete'
   | 'workspaces'
   | 'archivedSessionIds'
   | 'pinnedSessionIds'
@@ -755,6 +762,7 @@ function PinnedSessions({
             onFork={forkSession}
             onArchive={onSessionArchive}
             onSessionDelete={onSessionDelete}
+            allowDelete={canPermanentlyDelete}
             pinned
             onPinnedChange={setSessionPinned}
             onOpenLocation={openWorkspaceLocation}
@@ -869,6 +877,8 @@ export function WorkspaceBrowser({
   useCanOpenPath,
   openWorkspaceLocation,
   fileManager,
+  canManageWorkspaces,
+  canPermanentlyDelete,
   renderSlot,
   t,
 }: WorkspaceBrowserProps) {
@@ -1133,6 +1143,7 @@ export function WorkspaceBrowser({
           onSessionRename={onSessionRename}
           onSessionArchive={onSessionArchive}
           onSessionDelete={onSessionDelete}
+          canPermanentlyDelete={canPermanentlyDelete}
           workspaces={workspaces}
           archivedSessionIds={archivedSessionIds}
           pinnedSessionIds={pinnedSessionIds}
@@ -1221,7 +1232,7 @@ export function WorkspaceBrowser({
           {/* Adding is the button's one action, so a composition with no
               picking affordance has nothing to offer here: the region hides the
               button rather than leaving a dead one in the header. */}
-          {directoryFlowAvailable && (
+          {canManageWorkspaces && directoryFlowAvailable && (
             <Tooltip label={t('workspace.add')} side="bottom" delayMs={500}>
               <button
                 ref={wsPlusRef}
@@ -1238,7 +1249,7 @@ export function WorkspaceBrowser({
           )}
         </div>
         {/* Add flow + its error dialog (same package — direct composition). */}
-        <WorkspacePickFlow
+        {canManageWorkspaces && <WorkspacePickFlow
           t={t}
           open={wsPickerOpen}
           anchorRef={wsPlusRef}
@@ -1253,7 +1264,7 @@ export function WorkspaceBrowser({
             startSession(workspaceId)
           }}
           onClose={() => { setWsPickerOpen(false) }}
-        />
+        />}
       </div>
 
       {/* The collapsed rail keeps search as its own 36px control. */}
@@ -1296,6 +1307,7 @@ export function WorkspaceBrowser({
                 useSessions={useSessions} open={open} forkSession={forkSession}
                 onSessionRename={onSessionRename} onSessionArchive={onSessionArchive}
                 onSessionDelete={onSessionDelete}
+                canPermanentlyDelete={canPermanentlyDelete}
                 archivedSessionIds={archivedSessionIds}
                 pinnedSessionIds={pinnedSessionIds}
                 setSessionPinned={actions.setSessionPinned}
@@ -1316,6 +1328,8 @@ export function WorkspaceBrowser({
                 onSessionRename={onSessionRename}
                 onSessionArchive={onSessionArchive}
                 onSessionDelete={onSessionDelete}
+                canManageWorkspaces={canManageWorkspaces}
+                canPermanentlyDelete={canPermanentlyDelete}
                 forkSession={forkSession}
                 workspaces={workspaces}
                 groupExpansion={groupExpansion}

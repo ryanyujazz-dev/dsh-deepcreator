@@ -1,7 +1,9 @@
 import { createServer, type Server, type ServerResponse } from 'node:http'
+import { randomBytes } from 'node:crypto'
 import { readFile, realpath, stat } from 'node:fs/promises'
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { once } from 'node:events'
+import type { WebServer } from '@deepseek-ai/dsh-host-webserver'
 
 const MIME_TYPES: Readonly<Record<string, string>> = {
   '.avif': 'image/avif', '.bmp': 'image/bmp', '.css': 'text/css; charset=utf-8', '.gif': 'image/gif',
@@ -27,6 +29,73 @@ function fail(response: ServerResponse, status: number, message: string): void {
 }
 
 interface PreviewOrigin { server: Server; origin: string }
+
+/**
+ * Same-origin, unguessable single-file capabilities for image/PDF rendering.
+ * Authentication remains the outer transport's concern; the random token
+ * prevents an unrelated page on the same Host origin from enumerating files.
+ */
+export class ArtifactResourceRegistry {
+  private readonly byToken = new Map<string, string>()
+  private readonly byPath = new Map<string, string>()
+  private readonly disposeRoute: () => void
+
+  constructor(webServer: WebServer) {
+    this.disposeRoute = webServer.register({
+      kind: 'prefix',
+      path: '/deepcreator-artifacts',
+      handler: (request, response) => this.respond(request.method ?? 'GET', request.url ?? '/', response),
+    })
+  }
+
+  async urlFor(entryPath: string): Promise<string> {
+    const target = await realpath(entryPath)
+    let token = this.byPath.get(target)
+    if (token === undefined) {
+      token = randomBytes(24).toString('base64url')
+      this.byPath.set(target, token)
+      this.byToken.set(token, target)
+    }
+    return `/deepcreator-artifacts/${token}`
+  }
+
+  dispose(): void {
+    this.byToken.clear()
+    this.byPath.clear()
+    this.disposeRoute()
+  }
+
+  private async respond(method: string, rawUrl: string, response: ServerResponse): Promise<void> {
+    response.setHeader('cache-control', 'private, no-store')
+    response.setHeader('referrer-policy', 'no-referrer')
+    response.setHeader('x-content-type-options', 'nosniff')
+    if (method !== 'GET' && method !== 'HEAD') { fail(response, 405, 'Method not allowed.'); return }
+    let token: string
+    try {
+      const pathname = decodeURIComponent(new URL(rawUrl, 'http://artifact.local').pathname)
+      const parts = pathname.split('/').filter(Boolean)
+      if (parts.length !== 2 || parts[0] !== 'deepcreator-artifacts') { fail(response, 404, 'Artifact resource not found.'); return }
+      token = parts[1]!
+    } catch { fail(response, 400, 'Invalid artifact resource path.'); return }
+    const registered = this.byToken.get(token)
+    if (registered === undefined) { fail(response, 404, 'Artifact resource not found.'); return }
+    let target: string
+    try {
+      target = await realpath(registered)
+      if (target !== registered || !(await stat(target)).isFile()) { fail(response, 404, 'Artifact resource not found.'); return }
+    } catch { fail(response, 404, 'Artifact resource not found.'); return }
+    const mime = MIME_TYPES[extname(target).toLowerCase()]
+    if (mime === undefined || (!mime.startsWith('image/') && mime !== 'application/pdf')) {
+      fail(response, 403, 'Artifact resource type is not remotely previewable.'); return
+    }
+    const content = await readFile(target)
+    response.statusCode = 200
+    response.setHeader('content-type', mime)
+    response.setHeader('content-length', String(content.byteLength))
+    if (method === 'HEAD') response.end()
+    else response.end(content)
+  }
+}
 
 /**
  * Lazily serves one HTML entry directory per loopback origin. A distinct

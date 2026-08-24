@@ -6,6 +6,8 @@
 
 AppFrame 始终挂载会话栏和详情栏；已连接 Session 通过 `SessionProvider` 渲染。布局 store 是瞬时状态，侧边栏以默认宽度启动，详情栏则保持关闭，且该 store 从不读写 `localStorage`。hero 和其他未选中状态也会将详情栏的渲染宽度派生为零，但不会改变存储的宽度偏好。AppFrame 会跨越这些状态保留最后一个非 blank 会话 id：首个会话保持关闭；显式打开详情栏的操作会使用约定默认宽度；返回同一会话时恢复其未改变的宽度；选择不同会话时，详情栏会在绘制前关闭。会话 owner share 为空，侧边栏 owner share 只包含 `collapsed` 和 `width`；注册方通过标准钩子获取业务数据，并从各自的 inject 接口获取操作。
 
+在不大于 640px 的手机宽度下，AppFrame 只响应式投影这些既有 occupant：Sidebar 变为覆盖式抽屉，Conversation 填满中间 Stage，打开的 details occupant 以全宽覆盖 Stage。三者继续显式绑定第一、第二、第三 grid track，因此 Sidebar 脱离普通布局成为抽屉后，不会把 Conversation 挤进零宽的侧栏轨道；在抽屉里选择另一个会话会自动收起抽屉并回到 Conversation。这里不增加手机专用业务组件或路由。
+
 现在 `details` 由 ui-workbench 独占。ui-layout 仍只保存瞬时渲染几何；Workbench 按 Session 持久化外宽并通过 `ctx.layout.setWorkbenchWidth()` 恢复。details owner props 会提供真实宽度、排除 Sidebar 的 Stage 宽度（Conversation + Workbench）和 pointer resize 手势元数据。Conversation 的让步下限为 360px，一个 Workbench 列仍为 150px；更高阶拓扑由 Workbench occupant 解析，Focus 只覆盖 Stage，不覆盖 Sidebar。Focus 期间开关 Sidebar 时，details 的左边界与 sidebar grid track 共用慢速缓动，避免两条边界错位时短暂露出仍挂载的 Conversation；拖拽与减少动态效果模式不应用该缓动。
 
 details 列本身不再绘制外框。可见面板的边框与内缩完全归 occupant 所有；AppFrame 只提供透明的外侧 resize 命中条，Focus 模式也遵守同一所有权。完整 8px 条带从 Workbench 根容器左边缘开始向内延伸，正好填满根容器 4px padding 与 panel shell 4px margin，不覆盖卡片，也不向对话区借用命中宽度。静息时条带不绘制内容；悬停或拖拽时，仅在真实栏边界淡入一条使用 `--dsw-alias-border-l1` 的通栏 1px 竖线。

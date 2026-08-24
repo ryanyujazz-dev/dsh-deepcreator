@@ -22,10 +22,13 @@ describe('ui-skills apply', () => {
     })
     ctx.provide('remote', { 'skill-admin': namespace, $mount: mountRemote } as never)
     ctx.provide('workspaces', {
-      list: { getSnapshot: () => ({ items: [], recentWorkspaceId: undefined }) },
+      list: { getSnapshot: () => ({
+        items: [{ workspaceId: 'workspace-1', path: '/workspace', sessionIds: ['session-1'] }],
+        recentWorkspaceId: 'workspace-1',
+      }) },
       pickDirectory: vi.fn(), openPath: vi.fn(),
     } as never)
-    ctx.provide('sessions', { list: { getSnapshot: () => ({ current: undefined }) } } as never)
+    ctx.provide('sessions', { list: { getSnapshot: () => ({ current: 'session-1' }) } } as never)
     const navigation = { open: vi.fn(), close: vi.fn(), commands: { getSnapshot: vi.fn(), subscribe: vi.fn() } }
     ctx.provide('settingsNavigation', navigation)
     const slots = ctx.get('slots') as SlotRegistry
@@ -47,8 +50,11 @@ describe('ui-skills apply', () => {
     shortcut.open()
     expect(navigation.open).toHaveBeenCalledWith('skills')
     const section = (slots.entries('settings.section')[0]!.inject as () => {
+      list: () => Promise<unknown>
       description: (item: { description: string; localizedDescriptions?: { zh: string; en: string } }) => string
     })()
+    await section.list()
+    expect(namespace.list).toHaveBeenCalledWith({ cwd: '/workspace', sessionId: 'session-1' })
     const localized = { description: 'English description', localizedDescriptions: { zh: '中文描述', en: 'English description' } }
     expect(section.description(localized)).toBe('中文描述')
     ctx.locale.setLocale('en')

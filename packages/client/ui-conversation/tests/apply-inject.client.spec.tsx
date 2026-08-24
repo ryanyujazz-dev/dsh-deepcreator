@@ -45,9 +45,9 @@ function sessionFakeFor() {
   } satisfies SessionBehaviorOverrides
 }
 
-async function bench() {
+async function bench(isLoopback = false) {
   const runtime = await SlotTestRuntime.create()
-  runtime.provide('connection', { api: { settings: {} }, isLoopback: false })
+  runtime.provide('connection', { api: { settings: {} }, isLoopback })
   // The plugin injects both; these specs exercise no settings path.
   runtime.provide('remote', { $on: () => () => {} })
   runtime.provide('settingsScope', { bind: () => stubSettingsScope().scope } as never)
@@ -242,12 +242,21 @@ describe('conversation slot inject API', () => {
   })
 
   it('openFile falls back to workspaces.openPath when Artifact is not composed', async () => {
-    const b = await bench()
+    const b = await bench(true)
+    expect((b.runtime.ctx.get('connection') as { isLoopback: boolean }).isLoopback).toBe(true)
     const { injected } = b.chatViewApi(ROOT)
     injected.openFile('src/a.ts')
     await vi.waitFor(() => {
       expect(b.runtime.workspaces.calls).toContainEqual({ method: 'openPath', args: ['/proj/src/a.ts'] })
     })
+    await b.runtime.dispose()
+  })
+
+  it('does not fall back to a native path opener on a remote connection', async () => {
+    const b = await bench(false)
+    const { injected } = b.chatViewApi(ROOT)
+    injected.openFile('src/a.ts')
+    expect(b.runtime.workspaces.calls.some(call => call.method === 'openPath')).toBe(false)
     await b.runtime.dispose()
   })
 

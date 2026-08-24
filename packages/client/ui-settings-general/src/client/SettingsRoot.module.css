@@ -86,11 +86,19 @@
 
 /* Title row (figma 501:29959): 16/500 lh24, 12px side padding. */
 .navTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: 0 12px;
   font-size: 14px;
   line-height: 22px;
   font-weight: 500;
   color: var(--dsw-alias-label-primary);
+}
+
+.mobileClose,
+.mobileBack {
+  display: none;
 }
 
 /* Cell stack (figma 501:29961): gap 4. */
@@ -205,4 +213,91 @@
   overflow: hidden;
   clip: rect(0 0 0 0);
   white-space: nowrap;
+}
+
+/* Phone settings keep the same SettingsRoot and section Slots. Only the
+   projection changes from a two-column modal to a full-screen list/detail
+   surface; registrants and business components are unchanged. */
+@media (max-width: 640px) {
+  .overlay {
+    align-items: stretch;
+    justify-content: stretch;
+  }
+
+  .mask {
+    display: none;
+  }
+
+  .panel {
+    width: 100%;
+    height: 100dvh;
+    max-width: none;
+    border-radius: 0;
+  }
+
+  .nav {
+    width: 100%;
+    padding: max(18px, env(safe-area-inset-top)) 12px env(safe-area-inset-bottom);
+  }
+
+  .navTitle {
+    min-height: 44px;
+    padding: 0 12px;
+    font-size: 17px;
+    line-height: 24px;
+  }
+
+  .navCell {
+    min-height: 44px;
+    height: 44px;
+  }
+
+  .mobileClose,
+  .mobileBack {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--dsw-alias-label-primary);
+  }
+
+  .content {
+    display: none;
+    width: 100%;
+  }
+
+  .panel[data-section-selected] .nav {
+    display: none;
+  }
+
+  .panel[data-section-selected] .content {
+    display: flex;
+  }
+
+  .header {
+    align-items: center;
+    height: max(54px, calc(44px + env(safe-area-inset-top)));
+    padding: env(safe-area-inset-top) 8px 0;
+    border-bottom: 1px solid var(--dsw-alias-border-l2);
+  }
+
+  .mobileBack {
+    margin-right: auto;
+    font-size: 28px;
+    line-height: 1;
+  }
+
+  .close {
+    width: 44px;
+    height: 44px;
+  }
+
+  .options {
+    padding: 18px 16px max(20px, env(safe-area-inset-bottom));
+  }
 }

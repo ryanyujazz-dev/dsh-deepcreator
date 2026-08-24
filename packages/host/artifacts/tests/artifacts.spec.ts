@@ -1,7 +1,10 @@
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { createServer, type Server } from 'node:http'
+import { once } from 'node:events'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
+import type { WebRoute, WebServer } from '@deepseek-ai/dsh-host-webserver'
 import type { Session } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -10,11 +13,45 @@ import {
 } from '../src/index.ts'
 
 const temporary: string[] = []
-afterEach(async () => { await Promise.all(temporary.splice(0).map(path => rm(path, { recursive: true, force: true }))) })
+const servers: Server[] = []
+afterEach(async () => {
+  await Promise.all(temporary.splice(0).map(path => rm(path, { recursive: true, force: true })))
+  await Promise.all(servers.splice(0).map(server => new Promise<void>(resolve => server.close(() => { resolve() }))))
+})
+
+function artifactContext(): { ctx: Context; route: () => WebRoute } {
+  const ctx = new Context()
+  let registered: WebRoute | undefined
+  ctx.provide('webServer', {
+    register: (route: WebRoute) => {
+      registered = route
+      return () => { if (registered === route) registered = undefined }
+    },
+  } as WebServer)
+  return {
+    ctx,
+    route: () => {
+      if (registered === undefined) throw new Error('Artifact resource route was not registered.')
+      return registered
+    },
+  }
+}
+
+async function serveRoute(route: WebRoute): Promise<string> {
+  const server = createServer((request, response) => {
+    void Promise.resolve(route.handler(request, response)).catch(() => response.destroy())
+  })
+  servers.push(server)
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  const address = server.address()
+  if (address === null || typeof address === 'string') throw new Error('Test artifact server did not bind.')
+  return `http://127.0.0.1:${address.port}`
+}
 
 describe('ArtifactReader', () => {
   it('gives the Agent explicit, selective artifact presentation guidance', async () => {
-    const ctx = new Context()
+    const { ctx } = artifactContext()
     new SystemPrompt(ctx, {})
     new ArtifactReader(ctx)
 
@@ -33,7 +70,7 @@ describe('ArtifactReader', () => {
     const workspace = await mkdtemp(join(tmpdir(), 'dsh-artifacts-workspace-')); temporary.push(workspace)
     await writeFile(join(workspace, 'plan.md'), '# plan')
     const session = { id: 's1', header: { cwd: workspace } } as unknown as Session
-    const reader = new ArtifactReader(new Context())
+    const reader = new ArtifactReader(artifactContext().ctx)
     await expect(reader.read(session, join(workspace, 'plan.md'))).resolves.toMatchObject({ ok: true, kind: 'text', content: '# plan' })
     await expect(reader.read(session, 'plan.md')).resolves.toMatchObject({ ok: true, kind: 'text', content: '# plan' })
   })
@@ -55,7 +92,7 @@ describe('ArtifactReader', () => {
     await symlink(workspace, linked, process.platform === 'win32' ? 'junction' : undefined)
     await writeFile(join(workspace, 'plan.md'), '# plan')
     const session = { id: 's1', header: { cwd: linked } } as unknown as Session
-    const reader = new ArtifactReader(new Context())
+    const reader = new ArtifactReader(artifactContext().ctx)
     await expect(reader.read(session, join(linked, 'plan.md'))).resolves.toMatchObject({ ok: true, kind: 'text', content: '# plan' })
   })
 
@@ -64,15 +101,26 @@ describe('ArtifactReader', () => {
     const outside = await mkdtemp(join(tmpdir(), 'dsh-artifacts-outside-')); temporary.push(outside)
     await writeFile(join(outside, 'secret.md'), 'secret')
     const session = { id: 's1', header: { cwd: workspace } } as unknown as Session
-    const reader = new ArtifactReader(new Context())
+    const reader = new ArtifactReader(artifactContext().ctx)
     await expect(reader.read(session, join(outside, 'secret.md'))).resolves.toMatchObject({ ok: false, code: 'OUTSIDE_WORKSPACE' })
     await expect(reader.read(session, '../escape.md')).resolves.toMatchObject({ ok: false, code: 'OUTSIDE_WORKSPACE' })
+  })
+
+  it('does not expose hidden workspace files through artifact reads', async () => {
+    const workspace = await mkdtemp(join(tmpdir(), 'dsh-artifacts-workspace-')); temporary.push(workspace)
+    await writeFile(join(workspace, '.env'), 'TOKEN=secret')
+    await mkdir(join(workspace, '.private'))
+    await writeFile(join(workspace, '.private', 'note.txt'), 'secret')
+    const session = { id: 's1', header: { cwd: workspace } } as unknown as Session
+    const reader = new ArtifactReader(artifactContext().ctx)
+    await expect(reader.read(session, '.env')).resolves.toMatchObject({ ok: false, code: 'NOT_FOUND' })
+    await expect(reader.read(session, '.private/note.txt')).resolves.toMatchObject({ ok: false, code: 'NOT_FOUND' })
   })
 
   it('reports missing files and sessions without a workspace explicitly', async () => {
     const workspace = await mkdtemp(join(tmpdir(), 'dsh-artifacts-workspace-')); temporary.push(workspace)
     const session = { id: 's1', header: { cwd: workspace } } as unknown as Session
-    const reader = new ArtifactReader(new Context())
+    const reader = new ArtifactReader(artifactContext().ctx)
     await expect(reader.read(session, 'missing.md')).resolves.toMatchObject({ ok: false, code: 'NOT_FOUND' })
     await expect(reader.read({ id: 's1', header: {} } as unknown as Session, 'a.md')).resolves.toMatchObject({ ok: false, code: 'NO_WORKSPACE' })
   })
@@ -84,26 +132,28 @@ describe('ArtifactReader', () => {
     const docxFixture = join(process.cwd(), 'packages/host/artifacts/node_modules/mammoth/test/test-data/single-paragraph.docx')
     await writeFile(join(workspace, 'brief.docx'), await readFile(docxFixture))
     const session = { id: 's1', header: { cwd: workspace } } as unknown as Session
-    const ctx = new Context()
+    const harness = artifactContext()
+    const { ctx } = harness
     const reader = new ArtifactReader(ctx)
+    const origin = await serveRoute(harness.route())
 
     const image = await reader.read(session, 'chart.png')
-    expect(image).toMatchObject({ ok: true, kind: 'image', mediaType: 'image/png', url: expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+\/chart\.png$/) })
+    expect(image).toMatchObject({ ok: true, kind: 'image', mediaType: 'image/png', url: expect.stringMatching(/^\/deepcreator-artifacts\/[A-Za-z0-9_-]+$/) })
     if (!image.ok || image.kind !== 'image') throw new Error('image payload missing')
-    await expect(fetch(image.url).then(response => ({
+    await expect(fetch(`${origin}${image.url}`).then(response => ({
       contentType: response.headers.get('content-type'),
-      resourcePolicy: response.headers.get('cross-origin-resource-policy'),
-      corsOrigin: response.headers.get('access-control-allow-origin'),
+      cacheControl: response.headers.get('cache-control'),
+      referrerPolicy: response.headers.get('referrer-policy'),
     }))).resolves.toEqual({
       contentType: 'image/png',
-      resourcePolicy: 'cross-origin',
-      corsOrigin: null,
+      cacheControl: 'private, no-store',
+      referrerPolicy: 'no-referrer',
     })
 
     const pdf = await reader.read(session, 'report.pdf')
-    expect(pdf).toMatchObject({ ok: true, kind: 'pdf', mediaType: 'application/pdf', url: expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+\/report\.pdf$/) })
+    expect(pdf).toMatchObject({ ok: true, kind: 'pdf', mediaType: 'application/pdf', url: expect.stringMatching(/^\/deepcreator-artifacts\/[A-Za-z0-9_-]+$/) })
     if (!pdf.ok || pdf.kind !== 'pdf') throw new Error('pdf payload missing')
-    await expect(fetch(pdf.url).then(response => response.headers.get('content-type'))).resolves.toBe('application/pdf')
+    await expect(fetch(`${origin}${pdf.url}`).then(response => response.headers.get('content-type'))).resolves.toBe('application/pdf')
 
     await expect(reader.read(session, 'brief.docx')).resolves.toMatchObject({
       ok: true, kind: 'document', contentType: 'html', content: expect.stringContaining('<p>'),
@@ -119,7 +169,7 @@ describe('ArtifactReader', () => {
     await writeFile(join(site, 'assets', 'app.css'), 'h1 { color: red; }')
     await writeFile(join(site, '.env'), 'SECRET=hidden')
     const session = { id: 's1', header: { cwd: workspace } } as unknown as Session
-    const ctx = new Context()
+    const { ctx } = artifactContext()
     const reader = new ArtifactReader(ctx)
 
     const preview = await reader.preview(session, 'site/index.html')
@@ -137,7 +187,7 @@ describe('ArtifactReader', () => {
     const workspace = await mkdtemp(join(tmpdir(), 'dsh-artifacts-workspace-')); temporary.push(workspace)
     await writeFile(join(workspace, 'plan.md'), '# plan')
     const session = { id: 's1', header: { cwd: workspace } } as unknown as Session
-    const reader = new ArtifactReader(new Context())
+    const reader = new ArtifactReader(artifactContext().ctx)
     await expect(reader.preview(session, 'plan.md')).resolves.toMatchObject({ ok: false, code: 'NOT_PREVIEWABLE' })
   })
 })

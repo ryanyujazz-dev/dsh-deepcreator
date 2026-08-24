@@ -124,6 +124,7 @@ export function AppFrame({
     })
     return () => { alive = false; off() }
   }, [nativeWindowChrome])
+  const currentSession = useSessions(s => s.current)
   const detailsSession = useSessions((s) => {
     const current = s.current
     return current !== undefined && s.byId[current]?.blank === false ? current : undefined
@@ -171,14 +172,58 @@ export function AppFrame({
   // (or the default when the wide preference is closed) and the center
   // absorbs the squeeze.
   const narrow = viewport < SIDEBAR_AUTO_COLLAPSE
+  const phone = viewport <= 640
   useEffect(() => { actions.setNarrow(narrow) }, [actions, narrow])
   const sidebarCollapsed = narrow ? !panels.narrowExpanded : panels.sidebar === 0
   const sidebarPreference = sidebarCollapsed
     ? 0
     : panels.sidebar === 0 ? SIDEBAR_DEFAULT : panels.sidebar
   const cols = computeColumns(viewport, sidebarPreference, detailsSession === undefined ? 0 : panels.details)
+  // The desktop concession solver must not decide whether the phone's
+  // full-stage Workbench is open: at phone widths it necessarily concedes the
+  // third track to zero. The stored preference is the source of truth while
+  // the same details subtree is projected over the stage.
+  const mobileDetailsOpen = phone && detailsSession !== undefined && panels.details > 0
+  const mobileHistoryArmed = useRef(false)
+  const renderedSidebar = phone ? 0 : cols.sidebar
+  const renderedDetails = phone ? 0 : cols.details
   const colsRef = useRef(cols)
   colsRef.current = cols
+
+  // A phone drawer is navigation chrome, so committing a different Session
+  // returns the user to the unchanged Conversation occupant. Desktop keeps
+  // the persistent Sidebar behavior, and opening the drawer without changing
+  // Session selection does not close it again.
+  const previousSession = useRef(currentSession)
+  useEffect(() => {
+    const changed = previousSession.current !== currentSession
+    previousSession.current = currentSession
+    if (phone && changed && !sidebarCollapsed) actions.toggleSidebar()
+  }, [actions, currentSession, phone, sidebarCollapsed])
+
+  // The mobile Workbench is the same details subtree promoted to a full
+  // stage. Give that presentation one browser-history entry so the platform
+  // back gesture closes it instead of leaving the app origin.
+  useEffect(() => {
+    const onPopState = (): void => {
+      if (!mobileHistoryArmed.current) return
+      mobileHistoryArmed.current = false
+      actions.closeDetails()
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => { window.removeEventListener('popstate', onPopState) }
+  }, [actions])
+  useEffect(() => {
+    if (mobileDetailsOpen && !mobileHistoryArmed.current) {
+      window.history.pushState({ deepcreatorMobileWorkbench: true }, '')
+      mobileHistoryArmed.current = true
+      return
+    }
+    if (!mobileDetailsOpen && mobileHistoryArmed.current) {
+      mobileHistoryArmed.current = false
+      window.history.back()
+    }
+  }, [mobileDetailsOpen])
 
   // The drag base is the rendered width captured at drag start (grabbing a
   // concession-clamped panel must not jump back to the stored preference);
@@ -212,13 +257,16 @@ export function AppFrame({
       ref={frameRef}
       className={css.frame}
       style={{
-        gridTemplateColumns: `${cols.sidebar}px minmax(0, 1fr) ${cols.details}px`,
-        '--dsh-stage-left': `${cols.sidebar}px`,
+        gridTemplateColumns: `${renderedSidebar}px minmax(0, 1fr) ${renderedDetails}px`,
+        '--dsh-stage-left': `${phone ? 0 : cols.sidebar}px`,
       } as React.CSSProperties}
       data-sidebar-collapsed={sidebarCollapsed || undefined}
-      data-details-collapsed={cols.details === 0 || undefined}
+      data-details-collapsed={(phone ? !mobileDetailsOpen : cols.details === 0) || undefined}
       data-dragging={dragging || undefined}
       data-details-focused={panels.detailsFocused || undefined}
+      data-phone={phone || undefined}
+      data-mobile-sidebar-open={phone && !sidebarCollapsed || undefined}
+      data-mobile-details-open={mobileDetailsOpen || undefined}
       data-native-window-chrome={nativeWindowChrome}
       data-window-maximized={windowState.maximized || undefined}
       data-window-fullscreen={windowState.fullscreen || undefined}
@@ -240,6 +288,9 @@ export function AppFrame({
           width: cols.sidebar,
         })}
       </div>
+      {phone && !sidebarCollapsed && (
+        <button type="button" className={css.mobileSidebarMask} aria-label="Close sidebar" onClick={actions.toggleSidebar} />
+      )}
       <>
         {/* Both column occupants stay at fixed tree positions from first
             paint — no loading gate: a bare status line reads worse than
@@ -248,8 +299,8 @@ export function AppFrame({
             empty while no session is current. */}
         <CenterColumn>{renderSlot('conversation', {})}</CenterColumn>
         <DetailsColumn>{renderSlot('details', {
-          width: cols.details,
-          stageWidth: Math.max(0, viewport - cols.sidebar),
+          width: phone ? viewport : cols.details,
+          stageWidth: phone ? viewport : Math.max(0, viewport - cols.sidebar),
           resizeGesture: detailsResizeStart === null
             ? null
             : { active: true, startWidth: detailsResizeStart },
@@ -264,8 +315,8 @@ export function AppFrame({
         </div>
       )}
       {/* A closed zero-width sidebar has no resize handle. */}
-      {!sidebarCollapsed && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />}
-      {cols.details > 0 && !panels.detailsFocused && (
+      {!phone && !sidebarCollapsed && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />}
+      {!phone && cols.details > 0 && !panels.detailsFocused && (
         <DragHandle side="details" left={viewport - cols.details} onStart={onDetailsStart} onDrag={onDetailsDrag} onEnd={onDetailsEnd} />
       )}
     </div>

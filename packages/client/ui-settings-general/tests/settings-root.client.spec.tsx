@@ -21,6 +21,7 @@ const SEAT_CONTENT: Record<string, string> = {
 
 function mount({
   wide = true,
+  remote = false,
   onboardingActive = true,
   rows = [
     { id: 'general', order: 0, label: 'General' },
@@ -31,7 +32,7 @@ function mount({
     { id: 'welcome', order: -100 },
     { id: 'credential', order: 0 },
   ],
-}: { wide?: boolean; onboardingActive?: boolean; rows?: Row[]; steps?: Step[] } = {}) {
+}: { wide?: boolean; remote?: boolean; onboardingActive?: boolean; rows?: Row[]; steps?: Step[] } = {}) {
   // Mutable row source standing in for the bound useSections hook; bump()
   // plays a ledger change through the same observable contract.
   let current = rows
@@ -56,6 +57,7 @@ function mount({
     useSessions,
     useWorkspaces: unusedHook,
     wide,
+    remote,
     useOnboardingSteps: select => select(steps),
     useNavigation: (select) => {
       const [, force] = useState(0)
@@ -232,6 +234,22 @@ describe('SettingsPanel navigation', () => {
     expect(screen.getByRole('button', { name: 'Models' }).getAttribute('aria-current')).toBe('true')
     expect(screen.getByTestId('section-models')).toBeTruthy()
     expect(screen.queryByTestId('section-general')).toBeNull()
+  })
+
+  it('projects only the Remote section for a paired browser', () => {
+    mount({
+      remote: true,
+      rows: [
+        { id: 'general', order: 0, label: 'General' },
+        { id: 'remote', order: 10, label: 'Remote' },
+        { id: 'models', order: 20, label: 'Models' },
+      ],
+    })
+    openPanel()
+    expect(screen.getByRole('button', { name: 'Remote' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'General' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Models' })).toBeNull()
+    expect(screen.getByTestId('section-remote')).toBeTruthy()
   })
 
   it('mounts onboarding steps in order and transfers ownership only on completion', () => {

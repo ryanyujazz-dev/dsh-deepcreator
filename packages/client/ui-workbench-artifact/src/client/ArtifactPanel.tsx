@@ -20,7 +20,7 @@ import css from './ArtifactPanel.module.css'
 
 type Props = WorkbenchPanelProps & PropsLocale<'workbench-artifact'> & {
   artifacts: TypertClientRemote['artifacts']
-  openContainingFolder(path: string): void
+  openContainingFolder?: ((path: string) => void) | undefined
   workspaceRoot?: string | undefined
 }
 
@@ -59,7 +59,7 @@ function MarkdownModeSwitch({ mode, onChange, label, previewLabel, codeLabel }: 
 
 function ArtifactPath({ path, openContainingFolder, openFolderLabel, markdownMode, onMarkdownModeChange, renderModeLabel, previewLabel, codeLabel }: {
   path: string
-  openContainingFolder(path: string): void
+  openContainingFolder?: ((path: string) => void) | undefined
   openFolderLabel: string
   markdownMode?: MarkdownRenderMode | undefined
   onMarkdownModeChange?(mode: MarkdownRenderMode): void
@@ -107,13 +107,15 @@ function ArtifactPath({ path, openContainingFolder, openFolderLabel, markdownMod
           codeLabel={codeLabel}
         />
       )}
-      <WorkbenchPanelIconButton
-        className={css.pathAction}
-        label={openFolderLabel}
-        onClick={() => { openContainingFolder(path) }}
-      >
-        <DeepCreatorIconAnimatedFolder16 expanded opticalScale={false} />
-      </WorkbenchPanelIconButton>
+      {openContainingFolder !== undefined && (
+        <WorkbenchPanelIconButton
+          className={css.pathAction}
+          label={openFolderLabel}
+          onClick={() => { openContainingFolder(path) }}
+        >
+          <DeepCreatorIconAnimatedFolder16 expanded opticalScale={false} />
+        </WorkbenchPanelIconButton>
+      )}
     </div>
   )
 }

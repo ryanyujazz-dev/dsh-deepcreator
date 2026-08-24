@@ -5,6 +5,12 @@ import { describe, expect, it } from 'vitest'
 const css = readFileSync(fileURLToPath(new URL('../src/client/AppFrame.module.css', import.meta.url)), 'utf8')
 
 describe('AppFrame native title-bar drag region', () => {
+  it('keeps each shell occupant in its declared track when the phone Sidebar becomes absolute', () => {
+    expect(css).toMatch(/\.sidebarCol\s*\{[\s\S]*?grid-column: 1;/)
+    expect(css).toMatch(/\.centerCol\s*\{[\s\S]*?grid-column: 2;/)
+    expect(css).toMatch(/\.detailsCol\s*\{[\s\S]*?grid-column: 3;/)
+  })
+
   it('keeps a shallow macOS-only fallback above the column-owned header regions', () => {
     expect(css).toContain(".frame[data-native-window-chrome='macos']::before")
     expect(css).toContain('height: 8px;')

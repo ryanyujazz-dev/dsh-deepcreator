@@ -68,6 +68,23 @@ describe('ArtifactTurnCard', () => {
     expect(openFile).toHaveBeenCalledWith('prototype.html')
   })
 
+  it('keeps the same HTML file row but omits native preview actions remotely', () => {
+    const openFile = vi.fn()
+    const view = render(<ArtifactTurnCard {...({
+      turn: { turn: 7 },
+      matched: ['prototype.html'],
+      openFile,
+      openArtifacts: vi.fn(),
+      t: (key: string) => key,
+    } as never)} />)
+
+    fireEvent.click(view.getByText('turnCard.files'))
+    expect(view.queryByRole('button', { name: 'open' })).toBeNull()
+    expect(view.container.querySelector('[data-artifact-html-open]')).toBeNull()
+    fireEvent.click(view.getByText('prototype.html'))
+    expect(openFile).toHaveBeenCalledWith('prototype.html')
+  })
+
   it('matches the View action typography and transparent treatment', () => {
     const stylesheet = readFileSync(resolve(process.cwd(), 'packages/client/ui-workbench-artifact/src/client/HtmlArtifactOpenControl.module.css'), 'utf8')
     expect(stylesheet).toMatch(/\.openSplit\s*\{[^}]*height:\s*28px;[^}]*gap:\s*2px;/)

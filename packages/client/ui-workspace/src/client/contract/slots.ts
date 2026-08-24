@@ -91,6 +91,10 @@ export type DirectoryPickingHooks = {
  * browsing region drives.
  */
 export type WorkspaceBrowserInjected = {
+  /** Native workspace registry mutation is not available to paired browsers. */
+  canManageWorkspaces: boolean
+  /** Permanent Session deletion is loopback-only; archive remains available remotely. */
+  canPermanentlyDelete: boolean
   hooks: DirectoryPickingInjected['hooks'] & {
     /** Whether the connected Host can hand a path to a visible native desktop. */
     canOpenPath: HostObservable<boolean>

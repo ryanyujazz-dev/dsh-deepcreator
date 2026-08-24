@@ -1,4 +1,5 @@
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
 import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 import { createElement, type ReactNode } from 'react'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
@@ -17,10 +18,14 @@ import { en, NS, zh, type BrowserLocaleKey } from './locales.ts'
 import { BrowserClientRuntime, type BrowserRemoteClient } from './runtime.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' { interface LocaleNamespaceMap { browser: BrowserLocaleKey } }
-export const inject = ['slots', 'workbench', 'locale', 'remote', 'remote.browser', 'sessions', 'presentation', 'settingsScope']
+export const inject = ['slots', 'workbench', 'locale', 'remote', 'remote.browser', 'sessions', 'presentation', 'settingsScope', 'connection']
 type PanelComponent = (props: WorkbenchPanelProps & PropsLocale<'browser'>) => ReactNode
 
 export function apply(ctx: ClientContext): void {
+  // The Browser owns native surfaces, browser processes, and unrestricted
+  // automation. A paired LAN browser receives the same Client bundle but this
+  // feature contributes no seats on that surface.
+  if (!(ctx.get('connection') as ConnectionHandle).isLoopback) return
   const remote = (ctx.get('remote') as TypertClientRemote)['browser'] as unknown as BrowserRemoteClient
   const browser = new BrowserClientRuntime(remote, () => ctx.sessions.list.getSnapshot().current)
   const browserSettings = ctx.settingsScope.bind<import('@ryanyujazz/dsh-browser').BrowserSettings>({

@@ -32,6 +32,8 @@ export interface SettingsOnboardingStep {
  * the shell reads no locale state and subscribes through the bound hook.
  */
 export type SettingsRootInjected = {
+  /** Non-loopback authenticated remote surfaces expose only connection settings. */
+  remote: boolean
   hooks: {
     /** settings.section ledger projected into ordered nav rows. */
     sections: HostObservable<readonly SettingsSectionRow[]>
