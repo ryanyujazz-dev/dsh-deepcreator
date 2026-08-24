@@ -3,87 +3,125 @@
 </p>
 
 <p align="center">
-  <img src="./assets/readme/hero.svg" width="100%" alt="DeepCreator — Native, Classic, and Think conversation modes for clearer DeepSeek Harness agent execution flows">
+  <img src="./assets/readme/hero.svg" width="100%" alt="DeepCreator combines an agent conversation with a composable Workbench for artifacts, review, terminal, activity, and browser surfaces">
 </p>
 
 <p align="center">
-  See agent work as a readable flow—not a wall of tool calls.
+  A focused Desktop and Web workspace for running agents, following their work, and inspecting what they produce.
 </p>
 
-<p align="center"><code>#dsh-plugin</code></p>
+<p align="center">
+  <code>DeepSeek Harness 0.1.1-rc.2</code> · <code>Development runtime</code> · <code>#dsh-plugin</code>
+</p>
 
 <p align="center">
-  <a href="#three-ways-to-read-agent-work">Conversation modes</a> ·
-  <a href="#an-industrial-interface-not-a-skin">Industrial UI</a> ·
-  <a href="#a-growing-set-of-useful-plugins">Plugin roadmap</a> ·
+  <a href="#product-tour">Product tour</a> ·
+  <a href="#a-conversation-that-stays-readable">Conversation</a> ·
+  <a href="#the-workbench-stays-beside-the-transcript">Workbench</a> ·
+  <a href="#agent-capabilities-that-ship-today">Capabilities</a> ·
   <a href="#quick-start">Quick start</a> ·
-  <a href="#architecture">Architecture</a> ·
-  <a href="https://github.com/deepseek-ai/deepseek-harness">Upstream Harness</a>
+  <a href="#architecture">Architecture</a>
 </p>
 
-DeepCreator is an independent Desktop and Web presentation distribution for the official [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). Its primary focus is the conversation experience: it keeps the stock Harness flow available as **Native mode**, then adds **Classic** and **Think** modes to make long-running agent work easier to read, inspect, and follow.
+DeepCreator is an independent presentation distribution over the official [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). It keeps the official Host, Agent, Session, Runtime, RPC, Settings, Workspace, and Slot systems authoritative, while replacing the product-facing experience with a task-centered conversation and a panel-based Workbench.
 
-The interaction takes cues from the task-centered reading rhythm of Claude Desktop and Codex while preserving the official Harness Host, Agent, Session, Runtime, RPC, Settings, Workspace, and Slot systems.
+The result is one place to read a long-running agent, answer approvals and questions, inspect tool activity, review repository changes, open generated files, operate a terminal or browser, follow subagents, and manage the Skills available to the current workspace.
+
+## Product tour
 
 <p align="center">
-  <a href="./assets/readme/classic-conversation-flow.png"><img src="./assets/readme/classic-conversation-flow.png" width="100%" alt="DeepCreator Classic mode showing a continuous agent conversation with compact tool-call summaries"></a>
+  <a href="./assets/readme/product-conversation.png"><img src="./assets/readme/product-conversation.png" width="100%" alt="DeepCreator showing an image-generation turn inside the current conversation interface"></a>
 </p>
 
-<p align="center"><sub>Classic mode keeps assistant output and compact tool summaries in one continuous, readable flow.</sub></p>
+<p align="center"><sub>A current DeepCreator session: workspace navigation, readable tool flow, generated media, model and permission controls, and live execution statistics.</sub></p>
 
-## Three ways to read agent work
+| Area | What is available now |
+| --- | --- |
+| **Conversation** | Native, Classic, and Think render modes; stable streaming; grouped tool execution; approvals, questions, plans, todo state, queued messages, compaction, retries, and context injections |
+| **Workbench** | Session-scoped Terminal, Activity, Artifact, Review, and Browser panels with tabs, mosaic layout, focus mode, responsive placement, and persisted viewing state |
+| **Outputs** | Produced-file cards, Markdown/code/image/PDF/Word viewers, HTML preview handoff, generated-image attachments, and explicit in-app presentation |
+| **Agent operations** | Graphical Skills management, browser automation, image generation, model and permission selection, presets, workspace/session search, subagent transcripts, and execution trajectory |
+| **Surfaces** | Sandboxed Electron Desktop, the same composed Web UI, and optional paired access from a phone on a trusted LAN |
 
-| Mode | Best for | Flow behavior |
+## A conversation that stays readable
+
+DeepCreator keeps the official Harness conversation available as **Native**, then adds two task-reading modes:
+
+| Mode | Best for | Presentation |
 | --- | --- | --- |
-| **Native** | Following the original Harness experience | Preserves the stock conversation flow and remains the stable fallback |
-| **Classic** | Reading the result and the work without reasoning noise | Hides reasoning, groups contiguous tool calls into expandable execution runs, and aggregates work across steps between content anchors |
-| **Think** | Following how the agent reaches a result | Shows reasoning inline and keeps execution runs scoped to individual steps |
+| **Native** | Following the original Harness experience | Preserves the official flow and remains the stable fallback |
+| **Classic** | Reading the result and the work without reasoning noise | Hides reasoning, groups contiguous tools into expandable execution runs, and keeps assistant prose in one continuous flow |
+| **Think** | Following how the agent reaches a result | Shows reasoning inline and keeps each execution run scoped to its step |
 
-Classic is the initial default. The default-mode control in Settings and the current session's header picker stay synchronized, so switching modes updates the active session immediately and sets the default inherited by later sessions.
+Classic is the initial default. The current session picker and the default preference stay synchronized, so a change applies immediately and becomes the starting mode for later sessions.
 
-### From tool noise to execution flow
+The flow is more than a renderer switch:
 
-- **Grouped runs, not repetitive cards.** Related reads, edits, searches, commands, and other tool calls become one clear execution run with an expandable body.
-- **Stable streaming.** The flow isolates the streaming tail, preserves keyed rows, and keeps reader position stable while the agent continues working.
-- **Progress that reads naturally.** Turn status, active work, queued messages, approvals, todo progress, compaction checkpoints, and context injections remain in their chronological place.
-- **Detail when it matters.** Tool input and output stay available through expandable rows and the local details inspector instead of dominating the transcript.
-- **A dedicated Trajectory view.** For deeper analysis, a turn-aware event ledger exposes steps, nested tools, timing, token usage, search, folding, and a zoomable execution overview.
+- Tool calls dispatch through keyed registrations, so specialized cards and unknown third-party tools coexist without a central switch.
+- Streaming tails, settled rows, reader position, pagination, and retry state remain stable during long turns.
+- Approvals, plan review, and user questions take over the composer in place, then return it when the Host resolves the wait.
+- Todo progress, queued messages, steering, compaction checkpoints, context injections, token statistics, and terminal failures keep their chronological place.
+- **Trajectory** adds a virtualized, turn-aware event ledger with nested tools, timing, token usage, search, folding, record inspection, and a zoomable execution overview.
 
-## An industrial interface, not a skin
+## The Workbench stays beside the transcript
 
-The conversation flow comes first; the rest of the product is shaped into a restrained, desktop-grade working environment around it.
+Workbench is the contextual right-hand workspace, not a detached developer console. Panels can share a mosaic, open multiple same-type tabs, move into focus mode, persist per Session, and adapt from desktop columns to a full-width phone overlay.
 
-- A calm three-column shell keeps navigation, the active conversation, and contextual detail visually distinct.
-- A shared token system controls typography, spacing, color, states, menus, scrollbars, and light/dark appearance across every plugin.
-- Consistent rows, controls, focus states, disclosures, inspectors, and code surfaces reduce visual noise during long sessions.
-- Model selection, permission presets, agent presets, subagent routing, workspaces, settings, and user questions follow the same interaction grammar.
-- Optional same-Wi-Fi mobile access serves this same Web UI over a paired trusted-LAN HTTP gateway, with no certificate installation; phone changes are responsive layout, touch, safe-area, and capability adaptations rather than a separate mobile interface. The transport is unencrypted and must not be exposed to public networks or the internet.
+<p align="center">
+  <a href="./assets/readme/product-workbench.png"><img src="./assets/readme/product-workbench.png" width="100%" alt="DeepCreator Workbench showing repository review beside its agent conversation"></a>
+</p>
 
-## A growing set of useful plugins
+<p align="center"><sub>Repository work stays connected to its conversation: inspect the complete change scope without leaving the transcript that produced it.</sub></p>
 
-DeepCreator is designed to keep expanding without turning into a monolith. Future releases will gradually add useful plugins around conversation views, execution tools, workspace actions, agent workflows, and desktop productivity.
+| Panel | What it does |
+| --- | --- |
+| **Terminal** | Runs an interactive local system shell at the Session workspace, with raw ANSI I/O, resize, tabs, and lifecycle ownership retained by the official terminal service |
+| **Activity** | Lists background jobs and subagents, stops owned jobs, and opens a child transcript that reuses the main conversation renderer without duplicating Session state |
+| **Artifact** | Projects the files the agent actually produced; renders code, Markdown/MDX, images, PDFs, DOCX, and DOC in place; routes explicit HTML preview to Browser |
+| **Review** | Shows unstaged, staged, uncommitted, current-turn, and historical-turn scopes; virtualizes large diffs, supports nested repositories, and can safely undo the newest unresolved single-repository turn |
+| **Browser** | Presents provider-neutral browser tabs and snapshots through built-in Electron, managed Playwright, or explicitly shared Chrome providers |
 
-Each addition follows the same boundary: one feature, one independently composed Cordis plugin. A plugin can register its own Slots, Services, Events, settings, stores, and views, then be disabled or disposed without copying or replacing the official Harness business state.
+Artifact and Review deliberately remain separate. Artifact answers “what did the agent make?” while Review answers “what changed in this repository?” Binary outputs stay visible as deliverables without being duplicated as line-review cards.
 
-### Installable today
+## Agent capabilities that ship today
 
-DeepCreator keeps the official Harness Host and Agent plugin seams open. These public packages are verified against the repository's pinned `@deepseek-ai/dsh` `0.1.1-rc.2` runtime:
+### Skills, managed from the same workspace
 
-| Capability | Installable package | What it adds |
-| --- | --- | --- |
-| MCP servers | [`@deepseek-ai/dsh-mcp-client`](https://www.npmjs.com/package/@deepseek-ai/dsh-mcp-client) | Connects `stdio` or Streamable HTTP MCP servers and exposes their tools as `mcp__<server>__<tool>` |
-| Web search and fetch | [`@deepseek-ai/dsh-tool-web`](https://www.npmjs.com/package/@deepseek-ai/dsh-tool-web) + [`@deepseek-ai/dsh-web-search-deepseek`](https://www.npmjs.com/package/@deepseek-ai/dsh-web-search-deepseek) | Adds model-facing `web_search` and `web_fetch` tools backed by DeepSeek's web capability |
-| Agent workflows | [`@deepseek-ai/dsh-tool-workflow`](https://www.npmjs.com/package/@deepseek-ai/dsh-tool-workflow) + [`@deepseek-ai/dsh-workflow-worker-thread`](https://www.npmjs.com/package/@deepseek-ai/dsh-workflow-worker-thread) | Runs JavaScript orchestration across subagents in a worker thread; the worker is isolation for responsiveness, not a security sandbox |
-| OpenTelemetry | [`@deepseek-ai/dsh-session-telemetry-otel`](https://www.npmjs.com/package/@deepseek-ai/dsh-session-telemetry-otel) | Exports session telemetry to an OTLP/HTTP collector after explicit opt-in; review redaction because session content may be included |
+The graphical Skills section reads the effective official registry for the live Agent and workspace. It supports bilingual search, enable/disable policy, details and authorship, guarded install by copy/link/Git, and removal from the standard personal or project Skill roots. Disabling a Skill changes both model and user invocation policy without rewriting the provider's source.
 
-Install packages into the managed profile with the version used by your Harness runtime, then add their documented rows to `$DSH_HOME/profiles/deepcreator/cordis.patch.yml`:
+### Image generation with durable results
 
-```sh
-pnpm --filter @ryanyujazz/dsh-deepcreator-desktop exec dsh plugin --profile deepcreator add @deepseek-ai/dsh-mcp-client@0.1.1-rc.2
-pnpm --filter @ryanyujazz/dsh-deepcreator-desktop exec dsh --profile deepcreator --dump-config
-```
+The root Agent can call `create_image` through configured **OpenAI Images**, **Volcengine Ark Seedream**, or **Gemini** providers. Provider profiles live in official Settings, credentials resolve through the official Credentials service, system proxy settings are inherited by Desktop, and bounded per-turn retry/circuit-breaker behavior prevents uncontrolled failure loops. Successful generations create one workspace PNG plus a durable conversation attachment.
 
-The workspace-local command above works after `pnpm install`; if `dsh` is already on your `PATH`, the shorter `dsh plugin ...` form is equivalent. Installing the package does not activate a Cordis row by itself. Add the plugin's documented configuration, verify the complete composition with `--dump-config`, then restart DeepCreator. Third-party Host or Agent plugins built on the same public Cordis Services and tool registry can use the same path; custom Client UI plugins must target the retained official Slots or DeepCreator's documented `deepcreator.*` extension points. Unknown tool names still receive the generic tool renderer instead of disappearing from Classic or Think mode.
+### Browser use without leaking provider internals
+
+Browser Core exposes semantic navigation, interaction, snapshot, and tab operations while keeping Electron `WebContents`, Playwright objects, Chrome debugger handles, and native IPC behind provider boundaries.
+
+- Built-in Browser uses a sandboxed Electron surface and authenticated private Desktop RPC.
+- Managed Chromium, Firefox, and WebKit add semantic automation plus `playwright_run`; scripts execute inside QuickJS/WASM without Node globals, filesystem, process, or sockets.
+- System Chrome integration shares only tabs the user explicitly approves from the extension action and does not open a remote-debugging port.
+
+### Explicit presentation, not panel guessing
+
+`open_in_deepcreator` coordinates artifacts and browser resources through resolver, capability, claim, receipt, timeout, and dismissal boundaries. The Host knows whether a resource was actually presented; a failed mount is not mistaken for a successful panel-open hint.
+
+### The surrounding product workflow
+
+- Workspace groups, pinned Sessions, manual/recency ordering, title/path search, content search, fork, archive, and pending-interaction status.
+- Agent and model presets, reasoning level, permission presets, safe Full Access confirmation, and structured user questions.
+- Generated-file cards and per-turn change cards directly connected to Artifact and Review.
+- A shared semantic theme system for typography, code, diffs, controls, menus, focus, scrollbars, and light/dark appearance.
+
+## One composition, three surfaces
+
+| Surface | Behavior |
+| --- | --- |
+| **Desktop** | Sandboxed Electron window, official `dsh` child process on a dynamic loopback port, strict navigation policy, native macOS traffic lights, themed Windows Window Controls Overlay, and Linux native frame |
+| **Web** | The same Client row composition served by the official Host; no second product state or alternate UI implementation |
+| **Trusted-LAN phone** | Optional device pairing to the same responsive Web UI; Activity, Artifact, and read-only Review remain available while Browser, Terminal, native path actions, and privileged administration stay fenced |
+
+> [!WARNING]
+> Trusted-LAN access uses authenticated **HTTP without transport encryption**. It is disabled by default, installs no certificate, and must never be exposed to a public network or the internet.
 
 ## Quick start
 
@@ -92,7 +130,7 @@ The workspace-local command above works after `pnpm install`; if `dsh` is alread
 - Node.js `^22.19 || >=24`
 - [pnpm](https://pnpm.io/)
 
-### Run the desktop app
+### Run DeepCreator Desktop
 
 ```sh
 pnpm install
@@ -101,28 +139,69 @@ pnpm run profile:migrate
 pnpm run dev:desktop
 ```
 
-`profile:migrate` creates the managed `deepcreator` profile from the existing `web` profile. It backs up both profiles, retains third-party bundles and user patches, removes retired rows, links the local Client and Host plugins, and validates the assembled Cordis tree. Both Desktop launch commands first run the lightweight `profile:ensure` check; it invokes migration only when the managed profile version, required workspace links, installed links, or retired dependency set is stale. The original `web` profile remains the rollback path.
+`profile:migrate` creates the managed `deepcreator` profile from the existing `web` profile. It backs up both profiles, preserves unrelated third-party Bundles and user patches, removes retired rows, links the local plugins, and validates the assembled Cordis tree. Later Desktop starts run the lightweight `profile:ensure` check and migrate only when the managed composition is stale.
+
+The original `web` profile remains the rollback path.
+
+<details>
+<summary><strong>Add official Harness plugins to the managed profile</strong></summary>
+
+DeepCreator keeps the official Host and Agent plugin seams open. Install the package version matching the pinned Harness runtime, add its documented Cordis row to `$DSH_HOME/profiles/deepcreator/cordis.patch.yml`, inspect the complete composition, then restart:
+
+```sh
+pnpm --filter @ryanyujazz/dsh-deepcreator-desktop exec dsh plugin --profile deepcreator add @deepseek-ai/dsh-mcp-client@0.1.1-rc.2
+pnpm --filter @ryanyujazz/dsh-deepcreator-desktop exec dsh --profile deepcreator --dump-config
+```
+
+Useful official additions verified against the pinned runtime include MCP servers, DeepSeek-backed web search/fetch, worker-thread agent workflows, and opt-in OpenTelemetry. Installing a package does not activate its Cordis row by itself.
+
+</details>
 
 ## Architecture
 
-DeepCreator changes the presentation layer without forking the Harness runtime:
+DeepCreator changes the presentation and product workflow without forking Harness business state:
 
 | Layer | Owner | Responsibility |
 | --- | --- | --- |
-| Desktop process | DeepCreator | Electron lifecycle, Host child process, navigation policy, shutdown |
-| Presentation bundle | DeepCreator | Cordis rows and 21 Client plugin dependencies |
-| UI features | DeepCreator | Slot-composed React views and presentation-only stores |
-| Runtime and data | DeepSeek Harness | Agent execution, sessions, RPC, settings, workspaces, Client Runtime objects |
+| Desktop process | DeepCreator | Electron lifecycle, official Host child, proxy projection, Browser surface boundary, navigation, and shutdown |
+| Host feature plugins | DeepCreator | Browser, presentation, artifacts, review, terminal Workbench, Skills administration, image generation, jobs/session administration, and trusted-LAN access |
+| Presentation bundle | DeepCreator | Declarative Cordis row replacement/insertion and the complete plugin dependency closure |
+| Client features | DeepCreator | Slot-composed React views and presentation-only stores, one feature per package |
+| Runtime and business data | DeepSeek Harness | Agent execution, Sessions, workspaces, RPC, Settings, credentials, tools, Client Runtime objects, and official extension points |
 
-The composition order is `dsh-base` → `dsh-web-app` → retained third-party bundles → `dsh-deepcreator-web`. Shared extension points keep their official Slot names; DeepCreator-only child slots use the `deepcreator.*` namespace.
+The composed order is `dsh-base` → `dsh-web-app` → retained third-party Bundles → `dsh-deepcreator-web`. The output of `dsh --profile deepcreator --dump-config` is the authority for the active tree.
 
-Three rules preserve that boundary:
+Three rules keep the distribution independently upgradeable:
 
-1. React views receive data and callbacks through Slot-derived props; they do not access Cordis context or Runtime objects directly.
-2. Cross-plugin composition uses Slots, Services, Events, and ordinary data—not imports from another feature's internals.
-3. Every registration is a reversible effect and is removed when its plugin unloads.
+1. React views consume props; adapters and assembly code read Runtime or Remote data.
+2. Cross-plugin UI uses Slots, while behavior uses public Services, Events, stores, callbacks, and ordinary data.
+3. Every registration is reversible, and official Agent/Session/Runtime/Workspace/Settings state is never copied into a presentation store.
 
-Read [the architecture reference](./docs/architecture/deepcreator.md) for package ownership, composition invariants, and the upstream update procedure.
+Read [the architecture reference](./docs/architecture/deepcreator.md) for ownership, Slots, composition invariants, compatibility, and the upstream update procedure.
+
+### Repository map
+
+| Path | Purpose |
+| --- | --- |
+| `apps/desktop/` | Electron window, official Host child process, native Browser surfaces, navigation, and shutdown |
+| `packages/host/` | DeepCreator-owned Host services and Agent-facing capabilities |
+| `packages/client/ui-conversation/` | Conversation shell, three render modes, streaming flow, composer, queue, and status |
+| `packages/client/ui-workbench*/` | Workbench shell plus Activity, Artifact, Review, and Terminal providers |
+| `packages/client/ui-browser/` | Browser state and default Workbench presenter |
+| `packages/client/ui-skills/` | Graphical effective-Skill catalog and lifecycle controls |
+| `packages/client/ui-image-generation/` | Image-generation settings, tool row, and generated media |
+| `packages/client/ui-trajectory/` | Turn-aware execution ledger, timeline, search, and inspector |
+| `packages/bundle/deepcreator-web/` | Public presentation Bundle and authoritative Cordis patch |
+| `scripts/profile-migrate/` | Managed profile migration and idempotent startup ensure |
+| `scripts/verify-harness/` | Supported-version and composition-invariant checks |
+| `UI_STYLE_GUIDE.md` | Product typography, interaction, component, and platform-window rules |
+
+## Compatibility and current scope
+
+The compatibility declaration targets DeepSeek Harness `0.1.1-rc.2` at Git SHA `b150a551b8d465e31e418e1b2eaf5e79bbb7d28e`.
+
+> [!IMPORTANT]
+> DeepCreator currently ships as a **development runtime**. Signing, notarization, installers, auto-update, tray integration, and native credential storage are intentionally outside the current Desktop release. Review does not provide stage, unstage, or commit actions; trusted-LAN access is not a TLS or PWA deployment.
 
 ## Development
 
@@ -133,30 +212,8 @@ pnpm run build
 pnpm run verify:harness
 ```
 
-Tests resolve Harness modules from the pinned npm packages, so the repository does not depend on a neighboring Harness source checkout. Rebuild Client packages before browser or Desktop validation because the Host serves `lib/client.js`.
+Tests resolve Harness modules from pinned npm packages, so the repository does not depend on a neighboring source checkout. Rebuild Client packages before browser or Desktop validation because the Host serves `lib/client.js`.
 
-### Repository map
+For repository-aware agent work, start with [`.agents/skills/deepcreator-cordis-development/SKILL.md`](./.agents/skills/deepcreator-cordis-development/SKILL.md).
 
-| Path | Purpose |
-| --- | --- |
-| `apps/desktop/` | Electron window, Host child process, navigation, and shutdown lifecycle |
-| `packages/client/ui-conversation/` | Conversation shell, Native/Classic/Think modes, streaming flow, composer |
-| `packages/client/ui-trajectory/` | Turn-aware execution ledger, overview, timing, and record inspector |
-| `packages/client/ui-tool/` | Keyed tool renderers, grouped tool presentation, and tool details |
-| `packages/client/` | Remaining feature-domain plugins, compatibility declarations, and UI primitives |
-| `packages/bundle/deepcreator-web/` | Public presentation bundle and Cordis patch |
-| `scripts/profile-migrate/` | Managed development-profile creation and validation |
-| `scripts/verify-harness/` | Supported-version and composition-invariant checks |
-| `UI_STYLE_GUIDE.md` | Product typography, interaction, and component styling rules |
-| `.agents/skills/` | Generic DSH workflows and DeepCreator-specific agent guidance |
-
-### Compatibility and release scope
-
-The current compatibility declaration targets DeepSeek Harness `0.1.1-rc.2` at Git SHA `b150a551b8d465e31e418e1b2eaf5e79bbb7d28e`.
-
-> [!IMPORTANT]
-> DeepCreator currently ships as a **development runtime**. Signing, notarization, installers, auto-update, tray integration, and native credential storage are intentionally outside the initial desktop release.
-
-### Repository-aware agents
-
-Start with [`.agents/skills/deepcreator-cordis-development/SKILL.md`](./.agents/skills/deepcreator-cordis-development/SKILL.md). It conditionally loads the generic composition and plugin-development workflows so pure UI work does not consume unrelated Cordis context.
+See [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) for third-party attribution.
