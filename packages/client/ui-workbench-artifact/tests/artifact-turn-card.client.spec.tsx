@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render } from '@testing-library/react'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ArtifactTurnCard } from '../src/client/ArtifactTurnCard.tsx'
 
@@ -14,6 +16,8 @@ describe('ArtifactTurnCard', () => {
       matched: ['docs/report.md', 'src/index.ts'],
       openFile,
       openArtifacts,
+      openInDeepCreator: vi.fn(async () => {}),
+      openInSystemBrowser: vi.fn(async () => {}),
       t: (key: string, params?: Record<string, unknown>) => key === 'turnCard.files'
         ? `产物 ${String(params?.count)} 个文件`
         : '查看',
@@ -28,5 +32,46 @@ describe('ArtifactTurnCard', () => {
     fireEvent.click(view.getByRole('button', { name: '查看' }))
     expect(openArtifacts).toHaveBeenCalledTimes(1)
     expect(view.container.querySelector('[data-turn-artifact-card="5"]')).not.toBeNull()
+  })
+
+  it('puts the HTML split open control at the far right of its file row', async () => {
+    const openFile = vi.fn()
+    const openInDeepCreator = vi.fn(async () => {})
+    const openInSystemBrowser = vi.fn(async () => {})
+    const view = render(<ArtifactTurnCard {...({
+      turn: { turn: 6 },
+      matched: ['prototype.html', 'app.ts'],
+      openFile,
+      openArtifacts: vi.fn(),
+      openInDeepCreator,
+      openInSystemBrowser,
+      t: (key: string) => key,
+    } as never)} />)
+
+    fireEvent.click(view.getByText('turnCard.files'))
+    const htmlFileButton = view.getByText('prototype.html').closest('button')!
+    const openButton = view.getByRole('button', { name: 'open' })
+    expect(view.container.querySelector('[data-artifact-html-open="prototype.html"]')).not.toBeNull()
+    expect(view.container.querySelectorAll('[data-artifact-html-open]')).toHaveLength(1)
+    expect(htmlFileButton.contains(openButton)).toBe(false)
+    expect(openButton.className).toMatch(/action/)
+
+    fireEvent.click(openButton)
+    await waitFor(() => { expect(openInDeepCreator).toHaveBeenCalledWith('prototype.html') })
+    expect(openFile).not.toHaveBeenCalled()
+
+    fireEvent.click(view.getByRole('button', { name: 'openMenu' }))
+    fireEvent.click(view.getByRole('menuitem', { name: 'openInSystemBrowser' }))
+    await waitFor(() => { expect(openInSystemBrowser).toHaveBeenCalledWith('prototype.html') })
+
+    fireEvent.click(htmlFileButton)
+    expect(openFile).toHaveBeenCalledWith('prototype.html')
+  })
+
+  it('matches the View action typography and transparent treatment', () => {
+    const stylesheet = readFileSync(resolve(process.cwd(), 'packages/client/ui-workbench-artifact/src/client/HtmlArtifactOpenControl.module.css'), 'utf8')
+    expect(stylesheet).toMatch(/\.openSplit\s*\{[^}]*height:\s*28px;[^}]*gap:\s*2px;/)
+    expect(stylesheet).toMatch(/\.openMenu\s*\{[^}]*width:\s*28px;[^}]*height:\s*28px;[^}]*border:\s*0;[^}]*border-radius:\s*6px;[^}]*background:\s*transparent;[^}]*font-size:\s*11px;[^}]*line-height:\s*16px;/)
+    expect(stylesheet).not.toMatch(/box-shadow|button-elevated-fill|border-l2/)
   })
 })

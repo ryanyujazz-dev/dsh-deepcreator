@@ -20,6 +20,53 @@ export const REVIEW_CACHE_LIMIT = 100
 /** Approximate UTF-16/raw patch working-set budget for non-resident ready files. */
 export const REVIEW_CACHE_BYTES = 32 * 1024 * 1024
 
+/**
+ * Formats that are consumed as artifacts rather than reviewed line-by-line.
+ * `presentation: binary` remains the authoritative content signal; this
+ * suffix list prevents a provisional status row from flashing before the
+ * deferred presentation metadata arrives.
+ *
+ * Deliberately absent: generated text, lockfiles, snapshots, minified source,
+ * notebooks and text data. Their provenance is not a reason to hide a
+ * reviewable repository change.
+ */
+const NON_REVIEWABLE_FILE_EXTENSIONS = new Set([
+  // Images and design documents (SVG is text-backed but belongs to preview).
+  'ai', 'avif', 'bmp', 'cr2', 'fig', 'gif', 'heic', 'heif', 'ico', 'jpeg', 'jpg', 'png', 'psd', 'raw', 'sketch', 'svg', 'tif', 'tiff', 'webp',
+  // Portable/Office documents.
+  'doc', 'docx', 'pdf', 'ppt', 'pptx', 'xls', 'xlsx',
+  // Audio and video.
+  'avi', 'flac', 'm4a', 'mkv', 'mov', 'mp3', 'mp4', 'ogg', 'wav', 'webm',
+  // Archives and packaged binaries.
+  '7z', 'apk', 'bz2', 'dmg', 'gz', 'jar', 'rar', 'tar', 'xz', 'zip',
+  // Fonts, compiled objects and executable modules.
+  'a', 'bin', 'class', 'dll', 'dylib', 'eot', 'exe', 'o', 'otf', 'pyc', 'so', 'ttf', 'wasm', 'woff', 'woff2',
+  // Embedded binary databases.
+  'db', 'sqlite', 'sqlite3',
+])
+
+type ReviewPanelFileCandidate = Pick<ReviewFileStatus, 'path' | 'oldPath' | 'kind' | 'presentation'> & {
+  binary?: boolean
+}
+
+function fileExtension(path: string): string {
+  const name = path.replaceAll('\\', '/').split('/').at(-1) ?? ''
+  const dot = name.lastIndexOf('.')
+  return dot < 0 || dot === name.length - 1 ? '' : name.slice(dot + 1).toLowerCase()
+}
+
+/**
+ * Whether a repository fact belongs in the source Review surface.
+ * Repositories, submodules and symlinks retain their Git semantics; ordinary
+ * files must be text-reviewable and not a known artifact format.
+ */
+export function isReviewPanelFile(file: ReviewPanelFileCandidate): boolean {
+  if (file.kind !== undefined && file.kind !== 'file') return true
+  if (file.binary === true || file.presentation === 'binary') return false
+  return ![file.path, file.oldPath].some(path => path !== undefined
+    && NON_REVIEWABLE_FILE_EXTENSIONS.has(fileExtension(path)))
+}
+
 /** Normalize separators and drop a trailing slash so paths compare uniformly. */
 function comparablePath(path: string): string {
   return path.replaceAll('\\', '/').replace(/\/+$/, '')

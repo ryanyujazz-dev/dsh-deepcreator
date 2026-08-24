@@ -48,8 +48,6 @@ function props(snapshot: ArtifactsSnapshot, read: ReturnType<typeof vi.fn> = vi.
       tabs: [],
       openInstance: vi.fn(),
       openContainingFolder: vi.fn(),
-      openInDeepCreator: vi.fn(async () => {}),
-      openInSystemBrowser: vi.fn(async () => {}),
       activateInstance: vi.fn(),
       closeInstance: vi.fn(),
       showHome: vi.fn(),
@@ -128,7 +126,7 @@ describe('ArtifactPanel', () => {
     })
   })
 
-  it('treats HTML as an artifact and gives its row a split Browser open action', async () => {
+  it('treats HTML as an ordinary Artifact home row without a Browser open action', () => {
     const path = 'E:/repo/prototype/index.html'
     const input = props(snapshotOf([
       { path, updatedAt: 2_000, turn: 2 },
@@ -137,17 +135,10 @@ describe('ArtifactPanel', () => {
     const view = render(<ArtifactPanel {...input.input} />)
 
     expect(view.getByText('index.html')).toBeTruthy()
-    expect(view.container.querySelector(`[data-artifact-html-open="${path}"]`)).not.toBeNull()
-    expect(view.getAllByRole('button', { name: 'open' })).toHaveLength(1)
-    expect(view.queryByText('app.ts')?.closest('[class*="_row_"]')?.querySelector('[data-artifact-html-open]')).toBeNull()
-
-    fireEvent.click(view.getByRole('button', { name: 'open' }))
-    await waitFor(() => { expect(input.input.openInDeepCreator).toHaveBeenCalledWith('session-1', path) })
-
-    fireEvent.click(view.getByRole('button', { name: 'openMenu' }))
-    expect(view.getByRole('menuitem', { name: 'openInDeepCreator' })).toBeTruthy()
-    fireEvent.click(view.getByRole('menuitem', { name: 'openInSystemBrowser' }))
-    await waitFor(() => { expect(input.input.openInSystemBrowser).toHaveBeenCalledWith('session-1', path) })
+    expect(view.container.querySelector('[data-artifact-html-open]')).toBeNull()
+    expect(view.queryByRole('button', { name: 'open' })).toBeNull()
+    fireEvent.click(view.getByText('index.html').closest('button')!)
+    expect(input.input.openInstance).toHaveBeenCalledWith(path)
   })
 
   it('shows the empty state when the projection has no records', () => {

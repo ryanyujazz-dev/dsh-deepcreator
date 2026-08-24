@@ -43,9 +43,9 @@ embedded PDF renderer consumes that URL. DOCX files are converted to
 structural HTML with Mammoth and rendered in a scriptless sandboxed iframe;
 legacy DOC files use `word-extractor` and render their extracted body as a
 readable document surface. None of these paths activates the Browser panel.
-HTML/HTM remains the deliberate exception described below: its row's explicit
-Open action runs the page in Browser, while clicking the file body still opens
-its source in Artifact.
+HTML/HTM remains the deliberate exception described below: its Turn-card row's
+explicit Open action runs the page in Browser, while clicking the file body or
+the Artifact home row still opens its source in Artifact.
 
 Produced-file rows and instance loading states use the shared Material-backed
 `FileIcon`/`FileLabel`. The Provider contributes both deduplicated basename
@@ -55,9 +55,11 @@ conversation Read row are included even when that path has never appeared in
 the produced-file list; the same workspace reader renders their full content.
 
 HTML and HTM stay ordinary entries in that same official produced-files list;
-they do not gain a parallel artifact registry or event. Their home rows add a
-trailing split Open control. The primary action and “Open in DeepCreator” menu
-item request a fenced loopback preview URL from `remote.artifacts.preview`,
+they do not gain a parallel artifact registry or event. Their per-Turn Artifact
+card rows add a trailing split Open control whose transparent 28px primary action
+shares the View action's 11px typography and hover treatment; Artifact home rows
+remain ordinary full-row source entries. The primary action and “Open in DeepCreator” menu item
+request a fenced loopback preview URL from `remote.artifacts.preview`,
 then call the public Presentation Client with an explicit `browserId: "iab"`.
 The Browser URL resolver therefore creates the exact built-in Browser tab and
 the normal Workbench Browser Presenter owns visibility and mount receipt.

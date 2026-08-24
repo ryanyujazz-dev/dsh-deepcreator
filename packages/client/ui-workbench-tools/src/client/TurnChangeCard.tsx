@@ -7,6 +7,7 @@ import {
 import { useCallback, useState, useSyncExternalStore, type HTMLAttributes } from 'react'
 import type { WorkbenchService } from '@ryanyujazz/dsh-client-ui-workbench/client'
 import type { ReviewCacheController } from './review-cache.ts'
+import { isReviewPanelFile } from './review-model.ts'
 import type { ToolsKey } from './locales.ts'
 import css from './TurnChangeCard.module.css'
 
@@ -14,12 +15,6 @@ type Props = PropsRuntime<'deepcreator.conversation.chat.turnChanges'>
   & TurnTailOwnerProps
   & PropsLocale<'workbench-tools'>
   & { controller: ReviewCacheController; workbench: WorkbenchService }
-
-const artifactOnlyExtension = /\.(?:avif|bmp|gif|ico|jpe?g|png|svg|webp|pdf|docx?)$/i
-
-function belongsOnlyToArtifactCard(path: string, presentation?: string) {
-  return presentation === 'binary' || artifactOnlyExtension.test(path)
-}
 
 export function TurnChangeCard({ turn, controller, workbench, openFile, t }: Props) {
   const history = useSyncExternalStore(controller.subscribeHistory, controller.getHistorySnapshot, controller.getHistorySnapshot)
@@ -58,11 +53,10 @@ export function TurnChangeCard({ turn, controller, workbench, openFile, t }: Pro
   // The provider mounts for every closed turn because history arrives
   // asynchronously. A zero-change turn has no host record and renders no tail.
   if (record === undefined) return null
-  // Binary outputs belong to the produced-artifact card. Review still keeps
-  // them in its repository truth for reconciliation/Undo, but the chat tail
-  // must not classify the same image, PDF, or Office document as a source
-  // change as well.
-  const files = record.files.filter(file => !belongsOnlyToArtifactCard(file.path, file.presentation))
+  // Non-reviewable outputs belong to the produced-artifact flow. The Host
+  // still keeps them in repository truth for reconciliation/Undo, but the
+  // chat tail must not classify them as source changes as well.
+  const files = record.files.filter(isReviewPanelFile)
   if (files.length === 0) return null
   const remainingFiles = files.filter(file => file.state === 'pending').length
   const active = remainingFiles > 0

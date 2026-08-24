@@ -61,17 +61,19 @@ export function ConversationFileCardAction({ className, type = 'button', ...prop
 export interface ConversationFileCardFileProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   path: string
   trailing?: ReactNode
+  actions?: ReactNode
 }
 
 /** One full-width file row inside a Turn-tail file card. */
-export function ConversationFileCardFile({ path, trailing, className, type = 'button', children, ...props }: ConversationFileCardFileProps) {
+export function ConversationFileCardFile({ path, trailing, actions, className, type = 'button', children, ...props }: ConversationFileCardFileProps) {
   return (
-    <li>
+    <li className={css.fileRow}>
       <button {...props} type={type} className={[css.file, className].filter(Boolean).join(' ')}>
         <span className={css.fileIcon}><FileIcon path={path} /></span>
         <span className={css.filePath}>{children ?? path}</span>
         {trailing}
       </button>
+      {actions !== undefined && <div className={css.fileActions}>{actions}</div>}
     </li>
   )
 }

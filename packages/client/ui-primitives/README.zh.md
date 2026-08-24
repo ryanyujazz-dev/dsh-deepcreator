@@ -4,7 +4,7 @@
 
 纯 React 原子组件（零 cordis）：StateDot、DisclosureRow、官方兼容 `ic_ds_*` 图标、独立持有的 `DeepCreatorIcon*` 产品图标、Material 支撑的 `FileIcon`／`FileLabel`、Button/Pill/Menu/Modal/Input、Toast 短时横幅、OnboardingSurface 首次使用接管层（portal 到 body 的遮罩加不透明展示层，在且仅在自身生命周期内保持 `#root` 为 `inert`）、markdown 家族（MessageText/MarkdownText/JsonBlock）、只读 JsonTree 检查器、`useAnchoredMaxHeight` 钩子（把底部锚定的浮层高度收敛到锚点上方的视口空间，并在 resize、scroll 与调用方提供的依赖变化时重新测量）、TerminalBlock、DiffBlock、ReadBlock、SearchBlock，以及 WebBlock。官方与 Harness／Figma 派生资源保留在 `src/icons/index.tsx`；自绘和产品资源放在 `src/icons/deepcreator.tsx`，使各套图标可以独立演进。
 
-`ConversationFileCard` 是 Artifact 与 Review 共用的轮尾文件卡 chrome：42px 可展开标题头、图标到折角的悬浮切换、只使用 token 的 12px 圆角外框、透明 28px 文字操作以及带 Material 图标和分割线的文件行。它只持有呈现；计数、动作、文件路由与生命周期由各消费方提供。
+`ConversationFileCard` 是 Artifact 与 Review 共用的轮尾文件卡 chrome：42px 可展开标题头、图标到折角的悬浮切换、只使用 token 的 12px 圆角外框、透明 28px 文字操作以及带 Material 图标和分割线的文件行。文件行可贡献独立于文件主按钮的行尾操作区，避免交互控件互相嵌套；文件主体 hover 或 focus 时，公共交互背景覆盖包括行尾操作区背后在内的完整一行。它只持有呈现；计数、动作、文件路由与生命周期由各消费方提供。
 
 `FileIcon` 按 Material Icon Theme 原生的精确文件名、路径特例和最长复合扩展名规则解析真实路径，并统一桌面平台的分隔符与大小写；`FileLabel` 将这个装饰图标和可访问文字配对。仓库内的构建期生成器读取上游 VS Code manifest，只把文件映射实际引用的 SVG 生成为本地 data image；浏览器 bundle 不包含 VS Code runtime，也不会发起网络请求。浅色 SVG 变体只跟随应用的 `body[data-ds-dark-theme]`，与代码主题选择相互独立。
 

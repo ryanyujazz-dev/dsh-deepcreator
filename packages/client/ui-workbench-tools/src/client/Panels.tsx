@@ -14,6 +14,7 @@ import {
   IconUnfoldMoreOutline16, Menu, OverflowFadeText, WorkbenchPanelIconButton, type MenuEntry,
 } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { ReviewCacheController } from './review-cache.ts'
+import { isReviewPanelFile } from './review-model.ts'
 import css from './Panels.module.css'
 import { TerminalEmulator } from './TerminalEmulator.tsx'
 
@@ -529,8 +530,8 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
     ? t(`review.scope.${meta.scope}`)
     : t('review.scope.turn', { turn: meta.scope.turn })
   const historyTurns = useMemo(() => history?.turns
-    .filter(turn => turn.remainingFiles > 0 && (meta.repository === ''
-      || turn.files.some(file => file.state === 'pending' && (file.repository ?? '') === meta.repository)))
+    .filter(turn => turn.files.some(file => file.state === 'pending' && isReviewPanelFile(file)
+      && (meta.repository === '' || (file.repository ?? '') === meta.repository)))
     .toSorted((a, b) => b.turn - a.turn) ?? [], [history, meta.repository])
   const currentTurns = useMemo(() => historyTurns.filter(turn => turn.current === true), [historyTurns])
   const completedTurns = useMemo(() => historyTurns.filter(turn => turn.current !== true), [historyTurns])

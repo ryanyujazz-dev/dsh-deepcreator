@@ -95,6 +95,31 @@ const advance = async (): Promise<void> => {
 }
 
 describe('ReviewCacheController', () => {
+  it('filters artifact and binary rows before Review prefetch', async () => {
+    const remote = remoteMock(['src/a.ts', 'output/report.pdf', 'output/chart.svg', 'output/archive.zip', 'opaque.data'])
+    remote.review.summary.mockResolvedValue({
+      ok: true,
+      value: {
+        ok: true, repositoryRoot: '/workspace', scope: 'uncommitted', additions: 5, deletions: 5,
+        files: [
+          { path: 'src/a.ts', additions: 1, deletions: 1, binary: false },
+          { path: 'output/report.pdf', binary: true, presentation: 'binary' },
+          { path: 'output/chart.svg', additions: 2, deletions: 2, binary: false, presentation: 'text' },
+          { path: 'output/archive.zip', binary: true, presentation: 'binary' },
+          { path: 'opaque.data', binary: true, presentation: 'binary' },
+        ],
+      },
+    })
+    const cache = new ReviewCacheController({ remote: remote as never, sessionId: SID, session: sessionStub().session })
+    cache.setVisible(true)
+    await flush(); await flush()
+
+    expect(cache.getSnapshot().status?.files.map(file => file.path)).toEqual(['src/a.ts'])
+    expect(cache.getSnapshot().summary).toMatchObject({ additions: 1, deletions: 1, files: [{ path: 'src/a.ts' }] })
+    expect(remote.review.diff.mock.calls.map(call => call[1])).toEqual(['src/a.ts'])
+    cache.dispose()
+  })
+
   it('keeps bodies cold while hidden, then prefetches visible top files sequentially', async () => {
     const remote = remoteMock()
     const gates: Array<() => void> = []

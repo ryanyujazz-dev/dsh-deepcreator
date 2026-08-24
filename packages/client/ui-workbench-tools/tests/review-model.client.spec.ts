@@ -8,7 +8,7 @@ import type { ConversationNode, RunningToolCall, ToolResultNode } from '@deepsee
 import type { ReviewDiffResult, ReviewFileStatus } from '@ryanyujazz/dsh-review/types'
 import {
   REVIEW_CACHE_LIMIT, decodeMutationSignal, encodeMutationSignal, evictCollapsedCaches, markStale,
-  matchReviewFile, mergeFileEntries, mutationSignal, mutationToolPath, parseDiffResult, readExpandedPaths, ReviewDiffParser,
+  isReviewPanelFile, matchReviewFile, mergeFileEntries, mutationSignal, mutationToolPath, parseDiffResult, readExpandedPaths, ReviewDiffParser,
   sameDiffResult, writeExpandedPaths, type FileEntries, type FileEntry,
 } from '../src/client/review-model.ts'
 
@@ -37,6 +37,24 @@ const entry = (path: string, over: Partial<FileEntry> = {}): FileEntry => ({
 })
 
 const stamp = (() => { let next = 0; return () => ++next })()
+
+describe('Review file policy', () => {
+  it('omits binary artifacts before they enter the Review list', () => {
+    for (const path of [
+      'report.pdf', 'deck.pptx', 'sheet.xlsx', 'image.svg', 'video.mp4',
+      'bundle.zip', 'font.woff2', 'module.wasm', 'cache.sqlite',
+    ]) expect(isReviewPanelFile(file(path))).toBe(false)
+    expect(isReviewPanelFile(file('opaque.data', { presentation: 'binary' }))).toBe(false)
+  })
+
+  it('keeps reviewable text and Git-semantic entries', () => {
+    for (const path of ['src/app.ts', 'pnpm-lock.yaml', 'snapshot.snap', 'notebook.ipynb', 'dist/app.min.js']) {
+      expect(isReviewPanelFile(file(path))).toBe(true)
+    }
+    expect(isReviewPanelFile(file('linked.pdf', { kind: 'symlink', presentation: 'mode' }))).toBe(true)
+    expect(isReviewPanelFile(file('vendor', { kind: 'submodule', presentation: 'submodule' }))).toBe(true)
+  })
+})
 
 const toolResult = (seq: number, name: string, argsRaw: string, subCalls: readonly ConversationNode[] = []): ToolResultNode => ({
   kind: 'tool-result', seq, time: seq * 1_000, callId: `c${seq}`, call: { name, argsRaw },

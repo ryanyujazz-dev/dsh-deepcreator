@@ -69,13 +69,15 @@ export function apply(ctx: ClientContext): void {
   }
   const panel = (props: WorkbenchPanelProps & PropsLocale<'workbench-artifact'>): ReactNode =>
     createElement(ArtifactPanel, {
-      ...props, artifacts, openContainingFolder, openInDeepCreator, openInSystemBrowser,
+      ...props, artifacts, openContainingFolder,
       workspaceRoot: ctx.sessions.list.getSnapshot().byId[props.sessionId]?.cwd,
     })
   const turnCard = (props: PropsRuntime<'conversation.chat.turnTail'> & PropsLocale<'workbench-artifact'> & { matched: readonly string[] }): ReactNode =>
     createElement(ArtifactTurnCard, {
       ...props,
       openArtifacts: () => { ctx.workbench.activate('artifact') },
+      openInDeepCreator: path => openInDeepCreator(props.sessionId, path),
+      openInSystemBrowser: path => openInSystemBrowser(props.sessionId, path),
     })
   const definition: PanelTypeDefinition = {
     id: 'artifact', label: () => t('type'), scope: 'session', order: 3, supportsHome: true, supportsCreate: false,

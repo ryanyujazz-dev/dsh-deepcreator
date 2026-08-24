@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
-import { resolveWorkspacePath, type SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import { resolveWorkspacePath } from '@deepseek-ai/dsh-client-runtime/client'
 import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 // Type-only: pulls the `artifacts` remote namespace merge (TypertRemoteNamespaceMap)
 // into this program so TypertClientRemote['artifacts'] resolves.
@@ -8,13 +8,12 @@ import type {} from '@ryanyujazz/dsh-artifacts/remote'
 import type { ArtifactReadOk } from '@ryanyujazz/dsh-artifacts/types'
 import {
   DeepCreatorIconAnimatedFolder16, DeepCreatorIconMarkdownCode16, DeepCreatorIconMarkdownPreview16, FileIcon, FileLabel,
-  IconChevronDownOutline14, IconChevronRightOutline14, IconRefreshOutline14, MarkdownText, Menu, Tooltip, WorkbenchPanelIconButton,
+  IconChevronRightOutline14, IconRefreshOutline14, MarkdownText, Tooltip, WorkbenchPanelIconButton,
 } from '@ryanyujazz/dsh-client-ui-primitives'
-import type { MenuEntry } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { WorkbenchPanelProps } from '@ryanyujazz/dsh-client-ui-workbench/client'
 import { EMPTY_ARTIFACTS_SNAPSHOT } from './artifact-contract.ts'
 import {
-  artifactPathSegments, artifactTabFilePaths, artifactTabLabels, basename, formatAge, isHtmlArtifactPath, isMarkdownArtifactPath,
+  artifactPathSegments, artifactTabFilePaths, artifactTabLabels, basename, formatAge, isMarkdownArtifactPath,
 } from './artifact-view-model.ts'
 import type { MarkdownRenderMode } from './artifact-view-model.ts'
 import css from './ArtifactPanel.module.css'
@@ -22,8 +21,6 @@ import css from './ArtifactPanel.module.css'
 type Props = WorkbenchPanelProps & PropsLocale<'workbench-artifact'> & {
   artifacts: TypertClientRemote['artifacts']
   openContainingFolder(path: string): void
-  openInDeepCreator(sessionId: SessionId, path: string): Promise<void>
-  openInSystemBrowser(sessionId: SessionId, path: string): Promise<void>
   workspaceRoot?: string | undefined
 }
 
@@ -57,60 +54,6 @@ function MarkdownModeSwitch({ mode, onChange, label, previewLabel, codeLabel }: 
         </Tooltip>
       ))}
     </div>
-  )
-}
-
-function HtmlArtifactOpenControl({ path, openInDeepCreator, openInSystemBrowser, onError, t }: {
-  path: string
-  openInDeepCreator(): Promise<void>
-  openInSystemBrowser(): Promise<void>
-  onError(message: string | null): void
-  t(key: 'open' | 'openMenu' | 'openInDeepCreator' | 'openInSystemBrowser'): string
-}) {
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [opening, setOpening] = useState(false)
-  const run = (action: () => Promise<void>) => {
-    if (opening) return
-    setOpening(true)
-    onError(null)
-    void action().catch(reason => { onError(reason instanceof Error ? reason.message : String(reason)) })
-      .finally(() => { setOpening(false) })
-  }
-  const items: MenuEntry[] = [
-    { id: 'deepcreator', label: t('openInDeepCreator') },
-    { id: 'system', label: t('openInSystemBrowser') },
-  ]
-  return (
-    <Menu
-      open={menuOpen}
-      onClose={() => { setMenuOpen(false) }}
-      items={items}
-      onSelect={(id) => {
-        setMenuOpen(false)
-        run(id === 'system' ? openInSystemBrowser : openInDeepCreator)
-      }}
-      portal
-      compact
-      align="end"
-      anchor={(
-        <span className={css.openSplit} data-artifact-html-open={path} data-opening={opening || undefined}>
-          <button type="button" className={css.openPrimary} disabled={opening} onClick={() => { run(openInDeepCreator) }}>
-            {t('open')}
-          </button>
-          <button
-            type="button"
-            className={css.openMenu}
-            aria-label={t('openMenu')}
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-            disabled={opening}
-            onClick={() => { setMenuOpen(value => !value) }}
-          >
-            <IconChevronDownOutline14 size={12} />
-          </button>
-        </span>
-      )}
-    />
   )
 }
 
@@ -181,11 +124,10 @@ function ArtifactPath({ path, openContainingFolder, openFolderLabel, markdownMod
  * plugin-owned copy. Only instance content goes through the mounted
  * `artifacts` remote namespace, keyed by path.
  */
-export function ArtifactPanel({ artifacts, sessionId, route, tabs, activeInstanceId, openInstance, replaceInstanceId, openContainingFolder, openInDeepCreator, openInSystemBrowser, workspaceRoot, useSession, contributeHeaderActions, contributePanelInfo, renderArtifact, t }: Props) {
+export function ArtifactPanel({ artifacts, sessionId, route, tabs, activeInstanceId, openInstance, replaceInstanceId, openContainingFolder, workspaceRoot, useSession, contributeHeaderActions, contributePanelInfo, renderArtifact, t }: Props) {
   const snapshot = useSession(selector => selector.views.get('artifacts') ?? EMPTY_ARTIFACTS_SNAPSHOT)
   const [content, setContent] = useState<ArtifactReadOk | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [actionError, setActionError] = useState<string | null>(null)
   const [refreshTick, setRefreshTick] = useState(0)
   const [markdownModes, setMarkdownModes] = useState<Readonly<Record<string, MarkdownRenderMode>>>({})
   const [now] = useState(() => Date.now())
@@ -268,7 +210,6 @@ export function ArtifactPanel({ artifacts, sessionId, route, tabs, activeInstanc
   }
   return (
     <div className={css.panel}>
-      {actionError !== null && <div className={css.error} role="alert">{actionError}</div>}
       {snapshot.records.length === 0
         ? <Empty title={t('empty.title')} body={t('empty.body')} />
         : <div className={css.list}>{snapshot.records.map(artifact => (
@@ -283,15 +224,6 @@ export function ArtifactPanel({ artifacts, sessionId, route, tabs, activeInstanc
               </span>
               <time>{formatAge(artifact.updatedAt, now)}</time>
             </button>
-            {isHtmlArtifactPath(artifact.path) && (
-              <HtmlArtifactOpenControl
-                path={artifact.path}
-                openInDeepCreator={() => openInDeepCreator(sessionId, artifact.path)}
-                openInSystemBrowser={() => openInSystemBrowser(sessionId, artifact.path)}
-                onError={setActionError}
-                t={t}
-              />
-            )}
           </div>
         ))}</div>}
     </div>

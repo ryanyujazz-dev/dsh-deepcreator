@@ -17,7 +17,7 @@ import type {
 import {
   REVIEW_CACHE_BYTES, REVIEW_CACHE_LIMIT, REVIEW_IDLE_PREFETCH_LIMIT, REVIEW_PREFETCH_LIMIT,
   decodeMutationSignal, encodeMutationSignal,
-  evictCollapsedCaches, markStale, matchReviewFile, mergeFileEntries, mutationSignal,
+  evictCollapsedCaches, isReviewPanelFile, markStale, matchReviewFile, mergeFileEntries, mutationSignal,
   ReviewDiffParser, sameDiffResult, type FileEntries, type FileEntry, type MutationSignal, type ReadyCache,
 } from './review-model.ts'
 
@@ -101,6 +101,25 @@ function sameStatusFiles(left: StatusOk | null, right: StatusOk): boolean {
     return other !== undefined && file.path === other.path && file.oldPath === other.oldPath
       && file.kind === other.kind && file.presentation === other.presentation
   })
+}
+
+/** Keep repository truth on the Host while projecting only reviewable rows. */
+function reviewStatusProjection(status: StatusOk, summary: SummaryOk | null): StatusOk {
+  const summaries = new Map(summary?.files.map(file => [file.path, file]) ?? [])
+  const files = status.files.filter(file => isReviewPanelFile({ ...file, ...summaries.get(file.path) }))
+  return files.length === status.files.length ? status : { ...status, files }
+}
+
+/** Totals must describe the same visible file set as the Review list. */
+function reviewSummaryProjection(summary: SummaryOk): SummaryOk {
+  const files = summary.files.filter(isReviewPanelFile)
+  if (files.length === summary.files.length) return summary
+  return {
+    ...summary,
+    additions: files.reduce((sum, file) => sum + (file.additions ?? 0), 0),
+    deletions: files.reduce((sum, file) => sum + (file.deletions ?? 0), 0),
+    files,
+  }
 }
 
 function locationArgument(repository: string): ReviewLocation | undefined {
@@ -960,7 +979,16 @@ export class ReviewCacheController {
       if (!wire.ok) throw transportError(wire)
       if (!wire.value.ok) throw new Error(wire.value.message)
       if (sequence !== this.generation || this.disposed) return
-      if (!sameSummary(this.state.summary, wire.value)) this.publish({ summary: wire.value })
+      const nextStatus = this.state.status === null ? null : reviewStatusProjection(this.state.status, wire.value)
+      const nextSummary = reviewSummaryProjection(wire.value)
+      const statusChanged = nextStatus !== null && !sameStatusFiles(this.state.status, nextStatus)
+      if (!sameSummary(this.state.summary, nextSummary) || statusChanged) this.publish({
+        summary: nextSummary,
+        ...(statusChanged && nextStatus !== null ? {
+          status: nextStatus,
+          entries: mergeFileEntries(this.state.entries, nextStatus.files, () => ++this.stamp),
+        } : {}),
+      })
       if (this.state.warning !== null) this.publish({ warning: null })
     } catch (reason) {
       // Only the explicit old-Host missing-method case is silent. A genuine
@@ -1007,7 +1035,7 @@ export class ReviewCacheController {
   }
 
   private manifestViews(manifest: ManifestOk): { status: StatusOk; summary: SummaryOk | null; history: HistoryOk | null } {
-    const status: StatusOk = {
+    const rawStatus: StatusOk = {
       ok: true,
       repositoryRoot: manifest.repositoryRoot,
       workspaceKind: manifest.workspaceKind,
@@ -1017,7 +1045,7 @@ export class ReviewCacheController {
       files: manifest.files.map(({ additions: _additions, deletions: _deletions, binary: _binary,
         lineStatsState: _lineStatsState, ...file }) => file),
     }
-    const summary: SummaryOk | null = manifest.summaryPending === true ? null : {
+    const rawSummary: SummaryOk | null = manifest.summaryPending === true ? null : {
       ok: true,
       repositoryRoot: manifest.repositoryRoot,
       workspaceKind: manifest.workspaceKind,
@@ -1030,6 +1058,8 @@ export class ReviewCacheController {
         ...(lineStatsState === undefined ? {} : { lineStatsState: lineStatsState === 'pending' ? 'unknown' as const : lineStatsState }),
       })),
     }
+    const status = reviewStatusProjection(rawStatus, rawSummary)
+    const summary = rawSummary === null ? null : reviewSummaryProjection(rawSummary)
     const history: HistoryOk | null = manifest.historyPending === true ? null : {
       ok: true,
       repositoryRoot: manifest.repositoryRoot,
@@ -1086,7 +1116,7 @@ export class ReviewCacheController {
           : await this.remote.review.status(this.sessionId, this.state.scope, location)
         if (!statusWire.ok) throw transportError(statusWire)
         if (!statusWire.value.ok) throw new Error(statusWire.value.message)
-        nextStatus = statusWire.value
+        nextStatus = reviewStatusProjection(statusWire.value, null)
       }
       let nextChecks: ChecksOk | null = null
       if (runChecks) {
