@@ -1,3 +1,6 @@
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { BrowserRuntime, BrowserRuntimeError } from '../src/index.ts'
 import type { BrowserCommand, BrowserCommandResult, BrowserDescriptor, BrowserProvider, BrowserProviderContext, BrowserTabRequest, ProviderTab } from '../src/types.ts'
@@ -86,13 +89,22 @@ describe('BrowserRuntime', () => {
     const attachment = { attachmentId: 'attachment-1', mediaType: 'image/png', bytes: 8, width: 4, height: 2 } as const
     const saveImage = vi.fn(async () => attachment)
     const readImage = vi.fn(async () => ({ ref: attachment, data: Buffer.from('png-data') }))
-    const provider = background(); const runtime = new BrowserRuntime({ attachments: { saveImage, readImage } as never }); runtime.registerProvider(provider)
-    const created = await runtime.createTab({ sessionId: 'agent-1', turn: 1, workspaceRoot: process.cwd(), selection: { browserId: 'background' }, signal })
-    await runtime.execute('agent-1', created.tab.tabId, { kind: 'inspect', action: 'screenshot' }, signal)
-    expect(saveImage).toHaveBeenCalledOnce()
-    expect(runtime.tab('agent-1', created.tab.tabId)).toMatchObject({ snapshotAttachment: attachment, snapshotArtifactId: 'attachment-1' })
-    await expect(runtime.screenshotImage('agent-1', created.tab.tabId)).resolves.toMatchObject({ attachment, artifactId: 'attachment-1', dataUrl: 'data:image/png;base64,cG5nLWRhdGE=' })
-    expect(readImage).toHaveBeenCalledWith(attachment)
+    const workspace = await mkdtemp(join(tmpdir(), 'dsh-browser-runtime-output-'))
+    try {
+      const provider = background(); const runtime = new BrowserRuntime({ attachments: { saveImage, readImage } as never }); runtime.registerProvider(provider)
+      const created = await runtime.createTab({ sessionId: 'agent-1', turn: 1, workspaceRoot: workspace, selection: { browserId: 'background' }, signal })
+      await runtime.execute('agent-1', created.tab.tabId, { kind: 'inspect', action: 'screenshot' }, signal)
+      expect(saveImage).toHaveBeenCalledOnce()
+      expect(runtime.tab('agent-1', created.tab.tabId)).toMatchObject({ snapshotAttachment: attachment })
+      expect(runtime.tab('agent-1', created.tab.tabId)).not.toHaveProperty('snapshotArtifactId')
+      await expect(runtime.screenshotImage('agent-1', created.tab.tabId)).resolves.toEqual({ attachment, dataUrl: 'data:image/png;base64,cG5nLWRhdGE=' })
+      await expect(runtime.exportScreenshot('agent-1', created.tab.tabId, 'output/browser/screenshots/final.png'))
+        .resolves.toBe(join('output', 'browser', 'screenshots', 'final.png'))
+      await expect(readFile(join(workspace, 'output/browser/screenshots/final.png'))).resolves.toEqual(Buffer.from('png-data'))
+      expect(readImage).toHaveBeenCalledWith(attachment)
+    } finally {
+      await rm(workspace, { recursive: true, force: true })
+    }
   })
 
   it('invalidates Provider-owned tabs with an owner-restarted tombstone', async () => {

@@ -31,7 +31,7 @@ This skill defines testing methodology on top of `dsh-browser-control` and its s
 - Locate elements from snapshot facts only; confirm uniqueness before acting; one state-changing action per observation cycle.
 - After every interaction and every page-state change, run **both** verifications:
   1. `browser_inspect {action:"snapshot"}` — element presence, content correctness, state changes.
-  2. `browser_inspect {action:"screenshot"}` — layout, occlusion, rendering, visual quality. **View the returned artifact**; capturing without viewing is not observation.
+  2. `browser_inspect {action:"screenshot"}` — layout, occlusion, rendering, visual quality. **View the returned artifact**; capturing without viewing is not observation. Keep routine checkpoints as session attachments. Give failed test evidence, important before/after states, and the final user-requested screenshot a descriptive `outputPath` under `output/browser/screenshots/`.
 - Transient states (toasts, loading spinners): snapshot-then-act-then-snapshot quickly in succession so the state is captured before it disappears.
 - When element location fails: re-observe (fresh snapshot + screenshot when needed) and decide whether it is a page bug (record + skip) or a locator issue (rebuild from new facts).
 - When the page fails to load: screenshot the state, report it, skip dependent test points.
@@ -40,4 +40,4 @@ This skill defines testing methodology on top of `dsh-browser-control` and its s
 
 ## Report
 
-Summarize per test point: passed / failed (with reproduction steps + screenshots) / blocked (why). Every test point references its viewed screenshot. Optionally save screenshots and reference them by path; follow the user's requested report format when given.
+Summarize per test point: passed / failed (with reproduction steps + screenshots) / blocked (why). Every test point references its viewed screenshot. Save screenshots only when the user requested them or when they are durable evidence worth keeping, then reference the returned workspace path; follow the user's requested report format when given.

@@ -1,13 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import {
   MIN_CONVERSATION_WIDTH, MIN_PANEL_COLUMN_WIDTH,
-  initialWorkbenchWidth, oddTrackWorkbenchWidth, visibleTrackCount,
+  fitWorkbenchWidth, initialWorkbenchWidth, oddTrackWorkbenchWidth, visibleTrackCount,
 } from '../src/client/layout.ts'
 
 describe('Workbench deterministic width rules', () => {
-  it('uses one third or one half of Stage for the first type', () => {
-    expect(initialWorkbenchWidth(1200, 1 / 3)).toBe(400)
-    expect(initialWorkbenchWidth(1200, 1 / 2)).toBe(600)
+  it('gives every first-open panel half of the current Conversation width', () => {
+    expect(initialWorkbenchWidth(1200)).toBe(600)
+    expect(initialWorkbenchWidth(1000)).toBe(500)
+  })
+
+  it('fits a restored user width to the current Conversation floor', () => {
+    expect(fitWorkbenchWidth(450, 1200)).toBe(450)
+    expect(fitWorkbenchWidth(900, 1000)).toBe(640)
   })
 
   it('uses one half for two columns and two thirds for three columns', () => {

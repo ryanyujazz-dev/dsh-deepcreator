@@ -37,9 +37,10 @@ describe('BrowserClientRuntime', () => {
     const state = vi.fn(async () => ({ ok: true as const, value: { ok: true as const, value: { sessionId: 'agent-1', revision, browsers: [], tabs: revision === 1 ? [] : [{
       tabId: 'tab-1', browserId: 'playwright-chromium', url: 'https://example.test', title: 'Example', loading: false, canGoBack: false, canGoForward: false,
       lifecycle: 'deliverable' as const, presentation: 'snapshot' as const, presentationBinding: { owner: 'deepcreator' as const, mode: 'snapshot' as const, requiredBeforeControl: false },
-      controlState: 'ready' as const, presentationState: 'presented' as const, snapshotArtifactId: 'shot-1',
+      controlState: 'ready' as const, presentationState: 'presented' as const,
+      snapshotAttachment: { attachmentId: 'shot-1', mediaType: 'image/png', bytes: 3, width: 1, height: 1 },
     }] } } }))
-    const snapshotImage = vi.fn(async () => ({ ok: true as const, value: { ok: true as const, value: { artifactId: 'shot-1', dataUrl: 'data:image/png;base64,cG5n' } } }))
+    const snapshotImage = vi.fn(async () => ({ ok: true as const, value: { ok: true as const, value: { attachment: { attachmentId: 'shot-1', mediaType: 'image/png', bytes: 3, width: 1, height: 1 }, dataUrl: 'data:image/png;base64,cG5n' } } }))
     const remote = { state, snapshotImage } as unknown as BrowserRemoteClient
     const runtime = new BrowserClientRuntime(remote, () => 'agent-1' as never)
     const initial = runtime.getSnapshot()
@@ -64,12 +65,13 @@ describe('BrowserClientRuntime', () => {
     const tab = {
       tabId: 'tab-1', browserId: 'playwright-chromium', url: 'https://example.test', title: 'Example', loading: false, canGoBack: false, canGoForward: false,
       lifecycle: 'deliverable' as const, presentation: 'snapshot' as const, presentationBinding: { owner: 'deepcreator' as const, mode: 'snapshot' as const, requiredBeforeControl: false },
-      controlState: 'ready' as const, presentationState: 'presented' as const, snapshotArtifactId: 'shot-1',
+      controlState: 'ready' as const, presentationState: 'presented' as const,
+      snapshotAttachment: { attachmentId: 'shot-1', mediaType: 'image/png', bytes: 3, width: 1, height: 1 },
     }
     const state = vi.fn(async () => ({ ok: true as const, value: { ok: true as const, value: { sessionId: 'agent-1', revision: 1, browsers: [], tabs: [tab] } } }))
     const snapshotImage = vi.fn()
       .mockResolvedValueOnce({ ok: true as const, value: { ok: false as const, code: 'BROWSER_UNAVAILABLE' as const, message: 'preview transport failed' } })
-      .mockResolvedValueOnce({ ok: true as const, value: { ok: true as const, value: { artifactId: 'shot-1', dataUrl: 'data:image/png;base64,cG5n' } } })
+      .mockResolvedValueOnce({ ok: true as const, value: { ok: true as const, value: { attachment: { attachmentId: 'shot-1', mediaType: 'image/png', bytes: 3, width: 1, height: 1 }, dataUrl: 'data:image/png;base64,cG5n' } } })
     const runtime = new BrowserClientRuntime({ state, snapshotImage } as unknown as BrowserRemoteClient, () => 'agent-1' as never)
 
     await runtime.refresh()
@@ -90,7 +92,8 @@ describe('BrowserClientRuntime', () => {
     const tab = {
       tabId: 'tab-1', browserId: 'playwright-chromium', url: 'https://example.test', title: 'Example', loading: false, canGoBack: false, canGoForward: false,
       lifecycle: 'deliverable' as const, presentation: 'snapshot' as const, presentationBinding: { owner: 'deepcreator' as const, mode: 'snapshot' as const, requiredBeforeControl: false },
-      controlState: 'ready' as const, presentationState: 'presented' as const, snapshotArtifactId: 'shot-1',
+      controlState: 'ready' as const, presentationState: 'presented' as const,
+      snapshotAttachment: { attachmentId: 'shot-1', mediaType: 'image/png', bytes: 3, width: 1, height: 1 },
     }
     const state = vi.fn(async () => ({ ok: true as const, value: { ok: true as const, value: { sessionId: 'agent-1', revision, browsers: [], tabs: [tab] } } }))
     const snapshotImage = vi.fn(async () => ({ ok: true as const, value: { ok: false as const, code: 'BROWSER_UNAVAILABLE' as const, message: 'preview transport failed' } }))

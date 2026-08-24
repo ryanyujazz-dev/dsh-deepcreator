@@ -1,7 +1,7 @@
 import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-runtime/client'
 import type { PanelRoute } from './contract.ts'
 import {
-  MIN_PANEL_COLUMN_WIDTH, initialWorkbenchWidth, oddTrackWorkbenchWidth,
+  MIN_PANEL_COLUMN_WIDTH, fitWorkbenchWidth, initialWorkbenchWidth, oddTrackWorkbenchWidth,
 } from './layout.ts'
 
 export const WORKBENCH_PERSIST_KEY = 'dsh.deepcreator.workbench.session.v2'
@@ -27,12 +27,10 @@ export interface WorkbenchTrackState {
 }
 
 export interface WorkbenchPlacement {
-  /** Stage means Conversation + Workbench, excluding Sidebar. */
+  /** With Workbench closed this is the current Conversation width; otherwise it is Conversation + Workbench. */
   stageWidth: number
   /** Types actually rendered after responsive right-to-left column removal. */
   visibleTypeIds: readonly string[]
-  /** Provider-owned first-open ratio: one third or one half. */
-  initialWidthRatio: number
 }
 
 export interface WorkbenchState {
@@ -114,13 +112,13 @@ function swapWithTopLeft(state: WorkbenchState, typeId: string): void {
   state.tracks[target.track]!.typeIds[target.cell] = first
 }
 
-function placeNewType(state: WorkbenchState, typeId: string, placement?: WorkbenchPlacement): void {
+function placeNewType(state: WorkbenchState, typeId: string, firstPresentation: boolean, placement?: WorkbenchPlacement): void {
   state.hiddenTypeIds = state.hiddenTypeIds.filter(id => id !== typeId)
   if (state.tracks.length === 0) {
-    const width = initialWorkbenchWidth(
-      placement?.stageWidth ?? WORKBENCH_DEFAULT_WIDTH * 3,
-      placement?.initialWidthRatio ?? 1 / 3,
-    )
+    const stageWidth = placement?.stageWidth ?? WORKBENCH_DEFAULT_WIDTH * 2
+    const width = firstPresentation
+      ? initialWorkbenchWidth(stageWidth)
+      : Math.round(fitWorkbenchWidth(state.outerWidth, stageWidth))
     state.tracks.push({ typeIds: [typeId], width, cellRatios: [1] })
     state.outerWidth = width
     return
@@ -175,6 +173,7 @@ export function createWorkbenchStore(): EngineStoreHandle<WorkbenchState, Workbe
     actions: {
       present: (d, typeId, instanceId, route, placement) => {
         let group = groupOf(d, typeId)
+        const firstPresentation = group === undefined
         if (group === undefined) {
           group = { typeId, tabs: [], activeRoute: route }
           d.groups.push(group)
@@ -182,7 +181,7 @@ export function createWorkbenchStore(): EngineStoreHandle<WorkbenchState, Workbe
 
         const location = locationOf(d, typeId)
         if (location === undefined) {
-          placeNewType(d, typeId, placement)
+          placeNewType(d, typeId, firstPresentation, placement)
         } else if (placement !== undefined && !placement.visibleTypeIds.includes(typeId)) {
           // Responsive-hidden types become visible by exchanging their real
           // topology cell with the real top-left cell. Widening therefore

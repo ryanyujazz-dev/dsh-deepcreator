@@ -215,5 +215,51 @@ describe('Browser Agent tool contract', () => {
       { type: 'image', attachment },
     ])
     expect((content[0] as { text: string }).text).not.toContain('"attachment":')
+    expect(JSON.stringify(value)).not.toContain('artifactId')
+  })
+
+  it('declares a saved screenshot as an official file mutation and returns its real workspace path', async () => {
+    const attachment = { attachmentId: 'attachment-2', mediaType: 'image/png', bytes: 12, width: 100, height: 50 }
+    const exportScreenshot = vi.fn(async () => 'output/browser/screenshots/final.png')
+    const tools = createBrowserToolDefinitions({
+      runtime: {
+        execute: vi.fn(async () => ({ kind: 'screenshot', dataUrl: 'data:image/png;base64,AA==', tab: { url: 'https://example.test/', title: 'Example' } })),
+        tab: () => ({ snapshotAttachment: attachment }),
+        exportScreenshot,
+      } as never,
+      approval: {} as never,
+      turnOf: () => 1,
+    })
+    const inspect = tools.find(tool => tool.name === 'browser_inspect')!
+    const args = { tabId: 'tab-1', action: 'screenshot', outputPath: 'output/browser/screenshots/final.png' }
+
+    expect(inspect.presentCall?.(args)).toEqual({
+      card: 'generic', title: 'Saving browser screenshot', kind: 'edit',
+      locations: [{ path: 'output/browser/screenshots/final.png' }],
+    })
+    const value = await inspect.execute(args, {
+      agent: { id: 'agent-1', session: { header: { cwd: '/workspace' } } }, callId: 'call-output', rootCallId: 'call-output', name: 'browser_inspect', arguments: args, signal: new AbortController().signal,
+    } as never)
+    expect(value).toMatchObject({
+      kind: 'screenshot', retention: 'workspace-output', workspaceFileCreated: true,
+      outputPath: 'output/browser/screenshots/final.png', attachment,
+    })
+    expect(JSON.stringify(value)).not.toContain('artifactId')
+    expect(exportScreenshot).toHaveBeenCalledWith('agent-1', 'tab-1', 'output/browser/screenshots/final.png')
+    const content = inspect.output.render(args, value)
+    expect(content).toEqual([
+      expect.objectContaining({ type: 'text', text: expect.stringContaining('"workspaceFileCreated":true') }),
+      { type: 'image', attachment },
+    ])
+  })
+
+  it('rejects outputPath for non-screenshot inspections before Browser execution', async () => {
+    const execute = vi.fn()
+    const tools = createBrowserToolDefinitions({ runtime: { execute } as never, approval: {} as never, turnOf: () => 1 })
+    const inspect = tools.find(tool => tool.name === 'browser_inspect')!
+    await expect(inspect.execute({ tabId: 'tab-1', action: 'title', outputPath: 'output/browser/screenshots/title.png' }, {
+      agent: { id: 'agent-1', session: { header: { cwd: '/workspace' } } }, callId: 'call-invalid-output', rootCallId: 'call-invalid-output', name: 'browser_inspect', arguments: {}, signal: new AbortController().signal,
+    } as never)).rejects.toMatchObject({ code: 'INVALID_ACTION' })
+    expect(execute).not.toHaveBeenCalled()
   })
 })

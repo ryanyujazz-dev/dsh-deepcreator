@@ -19,12 +19,16 @@ export type {
 declare module '@deepseek-ai/cordis' {
   interface Context { artifacts: ArtifactReader }
 }
-declare module '@ryanyujazz/dsh-presentation/types' { interface PresentationInputMap { artifact: { artifactId: string } } }
+declare module '@ryanyujazz/dsh-presentation/types' { interface PresentationInputMap { artifact: { workspacePath: string } } }
 
 export const inject = ['presentationRuntime', 'systemPrompt', 'webServer']
 
 export const ARTIFACT_PRESENTATION_PROMPT = [
-  'When open_in_deepcreator is available, proactively present one primary user-consumable artifact after creating and verifying it.',
+  'Distinguish disposable internal observations from user-consumable artifacts; a successful tool call, preview, temporary file, or session attachment alone does not necessarily deliver a requested artifact.',
+  'Use the workspace output/ directory for valuable non-project artifacts that the user requested or would reasonably expect to keep, and verify the returned path before finishing.',
+  'Use judgment: preserve requested results, important evidence, final states, before/after comparisons, and costly-to-reproduce outputs, but do not persist every intermediate screenshot, trace, or temporary file.',
+  'When open_in_deepcreator is available, proactively present one primary user-consumable workspace artifact after creating and verifying it, using its verified workspace path rather than an attachment id or content hash.',
+  'A visible image block already delivers its session attachment; reopen it as an artifact only when a workspace output file exists, and then pass that output path as workspacePath.',
   'User-consumable artifacts include reports, documents, images, exported files, and standalone viewable prototype entry files.',
   'Do not open ordinary source files, tests, configuration, dependency metadata, temporary files, or every file in a multi-file implementation merely because they changed.',
   'When several artifacts form one result, present the main entry point once and leave the rest in the produced-files list.',
@@ -36,7 +40,7 @@ export const ARTIFACT_RESOLVER_DESCRIPTION = [
   'Present a primary user-consumable workspace artifact.',
   'After creating and verifying a report, document, image, export, or standalone prototype entry file, present the primary output once unless the user asked not to.',
   'Do not proactively present ordinary source, test, config, dependency, temporary, or secondary implementation files.',
-  'Fields: kind="artifact", artifactId.',
+  'Fields: kind="artifact", workspacePath. workspacePath must be the verified absolute or workspace-relative path of an existing file; never pass an attachmentId, content hash, or URL.',
 ].join(' ')
 
 /**
@@ -66,14 +70,18 @@ export class ArtifactReader extends TypertRemoteService {
     const dispose = presentation.registerResolver({
       kind: 'artifact', description: ARTIFACT_RESOLVER_DESCRIPTION,
       inputSchema: { type: 'object', additionalProperties: false, properties: {
-        kind: { type: 'string', const: 'artifact', required: true }, artifactId: { type: 'string', required: true },
+        kind: { type: 'string', const: 'artifact', required: true },
+        workspacePath: { type: 'string', required: true, description: 'Verified absolute or workspace-relative path of an existing workspace file. Attachment ids, content hashes, and URLs are invalid.' },
       } },
       parse: input => {
         const value = input as Record<string, unknown>
-        if (value.kind !== 'artifact' || typeof value.artifactId !== 'string') throw new Error('artifact presentation requires string artifactId.')
-        return { kind: 'artifact' as const, artifactId: value.artifactId }
+        if (value.kind !== 'artifact' || typeof value.workspacePath !== 'string') throw new Error('artifact presentation requires string workspacePath.')
+        if (value.workspacePath.trim() === '' || /^(?:sha256|attachment):/i.test(value.workspacePath) || /^[a-z][a-z\d+.-]*:\/\//i.test(value.workspacePath)) {
+          throw new Error('artifact presentation workspacePath must name an existing workspace file, not an attachment id, content hash, or URL.')
+        }
+        return { kind: 'artifact' as const, workspacePath: value.workspacePath }
       },
-      materialize: async (context, input) => ({ kind: 'artifact', id: await resolveArtifactInstanceId(context.workspaceRoot, input.artifactId), mode: 'none' }),
+      materialize: async (context, input) => ({ kind: 'artifact', id: await resolveArtifactInstanceId(context.workspaceRoot, input.workspacePath), mode: 'none' }),
     })
     ctx.effect(() => dispose, 'artifacts: presentation resolver')
   }

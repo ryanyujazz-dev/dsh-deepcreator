@@ -7,7 +7,7 @@ import { Context } from '@deepseek-ai/cordis'
 import type { WebRoute, WebServer } from '@deepseek-ai/dsh-host-webserver'
 import type { Session } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   ARTIFACT_PRESENTATION_PROMPT, ARTIFACT_RESOLVER_DESCRIPTION, ArtifactReader, resolveArtifactInstanceId,
 } from '../src/index.ts'
@@ -60,10 +60,39 @@ describe('ArtifactReader', () => {
       name: 'deepcreator:artifact-presentation',
       text: ARTIFACT_PRESENTATION_PROMPT,
     })
-    expect(ARTIFACT_PRESENTATION_PROMPT).toContain('proactively present one primary user-consumable artifact')
+    expect(ARTIFACT_PRESENTATION_PROMPT).toContain('proactively present one primary user-consumable workspace artifact')
+    expect(ARTIFACT_PRESENTATION_PROMPT).toContain('workspace output/ directory')
+    expect(ARTIFACT_PRESENTATION_PROMPT).toContain('session attachment alone does not necessarily deliver')
+    expect(ARTIFACT_PRESENTATION_PROMPT).toContain('do not persist every intermediate screenshot')
     expect(ARTIFACT_PRESENTATION_PROMPT).toContain('Do not open ordinary source files')
     expect(ARTIFACT_PRESENTATION_PROMPT).toContain('do not reopen a resource')
+    expect(ARTIFACT_PRESENTATION_PROMPT).toContain('workspacePath')
+    expect(ARTIFACT_PRESENTATION_PROMPT).toContain('visible image block already delivers')
     expect(ARTIFACT_RESOLVER_DESCRIPTION).toContain('present the primary output once')
+    expect(ARTIFACT_RESOLVER_DESCRIPTION).toContain('workspacePath')
+    expect(ARTIFACT_RESOLVER_DESCRIPTION).toContain('never pass an attachmentId')
+  })
+
+  it('registers workspacePath as the only artifact presentation locator', async () => {
+    const { ctx } = artifactContext()
+    const registerResolver = vi.fn((_resolver: unknown) => () => undefined)
+    ctx.provide('presentationRuntime', { registerResolver } as never)
+    new ArtifactReader(ctx)
+
+    const resolver = registerResolver.mock.calls[0]?.[0] as {
+      inputSchema: unknown
+      parse(input: unknown): unknown
+    }
+    expect(resolver.inputSchema).toMatchObject({
+      additionalProperties: false,
+      properties: { workspacePath: { type: 'string', required: true } },
+    })
+    expect(JSON.stringify(resolver.inputSchema)).not.toContain('artifactId')
+    expect(resolver.parse({ kind: 'artifact', workspacePath: 'output/report.md' })).toEqual({ kind: 'artifact', workspacePath: 'output/report.md' })
+    expect(() => resolver.parse({ kind: 'artifact', artifactId: 'sha256:legacy' })).toThrow('workspacePath')
+    expect(() => resolver.parse({ kind: 'artifact', workspacePath: 'sha256:legacy' })).toThrow('not an attachment id')
+    expect(() => resolver.parse({ kind: 'artifact', workspacePath: 'https://example.test/report.md' })).toThrow('not an attachment id')
+    await ctx.fiber.dispose()
   })
 
   it('reads workspace files by absolute or relative path', async () => {
@@ -75,12 +104,14 @@ describe('ArtifactReader', () => {
     await expect(reader.read(session, 'plan.md')).resolves.toMatchObject({ ok: true, kind: 'text', content: '# plan' })
   })
 
-  it('gives relative and absolute presentation inputs one workspace-rooted instance id', async () => {
+  it('gives Markdown, JPG, and PNG workspace paths one canonical presentation identity', async () => {
     const workspace = await mkdtemp(join(tmpdir(), 'dsh-artifacts-workspace-')); temporary.push(workspace)
-    const path = join(workspace, 'image.png')
-    await writeFile(path, 'image')
-    await expect(resolveArtifactInstanceId(workspace, 'image.png')).resolves.toBe(path)
-    await expect(resolveArtifactInstanceId(workspace, path)).resolves.toBe(path)
+    for (const name of ['notes.md', 'photo.jpg', 'image.png']) {
+      const path = join(workspace, name)
+      await writeFile(path, 'artifact')
+      await expect(resolveArtifactInstanceId(workspace, name)).resolves.toBe(path)
+      await expect(resolveArtifactInstanceId(workspace, path)).resolves.toBe(path)
+    }
   })
 
   it('reads absolute paths that carry a symlinked workspace prefix', async () => {
@@ -128,6 +159,7 @@ describe('ArtifactReader', () => {
   it('returns fenced in-panel render payloads for images, PDFs and DOCX documents', async () => {
     const workspace = await mkdtemp(join(tmpdir(), 'dsh-artifacts-workspace-')); temporary.push(workspace)
     await writeFile(join(workspace, 'chart.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]))
+    await writeFile(join(workspace, 'photo.jpg'), Buffer.from([0xff, 0xd8, 0xff]))
     await writeFile(join(workspace, 'report.pdf'), '%PDF-1.4\n%%EOF')
     const docxFixture = join(process.cwd(), 'packages/host/artifacts/node_modules/mammoth/test/test-data/single-paragraph.docx')
     await writeFile(join(workspace, 'brief.docx'), await readFile(docxFixture))
@@ -139,6 +171,7 @@ describe('ArtifactReader', () => {
 
     const image = await reader.read(session, 'chart.png')
     expect(image).toMatchObject({ ok: true, kind: 'image', mediaType: 'image/png', url: expect.stringMatching(/^\/deepcreator-artifacts\/[A-Za-z0-9_-]+$/) })
+    await expect(reader.read(session, 'photo.jpg')).resolves.toMatchObject({ ok: true, kind: 'image', mediaType: 'image/jpeg' })
     if (!image.ok || image.kind !== 'image') throw new Error('image payload missing')
     await expect(fetch(`${origin}${image.url}`).then(response => ({
       contentType: response.headers.get('content-type'),

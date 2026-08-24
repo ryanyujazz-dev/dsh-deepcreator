@@ -154,8 +154,6 @@ export interface BrowserTabState {
   snapshotId?: string
   /** Authoritative, durable screenshot reference shared by tools, replay, and Browser Panel. */
   snapshotAttachment?: ImageAttachmentRef
-  /** @deprecated Compatibility alias for snapshotAttachment.attachmentId; removed after one release. */
-  snapshotArtifactId?: string
   /** Client-only hydrated preview. Host state snapshots carry snapshotAttachment instead. */
   snapshotImageDataUrl?: string
   lastAction?: { action: string; at: number; result: 'ok' | BrowserErrorCode }

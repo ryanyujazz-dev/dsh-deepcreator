@@ -41,8 +41,6 @@ export interface PanelTypeDefinition {
   minHeight: number
   preferredWidth?: number
   preferredHeight?: number
-  /** Initial Workbench share of Stage width when this is the first visible type. */
-  initialWidthRatio?: number
   closePolicy: PanelClosePolicy
   /** Agent-scoped providers stay visible but inert for catalog-addressed subagents. */
   disabledWhenAddressed?: boolean

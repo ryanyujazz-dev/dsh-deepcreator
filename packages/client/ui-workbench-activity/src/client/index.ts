@@ -38,7 +38,7 @@ export function apply(ctx: ClientContext): void {
     try {
       disposers.push(ctx.workbench.registerType({
         id: 'activity', label: () => t('type'), scope: 'session', order: 2, supportsHome: true, supportsCreate: false,
-        supportsMultipleInstances: true, minWidth: 150, minHeight: 220, preferredWidth: 360, initialWidthRatio: 1 / 3, closePolicy: 'dispose',
+        supportsMultipleInstances: true, minWidth: 150, minHeight: 220, preferredWidth: 360, closePolicy: 'dispose',
       }))
       const injected = (): ActivityInjected => ({
         stopJob: async (sessionId, jobId) => {

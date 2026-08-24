@@ -8,10 +8,10 @@ describe('open_in_deepcreator contract', () => {
     runtime.registerResolver({
       kind: 'artifact', description: 'artifact',
       inputSchema: { type: 'object', additionalProperties: false, properties: {
-        kind: { type: 'string', const: 'artifact', required: true }, artifactId: { type: 'string', required: true },
+        kind: { type: 'string', const: 'artifact', required: true }, workspacePath: { type: 'string', required: true },
       } },
-      parse: input => input as { kind: 'artifact'; artifactId: string },
-      materialize: async (_context, input) => ({ kind: 'artifact', id: input.artifactId }),
+      parse: input => input as { kind: 'artifact'; workspacePath: string },
+      materialize: async (_context, input) => ({ kind: 'artifact', id: input.workspacePath }),
     })
     runtime.registerResolver({
       kind: 'review', description: 'review',
@@ -22,6 +22,12 @@ describe('open_in_deepcreator contract', () => {
     const parameters = tool.parameters as { properties: { input: { oneOf: unknown[] } }; additionalProperties: boolean }
     expect(parameters.additionalProperties).toBe(false)
     expect(parameters.properties.input.oneOf).toHaveLength(2)
+    expect(parameters.properties.input.oneOf[0]).toMatchObject({
+      additionalProperties: false,
+      properties: { workspacePath: { type: 'string' } },
+      required: ['kind', 'workspacePath'],
+    })
+    expect(JSON.stringify(parameters)).not.toContain('artifactId')
     expect(tool.output.schema).toMatchObject({ type: 'object', additionalProperties: false, required: ['requestId', 'status'] })
     expect(tool.description).toContain('Do not claim success when status is unavailable')
   })

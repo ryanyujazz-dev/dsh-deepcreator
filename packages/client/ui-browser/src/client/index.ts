@@ -75,7 +75,7 @@ export function apply(ctx: ClientContext): void {
   const panel: PanelComponent = props => createElement(BrowserPanel, { ...props, browser, createTab })
   ctx.effect(() => {
     const disposers = [
-      ctx.workbench.registerType({ id: 'browser', label: () => ctx.locale.bind(NS)('browser'), scope: 'session', order: 5, supportsHome: true, supportsCreate: false, supportsMultipleInstances: true, minWidth: 150, minHeight: 280, preferredWidth: 640, initialWidthRatio: 1 / 2, closePolicy: 'provider-controlled', disabledWhenAddressed: true }),
+      ctx.workbench.registerType({ id: 'browser', label: () => ctx.locale.bind(NS)('browser'), scope: 'session', order: 5, supportsHome: true, supportsCreate: false, supportsMultipleInstances: true, minWidth: 150, minHeight: 280, preferredWidth: 640, closePolicy: 'provider-controlled', disabledWhenAddressed: true }),
       ctx.slots.inject('deepcreator.workbench.panel', () => ctx.slots.register({ name: 'deepcreator.workbench.panel', id: 'browser', locale: NS }, panel)),
       ctx.slots.inject('deepcreator.workbench.panel-icon', () => ctx.slots.register({ name: 'deepcreator.workbench.panel-icon', id: 'browser' }, ({ size }: WorkbenchPanelIconProps) => DeepCreatorIconPreview16({ size }))),
       ctx.slots.inject('settings.general.item', () => ctx.slots.register({ name: 'settings.general.item', id: 'browser-settings', order: 15, locale: NS, inject: () => ({ remote, browser, settings: browserSettings }) }, BrowserSettingsGroup)),

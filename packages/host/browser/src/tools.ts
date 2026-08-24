@@ -214,14 +214,26 @@ export function createBrowserToolDefinitions(env: BrowserToolEnvironment): ToolD
   })
 
   const browserInspect = defineTool({
-    name: 'browser_inspect', description: 'Read a normalized document (preferred for research), URL/title, a versioned interactive snapshot, recent Browser events, element metadata, or a screenshot. document defaults to 12,000 characters per page (20,000 maximum); continue with documentId and nextOffset. Screenshot results include a durable image attachment; only claim visual verification when the current model can consume its pixels. nodeRef values are valid only with their snapshotId; stableLocators can be resolved after a new snapshot.',
+    name: 'browser_inspect', description: 'Read a normalized document (preferred for research), URL/title, a versioned interactive snapshot, recent Browser events, element metadata, or a screenshot. document defaults to 12,000 characters per page (20,000 maximum); continue with documentId and nextOffset. Every screenshot result includes text metadata plus a durable image block for Session replay and capable visual models. Omit outputPath for internal observation. When the user requested the screenshot itself, or the image is valuable evidence worth retaining, set a new workspace-relative PNG outputPath under output/browser/screenshots/; an attachment without outputPath is not a workspace file. A text-only model may capture and deliver a screenshot but must not claim pixel-level verification. nodeRef values are valid only with their snapshotId; stableLocators can be resolved after a new snapshot.',
     parameters: {
       tabId: { type: 'string', required: true }, action: { type: 'string', required: true, enum: ['document', 'snapshot', 'screenshot', 'url', 'title', 'elementInfo', 'events'] }, locator: locatorSchema,
       documentId: { type: 'string' }, offset: { type: 'integer' }, maxChars: { type: 'integer' },
+      outputPath: { type: 'string', description: 'For action="screenshot" only: save the same PNG under output/browser/screenshots/ as a user-accessible workspace artifact. Omit for disposable internal observation.' },
     },
     output: { schema: outputSchema, render }, isConcurrencySafe: args => args.action !== 'screenshot',
+    presentCall: args => args.action !== 'screenshot'
+      ? undefined
+      : {
+          card: 'generic', title: args.outputPath === undefined ? 'Capturing browser screenshot' : 'Saving browser screenshot',
+          kind: args.outputPath === undefined ? 'fetch' : 'edit',
+          ...(args.outputPath === undefined ? {} : { locations: [{ path: args.outputPath }] }),
+        },
+    presentResult: args => args.action !== 'screenshot'
+      ? undefined
+      : { card: 'generic', title: args.outputPath === undefined ? 'Captured browser screenshot' : 'Saved browser screenshot' },
     async execute(args, exec) {
       const agent = owner(exec); const loc = locator(args.locator)
+      if (args.outputPath !== undefined && args.action !== 'screenshot') throw new BrowserRuntimeError('INVALID_ACTION', 'outputPath is valid only for browser_inspect action="screenshot".')
       const result = await env.runtime.execute(String(agent.id), args.tabId, {
         kind: 'inspect', action: args.action, ...(loc === undefined ? {} : { locator: loc }),
         ...(args.documentId === undefined ? {} : { documentId: args.documentId }),
@@ -231,7 +243,17 @@ export function createBrowserToolDefinitions(env: BrowserToolEnvironment): ToolD
       if (result.kind !== 'screenshot') return json(modelResult(result))
       const attachment = env.runtime.tab(String(agent.id), args.tabId).snapshotAttachment
       if (attachment === undefined) throw new BrowserRuntimeError('BROWSER_UNAVAILABLE', 'Browser screenshot did not produce an attachment.')
-      return json({ kind: 'screenshot', attachment, artifactId: String(attachment.attachmentId), tab: result.tab })
+      const outputPath = args.outputPath === undefined ? undefined : await env.runtime.exportScreenshot(String(agent.id), args.tabId, args.outputPath)
+      return json({
+        kind: 'screenshot',
+        retention: outputPath === undefined ? 'session' : 'workspace-output',
+        workspaceFileCreated: outputPath !== undefined,
+        message: outputPath === undefined
+          ? 'Screenshot captured as a session attachment. No workspace output file was created.'
+          : `Screenshot captured and saved to ${outputPath}.`,
+        ...(outputPath === undefined ? {} : { outputPath }),
+        attachment, tab: result.tab,
+      })
     },
   })
 

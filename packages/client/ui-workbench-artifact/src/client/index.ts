@@ -88,7 +88,7 @@ export function apply(ctx: ClientContext): void {
     })
   const definition: PanelTypeDefinition = {
     id: 'artifact', label: () => t('type'), scope: 'session', order: 3, supportsHome: true, supportsCreate: false,
-    supportsMultipleInstances: true, minWidth: 150, minHeight: 260, preferredWidth: 520, initialWidthRatio: 1 / 3, closePolicy: 'detach',
+    supportsMultipleInstances: true, minWidth: 150, minHeight: 260, preferredWidth: 520, closePolicy: 'detach',
   }
   const presenter: PresentationProvider = {
     id: 'workbench-artifact', priority: 100, resourceKinds: ['artifact'], modes: ['none'], surfaceHost: false,

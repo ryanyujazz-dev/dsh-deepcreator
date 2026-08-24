@@ -162,7 +162,7 @@ export class BrowserHostService extends TypertRemoteService {
   }
 
   @Remote('snapshotImage')
-  async snapshotImage(agent: Agent, tabId: string): Promise<BrowserRemoteResult<{ attachment: ImageAttachmentRef; artifactId: string; dataUrl: string }>> {
+  async snapshotImage(agent: Agent, tabId: string): Promise<BrowserRemoteResult<{ attachment: ImageAttachmentRef; dataUrl: string }>> {
     try { return { ok: true, value: await this.browser.screenshotImage(String(agent.id), tabId) } }
     catch (error) { return browserFailure(error) }
   }

@@ -4,9 +4,7 @@ import {
   createWorkbenchStore, prepareWorkbenchPersistence, WORKBENCH_PERSIST_KEY,
 } from '../src/client/store.ts'
 
-const placement = (stageWidth = 1200, visibleTypeIds: readonly string[] = [], initialWidthRatio = 1 / 3) => ({
-  stageWidth, visibleTypeIds, initialWidthRatio,
-})
+const placement = (stageWidth = 1200, visibleTypeIds: readonly string[] = []) => ({ stageWidth, visibleTypeIds })
 
 beforeEach(() => { localStorage.clear() })
 
@@ -32,18 +30,25 @@ describe('Workbench store topology', () => {
     })
   })
 
-  it('uses the first type ratio and keeps a user-adjusted width for the second type', () => {
+  it('opens every first panel at half the Conversation width and preserves a user-adjusted width', () => {
+    for (const type of ['activity', 'terminal', 'artifact', 'review', 'browser']) {
+      const first = createWorkbenchStore().create(`first-${type}`)
+      first.actions.present(type, undefined, 'home', placement(1200))
+      expect(first.store.getSnapshot().outerWidth).toBe(600)
+    }
+
     const store = createWorkbenchStore().create('s1')
     store.actions.present('activity', undefined, 'home', placement(1200))
-    expect(store.store.getSnapshot().outerWidth).toBe(400)
     store.actions.setOuterWidth(450)
     store.actions.present('terminal', undefined, 'home', placement(1200, ['activity']))
     expect(store.store.getSnapshot()).toMatchObject({ outerWidth: 450 })
     expect(store.store.getSnapshot().tracks.map(track => track.typeIds)).toEqual([['activity', 'terminal']])
 
-    const review = createWorkbenchStore().create('review')
-    review.actions.present('review', undefined, 'home', placement(1200, [], 1 / 2))
-    expect(review.store.getSnapshot().outerWidth).toBe(600)
+    store.actions.hide('activity')
+    store.actions.hide('terminal')
+    expect(store.store.getSnapshot().tracks).toEqual([])
+    store.actions.present('activity', undefined, 'home', placement(1200))
+    expect(store.store.getSnapshot().outerWidth).toBe(450)
   })
 
   it('forms two equal columns for three/four types and three equal columns for five', () => {

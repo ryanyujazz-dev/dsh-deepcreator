@@ -4,6 +4,7 @@ import { BrowserRuntimeError } from './errors.ts'
 import { validateBrowserActionCommand } from './action.ts'
 import { BrowserNetworkPolicy } from './network-policy.ts'
 import { redactBrowserUrl } from './model-sanitization.ts'
+import { BrowserOutputPathError, writeBrowserScreenshot } from './workspace-output.ts'
 import type {
   BrowserCapability, BrowserCommand, BrowserCommandResult, BrowserDescriptor, BrowserNextAction, BrowserProvider,
   BrowserProviderBinding, BrowserProviderContext, BrowserRequirementAssessment, BrowserRequirements, BrowserResolution,
@@ -263,7 +264,6 @@ export class BrowserRuntime {
       else if (result.kind === 'screenshot') {
         const attachment = await this.persistScreenshot(sessionId, tabId, result.dataUrl)
         managed.state.snapshotAttachment = attachment
-        managed.state.snapshotArtifactId = String(attachment.attachmentId)
       }
       else if (command.kind !== 'inspect') {
         if (managed.state.snapshotId !== undefined) this.#recordEvent(managed, { kind: 'snapshot-invalidated', command: commandLabel, detail: managed.state.snapshotId })
@@ -536,15 +536,28 @@ export class BrowserRuntime {
     })
   }
 
-  async screenshotImage(sessionId: string, tabId: string): Promise<{ attachment: ImageAttachmentRef; artifactId: string; dataUrl: string }> {
+  async screenshotImage(sessionId: string, tabId: string): Promise<{ attachment: ImageAttachmentRef; dataUrl: string }> {
     const tab = this.#owned(sessionId, tabId).state
     if (tab.snapshotAttachment === undefined) throw new BrowserRuntimeError('TAB_NOT_FOUND', `Browser tab ${tabId} has no screenshot attachment.`)
     if (this.#attachments === undefined) throw new BrowserRuntimeError('BROWSER_UNAVAILABLE', 'The official Attachment Store is unavailable.')
     const stored = await this.#attachments.readImage(tab.snapshotAttachment)
     return {
       attachment: stored.ref,
-      artifactId: String(stored.ref.attachmentId),
       dataUrl: `data:${stored.ref.mediaType};base64,${Buffer.from(stored.data).toString('base64')}`,
+    }
+  }
+
+  async exportScreenshot(sessionId: string, tabId: string, outputPath: string): Promise<string> {
+    const managed = this.#owned(sessionId, tabId)
+    const attachment = managed.state.snapshotAttachment
+    if (attachment === undefined) throw new BrowserRuntimeError('TAB_NOT_FOUND', `Browser tab ${tabId} has no screenshot attachment.`)
+    if (this.#attachments === undefined) throw new BrowserRuntimeError('BROWSER_UNAVAILABLE', 'The official Attachment Store is unavailable.')
+    const stored = await this.#attachments.readImage(attachment)
+    try {
+      return await writeBrowserScreenshot(managed.workspaceRoot, outputPath, stored.data)
+    } catch (error) {
+      if (error instanceof BrowserOutputPathError) throw new BrowserRuntimeError('INVALID_ACTION', error.message)
+      throw new BrowserRuntimeError('BROWSER_UNAVAILABLE', `Could not save the screenshot to ${JSON.stringify(outputPath)}.`)
     }
   }
 

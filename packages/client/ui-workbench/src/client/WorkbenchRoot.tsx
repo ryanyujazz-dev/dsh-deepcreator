@@ -47,7 +47,7 @@ function Splitter({ orientation, className, style, onResize }: { orientation: 'h
 function commandEffect(
   command: WorkbenchCommand,
   actions: WorkbenchRootProps['actions'],
-  placement: { stageWidth: number; visibleTypeIds: readonly string[]; initialWidthRatio(typeId: string): number },
+  placement: { stageWidth: number; visibleTypeIds: readonly string[] },
 ): void {
   switch (command.action.kind) {
     case 'present': {
@@ -60,7 +60,6 @@ function commandEffect(
         {
           stageWidth: placement.stageWidth,
           visibleTypeIds: placement.visibleTypeIds,
-          initialWidthRatio: placement.initialWidthRatio(request.typeId),
         },
       )
       return
@@ -230,9 +229,8 @@ export function WorkbenchRoot({
     commandEffect(command, actions, {
       stageWidth,
       visibleTypeIds: shownTypeIds,
-      initialWidthRatio: typeId => definitionById.get(typeId)?.initialWidthRatio ?? 1 / 3,
     })
-  }, [actions, command, definitionById, focusedTypeId, shownTypeIds, stageWidth, topologyTypeIds])
+  }, [actions, command, focusedTypeId, shownTypeIds, stageWidth, topologyTypeIds])
 
   useEffect(() => {
     if (tracks.length === 0) controller.restoreFocus()

@@ -95,7 +95,7 @@ describe('BrowserPanel', () => {
     } } }))
     const snapshotImage = vi.fn()
       .mockResolvedValueOnce({ ok: true as const, value: { ok: false as const, code: 'BROWSER_UNAVAILABLE' as const, message: 'preview failed' } })
-      .mockResolvedValueOnce({ ok: true as const, value: { ok: true as const, value: { artifactId: 'shot-1', dataUrl: 'data:image/png;base64,cG5n' } } })
+      .mockResolvedValueOnce({ ok: true as const, value: { ok: true as const, value: { attachment: { attachmentId: 'shot-1', mediaType: 'image/png', bytes: 3, width: 1, height: 1 }, dataUrl: 'data:image/png;base64,cG5n' } } })
     const browser = new BrowserClientRuntime({ state, snapshotImage } as unknown as BrowserRemoteClient, () => 'agent-1' as never)
     await browser.refresh()
     const view = render(<BrowserPanel {...({
