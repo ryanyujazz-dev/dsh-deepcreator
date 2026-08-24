@@ -288,10 +288,6 @@ export interface BrowserSelectionRequest {
   requirements?: BrowserRequirements
   preference?: BrowserPreference
   /** Compatibility input accepted for one release. */
-  browserId?: string
-  /** Compatibility input accepted for one release. */
-  capabilities?: BrowserCapability[]
-  /** Compatibility input accepted for one release. */
   mode?: 'visible' | 'background' | 'auto'
 }
 

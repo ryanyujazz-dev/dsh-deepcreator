@@ -38,12 +38,6 @@ export interface BrowserRuntimeOptions {
   defaultEngine?: 'chromium' | 'firefox' | 'webkit'
 }
 
-const LEGACY_CAPABILITIES: Record<string, BrowserCapability> = {
-  tabs: 'core.tabs', navigation: 'core.navigation', snapshot: 'core.snapshot', screenshot: 'core.screenshot',
-  'semantic-actions': 'core.semantic-actions', wait: 'core.wait', upload: 'io.upload', download: 'io.download',
-  'user-tabs': 'profile.user-tabs', 'manual-takeover': 'interaction.manual-handoff', 'live-surface': 'presentation.deepcreator-surface',
-}
-
 export class BrowserRuntime {
   readonly #providers = new Map<string, BrowserProvider>()
   readonly #tabs = new Map<string, ManagedTab>()
@@ -603,12 +597,8 @@ export class BrowserRuntime {
   }
 
   #normalizeSelection(request: BrowserSelectionRequest): Required<Pick<BrowserSelectionRequest, 'requirements'>> & Pick<BrowserSelectionRequest, 'preference' | 'url'> {
-    const legacyCapabilities = (request.capabilities ?? []).map(capability => LEGACY_CAPABILITIES[capability] ?? capability)
-    const requirements: BrowserRequirements = {
-      ...(request.requirements ?? {}),
-      ...(request.requirements?.capabilities === undefined && legacyCapabilities.length === 0 ? {} : { capabilities: [...(request.requirements?.capabilities ?? []), ...legacyCapabilities] }),
-    }
-    const preference = request.preference ?? (request.browserId === undefined ? undefined : { browserId: request.browserId })
+    const requirements: BrowserRequirements = { ...(request.requirements ?? {}) }
+    const preference = request.preference
     if (requirements.visibility === undefined && request.mode !== undefined && request.mode !== 'auto') requirements.visibility = request.mode === 'visible' ? 'live' : 'background'
     const hasProviderShapingRequirement = requirements.profile !== undefined || requirements.interaction !== undefined || (requirements.capabilities?.length ?? 0) > 0
     if (requirements.automation === undefined && requirements.visibility !== 'live' && preference === undefined && !hasProviderShapingRequirement) requirements.automation = this.#defaultAutomation
