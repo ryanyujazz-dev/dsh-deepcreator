@@ -50,7 +50,7 @@ function applyFeature(ctx: ClientContext): void {
     remove: async (name): Promise<void> => { unwrap(await remote.removeSkill(name, target())) },
     openLocation: async (path): Promise<void> => { await ctx.workspaces.openPath(path) },
     openPlugins: () => { ctx.settingsNavigation.open('plugins') },
-    description: item => item.localizedDescriptions?.[ctx.locale.getLocale().active] ?? item.description,
+    description: item => item.localizedDescriptions?.[ctx.locale.getSnapshot().active] ?? item.description,
   })
   const shortcutInjected = (): SkillsShortcutInjected => ({
     open: () => { ctx.settingsNavigation.open('skills') },

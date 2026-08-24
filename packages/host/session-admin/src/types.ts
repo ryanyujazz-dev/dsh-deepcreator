@@ -8,7 +8,7 @@ export interface SessionDeleteOk {
 
 export interface SessionDeleteError {
   ok: false
-  code: 'INVALID_ID' | 'SESSION_ACTIVE' | 'NOT_FOUND' | 'AMBIGUOUS' | 'CLEANUP_FAILED'
+  code: 'INVALID_ID' | 'SESSION_ACTIVE' | 'NOT_FOUND' | 'AMBIGUOUS'
   message: string
 }
 

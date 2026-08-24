@@ -44,8 +44,6 @@ export interface TrajectoryCellProps extends HTMLAttributes<HTMLDivElement> {
   text: string
   /** Raw Markdown source converted into the single-line summary at its consumer. */
   previewMarkdown?: string
-  /** Whether this user record opens a new model turn. */
-  opensTurn?: boolean
   /** Source session-event seq for cross-record navigation. */
   sourceSeq?: number
   /** Producer role and name from a user-role message or context injection. */
@@ -93,8 +91,6 @@ export interface TrajectoryCellProps extends HTMLAttributes<HTMLDivElement> {
   output?: number
   /** Message-only reasoning token count. */
   think?: number
-  /** Whether the legacy standalone cell renders its selection treatment. */
-  selected?: boolean
 }
 
 /**

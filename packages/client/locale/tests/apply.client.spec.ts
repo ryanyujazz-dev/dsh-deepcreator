@@ -127,7 +127,7 @@ describe('locale apply', () => {
     expect(locale.bind(SETTINGS_NS)('language.title')).toBe('Language')
 
     face.setLocale('zh')
-    expect(locale.getLocale().active).toBe('zh')
+    expect(locale.getSnapshot().active).toBe('zh')
     expect(instance.getSnapshot().active).toBe('zh')
     expect(locale.bind(SETTINGS_NS)('language.title')).toBe('语言')
     await vi.waitFor(() => { expect(b.mutate).toHaveBeenCalledTimes(2) })
@@ -138,13 +138,13 @@ describe('locale apply', () => {
     declareItems(b.slots)
     await b.ctx.plugin({ inject: [...inject], apply }).await()
     const locale = b.ctx.get('locale') as LocaleRuntime
-    await vi.waitFor(() => { expect(locale.getLocale().active).toBe('en') })
+    await vi.waitFor(() => { expect(locale.getSnapshot().active).toBe('en') })
     b.setHostPreference(undefined)
     b.ctx.remote.$dispatch('settings/document-updated', [LOCALE_SETTINGS_NAMESPACE, 0])
-    await vi.waitFor(() => { expect(locale.getLocale().active).toBe('zh') })
+    await vi.waitFor(() => { expect(locale.getSnapshot().active).toBe('zh') })
     b.setHostPreference('en')
     b.ctx.remote.$dispatch('settings/document-updated', [LOCALE_SETTINGS_NAMESPACE, 0])
-    await vi.waitFor(() => { expect(locale.getLocale().active).toBe('en') })
+    await vi.waitFor(() => { expect(locale.getSnapshot().active).toBe('en') })
     expect(b.describe).toHaveBeenCalledTimes(3)
   })
 
