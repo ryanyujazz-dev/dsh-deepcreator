@@ -26,11 +26,11 @@ const SID = 's1' as SessionId
 const seatOver = (dict: Record<string, string>, common: Record<string, string>): QuestionComposerProps['t'] =>
   (key => dict[key] ?? common[key] ?? key)
 
-/** Framework standard-kit stubs: the panel consumes only the locale seat. */
+/** Framework standard-kit stubs, including the running-call selector used to locate a plan. */
 const kit = {
   sessionId: SID,
   session: undefined,
-  useSession: (() => { throw new Error('unused') }) as unknown as SnapshotSelectorHook<ConversationSnapshot>,
+  useSession: ((selector: (snapshot: ConversationSnapshot) => unknown) => selector({ runningCalls: [] } as unknown as ConversationSnapshot)) as SnapshotSelectorHook<ConversationSnapshot>,
   useSessions: (() => { throw new Error('unused') }) as unknown as SnapshotSelectorHook<SessionListState>,
   useWorkspaces: (() => { throw new Error('unused') }) as unknown as SnapshotSelectorHook<WorkspaceListState>,
   useProjection: (() => undefined) as never,
@@ -113,6 +113,25 @@ describe('planReviewOf', () => {
 })
 
 describe('PlanReviewPanel', () => {
+  it('opens the matching running plan call in Artifacts without answering the review', () => {
+    const { carrier, respond } = wait()
+    const openPlanInArtifacts = vi.fn()
+    const useSession = ((selector: (snapshot: ConversationSnapshot) => unknown) => selector({
+      runningCalls: [{ callId: 'plan-call-7', name: 'exit_plan_mode', argsRaw: JSON.stringify({ plan: PLAN }) }],
+    } as unknown as ConversationSnapshot)) as SnapshotSelectorHook<ConversationSnapshot>
+    render(<QuestionComposer matched={carrier} interactions={[carrier]} {...kit} useSession={useSession} openPlanInArtifacts={openPlanInArtifacts} />)
+
+    fireEvent.click(screen.getByRole('button', { name: zh['plan.viewInArtifacts'] }))
+    expect(openPlanInArtifacts).toHaveBeenCalledWith('plan-call-7')
+    expect(respond).not.toHaveBeenCalled()
+  })
+
+  it('omits the Artifacts entry when the workbench integration is unavailable', () => {
+    const { carrier } = wait()
+    render(<QuestionComposer matched={carrier} interactions={[carrier]} {...kit} />)
+    expect(screen.queryByRole('button', { name: zh['plan.viewInArtifacts'] })).toBeNull()
+  })
+
   it('renders the plan under a review strip, with none of the quiz affordances', () => {
     const { carrier } = wait()
     render(<QuestionComposer matched={carrier} interactions={[carrier]} {...kit} />)
@@ -225,5 +244,6 @@ describe('PlanReviewPanel', () => {
     expect(screen.getByRole('button', { name: 'Approve' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Refuse' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Chat about it' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'View in Artifacts' })).toBeNull()
   })
 })

@@ -1266,6 +1266,9 @@ importers:
       '@ryanyujazz/dsh-client-locale':
         specifier: workspace:^
         version: link:../locale
+      '@ryanyujazz/dsh-client-ui-workbench':
+        specifier: workspace:^
+        version: link:../ui-workbench
       '@types/react':
         specifier: ~18.3.1
         version: 18.3.31

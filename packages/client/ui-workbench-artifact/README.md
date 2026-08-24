@@ -19,6 +19,14 @@ card above the independent Review change card. Both use the shared
 `ConversationFileCard` chrome; Artifact omits Undo, its View action opens the
 Artifact home, and each file opens its full-file Artifact tab.
 
+The home also contains a `Plans` list group above `Files`. It is deliberately
+Session-scoped: a separate `plans` conversation projection reconstructs every
+valid `exit_plan_mode` call in the current Session from its durable raw
+arguments and paired result, retaining each revision with pending, approved,
+or not-approved status. It neither scans sibling Sessions nor writes a
+project-level index. A plan row opens a non-file Artifact tab whose body uses
+the same read-only `MarkdownText` pipeline; no Host file read is involved.
+
 Instance content is read through the mounted `artifacts` remote namespace,
 keyed on the active path: a re-read happens only when the active path changes
 or the user refreshes. Every instance keeps a compact breadcrumb of that full
@@ -96,7 +104,7 @@ margin, numbered gutter with a vertical divider, and content padding inside
 the text column). The selection is remembered independently per open file for
 the panel's mounted lifetime; non-Markdown files do not show it.
 
-The type entry icon carries a blue dot while the session has produced files
+The type entry icon carries a blue dot while the session has produced files or submitted plans
 the user has not looked at yet: the dot advances the per-session seen
 watermark only while the panel group is visible (hidden groups stay mounted,
 so a hidden panel keeps its dot until opened).

@@ -14,6 +14,8 @@
  */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ComposerChainProps } from '@ryanyujazz/dsh-client-ui-conversation/client'
+import type { WorkbenchService } from '@ryanyujazz/dsh-client-ui-workbench/client'
+import type {} from '@ryanyujazz/dsh-client-ui-workbench/client'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@ryanyujazz/dsh-client-locale/client'
 import type { QuestionWait } from './contract/slots.ts'
@@ -54,7 +56,22 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-user-questions: dictionaries')
 
   ctx.slots.inject('conversation.composer', () => ctx.slots.register(
-    { name: 'conversation.composer', select: selectQuestion, locale: NS },
+    {
+      name: 'conversation.composer', select: selectQuestion, locale: NS,
+      inject: () => {
+        const workbench = ctx.get('workbench') as WorkbenchService | undefined
+        if (workbench === undefined || !workbench.types.list().some(type => type.id === 'artifact')) return {}
+        return {
+          openPlanInArtifacts: (callId?: string) => {
+            workbench.present({
+              typeId: 'artifact',
+              ...(callId === undefined ? { route: 'home' } : { target: callId, parameters: { kind: 'plan' } }),
+              reveal: true, reason: 'user',
+            })
+          },
+        }
+      },
+    },
     QuestionComposer,
   ))
 }

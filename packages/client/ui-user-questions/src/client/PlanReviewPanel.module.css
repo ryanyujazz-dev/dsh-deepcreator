@@ -54,7 +54,12 @@
   line-height: 18px;
 }
 
+.stripLabel { display: inline-flex; align-items: center; gap: 8px; }
+.viewArtifact { margin-left: auto; color: var(--dsw-alias-state-warn-primary); }
+.viewArtifact:hover:not(:disabled) { color: var(--dsw-alias-label-primary); }
+
 .dot {
+  flex: none;
   width: 8px;
   height: 8px;
   border-radius: 50%;

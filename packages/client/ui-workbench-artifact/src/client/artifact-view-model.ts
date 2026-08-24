@@ -1,7 +1,37 @@
 import { diffLanguageFromPath } from '@ryanyujazz/dsh-client-ui-primitives'
-import type { FileArtifactRecord } from './artifact-contract.ts'
+import type { FileArtifactRecord, PlanArtifactRecord } from './artifact-contract.ts'
 
 export type MarkdownRenderMode = 'preview' | 'code'
+
+const PLAN_INSTANCE_PREFIX = 'deepcreator-plan:'
+
+export function planInstanceId(callId: string): string {
+  return `${PLAN_INSTANCE_PREFIX}${encodeURIComponent(callId)}`
+}
+
+export function planCallIdFromInstance(instanceId: string): string | null {
+  if (!instanceId.startsWith(PLAN_INSTANCE_PREFIX)) return null
+  try {
+    return decodeURIComponent(instanceId.slice(PLAN_INSTANCE_PREFIX.length))
+  } catch {
+    return null
+  }
+}
+
+/** Plan tabs use their headings; repeated headings receive stable counters. */
+export function planTabLabels(records: readonly PlanArtifactRecord[], tabs: readonly string[]): Record<string, string> {
+  const plans = new Map(records.map(record => [planInstanceId(record.callId), record]))
+  const ids = [...plans.keys(), ...tabs.filter(id => planCallIdFromInstance(id) !== null && !plans.has(id))]
+  const counts = new Map<string, number>()
+  const labels: Record<string, string> = {}
+  for (const id of ids) {
+    const title = plans.get(id)?.title ?? 'Plan'
+    const seen = (counts.get(title) ?? 0) + 1
+    counts.set(title, seen)
+    labels[id] = seen === 1 ? title : `${title} ${seen}`
+  }
+  return labels
+}
 
 /** Whether a file can use the conversation-grade Markdown preview. */
 export function isMarkdownArtifactPath(path: string): boolean {
@@ -51,7 +81,7 @@ export function artifactTabLabels(records: readonly FileArtifactRecord[], tabs: 
 
 /** Artifact instance ids are the real file paths used to resolve tab glyphs. */
 export function artifactTabFilePaths(records: readonly FileArtifactRecord[], tabs: readonly string[] = [], normalize: (path: string) => string = path => path): Record<string, string> {
-  return Object.fromEntries(artifactTabPaths(records, tabs, normalize).map(path => [path, path]))
+  return Object.fromEntries(artifactTabPaths(records, tabs.filter(tab => planCallIdFromInstance(tab) === null), normalize).map(path => [path, path]))
 }
 
 /** Visible breadcrumb segments; absolute slash roots stay in the accessible full path only. */

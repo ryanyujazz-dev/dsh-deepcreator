@@ -72,7 +72,9 @@ describe('ui-workbench-artifact registration', () => {
     expect([...renderers.keys()]).toEqual(['code', 'image', 'pdf', 'document-html', 'document-text'])
     expect(turnTailEntries[0]).toMatchObject({ priority: -100 })
     expect(nodeDefinitions[0]).toMatchObject({ kind: 'workbench-artifact', target: 'artifacts' })
+    expect(nodeDefinitions[1]).toMatchObject({ kind: 'workbench-plan', target: 'plans' })
     expect(viewDefinitions[0]).toMatchObject({ target: 'artifacts' })
+    expect(viewDefinitions[1]).toMatchObject({ target: 'plans' })
     expect(localeNamespaces).toEqual(['workbench-artifact'])
     expect(provide).not.toHaveBeenCalled()
 
@@ -87,7 +89,7 @@ describe('ui-workbench-artifact registration', () => {
     expect(disposed).toEqual([])
     teardown!()
     expect(disposed).toEqual([
-      'locale:workbench-artifact', 'view', 'node',
+      'locale:workbench-artifact', 'view', 'node', 'view', 'node',
       'inject:conversation.chat.turnTail',
       'inject:deepcreator.workbench.artifact.renderer',
       'inject:deepcreator.workbench.artifact.renderer',

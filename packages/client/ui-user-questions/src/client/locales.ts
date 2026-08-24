@@ -17,6 +17,7 @@ export const zh = {
   'plan.approve': '确认执行',
   'plan.decline': '拒绝',
   'plan.discuss': '去聊天里说',
+  'plan.viewInArtifacts': '在产物中查看',
 } satisfies Record<string, string>
 
 /** The question namespace key union. */
@@ -39,4 +40,5 @@ export const en = {
   'plan.approve': 'Approve',
   'plan.decline': 'Refuse',
   'plan.discuss': 'Chat about it',
+  'plan.viewInArtifacts': 'View in Artifacts',
 } satisfies Record<QuestionKey, string>

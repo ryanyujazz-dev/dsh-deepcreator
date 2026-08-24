@@ -26,9 +26,9 @@ import { ArtifactPanel } from '../src/client/ArtifactPanel.tsx'
 import {
   ArtifactDocumentHtmlRenderer, ArtifactDocumentTextRenderer, ArtifactImageRenderer, ArtifactPdfRenderer,
 } from '../src/client/ArtifactBinaryRenderers.tsx'
-import { EMPTY_ARTIFACTS_SNAPSHOT } from '../src/client/artifact-contract.ts'
-import type { ArtifactsSnapshot } from '../src/client/artifact-contract.ts'
-import { artifactParentDirectory, artifactPathSegments } from '../src/client/artifact-view-model.ts'
+import { EMPTY_ARTIFACTS_SNAPSHOT, EMPTY_PLANS_SNAPSHOT } from '../src/client/artifact-contract.ts'
+import type { ArtifactsSnapshot, PlansSnapshot } from '../src/client/artifact-contract.ts'
+import { artifactParentDirectory, artifactPathSegments, planInstanceId } from '../src/client/artifact-view-model.ts'
 
 afterEach(cleanup)
 
@@ -36,12 +36,12 @@ function snapshotOf(records: Array<{ path: string; updatedAt: number; turn: numb
   return { records }
 }
 
-function props(snapshot: ArtifactsSnapshot, read: ReturnType<typeof vi.fn> = vi.fn()) {
+function props(snapshot: ArtifactsSnapshot, read: ReturnType<typeof vi.fn> = vi.fn(), plans: PlansSnapshot = EMPTY_PLANS_SNAPSHOT) {
   const contributions: Array<{ tabLabels: Record<string, string>; tabFilePaths: Record<string, string> }> = []
   return {
     input: {
       artifacts: { read },
-      useSession: (selector: (state: never) => unknown) => selector({ views: new Map([['artifacts', snapshot]]) } as never),
+      useSession: (selector: (state: never) => unknown) => selector({ views: new Map([['artifacts', snapshot], ['plans', plans]]) } as never),
       sessionId: 'session-1',
       route: 'home',
       typeId: 'artifact',
@@ -105,6 +105,39 @@ describe('ArtifactPanel', () => {
 
     fireEvent.click(view.getByText('plan.md').closest('button')!)
     expect(input.input.openInstance).toHaveBeenCalledWith('E:/repo/plan.md')
+  })
+
+  it('renders current-session plans as a list group before files and opens a markdown plan instance', () => {
+    const plan = {
+      callId: 'plan-2', title: 'Ship the picker', markdown: '# Ship the picker\n\n- render rows',
+      status: 'pending' as const, turn: 4, updatedAt: 3_000, seq: 30,
+    }
+    const input = props(snapshotOf([{ path: 'E:/repo/a.ts', updatedAt: 2_000, turn: 3 }]), vi.fn(), { records: [plan] })
+    const view = render(<ArtifactPanel {...input.input} />)
+
+    const headings = view.getAllByRole('heading', { level: 2 }).map(node => node.textContent)
+    expect(headings).toEqual(['group.plans1', 'group.files1'])
+    fireEvent.click(view.getByText('Ship the picker').closest('button')!)
+    expect(input.input.openInstance).toHaveBeenCalledWith(planInstanceId('plan-2'))
+
+    view.rerender(<ArtifactPanel {...input.input} tabs={[planInstanceId('plan-2')]} route="instance" activeInstanceId={planInstanceId('plan-2')} />)
+    expect(view.getByRole('heading', { name: 'Ship the picker', level: 1 })).toBeTruthy()
+    expect(view.getByText('render rows')).toBeTruthy()
+    expect(input.read).not.toHaveBeenCalled()
+    expect(input.contributions.at(-1)).toEqual({
+      tabLabels: { 'E:/repo/a.ts': 'a.ts', [planInstanceId('plan-2')]: 'Ship the picker' },
+      tabFilePaths: { 'E:/repo/a.ts': 'E:/repo/a.ts' },
+    })
+  })
+
+  it('consumes a plan reveal target once its current-session projection is available', async () => {
+    const plan = {
+      callId: 'plan-9', title: 'Reveal me', markdown: '# Reveal me',
+      status: 'pending' as const, turn: 5, updatedAt: 5_000, seq: 50,
+    }
+    const input = props(EMPTY_ARTIFACTS_SNAPSHOT, vi.fn(), { records: [plan] })
+    render(<ArtifactPanel {...input.input} reveal={{ target: 'plan-9', parameters: { kind: 'plan' }, nonce: 1 }} />)
+    await waitFor(() => { expect(input.input.openInstance).toHaveBeenCalledWith(planInstanceId('plan-9')) })
   })
 
   it('normalizes every entry point and merges restored relative tabs into one file identity', () => {

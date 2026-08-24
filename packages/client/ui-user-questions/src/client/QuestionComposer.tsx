@@ -12,6 +12,20 @@ import {
 import { PlanReviewPanel } from './PlanReviewPanel.tsx'
 import css from './QuestionComposer.module.css'
 
+/** Find the in-flight official plan call that owns the reviewed markdown. */
+export function runningPlanCallId(runningCalls: readonly { callId: string; name: string; argsRaw: string }[], plan: string | undefined): string | undefined {
+  if (plan === undefined) return undefined
+  return runningCalls.find((call) => {
+    if (call.name !== 'exit_plan_mode') return false
+    try {
+      const args: unknown = JSON.parse(call.argsRaw)
+      return typeof args === 'object' && args !== null && (args as { plan?: unknown }).plan === plan
+    } catch {
+      return false
+    }
+  })?.callId
+}
+
 interface DraftAnswer {
   selected: string[]
   custom: string
@@ -118,9 +132,15 @@ export function QuestionComposer(props: QuestionComposerProps) {
   // select/render dispatch — per-dispatch minting would churn memo identity).
   const question = useMemo(() => new PendingQuestion(props.matched), [props.matched])
   const review = useMemo(() => planReviewOf(question.questions), [question])
+  const planCallId = props.useSession(snapshot => runningPlanCallId(snapshot.runningCalls, review?.plan))
   return review === undefined
     ? <QuestionFlow key={question.key} pending={question} t={props.t} />
-    : <PlanReviewPanel key={question.key} pending={question} review={review} t={props.t} />
+    : <PlanReviewPanel
+        key={question.key} pending={question} review={review} t={props.t}
+        {...(props.openPlanInArtifacts === undefined
+          ? {}
+          : { onOpenInArtifacts: () => { props.openPlanInArtifacts?.(planCallId) } })}
+      />
 }
 
 function QuestionFlow({ pending, t }: { pending: PendingQuestion } & Pick<QuestionComposerProps, 't'>) {

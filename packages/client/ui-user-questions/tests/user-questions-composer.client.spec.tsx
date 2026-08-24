@@ -22,13 +22,13 @@ const SID = 's1' as SessionId
 const seatOver = (dict: Record<string, string>, common: Record<string, string>): QuestionComposerProps['t'] =>
   (key => dict[key] ?? common[key] ?? key)
 
-/** Framework standard-kit stubs: the composer consumes only the locale seat;
+/** Framework standard-kit stubs: the composer consumes locale plus running calls;
  *  the composed props type mandates delivery of the rest (framework hooks are
  *  plain stubs per the client testing discipline). */
 const kit = {
   session: undefined,
   sessionId: SID,
-  useSession: (() => { throw new Error('unused') }) as unknown as SnapshotSelectorHook<ConversationSnapshot>,
+  useSession: ((selector: (snapshot: ConversationSnapshot) => unknown) => selector({ runningCalls: [] } as unknown as ConversationSnapshot)) as SnapshotSelectorHook<ConversationSnapshot>,
   useSessions: (() => { throw new Error('unused') }) as unknown as SnapshotSelectorHook<SessionListState>,
   useWorkspaces: (() => { throw new Error('unused') }) as unknown as SnapshotSelectorHook<WorkspaceListState>,
   useProjection: (() => undefined) as never,

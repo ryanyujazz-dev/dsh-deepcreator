@@ -140,4 +140,6 @@ export class PendingQuestion {
  * whole behavior surface.
  */
 export type QuestionComposerProps =
-  PropsRuntime<'conversation.composer'> & { matched: QuestionWait } & PropsLocale<'question'>
+  PropsRuntime<'conversation.composer'>
+  & { matched: QuestionWait; openPlanInArtifacts?: ((callId?: string) => void) | undefined }
+  & PropsLocale<'question'>

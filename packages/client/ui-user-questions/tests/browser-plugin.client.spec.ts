@@ -46,14 +46,13 @@ describe('apply', () => {
     expect(ctx.slots.entries('conversation.composer')).toHaveLength(1)
   })
 
-  it('registers the question entry: routing selector, no inject face', async () => {
+  it('registers the question entry: routing selector and optional Artifact integration', async () => {
     const { ctx, slots } = await bench()
     await ctx.plugin({ inject: [...inject], apply }).await()
     const entry = slots.entries('conversation.composer')[0]!
     expect(entry.component).toBe(QuestionComposer)
-    // The whole behavior surface rides the matched carrier: no business face;
-    // copy rides the standard locale seat.
-    expect(entry.inject).toBeUndefined()
+    expect(entry.inject).toBeTypeOf('function')
+    expect((entry.inject as () => unknown)()).toEqual({})
     expect(entry.locale).toBe('question')
     // The selector narrows the chain currency: question wait in → that wait; none → null.
     const select = entry.select as (owner: { interactions: readonly { kind: string }[] }) => unknown
@@ -61,6 +60,23 @@ describe('apply', () => {
     expect(select({ interactions: [{ kind: 'approval' }, question] })).toBe(question)
     expect(select({ interactions: [{ kind: 'approval' }] })).toBeNull()
     expect(select({ interactions: [] })).toBeNull()
+  })
+
+  it('injects a plan presentation callback when the Artifact panel is registered', async () => {
+    const { ctx, slots } = await bench()
+    const presentCalls: unknown[] = []
+    ctx.provide('workbench', {
+      types: { list: () => [{ id: 'artifact' }] },
+      present: (request: unknown) => { presentCalls.push(request) },
+    } as never)
+    await ctx.plugin({ inject: [...inject], apply }).await()
+    const entry = slots.entries('conversation.composer')[0]!
+    const injected = (entry.inject as () => { openPlanInArtifacts(callId?: string): void })()
+
+    injected.openPlanInArtifacts('call-4')
+    expect(presentCalls).toEqual([{
+      typeId: 'artifact', target: 'call-4', parameters: { kind: 'plan' }, reveal: true, reason: 'user',
+    }])
   })
 
   it('teardown unregisters the slot entry', async () => {

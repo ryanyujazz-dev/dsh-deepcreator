@@ -8,12 +8,14 @@ import type {} from '@ryanyujazz/dsh-artifacts/remote'
 import type { ArtifactReadOk } from '@ryanyujazz/dsh-artifacts/types'
 import {
   DeepCreatorIconAnimatedFolder16, DeepCreatorIconMarkdownCode16, DeepCreatorIconMarkdownPreview16, FileIcon, FileLabel,
-  IconChevronRightOutline14, IconRefreshOutline14, MarkdownText, Tooltip, WorkbenchPanelIconButton,
+  IconChevronRightOutline14, IconListPenOutline16, IconRefreshOutline14, MarkdownText, Tooltip, WorkbenchPanelIconButton,
 } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { WorkbenchPanelProps } from '@ryanyujazz/dsh-client-ui-workbench/client'
-import { EMPTY_ARTIFACTS_SNAPSHOT } from './artifact-contract.ts'
+import { EMPTY_ARTIFACTS_SNAPSHOT, EMPTY_PLANS_SNAPSHOT } from './artifact-contract.ts'
+import type { PlanArtifactStatus } from './artifact-contract.ts'
 import {
   artifactPathSegments, artifactTabFilePaths, artifactTabLabels, basename, formatAge, isMarkdownArtifactPath,
+  planCallIdFromInstance, planInstanceId, planTabLabels,
 } from './artifact-view-model.ts'
 import type { MarkdownRenderMode } from './artifact-view-model.ts'
 import css from './ArtifactPanel.module.css'
@@ -121,21 +123,24 @@ function ArtifactPath({ path, openContainingFolder, openFolderLabel, markdownMod
 }
 
 /**
- * Workbench Artifact panel. The list is the official produced-files fact
- * projected from session events (`views.get('artifacts')`) — no pull, no
- * plugin-owned copy. Only instance content goes through the mounted
- * `artifacts` remote namespace, keyed by path.
+ * Workbench Artifact panel. Files are the official produced-files fact and
+ * plans are exit-plan calls, both projected from this Session's events — no
+ * project index or plugin-owned copy. Only file instance content goes through
+ * the mounted `artifacts` remote namespace, keyed by path.
  */
-export function ArtifactPanel({ artifacts, sessionId, route, tabs, activeInstanceId, openInstance, replaceInstanceId, openContainingFolder, workspaceRoot, useSession, contributeHeaderActions, contributePanelInfo, renderArtifact, t }: Props) {
+export function ArtifactPanel({ artifacts, sessionId, route, tabs, activeInstanceId, openInstance, replaceInstanceId, openContainingFolder, workspaceRoot, useSession, contributeHeaderActions, contributePanelInfo, renderArtifact, reveal, t }: Props) {
   const snapshot = useSession(selector => selector.views.get('artifacts') ?? EMPTY_ARTIFACTS_SNAPSHOT)
+  const plans = useSession(selector => selector.views.get('plans') ?? EMPTY_PLANS_SNAPSHOT)
   const [content, setContent] = useState<ArtifactReadOk | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [refreshTick, setRefreshTick] = useState(0)
   const [markdownModes, setMarkdownModes] = useState<Readonly<Record<string, MarkdownRenderMode>>>({})
   const [now] = useState(() => Date.now())
-  const normalizeInstanceId = useCallback((path: string) => resolveWorkspacePath(workspaceRoot, path), [workspaceRoot])
+  const normalizeInstanceId = useCallback((path: string) => planCallIdFromInstance(path) === null ? resolveWorkspacePath(workspaceRoot, path) : path, [workspaceRoot])
   const normalizedActiveInstanceId = activeInstanceId === undefined ? undefined : normalizeInstanceId(activeInstanceId)
   const active = snapshot.records.find(item => normalizeInstanceId(item.path) === normalizedActiveInstanceId)
+  const activePlanCallId = normalizedActiveInstanceId === undefined ? null : planCallIdFromInstance(normalizedActiveInstanceId)
+  const activePlan = activePlanCallId === null ? undefined : plans.records.find(item => item.callId === activePlanCallId)
 
   useLayoutEffect(() => {
     for (const tab of tabs) {
@@ -147,7 +152,7 @@ export function ArtifactPanel({ artifacts, sessionId, route, tabs, activeInstanc
   const readContent = useCallback(() => {
     setContent(null)
     setError(null)
-    if (normalizedActiveInstanceId === undefined) return
+    if (normalizedActiveInstanceId === undefined || activePlanCallId !== null) return
     let live = true
     void artifacts.read(sessionId, normalizedActiveInstanceId).then((wire) => {
       if (!live) return
@@ -157,19 +162,57 @@ export function ArtifactPanel({ artifacts, sessionId, route, tabs, activeInstanc
       setError(null)
     }).catch(reason => { if (live) setError(reason instanceof Error ? reason.message : String(reason)) })
     return () => { live = false }
-  }, [artifacts, normalizedActiveInstanceId, sessionId])
+  }, [activePlanCallId, artifacts, normalizedActiveInstanceId, sessionId])
   useEffect(() => readContent(), [readContent, refreshTick])
 
   const panelInfo = useMemo(() => ({
-    tabLabels: artifactTabLabels(snapshot.records, tabs, normalizeInstanceId),
+    tabLabels: {
+      ...artifactTabLabels(snapshot.records, tabs.filter(tab => planCallIdFromInstance(tab) === null), normalizeInstanceId),
+      ...planTabLabels(plans.records, tabs),
+    },
     tabFilePaths: artifactTabFilePaths(snapshot.records, tabs, normalizeInstanceId),
-  }), [normalizeInstanceId, snapshot.records, tabs])
+  }), [normalizeInstanceId, plans.records, snapshot.records, tabs])
   useEffect(() => contributePanelInfo(panelInfo), [contributePanelInfo, panelInfo])
   const headerActions = useMemo(() => ({
-    right: <WorkbenchPanelIconButton label={t('refresh')} onClick={() => { setRefreshTick(tick => tick + 1) }}><IconRefreshOutline14 /></WorkbenchPanelIconButton>,
-  }), [t])
+    right: activePlanCallId === null
+      ? <WorkbenchPanelIconButton label={t('refresh')} onClick={() => { setRefreshTick(tick => tick + 1) }}><IconRefreshOutline14 /></WorkbenchPanelIconButton>
+      : null,
+  }), [activePlanCallId, t])
   useEffect(() => contributeHeaderActions(headerActions), [contributeHeaderActions, headerActions])
   const markdownCodeLabels = useMemo(() => ({ copyLabel: t('copy'), copiedLabel: t('copied') }), [t])
+
+  useEffect(() => {
+    if (reveal?.parameters?.kind !== 'plan' || reveal.target === undefined) return
+    if (!plans.records.some(plan => plan.callId === reveal.target)) return
+    openInstance(planInstanceId(reveal.target))
+  }, [openInstance, plans.records, reveal?.nonce, reveal?.parameters?.kind, reveal?.target])
+
+  const planStatus = (status: PlanArtifactStatus): string => {
+    if (status === 'pending') return t('plan.status.pending')
+    if (status === 'approved') return t('plan.status.approved')
+    return t('plan.status.rejected')
+  }
+
+  if (route === 'instance' && activePlanCallId !== null) {
+    return (
+      <div className={css.panel}>
+        {activePlan === undefined
+          ? <Empty title={t('plan.unavailable.title')} body={t('plan.unavailable.body')} />
+          : <>
+              <div className={css.planBar} data-plan-call-id={activePlan.callId}>
+                <IconListPenOutline16 size={16} />
+                <strong>{activePlan.title}</strong>
+                <span data-status={activePlan.status}>{planStatus(activePlan.status)}</span>
+              </div>
+              <div className={`${css.content} ${css.markdownPreview}`}>
+                <div className={css.markdownDocument} data-artifact-plan-document>
+                  <MarkdownText text={activePlan.markdown} codeLabels={markdownCodeLabels} />
+                </div>
+              </div>
+            </>}
+      </div>
+    )
+  }
 
   if (route === 'instance' && normalizedActiveInstanceId !== undefined) {
     const activePath = normalizeInstanceId(active?.path ?? normalizedActiveInstanceId)
@@ -212,22 +255,44 @@ export function ArtifactPanel({ artifacts, sessionId, route, tabs, activeInstanc
   }
   return (
     <div className={css.panel}>
-      {snapshot.records.length === 0
+      {snapshot.records.length === 0 && plans.records.length === 0
         ? <Empty title={t('empty.title')} body={t('empty.body')} />
-        : <div className={css.list}>{snapshot.records.map(artifact => (
-          <div className={css.row} key={artifact.path}>
-            <button type="button" className={css.rowMain} onClick={() => { openInstance(normalizeInstanceId(artifact.path)) }}>
-              <span className={css.identity}>
-                <FileIcon path={artifact.path} size={16} />
-                <span className={css.copy}>
-                  <strong>{basename(artifact.path)}</strong>
-                  <span className={css.meta}>{artifact.path}</span>
-                </span>
-              </span>
-              <time>{formatAge(artifact.updatedAt, now)}</time>
-            </button>
-          </div>
-        ))}</div>}
+        : <div className={css.list}>
+            {plans.records.length > 0 && <section className={css.group} aria-labelledby="artifact-plans-heading">
+              <h2 id="artifact-plans-heading"><span>{t('group.plans')}</span><span>{plans.records.length}</span></h2>
+              {plans.records.map(plan => (
+                <div className={css.row} key={plan.callId}>
+                  <button type="button" className={css.rowMain} onClick={() => { openInstance(planInstanceId(plan.callId)) }}>
+                    <span className={css.identity}>
+                      <IconListPenOutline16 size={16} />
+                      <span className={css.copy}>
+                        <strong>{plan.title}</strong>
+                        <span className={css.meta}>{t('plan.turn', { turn: plan.turn })} · {planStatus(plan.status)}</span>
+                      </span>
+                    </span>
+                    <time>{formatAge(plan.updatedAt, now)}</time>
+                  </button>
+                </div>
+              ))}
+            </section>}
+            {snapshot.records.length > 0 && <section className={css.group} aria-labelledby="artifact-files-heading">
+              <h2 id="artifact-files-heading"><span>{t('group.files')}</span><span>{snapshot.records.length}</span></h2>
+              {snapshot.records.map(artifact => (
+                <div className={css.row} key={artifact.path}>
+                  <button type="button" className={css.rowMain} onClick={() => { openInstance(normalizeInstanceId(artifact.path)) }}>
+                    <span className={css.identity}>
+                      <FileIcon path={artifact.path} size={16} />
+                      <span className={css.copy}>
+                        <strong>{basename(artifact.path)}</strong>
+                        <span className={css.meta}>{artifact.path}</span>
+                      </span>
+                    </span>
+                    <time>{formatAge(artifact.updatedAt, now)}</time>
+                  </button>
+                </div>
+              ))}
+            </section>}
+          </div>}
     </div>
   )
 }

@@ -37,8 +37,38 @@ export interface ArtifactsSnapshot {
   readonly records: readonly FileArtifactRecord[]
 }
 
+/** Lifecycle of one submitted `exit_plan_mode` plan. */
+export type PlanArtifactStatus = 'pending' | 'approved' | 'rejected'
+
+/** One durable plan revision reconstructed from this Session's tool events. */
+export interface PlanArtifactRecord {
+  readonly callId: string
+  readonly title: string
+  readonly markdown: string
+  readonly status: PlanArtifactStatus
+  readonly turn: number
+  readonly updatedAt: number
+  readonly seq: number
+}
+
+/** View node published for one plan-mode review call. */
+export interface PlanConversationNode extends ConversationViewNode {
+  readonly target: 'plans'
+  readonly anchorSeq: number
+  readonly data: PlanArtifactRecord
+}
+
+/** Current-Session plan history assembled from durable conversation events. */
+export interface PlansSnapshot {
+  readonly records: readonly PlanArtifactRecord[]
+}
+
 /** Stable empty target used before a Session has assembled any artifact node. */
 export const EMPTY_ARTIFACTS_SNAPSHOT: ArtifactsSnapshot = {
+  records: [],
+}
+
+export const EMPTY_PLANS_SNAPSHOT: PlansSnapshot = {
   records: [],
 }
 
@@ -50,5 +80,7 @@ declare module '@deepseek-ai/dsh-client-runtime/client' {
   interface ConversationViewSnapshotMap {
     /** Live produced-files list consumed by the Workbench Artifact panel. */
     artifacts: ArtifactsSnapshot
+    /** Plan revisions submitted in this Session, newest first. */
+    plans: PlansSnapshot
   }
 }

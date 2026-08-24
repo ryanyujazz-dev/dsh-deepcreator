@@ -19,6 +19,8 @@ import {
 import { ArtifactTurnCard } from './ArtifactTurnCard.tsx'
 import { producedForClosing, registerArtifactNodeDefinition } from './artifact-node-definition.ts'
 import { registerArtifactsConversationView } from './artifacts-snapshot-builder.ts'
+import { registerPlanNodeDefinition } from './plan-node-definition.ts'
+import { registerPlansConversationView } from './plans-snapshot-builder.ts'
 import { artifactParentDirectory } from './artifact-view-model.ts'
 import { en, NS, zh, type ArtifactKey } from './locales.ts'
 
@@ -121,6 +123,8 @@ export function apply(ctx: ClientContext): void {
       }, turnCard)))
       disposers.push(registerArtifactNodeDefinition(ctx))
       disposers.push(registerArtifactsConversationView(ctx))
+      disposers.push(registerPlanNodeDefinition(ctx))
+      disposers.push(registerPlansConversationView(ctx))
       disposers.push(ctx.locale.register(NS, { zh, en }))
       if (ctx.presentation !== undefined) {
         disposers.push(ctx.presentation.providers.register(presenter))

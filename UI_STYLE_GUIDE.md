@@ -128,6 +128,8 @@
 - Windows Desktop 隐藏原生标题栏，由根框架在三个分栏之上绘制 32px 全宽标题条（与标准原生标题栏同高，替换后的整体高度不变）：背景 `--dsw-alias-bg-base`、底部 1px `--dsw-alias-border-l1` 分隔，整条为原生拖窗区域（双击最大化语义随之保留）；文字镜像窗口标题（`DeepSeek Harness` 后缀替换为 `DeepCreator`，空标题回退产品名），使用侧边栏字号档位与 `--dsw-alias-label-secondary` 颜色、单行省略。右上原生最小化／最大化／关闭按钮通过 Window Controls Overlay 绘制在标题条右端，overlay 背景与符号颜色必须由主题 presenter 每次主题变化时推送为解析后的 `--dsw-alias-bg-base`／`--dsw-alias-label-primary`，标题条随设置中的浅色／深色主题整体切换；overlay 高度固定 32px，按钮在标题条内垂直居中。标题条是 Windows 渲染器的**最顶层 web 层**（z-index 1101，压过 Menu 1100、Modal／Settings 1000、ConnectionBanner 100 等全部 overlay），任何 UI 内容不得绘制进标题条内部；分栏内容由网格行整体让位，聚焦的详情 Stage 与拖拽手柄从 `top:32px` 开始，模态／菜单等固定定位表面即使 portal 到 body 也只能出现在标题条之下，窗口最小化／最大化／关闭按钮始终悬浮于标题条之上。
 - 无标题栏窗口在 macOS Electron 根框架顶部保留 8px 兜底拖拽带，并将侧栏品牌 Header、对话 Header、无标题 Hero／加载态顶部 48px 与详情 Header 的所有视觉空白声明为原生拖窗区域；按钮、链接、输入、菜单触发器等真实交互元素必须显式 `no-drag`，不得被拖拽层覆盖，也不得通过伪造按钮替代 macOS 原生 traffic lights。Windows 的拖窗区域由其自绘标题条整条承担，分栏内容不再追加拖拽区域；Linux 保留系统标题栏，不在渲染内容区追加拖窗区域。
 
+- Artifact 首页在文件列表上方显示「计划」list group，两组标题均使用 10px／14px tertiary caption 并在右侧显示数量。计划严格投影当前 Session 日志中的每次 `exit_plan_mode` 修订，不跨同项目其他 Session；计划行复用 52px／8px 列表几何，使用 16px list-pen 图标、首个 Markdown 标题和“第 N 轮 · 待审批／已批准／未通过”元信息。计划实例顶部是 30px 标题／状态栏，正文复用共享阅读宽度的 `MarkdownText`，不触发文件读取。计划审批卡顶部 warn strip 的右上角使用 28px ghost 按钮「在产物中查看」，带 14px Artifact 图标；点击只定位当前 Session 中对应计划，不改变审批状态。产物入口未读蓝点同时纳入新计划的更新时间。
+
 ## 修改规则
 
 任何后续 UI 调整都要同步检查本规范。新增渲染器必须消费语义变量和 slot，不得绕过插件注册直接修改宿主渲染分支。
