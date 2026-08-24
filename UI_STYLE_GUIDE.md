@@ -61,8 +61,8 @@
 - 普通消息提交后立即创建纯展示层的浏览器本地回显，按已解析投递方式进入对话尾部、QueueDock 或 Steer 区域；它必须按 FIFO 与 Host 权威投影配对，并在所属界面已经提交官方后继节点后原子退场，避免首次会话投影异步落定时的空白、闪烁或重复消息。该回显不得进入 Session 状态、持久化日志或回放。
 - 执行流中展开的 Code、Bash、Skill 与其他工具共用同一条 1px 引导线：中心必须锚定标题行 16px leading glyph 的 x=8 轴，内容从 22px 标题列开始。`run_code` 的子调用由父 Code 节点持有引导线，子调用的 leading 图标必须从父级「Code」标题的左边界（22px 标题列）开始，且不得把父级引导线向右推移；圆角卡片不得自行绘制位于其裁剪边界之外的引导线。
 - `create_image` 运行态使用 14px sparkle 图标与公共工具行扫光，标题固定为「Creating image」；成功后展开区直接复用官方附件图片呈现。执行流模式下，展开区必须与通用工具行共享图标中轴的 1px `border-l2` 左侧轨道，图片左边缘对齐 22px 标题列，不得回落到工具行容器左缘。完成 Turn 的独立生成图片按「收尾正文 → 图片 → Artifact 产物卡 → Review 变更卡 → 消息操作」排序；每张独立图片占对话流可用宽度的 50% 并按附件真实宽高比展示，多张图片逐张排列，不得退化为 64px tile。图片不得被包进产物卡或变更卡，但对应 PNG 文件仍保留在 Artifact 产物卡中。Artifact 首页、对话文件入口与 Agent Presentation 必须先按 Session workspace 将路径规范化为同一绝对实例 ID；同一图片无论从哪个入口打开都只能保留一个标签，历史相对／绝对重复 ID 需无关闭语义地合并。
-- `browser_inspect screenshot` 的工具行按是否携带 `outputPath` 区分「Captured browser screenshot」与「Saved browser screenshot」，两种结果都在展开区直接渲染同一官方图片附件；只有后者把 `output/browser/screenshots/*.png` 作为普通 `edit` location 进入 Turn 产物卡和 Artifact 面板。未保存的会话截图不得伪造文件入口，已保存截图也不得在最终回答中自动重复插入一张媒体副本。
-- 通用工具结果中的图片必须直接复用官方附件呈现，不得把 attachment JSON 显示为 OUT 文本。展开后图片铺满剩余正文列，最大高度 420px，按原始比例 `contain` 并左对齐，点击沿用官方附件放大交互；经典／思考执行流继续由公共 `bodyWrap` 在 x=8 绘制 1px 垂线，图片左边缘严格对齐 22px 标题列，原生模式不得额外新增执行流垂线。
+- `browser_inspect screenshot` 的工具行按是否携带 `outputPath` 区分「Captured browser screenshot」与「Saved browser screenshot」，两种结果都在摘要行下方直接渲染同一官方图片附件（折叠态即可见，无需展开）；只有后者把 `output/browser/screenshots/*.png` 作为普通 `edit` location 进入 Turn 产物卡和 Artifact 面板。未保存的会话截图不得伪造文件入口，已保存截图也不得在最终回答中自动重复插入一张媒体副本。
+- 通用工具结果中的图片必须直接复用官方附件呈现，不得把 attachment JSON 显示为 OUT 文本。图片是摘要行的常驻表面内容而非展开内容：在折叠态即直接显示于摘要行下方，占对话流可用宽度的 50%（与独立图片同一半宽规则），最大高度 420px，按原始比例 `contain` 并左对齐，点击沿用官方附件放大交互；图片自身不参与行可展开性判定（正文／输出／卡片仍决定可展开）。经典／思考执行流中图片左边缘严格对齐 22px 标题列，x=8 的 1px 垂线仍由公共 `bodyWrap` 独占，原生模式不得额外新增执行流垂线。
 
 ## 控件和菜单
 

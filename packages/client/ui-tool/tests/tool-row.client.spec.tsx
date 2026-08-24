@@ -420,15 +420,18 @@ describe('GenericToolCard', () => {
     expect(view.container.querySelector('[data-variant="bash"]')).not.toBeNull()
   })
 
-  it('renders durable result images through the conversation attachment owner', () => {
+  it('renders durable result images below the summary without expanding', () => {
     const renderMessageImages = vi.fn(() => <span data-tool-image />)
     const block = result({ content: [{ type: 'text', text: '{"kind":"screenshot"}' }, { type: 'image', attachment: { attachmentId: 'a1', mediaType: 'image/png', bytes: 12, width: 100, height: 50 } } as never] })
     const view = render(<GenericToolCard {...props('browser_inspect', block)} renderMessageImages={renderMessageImages} execflow />)
-    fireEvent.click(view.getByRole('button', { name: /Tool call/ }))
+    // No expand click: the image strip is surface content under the summary row.
     expect(renderMessageImages).toHaveBeenCalledWith({ images: [{ attachment: (block.content[1] as never as { attachment: unknown }).attachment }], align: 'start' })
     expect(view.container.querySelector('[data-tool-image]')).not.toBeNull()
     expect(view.container.querySelector('[class*="media"]')).not.toBeNull()
     expect(view.container.querySelector('[data-execflow]')).not.toBeNull()
+    // The row stays expandable through its text body/output, not the media.
+    fireEvent.click(view.getByRole('button', { name: /Tool call/ }))
+    expect(view.container.querySelector('[data-tool-image]')).not.toBeNull()
   })
 
   it('unknown tools land on the others variant titled Tool call', () => {

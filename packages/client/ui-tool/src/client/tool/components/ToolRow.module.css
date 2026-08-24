@@ -253,11 +253,16 @@
   pointer-events: none;
 }
 
-/* Generic Tool Result images use the durable attachment renderer. Normal mode
-   keeps the native row inset; execution-flow mode aligns the image with the
-   22px title column while the existing x=8 rail remains owned by bodyWrap. */
+/* Generic Tool Result images use the durable attachment renderer and render
+   below the summary row (visible while collapsed), not inside the disclosure.
+   The strip takes half the conversation column — the same 50% standalone-image
+   rule as turn media — so a screenshot reads at a glance without expanding.
+   Normal mode keeps the native row inset; execution-flow mode aligns the image
+   with the 22px title column while the existing x=8 rail remains owned by
+   bodyWrap. */
 .media {
   min-width: 0;
+  width: 50%;
   margin: 4px 0 4px 4px;
   overflow: hidden;
 }

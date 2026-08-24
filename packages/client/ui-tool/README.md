@@ -21,7 +21,7 @@ Generic rows classify known Tool names into search, read, shell, write, edit, co
 
 In execution-flow render modes, expanded Tool bodies start at the 22px title column and share a 1px guide on the 16px leading glyph's x=8 centerline. A Code Dispatch branch keeps that guide on the parent Code row, while each child leading icon starts at the parent `Code` title's left edge. The Tool tree also adapts the pinned official `ui-skill` keyed row at this boundary because that renderer does not yet consume the owner's `execflow` flag.
 
-The generic fallback also consumes durable image content blocks. It delegates loading, failure state, and click-to-enlarge behavior to the conversation attachment owner instead of displaying attachment JSON as OUT text. Images fill the remaining body column, use `contain`, and cap at 420px; execution-flow images align to the 22px title column beside the existing x=8 guide, while normal mode keeps the native row layout without adding a guide.
+The generic fallback also consumes durable image content blocks. It delegates loading, failure state, and click-to-zoom behavior to the conversation attachment owner instead of displaying attachment JSON as OUT text. Images are surface content, not disclosure content: the strip renders directly below the summary row and stays visible while the row is collapsed, so a browser screenshot reads without expanding the call. The strip takes 50% of the conversation flow width (the standalone-image rule), caps at 420px, and uses `contain`; execution-flow strips align to the 22px title column while the x=8 guide stays owned by the expanded `bodyWrap`, and normal mode keeps the native row inset. Media alone never makes a row expandable.
 
 ## Atomic Tool views
 

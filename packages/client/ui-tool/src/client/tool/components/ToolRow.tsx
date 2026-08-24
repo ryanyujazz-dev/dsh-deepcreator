@@ -12,6 +12,9 @@
 // container so a long payload scrolls internally instead of taking over the
 // message flow. Every card kind starts collapsed, so a run of tool calls stays
 // scannable; the details panel is the single-call full-height reading surface.
+// Durable result images (browser screenshots and the like) are NOT disclosure
+// content: they render in their own half-width strip directly below the
+// summary row, visible without expanding.
 // Expand state is component-local view state. File-tool summaries are path
 // links (stopPropagation keeps the two gestures independent): they focus the
 // file's change in the review surface when the owner supplies onRevealChange
@@ -57,7 +60,7 @@ export interface ToolRowProps {
   body: string | null
   /** Flattened result text for the expanded Output section; null/absent = no output section. */
   output?: string | null | undefined
-  /** Durable result images rendered by the conversation attachment owner. */
+  /** Durable result images rendered by the conversation attachment owner; always visible below the summary row, never disclosure content. */
   media?: ReactNode | null | undefined
   /** Error first line retained by the model for diagnostic consumers; the row title uses fixed failure copy. */
   errorSummary?: string | null | undefined
@@ -176,9 +179,10 @@ export function ToolRow({
   const mediaBody = media ?? null
   // A card replaces the text body; a call carries at most one card kind, so the
   // card props are mutually exclusive. Any of them, or a text body/output,
-  // makes the row expandable.
+  // makes the row expandable. Media never does: it renders below the summary
+  // regardless of expand state, so there is nothing hidden to disclose.
   const card = terminalBody ?? diffBody ?? readBody ?? searchBody ?? webBody
-  const expandable = body !== null || outputText !== null || card !== null || mediaBody !== null
+  const expandable = body !== null || outputText !== null || card !== null
   const open = expanded && expandable
   // The run-state label AT needs: the StateDot and the running sweep are both
   // aria-hidden / colour-only, so a stopped or running row is otherwise silent.
@@ -341,7 +345,6 @@ export function ToolRow({
                         )}
                       </>
                     )}
-          {mediaBody !== null && <div className={css.media}>{mediaBody}</div>}
           {inspect !== undefined && (
             <Tooltip label={t('execflow.inspect')} side="bottom">
               <button
@@ -356,6 +359,10 @@ export function ToolRow({
           )}
         </div>
       </DisclosureRow>
+      {/* Result images are surface content, not disclosure content: the strip
+          below the summary row stays visible while collapsed, so a screenshot
+          reads without expanding the call. */}
+      {mediaBody !== null && <div className={css.media}>{mediaBody}</div>}
     </div>
   )
 }
