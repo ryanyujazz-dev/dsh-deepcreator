@@ -16,7 +16,7 @@ export interface ArtifactTextReadOk {
 export interface ArtifactImageReadOk {
   ok: true
   kind: 'image'
-  /** Fenced loopback URL; the browser never receives a filesystem path. */
+  /** Same-origin unguessable capability URL; the browser never receives a filesystem path. */
   url: string
   mediaType: string
 }
@@ -24,7 +24,7 @@ export interface ArtifactImageReadOk {
 export interface ArtifactPdfReadOk {
   ok: true
   kind: 'pdf'
-  /** Fenced loopback URL consumed by Chromium's embedded PDF viewer. */
+  /** Same-origin unguessable capability URL consumed by the embedded PDF viewer. */
   url: string
   mediaType: 'application/pdf'
 }

@@ -93,6 +93,7 @@ export function apply(ctx: ClientContext): void {
   let onboardingVersion = -1
   let onboardingSteps: readonly SettingsOnboardingStep[] = []
   const shellInjected = (): SettingsRootInjected => ({
+    remote: !connection.isLoopback,
     hooks: {
       sections: {
         getSnapshot: () => {

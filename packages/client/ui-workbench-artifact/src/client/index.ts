@@ -1,4 +1,5 @@
 import { resolveWorkspacePath, type ClientContext, type SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
 import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { createElement, type ReactNode } from 'react'
@@ -25,13 +26,14 @@ declare module '@deepseek-ai/dsh-client-ui-slots' { interface LocaleNamespaceMap
 
 /** Required services: Workbench panel Slots, the locale service, the mounted artifacts remote, and the conversation projection registries. */
 export const inject = [
-  'slots', 'workbench', 'workspaces', 'sessions', 'locale', 'remote', 'remote.artifacts',
+  'slots', 'workbench', 'workspaces', 'sessions', 'locale', 'connection', 'remote', 'remote.artifacts',
   'conversationEvents', 'conversationViews',
   'presentation',
 ]
 
 export function apply(ctx: ClientContext): void {
   const t = ctx.locale.bind(NS)
+  const loopback = (ctx.get('connection') as ConnectionHandle).isLoopback
   // Renderers run outside this plugin's apply frame. Capture the concrete
   // service once so Cordis does not treat later namespace reads as undeclared
   // `remote.*` context injections.
@@ -69,15 +71,20 @@ export function apply(ctx: ClientContext): void {
   }
   const panel = (props: WorkbenchPanelProps & PropsLocale<'workbench-artifact'>): ReactNode =>
     createElement(ArtifactPanel, {
-      ...props, artifacts, openContainingFolder,
+      ...props, artifacts,
+      ...(loopback ? { openContainingFolder } : {}),
       workspaceRoot: ctx.sessions.list.getSnapshot().byId[props.sessionId]?.cwd,
     })
   const turnCard = (props: PropsRuntime<'conversation.chat.turnTail'> & PropsLocale<'workbench-artifact'> & { matched: readonly string[] }): ReactNode =>
     createElement(ArtifactTurnCard, {
       ...props,
       openArtifacts: () => { ctx.workbench.activate('artifact') },
-      openInDeepCreator: path => openInDeepCreator(props.sessionId, path),
-      openInSystemBrowser: path => openInSystemBrowser(props.sessionId, path),
+      ...(loopback
+        ? {
+            openInDeepCreator: (path: string) => openInDeepCreator(props.sessionId, path),
+            openInSystemBrowser: (path: string) => openInSystemBrowser(props.sessionId, path),
+          }
+        : {}),
     })
   const definition: PanelTypeDefinition = {
     id: 'artifact', label: () => t('type'), scope: 'session', order: 3, supportsHome: true, supportsCreate: false,

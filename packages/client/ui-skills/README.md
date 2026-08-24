@@ -8,6 +8,9 @@ the public Settings navigation service, and mounts its own generated Skill
 Remote codec contribution instead of coupling it to Workbench Remotes. The React views receive only injected
 callbacks and Remote projections; the official Host Skill registry remains the
 catalog authority.
+The Client sends the current live session id together with the workspace path,
+so the Host projects the same effective Agent-scoped catalog that the Skill tool
+uses instead of showing only global providers.
 
 The section reuses ui-primitives' Button, Input, Menu, Modal,
 RiskConfirmation, Tooltip, SidebarRow, and product Skill icon. Its only local

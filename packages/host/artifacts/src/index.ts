@@ -3,11 +3,12 @@ import { extname, isAbsolute, relative, resolve, sep } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-system-prompt'
+import type {} from '@deepseek-ai/dsh-host-webserver'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@ryanyujazz/dsh-presentation'
 import mammoth from 'mammoth'
 import WordExtractor from 'word-extractor'
-import { ArtifactPreviewRegistry } from './preview-server.ts'
+import { ArtifactPreviewRegistry, ArtifactResourceRegistry } from './preview-server.ts'
 import type { ArtifactPreviewResult, ArtifactReadError, ArtifactReadResult } from './types.ts'
 export type {
   ArtifactDocumentReadOk, ArtifactImageReadOk, ArtifactPdfReadOk, ArtifactPreviewError,
@@ -20,7 +21,7 @@ declare module '@deepseek-ai/cordis' {
 }
 declare module '@ryanyujazz/dsh-presentation/types' { interface PresentationInputMap { artifact: { artifactId: string } } }
 
-export const inject = ['presentationRuntime', 'systemPrompt']
+export const inject = ['presentationRuntime', 'systemPrompt', 'webServer']
 
 export const ARTIFACT_PRESENTATION_PROMPT = [
   'When open_in_deepcreator is available, proactively present one primary user-consumable artifact after creating and verifying it.',
@@ -48,10 +49,13 @@ export const ARTIFACT_RESOLVER_DESCRIPTION = [
 export class ArtifactReader extends TypertRemoteService {
   static inject = inject
   private readonly previews = new ArtifactPreviewRegistry()
+  private readonly resources: ArtifactResourceRegistry
   private readonly wordExtractor = new WordExtractor()
   constructor(ctx: Context) {
     super(ctx, 'artifacts')
+    this.resources = new ArtifactResourceRegistry(ctx.webServer)
     ctx.effect(() => () => { void this.previews.dispose() }, 'artifacts: preview server')
+    ctx.effect(() => () => { this.resources.dispose() }, 'artifacts: same-origin resources')
     ctx.systemPrompt?.section({
       name: 'deepcreator:artifact-presentation',
       order: 191,
@@ -85,10 +89,10 @@ export class ArtifactReader extends TypertRemoteService {
       const extension = extname(target).toLowerCase()
       const imageType = IMAGE_MEDIA_TYPES[extension]
       if (imageType !== undefined) {
-        return { ok: true, kind: 'image', url: await this.previews.urlFor(target), mediaType: imageType }
+        return { ok: true, kind: 'image', url: await this.resources.urlFor(target), mediaType: imageType }
       }
       if (extension === '.pdf') {
-        return { ok: true, kind: 'pdf', url: await this.previews.urlFor(target), mediaType: 'application/pdf' }
+        return { ok: true, kind: 'pdf', url: await this.resources.urlFor(target), mediaType: 'application/pdf' }
       }
       if (extension === '.docx') {
         const result = await mammoth.convertToHtml(
@@ -162,11 +166,17 @@ async function resolveArtifact(cwd: string, path: string): Promise<ResolvedArtif
     if (isAbsolute(lexical) || lexical === '..' || lexical.startsWith(`..${sep}`)) {
       return { ok: false, code: 'OUTSIDE_WORKSPACE', message: 'Artifact path is outside the session workspace.' }
     }
+    if (lexical.split(sep).some(segment => segment.startsWith('.'))) {
+      return { ok: false, code: 'NOT_FOUND', message: 'Hidden artifact paths are not previewable.' }
+    }
     return { ok: false, code: 'NOT_FOUND', message: `File ${path} was not found.` }
   }
   const rel = relative(root, target)
   if (isAbsolute(rel) || rel === '..' || rel.startsWith(`..${sep}`)) {
     return { ok: false, code: 'OUTSIDE_WORKSPACE', message: 'Artifact path resolves outside the session workspace.' }
+  }
+  if (rel.split(sep).some(segment => segment.startsWith('.'))) {
+    return { ok: false, code: 'NOT_FOUND', message: 'Hidden artifact paths are not previewable.' }
   }
   return { ok: true, target }
 }

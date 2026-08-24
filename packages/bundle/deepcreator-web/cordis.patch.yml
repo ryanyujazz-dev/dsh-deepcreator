@@ -36,6 +36,13 @@
 - id: ui-jobs
   disabled: true
 
+# The LAN gateway forwards into the loopback WebServer with this synthetic
+# authority. It is trusted for ordinary channels but is deliberately not a
+# loopback authority, so official loopback-only administration remains fenced.
+- id: connection
+  config:
+    trustedHosts: !!js "['deepcreator-remote.local:43127', ...ctx.webRuntime.trustedHosts]"
+
 - insert:
     # Workbench Host plane: domain services stay independent from their UI.
     - id: deepcreator-terminal-service
@@ -64,6 +71,9 @@
 
     - id: deepcreator-artifacts
       name: '@ryanyujazz/dsh-artifacts'
+
+    - id: deepcreator-remote-access
+      name: '@ryanyujazz/dsh-remote-access'
 
     - id: deepcreator-jobs-admin
       name: '@ryanyujazz/dsh-jobs-admin'
@@ -112,6 +122,9 @@
 
     - id: deepcreator-workbench-remotes
       name: '@ryanyujazz/dsh-client-workbench-remotes'
+
+    - id: deepcreator-ui-remote-access
+      name: '@ryanyujazz/dsh-client-ui-remote-access'
 
     - id: deepcreator-client-presentation
       name: '@ryanyujazz/dsh-client-presentation'

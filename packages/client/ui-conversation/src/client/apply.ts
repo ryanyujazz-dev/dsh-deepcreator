@@ -1,5 +1,6 @@
 /** Registers the conversation components, shared store, and service callbacks. */
 import type { Context } from '@deepseek-ai/cordis'
+import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
 import { resolveSlotLabel, type BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
 import {
   resolveWorkspacePath, type ISessions, type SessionId,
@@ -128,6 +129,7 @@ export function apply(ctx: Context): void {
   const sessions = ctx.sessions
   const workspaces = ctx.workspaces
   const slots = ctx.slots
+  const loopback = (ctx.get('connection') as ConnectionHandle).isLoopback
 
   registerConversationNodes(ctx)
   registerChatNodeRenderers(ctx)
@@ -466,7 +468,7 @@ export function apply(ctx: Context): void {
             workbench.activate('artifact', resolved)
             return
           }
-          void workspaces.openPath(resolved).catch(() => {
+          if (loopback) void workspaces.openPath(resolved).catch(() => {
             // Host/OS open failures stay silent in the chat row; the native
             // app surfaces its own error dialog when the path is unusable.
           })
@@ -483,7 +485,7 @@ export function apply(ctx: Context): void {
             workbench.reveal('review', resolved)
             return
           }
-          void workspaces.openPath(resolved).catch(() => { })
+          if (loopback) void workspaces.openPath(resolved).catch(() => { })
         },
         loadOlder: () => { void scoped.loadOlder() },
         loadImage: attachment => conversation.resolveImage(sessionId, attachment),

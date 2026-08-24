@@ -84,6 +84,8 @@ export function apply(ctx: ClientContext): void {
   // Capture this namespace once so renders never re-read the association.
   const sessionAdmin = (ctx.get('remote') as TypertClientRemote)['session-admin']
   const browserInjected = (): WorkspaceBrowserInjected => ({
+    canManageWorkspaces: connection.isLoopback,
+    canPermanentlyDelete: connection.isLoopback,
     // Explicit group actions keep their target; unscoped New Session inherits
     // the current Session Workspace before the recent-Workspace fallback.
     startSession: (workspaceId) => { ctx.workspaces.startSession(workspaceId) },

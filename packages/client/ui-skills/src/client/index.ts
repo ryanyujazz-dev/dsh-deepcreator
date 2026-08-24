@@ -4,7 +4,7 @@ import type {} from '@ryanyujazz/dsh-client-locale/client'
 import type {} from '@ryanyujazz/dsh-client-ui-settings/client'
 import type {} from '@ryanyujazz/dsh-client-ui-sidebar/client'
 import { TYPERT_REMOTE as SKILL_ADMIN_REMOTE } from '@ryanyujazz/dsh-skill-admin/remote'
-import type { SkillAdminDetail, SkillAdminItem, SkillInstallKind } from '@ryanyujazz/dsh-skill-admin/types'
+import type { SkillAdminDetail, SkillAdminItem, SkillAdminTarget, SkillInstallKind } from '@ryanyujazz/dsh-skill-admin/types'
 import { SkillsSection } from './SkillsSection.tsx'
 import type { SkillsSectionInjected } from './SkillsSection.tsx'
 import { SkillsShortcut } from './SkillsShortcut.tsx'
@@ -30,21 +30,24 @@ function unwrap<T>(wire: RemoteResult<T>): T {
 function applyFeature(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-skills: dictionaries')
   const remote = (ctx.get('remote') as TypertClientRemote)['skill-admin']
-  const cwd = (): string | undefined => {
+  const target = (): SkillAdminTarget => {
     const sessions = ctx.sessions.list.getSnapshot()
     const workspaces = ctx.workspaces.list.getSnapshot()
     const workspace = sessions.current === undefined
       ? workspaces.items.find(item => item.workspaceId === workspaces.recentWorkspaceId)
       : workspaces.items.find(item => item.sessionIds.includes(sessions.current!))
-    return workspace?.path
+    return {
+      ...(workspace?.path === undefined ? {} : { cwd: workspace.path }),
+      ...(sessions.current === undefined ? {} : { sessionId: sessions.current }),
+    }
   }
   const sectionInjected = (): SkillsSectionInjected => ({
-    list: async (): Promise<SkillAdminItem[]> => unwrap(await remote.list(cwd())),
-    detail: async (name): Promise<SkillAdminDetail> => unwrap(await remote.detail(name, cwd())),
-    setEnabled: async (name, enabled): Promise<void> => { unwrap(await remote.setEnabled(name, enabled, cwd())) },
+    list: async (): Promise<SkillAdminItem[]> => unwrap(await remote.list(target())),
+    detail: async (name): Promise<SkillAdminDetail> => unwrap(await remote.detail(name, target())),
+    setEnabled: async (name, enabled): Promise<void> => { unwrap(await remote.setEnabled(name, enabled, target())) },
     install: async (kind: SkillInstallKind, value): Promise<void> => { unwrap(await remote.installSkill({ kind, value })) },
     pickDirectory: () => ctx.workspaces.pickDirectory(),
-    remove: async (name): Promise<void> => { unwrap(await remote.removeSkill(name, cwd())) },
+    remove: async (name): Promise<void> => { unwrap(await remote.removeSkill(name, target())) },
     openLocation: async (path): Promise<void> => { await ctx.workspaces.openPath(path) },
     openPlugins: () => { ctx.settingsNavigation.open('plugins') },
     description: item => item.localizedDescriptions?.[ctx.locale.getLocale().active] ?? item.description,

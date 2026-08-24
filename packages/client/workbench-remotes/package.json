@@ -42,6 +42,7 @@
     "@ryanyujazz/dsh-artifacts": "^0.1.0",
     "@ryanyujazz/dsh-jobs-admin": "^0.1.0",
     "@ryanyujazz/dsh-review": "^0.1.0",
+    "@ryanyujazz/dsh-remote-access": "^0.1.0",
     "@ryanyujazz/dsh-session-admin": "^0.1.0",
     "@ryanyujazz/dsh-terminal-workbench": "^0.1.0",
     "@ryanyujazz/dsh-presentation": "^0.1.0"
@@ -54,6 +55,7 @@
     "@ryanyujazz/dsh-artifacts": "workspace:^",
     "@ryanyujazz/dsh-jobs-admin": "workspace:^",
     "@ryanyujazz/dsh-review": "workspace:^",
+    "@ryanyujazz/dsh-remote-access": "workspace:^",
     "@ryanyujazz/dsh-session-admin": "workspace:^",
     "@ryanyujazz/dsh-terminal-workbench": "workspace:^",
     "@ryanyujazz/dsh-presentation": "workspace:^"

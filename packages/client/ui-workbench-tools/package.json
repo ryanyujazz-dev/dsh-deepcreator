@@ -24,6 +24,7 @@
     "client": {
       "inject": [
         "@ryanyujazz/dsh-client-locale",
+        "@deepseek-ai/dsh-client-connection",
         "@deepseek-ai/dsh-client-runtime",
         "@ryanyujazz/dsh-client-workbench-remotes",
         "@ryanyujazz/dsh-client-ui-workbench",
@@ -43,6 +44,7 @@
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.0.1",
     "@deepseek-ai/dsh-client-runtime": "^0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-connection": "^0.1.1-rc.2",
     "@deepseek-ai/dsh-client-ui-slots": "^0.1.1-rc.2",
     "@deepseek-ai/dsh-typert-protocol": "^0.1.1-rc.2",
     "react": "^18.2.0",
@@ -63,6 +65,7 @@
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.1",
     "@deepseek-ai/dsh-client-runtime": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-connection": "0.1.1-rc.2",
     "@deepseek-ai/dsh-client-ui-slots": "0.1.1-rc.2",
     "@deepseek-ai/dsh-typert-protocol": "0.1.1-rc.2",
     "@types/react": "~18.3.1",

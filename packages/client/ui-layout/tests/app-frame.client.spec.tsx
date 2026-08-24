@@ -299,6 +299,36 @@ describe('AppFrame', () => {
 })
 
 describe('AppFrame — narrow-viewport auto-collapse', () => {
+  it.each([390, 412])('projects the same occupants as a phone drawer and full-stage details at %ipx', (width) => {
+    frameWidth = width
+    const push = vi.spyOn(window.history, 'pushState')
+    const { frame, instance, slotCalls } = mountFrame()
+    expect(frame.hasAttribute('data-phone')).toBe(true)
+    expect(tracks(frame)).toEqual([0, 0])
+    expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(0)
+    act(() => { instance.actions.toggleSidebar() })
+    expect(frame.hasAttribute('data-mobile-sidebar-open')).toBe(true)
+    act(() => { instance.actions.toggleSidebar(); instance.actions.setDetails(520) })
+    expect(frame.hasAttribute('data-mobile-details-open')).toBe(true)
+    expect(push).toHaveBeenCalled()
+    expect(slotCalls.filter(call => call.key === 'details').at(-1)?.props).toMatchObject({ width, stageWidth: width })
+    act(() => { window.dispatchEvent(new PopStateEvent('popstate')) })
+    expect(frame.hasAttribute('data-mobile-details-open')).toBe(false)
+  })
+
+  it('closes the phone drawer after navigation selects another Session', () => {
+    frameWidth = 390
+    const { frame, instance, rerenderFrame } = mountFrame()
+    act(() => { instance.actions.toggleSidebar() })
+    expect(frame.hasAttribute('data-mobile-sidebar-open')).toBe(true)
+
+    selectedSession.current = 's-next' as SessionId
+    act(() => { rerenderFrame() })
+
+    expect(frame.hasAttribute('data-mobile-sidebar-open')).toBe(false)
+    expect(frame.hasAttribute('data-sidebar-collapsed')).toBe(true)
+  })
+
   it('mounts collapsed below the breakpoint with no sidebar handle', () => {
     frameWidth = 980
     const { frame, slotCalls } = mountFrame()

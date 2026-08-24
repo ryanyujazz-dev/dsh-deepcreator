@@ -1,0 +1,7 @@
+# @ryanyujazz/dsh-remote-access
+
+DeepCreator Host plugin providing opt-in authenticated HTTP access to the existing Web UI on a trusted LAN. It keeps the official Host on loopback, proxies an explicit mobile-safe RPC allowlist, owns fragment-ticket plus desktop-confirmed device pairing, and disposes every listener and server with its Cordis fiber. The read-only `commands/list` catalog is admitted so the existing Composer's typed `/` detector and leading `+` launcher can render their shared command menu; no command-management endpoint is admitted. It never creates or installs a certificate; the Settings and pairing surfaces state plainly that transport is unencrypted and must not be exposed to public networks or the internet.
+
+The service is disabled by default and persists only its enable/port settings, stable host id, and hashed device credentials. Authentication cookies are `HttpOnly`, `SameSite=Strict`, host-only, and roll for 30 days; the Host also rejects credentials after 30 days without use. Runtime Session, Workspace, Agent, and UI state remain authoritative in official Harness services. HTTP deliberately means there is no standard Service Worker/PWA installation path.
+
+Because non-loopback HTTP is not a secure browser context, the gateway prepends a minimal compatibility bootstrap to the proxied official HTML. It supplies `crypto.randomUUID()` from `crypto.getRandomValues()` before the unchanged official Client Runtime loads; it never falls back to `Math.random` and does not replace any product UI or Runtime state.

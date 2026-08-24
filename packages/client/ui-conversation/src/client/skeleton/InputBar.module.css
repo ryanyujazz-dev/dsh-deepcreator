@@ -430,6 +430,42 @@
   display: none;
 }
 
+@media (max-width: 640px) {
+  .root {
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+
+  .card {
+    border-radius: 18px;
+  }
+
+  .row {
+    gap: 6px;
+    padding-right: 6px;
+    padding-left: 6px;
+  }
+
+  .tools,
+  .modes,
+  .trailing {
+    gap: 6px;
+  }
+}
+
+@media (max-width: 640px) and (pointer: coarse) {
+  .add,
+  .primary {
+    width: 44px;
+    height: 44px;
+  }
+
+  .select {
+    height: 44px;
+    padding-left: 10px;
+    padding-right: 22px;
+  }
+}
+
 /* Reference chip: rendered in the backdrop at the placeholder offset. Hard
    alignment constraint: the chip's advance must equal the textarea's U+FFFC
    advance EXACTLY or every glyph after it drifts (caret/selection follow the

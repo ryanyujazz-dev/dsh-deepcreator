@@ -6,21 +6,22 @@ import { homedir, tmpdir } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
 import type { Context } from '@deepseek-ai/cordis'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import {
   isSkillName, type SkillCandidate, type SkillDefinition, type SkillProvider,
-  type SkillProviderControl, type SkillResourceBase, type SkillSummary,
+  type SkillProviderControl, type SkillResourceBase, type SkillSummary, type SkillViewOptions,
 } from '@deepseek-ai/dsh-skill'
 import { settingsNamespace, type SettingsScope } from '@deepseek-ai/dsh-settings'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import z from '@deepseek-ai/schemastery'
 import { parse as parseYaml } from 'yaml'
 import type {
-  SkillAdminDetail, SkillAdminItem, SkillInstallKind, SkillInstallRequest,
+  SkillAdminDetail, SkillAdminItem, SkillAdminTarget, SkillInstallKind, SkillInstallRequest,
   SkillInstallResult, SkillLocalizedDescriptions, SkillRemoveResult,
 } from './types.ts'
 
 export type {
-  SkillAdminDetail, SkillAdminItem, SkillInstallKind, SkillInstallRequest,
+  SkillAdminDetail, SkillAdminItem, SkillAdminTarget, SkillInstallKind, SkillInstallRequest,
   SkillInstallResult, SkillLocalizedDescriptions, SkillRemoveResult,
 } from './types.ts'
 
@@ -109,12 +110,15 @@ function resourceBaseFor(path: string): SkillResourceBase {
   return { kind: 'directory', path: dirname(path) }
 }
 
-function localizedDescriptions(metadata?: Readonly<Record<string, unknown>>): SkillLocalizedDescriptions | undefined {
-  const value = metadata?.localizedDescriptions
+function parseLocalizedDescriptions(value: unknown): SkillLocalizedDescriptions | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
   const { zh, en } = value as Record<string, unknown>
   if (typeof zh !== 'string' || zh.trim() === '' || typeof en !== 'string' || en.trim() === '') return undefined
   return { zh, en }
+}
+
+function localizedDescriptions(metadata?: Readonly<Record<string, unknown>>): SkillLocalizedDescriptions | undefined {
+  return parseLocalizedDescriptions(metadata?.localizedDescriptions)
 }
 
 function skillDeveloper(metadata?: Readonly<Record<string, unknown>>): string | undefined {
@@ -128,23 +132,26 @@ class DisabledSkillProvider implements SkillProvider {
   constructor(private readonly settings: SettingsScope<SkillManagementSettings>) {}
 
   async list(): Promise<readonly SkillCandidate[]> {
-    return this.settings.get().disabled.map((skill) => ({
-      name: skill.name,
-      description: skill.description,
-      ...(skill.whenToUse === undefined ? {} : { whenToUse: skill.whenToUse }),
-      invocation: { modelInvocable: false, userInvocable: false },
-      source: skill.source,
-      provider: POLICY_PROVIDER,
-      resourceBase: resourceBaseFor(skill.path),
-      rank: 0,
-      locator: skill.name,
-      path: skill.path,
-      metadata: {
-        originalProvider: skill.provider,
-        ...(skill.developer === undefined ? {} : { developer: skill.developer }),
-        ...(skill.localizedDescriptions === undefined ? {} : { localizedDescriptions: skill.localizedDescriptions }),
-      },
-    }))
+    return this.settings.get().disabled.map((skill) => {
+      const descriptions = parseLocalizedDescriptions(skill.localizedDescriptions)
+      return {
+        name: skill.name,
+        description: skill.description,
+        ...(skill.whenToUse === undefined ? {} : { whenToUse: skill.whenToUse }),
+        invocation: { modelInvocable: false, userInvocable: false },
+        source: skill.source,
+        provider: POLICY_PROVIDER,
+        resourceBase: resourceBaseFor(skill.path),
+        rank: 0,
+        locator: skill.name,
+        path: skill.path,
+        metadata: {
+          originalProvider: skill.provider,
+          ...(skill.developer === undefined ? {} : { developer: skill.developer }),
+          ...(descriptions === undefined ? {} : { localizedDescriptions: descriptions }),
+        },
+      }
+    })
   }
 
   async get(candidate: SkillCandidate): Promise<SkillDefinition | undefined> {
@@ -156,6 +163,7 @@ class DisabledSkillProvider implements SkillProvider {
     } catch {
       return undefined
     }
+    const descriptions = parseLocalizedDescriptions(record.localizedDescriptions)
     return {
       name: record.name,
       description: record.description,
@@ -168,7 +176,7 @@ class DisabledSkillProvider implements SkillProvider {
       metadata: {
         originalProvider: record.provider,
         ...(record.developer === undefined ? {} : { developer: record.developer }),
-        ...(record.localizedDescriptions === undefined ? {} : { localizedDescriptions: record.localizedDescriptions }),
+        ...(descriptions === undefined ? {} : { localizedDescriptions: descriptions }),
       },
       content: parsed.content,
     }
@@ -177,32 +185,47 @@ class DisabledSkillProvider implements SkillProvider {
 
 /** Host-side Skill catalog and lifecycle operations for the Settings UI. */
 export class SkillAdmin extends TypertRemoteService {
-  static inject = ['skills', 'settings']
+  static inject = ['agents', 'skills', 'settings']
 
   private readonly settings: SettingsScope<SkillManagementSettings>
-  private invalidate: (() => void) | undefined
+  private readonly invalidates = new Set<() => void>()
+  private readonly scopedPolicies = new Map<Agent, { dispose(): Promise<void> }>()
 
   constructor(ctx: Context) {
     super(ctx, 'skill-admin')
     this.settings = ctx.settings.register(SETTINGS_KEY, settingsSchema)
-    ctx.skills.registerProvider((control: SkillProviderControl) => {
-      this.invalidate = control.invalidate
-      return new DisabledSkillProvider(this.settings)
+    this.registerPolicy(ctx)
+    const attachPolicy = (agent: Agent): void => {
+      if (this.scopedPolicies.has(agent)) return
+      this.scopedPolicies.set(agent, agent.ctx.inject(['skills'], ready => this.registerPolicy(ready)))
+    }
+    for (const agent of ctx.agents.list()) attachPolicy(agent)
+    ctx.on('agent/created', ({ agent }) => { attachPolicy(agent) })
+    ctx.on('agent/disposed', ({ agent }) => {
+      const policy = this.scopedPolicies.get(agent)
+      this.scopedPolicies.delete(agent)
+      if (policy !== undefined) void policy.dispose()
     })
-    ctx.effect(() => this.settings.watch(() => { this.invalidate?.() }), 'skill-admin: policy settings watcher')
+    ctx.effect(() => () => {
+      for (const policy of this.scopedPolicies.values()) void policy.dispose()
+      this.scopedPolicies.clear()
+    }, 'skill-admin: scoped policy providers')
+    ctx.effect(() => this.settings.watch(() => { this.invalidateCatalogs() }), 'skill-admin: policy settings watcher')
   }
 
   @Remote('list')
-  async list(cwd?: string): Promise<SkillAdminItem[]> {
-    const summaries = await this.ctx.skills.list(normalizeLookup(cwd))
-    return Promise.all(summaries.map(summary => this.item(summary, cwd)))
+  async list(target?: SkillAdminTarget): Promise<SkillAdminItem[]> {
+    const lookup = this.lookup(target)
+    const summaries = await this.ctx.skills.list(lookup)
+    return Promise.all(summaries.map(summary => this.item(summary, target?.cwd, lookup)))
   }
 
   @Remote('detail')
-  async detail(name: string, cwd?: string): Promise<SkillAdminDetail> {
-    const definition = await this.ctx.skills.get(name, normalizeLookup(cwd))
+  async detail(name: string, target?: SkillAdminTarget): Promise<SkillAdminDetail> {
+    const lookup = this.lookup(target)
+    const definition = await this.ctx.skills.get(name, lookup)
     if (definition === undefined) throw new Error(`Skill "${name}" was not found.`)
-    const item = await this.item(definition, cwd)
+    const item = await this.item(definition, target?.cwd, lookup)
     return {
       ...item,
       content: definition.content,
@@ -211,17 +234,17 @@ export class SkillAdmin extends TypertRemoteService {
   }
 
   @Remote('setEnabled')
-  async setEnabled(name: string, enabled: boolean, cwd?: string): Promise<void> {
+  async setEnabled(name: string, enabled: boolean, target?: SkillAdminTarget): Promise<void> {
     const current = this.settings.get()
     const disabled = current.disabled.find(skill => skill.name === name)
     if (enabled) {
       if (disabled === undefined) return
       await this.settings.update({ disabled: current.disabled.filter(skill => skill.name !== name) })
-      this.invalidate?.()
+      this.invalidateCatalogs()
       return
     }
     if (disabled !== undefined) return
-    const definition = await this.ctx.skills.get(name, normalizeLookup(cwd))
+    const definition = await this.ctx.skills.get(name, this.lookup(target))
     if (definition === undefined) throw new Error(`Skill "${name}" was not found.`)
     if (definition.path === undefined || !isAbsolute(definition.path)) {
       throw new Error(`Skill "${name}" has no host-local definition and cannot be disabled individually.`)
@@ -241,7 +264,7 @@ export class SkillAdmin extends TypertRemoteService {
       ...(developer === undefined ? {} : { developer }),
     }
     await this.settings.update({ disabled: [...current.disabled, record] })
-    this.invalidate?.()
+    this.invalidateCatalogs()
   }
 
   @Remote('installSkill')
@@ -267,28 +290,29 @@ export class SkillAdmin extends TypertRemoteService {
   }
 
   @Remote('removeSkill')
-  async removeSkill(name: string, cwd?: string): Promise<SkillRemoveResult> {
-    const definition = await this.ctx.skills.get(name, normalizeLookup(cwd))
+  async removeSkill(name: string, target?: SkillAdminTarget): Promise<SkillRemoveResult> {
+    const definition = await this.ctx.skills.get(name, this.lookup(target))
     if (definition?.path === undefined) throw new Error(`Skill "${name}" has no removable host path.`)
-    const target = await removableTarget(definition.path, cwd)
-    if (target === undefined) throw new Error(`Skill "${name}" is provided by an immutable or unmanaged source.`)
-    await rm(target, { recursive: true, force: false })
+    const removable = await removableTarget(definition.path, target?.cwd)
+    if (removable === undefined) throw new Error(`Skill "${name}" is provided by an immutable or unmanaged source.`)
+    await rm(removable, { recursive: true, force: false })
     const current = this.settings.get()
     await this.settings.update({
       disabled: current.disabled.filter(skill => skill.name !== name),
       managed: current.managed.filter(skill => skill.name !== name),
     })
-    this.invalidate?.()
+    this.invalidateCatalogs()
     return { name }
   }
 
-  private async item(summary: SkillSummary, cwd?: string): Promise<SkillAdminItem> {
+  private async item(summary: SkillSummary, cwd: string | undefined, lookup: SkillViewOptions): Promise<SkillAdminItem> {
     const disabled = this.settings.get().disabled.find(skill => skill.name === summary.name)
-    const definition = await this.ctx.skills.get(summary.name, normalizeLookup(cwd))
+    const definition = await this.ctx.skills.get(summary.name, lookup)
     const path = definition?.path ?? disabled?.path
     const provider = disabled?.provider ?? summary.provider
     const managedKind = this.settings.get().managed.find(skill => skill.name === summary.name)?.kind
-    const descriptions = disabled?.localizedDescriptions ?? localizedDescriptions(definition?.metadata)
+    const descriptions = parseLocalizedDescriptions(disabled?.localizedDescriptions)
+      ?? localizedDescriptions(definition?.metadata)
     const developer = disabled?.developer ?? skillDeveloper(definition?.metadata)
     return {
       name: summary.name,
@@ -317,7 +341,30 @@ export class SkillAdmin extends TypertRemoteService {
     await this.settings.update({
       managed: [...current.managed.filter(skill => skill.name !== name), { name, kind, origin }],
     })
-    this.invalidate?.()
+    this.invalidateCatalogs()
+  }
+
+  private registerPolicy(owner: Context): () => void {
+    const skills = owner.get('skills')
+    if (skills === undefined) throw new Error('Skill policy registration requires the official skills service.')
+    return skills.registerProvider((control: SkillProviderControl) => {
+      const invalidate = control.invalidate
+      this.invalidates.add(invalidate)
+      control.signal.addEventListener('abort', () => { this.invalidates.delete(invalidate) }, { once: true })
+      return new DisabledSkillProvider(this.settings)
+    })
+  }
+
+  private invalidateCatalogs(): void {
+    for (const invalidate of this.invalidates) invalidate()
+  }
+
+  private lookup(target?: SkillAdminTarget): SkillViewOptions {
+    const lookup = normalizeLookup(target?.cwd)
+    const sessionId = target?.sessionId?.trim()
+    if (sessionId === undefined || sessionId === '') return lookup
+    const agent = this.ctx.agents.get(sessionId as Agent['id'])
+    return agent === undefined ? lookup : { ...lookup, scope: agent }
   }
 
   private async installGit(url: string, userRoot: string): Promise<SkillInstallResult> {

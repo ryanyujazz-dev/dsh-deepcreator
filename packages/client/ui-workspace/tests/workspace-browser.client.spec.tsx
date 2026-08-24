@@ -62,6 +62,8 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
   const store = createWorkspaceViewStore().create()
   const props: WorkspaceBrowserProps = {
     wide: true,
+    canManageWorkspaces: true,
+    canPermanentlyDelete: true,
     expandSidebar: vi.fn(),
     useSessions: hook(sessionState([])),
     useWorkspaces: hook(workspaceState([])),
@@ -774,6 +776,21 @@ describe('WorkspaceBrowser', () => {
     // Nothing to add with, so the header offers no dead button.
     expect(screen.queryByRole('button', { name: '添加工作区' })).toBeNull()
     expect(screen.getByText('alpha')).toBeTruthy()
+  })
+
+  it('hides workspace management and permanent deletion on a remote surface', () => {
+    mount({
+      canManageWorkspaces: false,
+      canPermanentlyDelete: false,
+      useSessions: hook(sessionState([summary('session', 1)])),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['session'], 'Alpha')])),
+    })
+    expect(screen.queryByRole('button', { name: '添加工作区' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '工作区“Alpha”的操作' })).toBeNull()
+    fireEvent.click(screen.getByText('Alpha'))
+    fireEvent.click(screen.getByRole('button', { name: '会话“session”的操作' }))
+    expect(screen.queryByRole('menuitem', { name: '删除会话' })).toBeNull()
+    expect(screen.getByRole('menuitem', { name: '归档会话' })).toBeTruthy()
   })
 
   it('uses the full expanded Workspace section when resolving a Workspace drop half', () => {

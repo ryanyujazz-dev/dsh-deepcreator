@@ -20,6 +20,7 @@
     { "path": "./packages/internal/session-face" },
     { "path": "./packages/internal/agent-face" },
     { "path": "./packages/host/artifacts" },
+    { "path": "./packages/host/remote-access" },
     { "path": "./packages/host/browser" },
     { "path": "./packages/host/image-generation" },
     { "path": "./packages/host/browser-playwright" },

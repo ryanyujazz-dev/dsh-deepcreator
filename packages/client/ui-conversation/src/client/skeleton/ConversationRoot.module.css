@@ -245,6 +245,27 @@
   min-height: 0;
 }
 
+@media (max-width: 640px) {
+  .root {
+    height: 100dvh;
+    --dsh-composer-side-clearance: 8px;
+  }
+
+  .header {
+    height: calc(48px + env(safe-area-inset-top));
+    padding-top: calc(8px + env(safe-area-inset-top));
+  }
+
+  .crumb {
+    max-width: 42vw;
+  }
+
+  .viewSegment {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
 /* Composer context stack (Figma 9:937): standalone dock cards share one
    rhythm above the input card. */
 .composerStack {

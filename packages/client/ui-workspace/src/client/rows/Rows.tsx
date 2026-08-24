@@ -357,6 +357,7 @@ export function SearchResultItem({ result, currentId, onOpen, t }: {
  */
 export function SessionNodeItem({
   node, currentId, now, onOpen, onRename: _onRename, onFork, onArchive, onSessionDelete,
+  allowDelete = true,
   onPinnedChange, pinned = false, onOpenLocation, canOpenLocation = false,
   fileManager = 'generic', drag, flat = false, t,
 }: {
@@ -372,6 +373,8 @@ export function SessionNodeItem({
   onArchive: (id: SessionNode['id']) => void
   /** Open the destructive delete-confirmation dialog for this session. */
   onSessionDelete: (id: SessionNode['id'], title: string) => void
+  /** Whether this surface may expose permanent deletion. */
+  allowDelete?: boolean | undefined
   /** Add/remove this Session from the independent pinned region. */
   onPinnedChange?: ((id: SessionNode['id'], pinned: boolean) => void) | undefined
   /** Whether this row is currently rendered from the pinned preference. */
@@ -408,7 +411,7 @@ export function SessionNodeItem({
     { id: 'fork', label: t('menu.fork'), icon: <IconBranchOutline16 /> },
     // 20-native glyph in the menu's 16px icon slot (Menu.module.css .itemIcon).
     { id: 'archive', label: t('menu.archiveSession'), icon: <IconArchiveOutline20 size={16} /> },
-    { id: 'delete', label: t('menu.deleteSession'), icon: <IconTrashOutline16 />, danger: true },
+    ...(allowDelete ? [{ id: 'delete', label: t('menu.deleteSession'), icon: <IconTrashOutline16 />, danger: true } as const] : []),
     { type: 'separator', id: 'native-location-separator', inset: 'text' },
     {
       id: 'open-location',

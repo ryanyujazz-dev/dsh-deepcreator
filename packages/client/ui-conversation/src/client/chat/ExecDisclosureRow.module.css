@@ -61,6 +61,16 @@ button.leading {
   opacity: 1;
 }
 
+@media (pointer: coarse) {
+  .row[data-interactive] .iconIdle {
+    opacity: 0;
+  }
+
+  .row[data-interactive] .chevronHover {
+    opacity: 1;
+  }
+}
+
 .title {
   flex: none;
   font: var(--dsh-conversation-flow-font, var(--dsw-font-markdown-base));

@@ -62,9 +62,9 @@ const LAYOUT_CHILDREN = {
  * service boundaries only, the package apply on its own
  * fiber, and the test AppFrame occupying 'root'.
  */
-async function bench(nodes: ToolResultNode[]) {
+async function bench(nodes: ToolResultNode[], isLoopback = false) {
   const runtime = await SlotTestRuntime.create()
-  runtime.provide('connection', { api: { settings: {} }, isLoopback: false })
+  runtime.provide('connection', { api: { settings: {} }, isLoopback })
   // ui-theme's Appearance row binds a durable scope through these two.
   runtime.provide('remote', { $on: () => () => {} })
   runtime.provide('settingsScope', { bind: () => stubSettingsScope().scope } as never)
@@ -156,7 +156,7 @@ describe('keyed toolview hole through the real machinery', () => {
 
   it('mutation path clicks keep the host open when no workbench is composed', async () => {
     const editArgs = '{"file_path":"src/a.ts","old_string":"a","new_string":"b"}'
-    const b = await bench([toolResult(3, 'c1', 'edit', editArgs)])
+    const b = await bench([toolResult(3, 'c1', 'edit', editArgs)], true)
     const view = b.runtime.renderRoot()
     view.getByText('a.ts').click()
     // No composed review surface: the change link degrades to the host open.

@@ -29,7 +29,8 @@ are omitted from the visual crumbs (the accessible label retains the exact
 path); a narrow bar keeps the file-side tail visible and masks its clipped left
 edge while the tab remains the short file identity. A fixed trailing folder
 action uses the shared DeepCreator Lottie on its unscaled open frame and opens the
-file's containing directory through the official Workspace path opener,
+file's containing directory through the official Workspace path opener on a
+loopback desktop connection. Remote surfaces omit this native-path action,
 without competing with or scrolling away with the breadcrumb. A
 missing or escaped path surfaces the reader's error code; there is no tombstone
 state because the official fact never retracts.
@@ -66,6 +67,9 @@ the normal Workbench Browser Presenter owns visibility and mount receipt.
 “Open in system browser” sends the real HTML path to the official Workspace/OS
 path opener. Selecting the row outside that split control still opens the
 read-only source artifact tab.
+Remote surfaces keep that same source row and Artifact renderer but omit the
+HTML split action entirely, because Browser and native OS path opening are not
+part of the remote capability set.
 
 Content rendering goes through the `deepcreator.workbench.artifact.renderer`
 slot (declared by `ui-workbench`, consumed through the panel's
