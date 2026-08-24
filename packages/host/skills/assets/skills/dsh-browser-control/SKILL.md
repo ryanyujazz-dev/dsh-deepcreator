@@ -40,11 +40,13 @@ Legacy `mode:"visible"|"background"` and `browserId:"headless"` exist for one co
 9. For canvas, virtualized grids, rich editors, maps, or other surfaces whose DOM is not the real editing surface, use screenshots and real coordinate/keyboard actions first. Before a substantial write, make a tiny probe and verify it visually or through a reliable readback.
 10. For manual input call `browser_tabs handoffToUser`; wait until the user explicitly confirms they finished, then call `resumeControl` and approve the one-time control-return prompt before re-inspecting. User input during Agent control produces `CONTROL_INTERRUPTED`; `reacquire` has the same approval boundary, so never continue blindly.
 
+`browser_navigate` accepts only `http:`/`https:` targets. `file:` and every other scheme is rejected by policy with `NAVIGATION_BLOCKED` before navigation starts — do not retry URL variants. To view a local HTML file, serve its directory from an `http://127.0.0.1` loopback origin (loopback is allowed; a background job can host it) and navigate there.
+
 Side-effecting steps are resolved during preflight and aggregated into at most one approval for the whole transaction before mutation. Search submission through an actual search control does not prompt. Passwords, OTP, payment data, cookies, and tokens must never enter Browser tool arguments or results. They are entered by the user during shielded handoff.
 
 ## Lifetime
 
-- Background tabs are temporary and close at turn end unless marked `deliverable` or `handoff`.
+- Background tabs are temporary and close at turn end unless marked `deliverable` or `handoff`. Treat any `tabId` captured in an earlier turn as invalid in a new turn unless that tab survived as a deliverable or handoff; open a new tab instead of acting on a stale id.
 - Provider-owned visible tabs and successfully presented URL resources (live IAB or managed snapshot) automatically become deliverables and remain open.
 - Claimed user Chrome tabs are released, never closed, at turn end.
 - `markHandoff` preserves a tab for exactly the next turn; mark it again if another continuation is required.

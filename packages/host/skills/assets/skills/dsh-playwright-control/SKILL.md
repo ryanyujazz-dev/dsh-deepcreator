@@ -47,11 +47,13 @@ Because every handle call crosses the asynchronous wire, `await` every Playwrigh
 - Output path options must use `await artifacts.output('trace','zip')`, `await artifacts.output('screenshot','png')`, etc. Raw output paths are rejected.
 - Directory options such as `recordVideo.dir`, `downloadsPath`, or `tracesDir` must use `await artifacts.directory('video')`. They never accept raw directories.
 - Returned binary data becomes an artifact automatically. Downloads, trace, PDF, screenshot, and video should be returned by artifact ID, never internal paths.
+- Artifacts materialize under the DSH artifacts root (`$DSH_HOME/artifacts`), keyed by artifact id. To hand one to the user as a workspace file, copy it into the workspace with the shell tool; never return or hardcode the internal path as a result.
 - Return values must be JSON-compatible. Cookies, authentication values, sensitive URL parameters, passwords, and OTPs are removed at the model/log boundary.
 
 ## Reliable usage
 
 - Prefer `browser_inspect document` for ordinary research; `playwright_run` is for workflows that genuinely need advanced Playwright APIs.
+- Navigation accepts only `http:`/`https:` targets. `file:` and every other scheme is rejected by policy before the call runs (`NAVIGATION_BLOCKED`) — do not attempt it or retry URL variants. To render, screenshot, or print a local file, serve its directory from an `http://127.0.0.1` loopback origin (loopback is allowed; a background job can host it) and navigate there.
 - Prefer events and Playwright waits to fixed sleeps.
 - Keep a related sequence in one script when callbacks/routes/events must remain alive; handles do not survive another `playwright_run`.
 - Inspect after side effects. Never auto-replay click, fill, upload, submit, purchase, delete, or download after an ambiguous failure.
@@ -59,5 +61,6 @@ Because every handle call crosses the asynchronous wire, `await` every Playwrigh
 - If authentication requires human input, stop and select a live shielded IAB or Chrome Provider through the semantic Browser tools.
 - Never mechanically retry the same isolate crash. One simplified retry is the maximum; after a second crash the current Turn is circuit-broken and must fall back to `browser_inspect document`.
 - Keep returned data below the documented budgets: 20,000 characters per string, 100 array items, 10 levels, and 64 KiB total JSON. Extract only the fields needed by the task.
+- On Windows, `pwsh` may actually run Windows PowerShell 5.1. Keep generated `.ps1` scripts ASCII-only: 5.1 decodes a BOM-less UTF-8 script with the ANSI codepage, so non-ASCII literals become mojibake that can silently swallow adjacent syntax. Read and write files with explicit encodings (`-Encoding UTF8`, `[IO.File]::WriteAllText`), use `[char]N` instead of `` `u{...} `` escapes, and quote paths containing spaces or non-ASCII characters.
 
 Playwright-specific errors are `PLAYWRIGHT_COMPILE_ERROR`, `PLAYWRIGHT_RUNTIME_ERROR`, `PLAYWRIGHT_POLICY_BLOCKED`, and `PLAYWRIGHT_ISOLATE_CRASHED`, in addition to the Browser Runtime error vocabulary.
