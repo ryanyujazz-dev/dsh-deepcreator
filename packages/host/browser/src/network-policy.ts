@@ -33,7 +33,7 @@ export class BrowserNetworkPolicy {
     try { url = new URL(raw) }
     catch { throw new BrowserRuntimeError('NAVIGATION_BLOCKED', `Invalid browser URL: ${raw}`) }
     if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-      throw new BrowserRuntimeError('NAVIGATION_BLOCKED', `Browser navigation rejects ${url.protocol} URLs.`)
+      throw new BrowserRuntimeError('NAVIGATION_BLOCKED', `Browser navigation rejects ${url.protocol} URLs. Only http and https are navigable; serve local files from an http://127.0.0.1 loopback URL and navigate there instead.`, { suggestedNextStep: `To render a local file, serve its directory over http bound to 127.0.0.1 (loopback is allowed, e.g. a background job) or copy the content into the workspace; ${url.protocol}// and every other non-http(s) scheme is rejected for all browser providers before navigation starts.` })
     }
     if (url.hostname.toLowerCase() === 'metadata.google.internal') {
       throw new BrowserRuntimeError('NAVIGATION_BLOCKED', 'Cloud metadata addresses are blocked.')

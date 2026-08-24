@@ -12,6 +12,8 @@ Concrete Providers live in independently disposable packages:
 
 Core imports none of Playwright, Electron, Chrome, React, or the current panel implementation. Playwright is an automation capability, not a synonym for a Browser placement. Deterministic selection matches automation, visibility, interaction, profile, family, and namespaced capabilities. Explicit Provider/family/engine requests never fall back.
 
+The shared network policy allows only `http:`/`https:` navigation. `file:`, `data:`, `javascript:`, and every other scheme fails `assertAllowed` with `NAVIGATION_BLOCKED` before navigation starts — the message and its `suggestedNextStep` name the sanctioned remedy of serving the local file from an `http://127.0.0.1` loopback URL (loopback is allowed; private and cloud-metadata addresses stay blocked) — so no provider surfaces a misleading `net::ERR_BLOCKED_BY_CLIENT` for a policy decision.
+
 `open_in_deepcreator` is owned by independent `@ryanyujazz/dsh-presentation`; this package contributes only `url` and `browser-tab` resolvers. The current Workbench panel is only a client Presenter and can be replaced without changing this package. See [Browser Use architecture](../../../docs/architecture/browser-use.md).
 
 If a fresh temporary live IAB tab cannot be presented, its resolver closes it immediately. Structured snapshots share one Provider-neutral visibility/redaction script: hidden controls and secret/token fields are excluded, while model-facing URL copies redact sensitive and opaque query values. Exact URLs remain inside Provider/UI state rather than entering tool results and Session logs.

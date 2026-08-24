@@ -9,6 +9,14 @@ describe('BrowserNetworkPolicy', () => {
     await expect(policy.assertAllowed('data:text/html,hello')).rejects.toMatchObject({ code: 'NAVIGATION_BLOCKED' })
   })
 
+  it('explains the loopback remedy when rejecting non-http schemes', async () => {
+    const policy = new BrowserNetworkPolicy()
+    const rejection = policy.assertAllowed('file:///E:/report/index.html')
+    await expect(rejection).rejects.toMatchObject({ code: 'NAVIGATION_BLOCKED' })
+    await expect(rejection).rejects.toThrow(/http:\/\/127\.0\.0\.1 loopback/)
+    await expect(rejection).rejects.toMatchObject({ details: { suggestedNextStep: expect.stringContaining('127.0.0.1') } })
+  })
+
   it('allows loopback development URLs but blocks private and metadata addresses', async () => {
     const policy = new BrowserNetworkPolicy()
     await expect(policy.assertAllowed('http://127.0.0.1:3000')).resolves.toMatchObject({ hostname: '127.0.0.1' })
