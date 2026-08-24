@@ -7,7 +7,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   buildCachedDiffHunkModel, buildDiffHunkModel, prioritizeSnapshotHighlights, snapshotHighlightKey,
-  subscribeSnapshotHighlight, warmDiffHunkModels, type DiffHunkInput,
+  subscribeSnapshotHighlight, type DiffHunkInput,
 } from '@ryanyujazz/dsh-client-ui-primitives'
 
 afterEach(() => { vi.useRealTimers() })
@@ -17,11 +17,9 @@ const hunk = (over: Partial<DiffHunkInput> = {}): DiffHunkInput => ({
 })
 
 describe('hunk model memo', () => {
-  it('reuses one model per hunk object, including after warming', () => {
+  it('reuses one model per hunk object', () => {
     const input = hunk()
     const first = buildCachedDiffHunkModel(input)
-    expect(buildCachedDiffHunkModel(input)).toBe(first)
-    warmDiffHunkModels([input])
     expect(buildCachedDiffHunkModel(input)).toBe(first)
   })
 

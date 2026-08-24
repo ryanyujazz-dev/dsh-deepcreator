@@ -8,15 +8,6 @@
 
 import { parseGfm } from './parse.ts'
 
-/** Amount of parsed Markdown content returned by the extractor. */
-export type MarkdownPlainTextMode = 'all' | 'first-line' | 'first-paragraph'
-
-/** Options for {@link extractMarkdownPlainText}. */
-export interface MarkdownPlainTextOptions {
-  /** Projection boundary; defaults to the complete document. */
-  mode?: MarkdownPlainTextMode
-}
-
 interface MarkdownNode {
   type: string
   value?: string
@@ -76,18 +67,6 @@ function blockText(node: MarkdownNode): string {
   }
 }
 
-function findFirstParagraph(node: MarkdownNode): string | undefined {
-  if (node.type === 'paragraph') {
-    const text = compactInline(inlineText(node))
-    if (text !== '') return text
-  }
-  for (const child of node.children ?? []) {
-    const text = findFirstParagraph(child)
-    if (text !== undefined) return text
-  }
-  return undefined
-}
-
 function fullText(root: MarkdownNode): string {
   return blockText(root)
     .split('\n')
@@ -100,22 +79,8 @@ function fullText(root: MarkdownNode): string {
 /**
  * Parse GFM Markdown, remove its presentation markup, and preserve raw HTML literally.
  * @param markdown - Markdown source.
- * @param options - Optional extraction boundary.
- * @returns Plain text for the whole document, first visible line, or first semantic paragraph.
+ * @returns Plain text for the whole document.
  */
-export function extractMarkdownPlainText(
-  markdown: string,
-  options: MarkdownPlainTextOptions = {},
-): string {
-  const { mode = 'all' } = options
-  const root = parseGfm(markdown) as MarkdownNode
-  const all = fullText(root)
-  switch (mode) {
-    case 'all':
-      return all
-    case 'first-line':
-      return all.split('\n').find(line => line !== '') ?? ''
-    case 'first-paragraph':
-      return findFirstParagraph(root) ?? all.split('\n').find(line => line !== '') ?? ''
-  }
+export function extractMarkdownPlainText(markdown: string): string {
+  return fullText(parseGfm(markdown) as MarkdownNode)
 }
