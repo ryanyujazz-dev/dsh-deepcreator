@@ -86,7 +86,7 @@ describe('ThemeRuntime', () => {
       expect(tokens['--dsw-font-sidebar-font-size']).toBe(fontSize)
       expect(tokens['--dsw-font-markdown-base-line-height']).toBe(lineHeight)
       expect(tokens['--dsw-font-sidebar-line-height']).toBe(lineHeight)
-      expect(tokens['--dsw-font-markdown-code-font-size']).toBe(codeSize)
+      expect(tokens['--dsw-font-markdown-code']).toContain(codeSize)
     }
   })
 

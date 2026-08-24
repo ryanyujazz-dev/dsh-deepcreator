@@ -361,7 +361,6 @@ export function deriveTrajectoryLayout(input: TrajectoryLayoutInput): readonly T
           index: ++index,
           kind: 'user',
           ...inputCellDetail(node),
-          opensTurn: true,
         },
       })
       prevAbsTime = finiteTime(node.time) ?? prevAbsTime

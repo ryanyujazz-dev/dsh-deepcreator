@@ -28,7 +28,7 @@ export function TurnChangeCard({ turn, controller, workbench, openFile, t }: Pro
     workbench.present({
       typeId: 'review',
       ...(path === undefined ? {} : { target: path }),
-      parameters: { scope: 'turn', turn: String(record.turn), expand: 'all' },
+      parameters: { scope: 'turn', turn: String(record.turn) },
       reveal: true,
       reason: 'user',
     })

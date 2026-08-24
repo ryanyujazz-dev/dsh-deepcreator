@@ -303,10 +303,10 @@ async function repositoryFor(session: Session): Promise<ReviewRepository> {
   const cwd = session.header.cwd
   if (cwd === undefined) throw new ReviewBoundaryError('NO_WORKSPACE', 'This session has no workspace.')
   const workspace = await realpath(cwd)
-  let stdout: string
+  let top: string
   try {
-    ({ stdout } = await exec('git', ['-C', workspace, 'rev-parse', '--show-toplevel'], { encoding: 'utf8' }))
-    const repository = await realpath(stdout.trim())
+    top = await repositoryTopLevel(workspace)
+    const repository = await realpath(top)
     if (!isWithin(repository, workspace) && !isWithin(workspace, repository)) {
       throw new ReviewBoundaryError('OUTSIDE_WORKSPACE', 'Repository root is unrelated to the session workspace.')
     }
@@ -327,7 +327,7 @@ async function repositoryAt(root: ReviewRepository, location?: ReviewLocation): 
   const target = resolve(root.root, nativePath(requested))
   if (!isWithin(root.root, target)) throw new ReviewBoundaryError('OUTSIDE_WORKSPACE', 'Repository is outside the session workspace.')
   let top: string
-  try { top = (await exec('git', ['-C', target, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', maxBuffer: MAX_BUFFER })).stdout.trim() }
+  try { top = await repositoryTopLevel(target) }
   catch { throw new ReviewBoundaryError('NOT_REPOSITORY', 'The selected path is not an available Git repository.') }
   const canonical = await realpath(top)
   if (!isWithin(root.root, canonical)) throw new ReviewBoundaryError('OUTSIDE_WORKSPACE', 'Repository is outside the session workspace.')
@@ -433,6 +433,12 @@ async function gitMaybe(repository: ReviewRepository, args: string[]): Promise<s
   try { return await git(repository, args) } catch { return null }
 }
 
+/** Resolve the repository root containing a directory; throws when not inside a work tree. */
+async function repositoryTopLevel(dir: string): Promise<string> {
+  const { stdout } = await exec('git', ['-C', dir, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', maxBuffer: MAX_BUFFER })
+  return stdout.trim()
+}
+
 async function gitStdin(repository: ReviewRepository, args: string[], input: string, env?: NodeJS.ProcessEnv): Promise<string> {
   return await new Promise((resolvePromise, reject) => {
     const child = spawn('git', [...gitPrefix(repository), ...args], {
@@ -524,7 +530,7 @@ async function nestedRepositoryKind(repository: ReviewRepository, file: Porcelai
   try {
     const row = await lstat(target)
     if (!row.isDirectory()) return null
-    const top = (await exec('git', ['-C', target, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', maxBuffer: MAX_BUFFER })).stdout.trim()
+    const top = await repositoryTopLevel(target)
     return await realpath(top) === await realpath(target) ? 'repository' : null
   } catch { return null }
 }
@@ -804,7 +810,7 @@ async function completeGitScopeSnapshot(repository: ReviewRepository, scope: Git
 
 async function childRepository(nativeRoot: string, location: string): Promise<ReviewRepository | null> {
   try {
-    const top = (await exec('git', ['-C', nativeRoot, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', maxBuffer: MAX_BUFFER })).stdout.trim()
+    const top = await repositoryTopLevel(nativeRoot)
     if (await realpath(top) !== await realpath(nativeRoot)) return null
     return { kind: 'git', root: nativeRoot, repository: nativeRoot, workspace: nativeRoot, location }
   } catch { return null }

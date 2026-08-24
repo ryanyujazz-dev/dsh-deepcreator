@@ -50,7 +50,6 @@ function props(snapshot: ArtifactsSnapshot, read: ReturnType<typeof vi.fn> = vi.
       tabs: [],
       openInstance: vi.fn(),
       openContainingFolder: vi.fn(),
-      activateInstance: vi.fn(),
       closeInstance: vi.fn(),
       showHome: vi.fn(),
       contributeHeaderActions: () => () => undefined,

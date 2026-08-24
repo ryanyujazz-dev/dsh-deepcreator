@@ -91,7 +91,6 @@ export interface WorkbenchPanelOwnerProps {
   tabs: readonly string[]
   activeInstanceId?: string
   openInstance(instanceId: string): void
-  activateInstance(instanceId: string): void
   closeInstance(instanceId: string): void
   /** Replace or merge one presentation-only identity without emitting a user-dismissal edge. */
   replaceInstanceId(fromInstanceId: string, toInstanceId: string): void

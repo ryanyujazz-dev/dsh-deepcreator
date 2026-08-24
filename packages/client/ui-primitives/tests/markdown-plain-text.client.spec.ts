@@ -28,12 +28,6 @@ describe('extractMarkdownPlainText', () => {
     ].join('\n'))
   })
 
-  it('selects the first visible line or first semantic paragraph', () => {
-    expect(extractMarkdownPlainText(MARKDOWN, { mode: 'first-line' })).toBe('Release notes')
-    expect(extractMarkdownPlainText(MARKDOWN, { mode: 'first-paragraph' }))
-      .toBe('First paragraph with a link and diagram.')
-  })
-
   it('preserves raw HTML while removing Markdown presentation markup', () => {
     const block = [
       '<background-job-complete id="trajectory-ui-watch">',
@@ -44,8 +38,6 @@ describe('extractMarkdownPlainText', () => {
     expect(extractMarkdownPlainText(block)).toBe(block)
     expect(extractMarkdownPlainText('**Status:** <span data-state="ok">ready</span>'))
       .toBe('Status: <span data-state="ok">ready</span>')
-    expect(extractMarkdownPlainText(block, { mode: 'first-paragraph' }))
-      .toBe('<background-job-complete id="trajectory-ui-watch">')
   })
 
   it('projects GFM tables, references, hard breaks, and block structure', () => {

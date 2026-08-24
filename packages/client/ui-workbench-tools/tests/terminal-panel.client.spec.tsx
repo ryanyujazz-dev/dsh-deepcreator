@@ -25,7 +25,6 @@ function props(terminal: Record<string, ReturnType<typeof vi.fn>>, openInstance 
     tabs: [],
     typeId: 'terminal',
     openInstance,
-    activateInstance: vi.fn(),
     closeInstance: vi.fn(),
     showHome: vi.fn(),
     contributeHeaderActions: () => () => undefined,

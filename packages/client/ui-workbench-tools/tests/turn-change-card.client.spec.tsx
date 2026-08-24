@@ -67,7 +67,7 @@ describe('TurnChangeCard', () => {
     expect(view.getByText('src/a.ts').nextElementSibling?.textContent).toBe('+4-1')
     fireEvent.click(view.getByText('src/a.ts'))
     expect(input.workbench.present).toHaveBeenCalledWith(expect.objectContaining({
-      typeId: 'review', target: 'src/a.ts', parameters: { scope: 'turn', turn: '7', expand: 'all' }, reveal: true,
+      typeId: 'review', target: 'src/a.ts', parameters: { scope: 'turn', turn: '7' }, reveal: true,
     }))
     fireEvent.click(view.getByRole('button', { name: '撤销' }))
     expect(view.getByRole('dialog', { name: '撤销本轮变更？' })).not.toBeNull()

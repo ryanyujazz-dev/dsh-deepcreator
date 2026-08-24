@@ -7,7 +7,6 @@ import {
 export const WORKBENCH_PERSIST_KEY = 'dsh.deepcreator.workbench.session.v2'
 export const WORKBENCH_SCHEMA_VERSION = 2
 export const WORKBENCH_DEFAULT_WIDTH = 520
-const LEGACY_PERSIST_KEY = 'dsh.deepcreator.workbench.session.v1'
 const MAX_TRACKS = 3
 
 export interface WorkbenchGroupState {
@@ -56,7 +55,6 @@ type WorkbenchActions = {
   replaceTab: (draft: WorkbenchState, typeId: string, fromInstanceId: string, toInstanceId: string) => void
   showHome: (draft: WorkbenchState, typeId: string) => void
   setOuterWidth: (draft: WorkbenchState, width: number) => void
-  completeOuterResize: (draft: WorkbenchState, startWidth: number, endWidth: number) => void
   focus: (draft: WorkbenchState, typeId: string) => void
   restoreFocus: (draft: WorkbenchState) => void
   resizeTracks: (draft: WorkbenchState, index: number, deltaPx: number) => void
@@ -229,12 +227,6 @@ export function createWorkbenchStore(): EngineStoreHandle<WorkbenchState, Workbe
         if (d.tracks.length > 0 && next >= required) equalizeTracks(d, next)
         else d.outerWidth = next
       },
-      completeOuterResize: (d, _startWidth, endWidth) => {
-        const next = Math.max(MIN_PANEL_COLUMN_WIDTH, Math.round(endWidth))
-        const required = d.tracks.length * MIN_PANEL_COLUMN_WIDTH
-        if (d.tracks.length > 0 && next >= required) equalizeTracks(d, next)
-        else d.outerWidth = next
-      },
       focus: (d, typeId) => {
         if (locationOf(d, typeId) !== undefined) d.focusedTypeId = typeId
       },
@@ -276,15 +268,11 @@ function validTrack(value: unknown): value is WorkbenchTrackState {
     && track.cellRatios.every(item => typeof item === 'number')
 }
 
-/** Remove corrupt/current-unknown snapshots and the intentionally retired v1 topology. */
+/** Remove corrupt and unknown-schema snapshots. */
 export function prepareWorkbenchPersistence(storage: Storage = localStorage): void {
   for (let index = storage.length - 1; index >= 0; index -= 1) {
     const key = storage.key(index)
     if (key === null) continue
-    if (key.startsWith(`${LEGACY_PERSIST_KEY}.`)) {
-      storage.removeItem(key)
-      continue
-    }
     if (!key.startsWith(`${WORKBENCH_PERSIST_KEY}.`)) continue
     const raw = storage.getItem(key)
     let parsed: unknown

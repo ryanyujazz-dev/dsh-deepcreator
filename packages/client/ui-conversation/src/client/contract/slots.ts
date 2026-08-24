@@ -21,7 +21,7 @@ import type {
 import type { createChatStore } from '../stores.ts'
 import type { ComposerSubmitGesture, InputSubmitMode } from './composer-submission.ts'
 import type { ChatNode, ChatNodeKind } from './chat-nodes.ts'
-import type { CallId, SelectionTarget, ViewTab } from './views.ts'
+import type { CallId, ViewTab } from './views.ts'
 import type { ConversationRenderMode } from '../../submission-settings.ts'
 
 /** Browser-owned image that has not crossed the durable host boundary. */
@@ -462,8 +462,6 @@ export interface ConversationSessionOwnerProps {
 
 /** Stable owner currency delivered to one keyed Chat business renderer. */
 export interface ChatNodeOwnerProps {
-  /** Selected Tool call, when the shared details store names one. */
-  selectedCallId?: CallId | undefined
   /** Session workspace root; Tool summaries display paths relative to it. */
   cwd?: string | undefined
   /** Activate the file as an Artifact tab when available, else use the Host opener. */
@@ -815,8 +813,6 @@ export interface ChatRenderOwnerProps {
   surfaceId?: string
   /** The chat entry's node render binding, delegated for the mode body's rows. */
   renderSlot: ChatNodeRenderSlot
-  /** Selection write + details panel opening in one gesture (store action + layout orchestration). */
-  openDetails: (target: SelectionTarget) => void
   /**
    * Activate a filesystem path as an Artifact tab when that Workbench type is
    * composed, otherwise use the Host opener; relative paths resolve via cwd.
@@ -873,8 +869,6 @@ export type ChatRenderSlotProps =
  * outside the view (layout orchestration; the session object layer).
  */
 export interface ChatViewInjected {
-  /** Selection write + details panel opening in one gesture (store action + layout orchestration). */
-  openDetails: (target: SelectionTarget) => void
   /**
    * Activate a filesystem path as an Artifact tab when that Workbench type is
    * composed, otherwise use the Host opener; relative paths resolve via cwd.

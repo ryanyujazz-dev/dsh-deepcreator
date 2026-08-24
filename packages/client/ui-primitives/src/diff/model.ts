@@ -321,11 +321,6 @@ export function buildCachedDiffHunkModel(input: DiffHunkInput): DiffHunkModel {
   return model
 }
 
-/** Warm the model memo for hunks whose DiffBlocks will mount later. */
-export function warmDiffHunkModels(hunks: readonly DiffHunkInput[]): void {
-  for (const hunk of hunks) buildCachedDiffHunkModel(hunk)
-}
-
 export function buildDiffHunkModel(input: DiffHunkInput): DiffHunkModel {
   const oldText = input.oldText ?? ''
   const language = diffLanguageFromPath(input.path)

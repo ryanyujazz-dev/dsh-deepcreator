@@ -43,13 +43,13 @@ describe('BrowserRuntime', () => {
 
   it('never silently falls back from an explicit provider', () => {
     const runtime = new BrowserRuntime(); runtime.registerProvider(background())
-    expect(() => runtime.select({ browserId: 'missing' })).toThrowError(expect.objectContaining({ code: 'PROVIDER_UNAVAILABLE' }))
-    expect(() => runtime.select({ browserId: 'background', mode: 'visible' })).toThrowError(expect.objectContaining({ code: 'CAPABILITY_UNSUPPORTED' }))
+    expect(() => runtime.select({ preference: { browserId: 'missing' } })).toThrowError(expect.objectContaining({ code: 'PROVIDER_UNAVAILABLE' }))
+    expect(() => runtime.select({ mode: 'visible' })).toThrowError(expect.objectContaining({ code: 'CAPABILITY_UNSUPPORTED' }))
   })
 
   it('requires an IAB presentation receipt before allowing automation', async () => {
     const runtime = new BrowserRuntime(); runtime.registerProvider(visible())
-    const created = await runtime.createTab({ sessionId: 'agent-1', turn: 3, workspaceRoot: process.cwd(), selection: { browserId: 'visible' }, signal })
+    const created = await runtime.createTab({ sessionId: 'agent-1', turn: 3, workspaceRoot: process.cwd(), selection: { preference: { browserId: 'visible' } }, signal })
     expect(created.tab).toMatchObject({ controlState: 'presentation-required', presentationState: 'not-requested' })
     await expect(runtime.execute('agent-1', created.tab.tabId, { kind: 'inspect', action: 'snapshot' }, signal)).rejects.toMatchObject({ code: 'PRESENTATION_UNAVAILABLE' })
     runtime.markPresentationPending('agent-1', created.tab.tabId)
@@ -60,7 +60,7 @@ describe('BrowserRuntime', () => {
 
   it('keeps a successfully presented live page open after the Agent turn ends', async () => {
     const provider = visible(); const runtime = new BrowserRuntime(); runtime.registerProvider(provider)
-    const created = await runtime.createTab({ sessionId: 'agent-1', turn: 8, workspaceRoot: process.cwd(), selection: { browserId: 'visible' }, signal })
+    const created = await runtime.createTab({ sessionId: 'agent-1', turn: 8, workspaceRoot: process.cwd(), selection: { preference: { browserId: 'visible' } }, signal })
     runtime.markPresentationPending('agent-1', created.tab.tabId)
     runtime.settlePresentation('agent-1', created.tab.tabId, 'presented')
 
@@ -72,7 +72,7 @@ describe('BrowserRuntime', () => {
 
   it('destroys the Provider page and logical identity when the user closes a tab', async () => {
     const provider = visible(); const runtime = new BrowserRuntime(); runtime.registerProvider(provider)
-    const created = await runtime.createTab({ sessionId: 'agent-1', turn: 8, workspaceRoot: process.cwd(), selection: { browserId: 'visible' }, signal })
+    const created = await runtime.createTab({ sessionId: 'agent-1', turn: 8, workspaceRoot: process.cwd(), selection: { preference: { browserId: 'visible' } }, signal })
     runtime.markPresentationPending('agent-1', created.tab.tabId)
     runtime.settlePresentation('agent-1', created.tab.tabId, 'presented')
 
@@ -92,7 +92,7 @@ describe('BrowserRuntime', () => {
     const workspace = await mkdtemp(join(tmpdir(), 'dsh-browser-runtime-output-'))
     try {
       const provider = background(); const runtime = new BrowserRuntime({ attachments: { saveImage, readImage } as never }); runtime.registerProvider(provider)
-      const created = await runtime.createTab({ sessionId: 'agent-1', turn: 1, workspaceRoot: workspace, selection: { browserId: 'background' }, signal })
+      const created = await runtime.createTab({ sessionId: 'agent-1', turn: 1, workspaceRoot: workspace, selection: { preference: { browserId: 'background' } }, signal })
       await runtime.execute('agent-1', created.tab.tabId, { kind: 'inspect', action: 'screenshot' }, signal)
       expect(saveImage).toHaveBeenCalledOnce()
       expect(runtime.tab('agent-1', created.tab.tabId)).toMatchObject({ snapshotAttachment: attachment })
@@ -109,14 +109,14 @@ describe('BrowserRuntime', () => {
 
   it('invalidates Provider-owned tabs with an owner-restarted tombstone', async () => {
     const provider = background(); const runtime = new BrowserRuntime(); runtime.registerProvider(provider)
-    const created = await runtime.createTab({ sessionId: 'agent-1', turn: 1, workspaceRoot: process.cwd(), selection: { browserId: 'background' }, signal })
+    const created = await runtime.createTab({ sessionId: 'agent-1', turn: 1, workspaceRoot: process.cwd(), selection: { preference: { browserId: 'background' } }, signal })
     runtime.invalidateProvider('background', 'owner-restarted')
     expect(() => runtime.tab('agent-1', created.tab.tabId)).toThrowError(expect.objectContaining({ code: 'TAB_NOT_FOUND', details: expect.objectContaining({ lifecycleReason: 'owner-restarted' }) }))
   })
 
   it('fences node refs by snapshot and interrupts control by exact surface', async () => {
     const provider = visible(); const runtime = new BrowserRuntime(); runtime.registerProvider(provider)
-    const created = await runtime.createTab({ sessionId: 'agent-1', turn: 0, workspaceRoot: process.cwd(), selection: { browserId: 'visible' }, signal })
+    const created = await runtime.createTab({ sessionId: 'agent-1', turn: 0, workspaceRoot: process.cwd(), selection: { preference: { browserId: 'visible' } }, signal })
     runtime.markPresentationPending('agent-1', created.tab.tabId)
     runtime.settlePresentation('agent-1', created.tab.tabId, 'presented')
     await runtime.execute('agent-1', created.tab.tabId, { kind: 'inspect', action: 'snapshot' }, signal)
@@ -129,7 +129,7 @@ describe('BrowserRuntime', () => {
 
   it('executes a node-ref action sequence as one snapshot-fenced transaction and records diagnostics', async () => {
     const provider = background(); const runtime = new BrowserRuntime(); runtime.registerProvider(provider)
-    const created = await runtime.createTab({ sessionId: 'agent-1', turn: 0, workspaceRoot: process.cwd(), selection: { browserId: 'background' }, signal })
+    const created = await runtime.createTab({ sessionId: 'agent-1', turn: 0, workspaceRoot: process.cwd(), selection: { preference: { browserId: 'background' } }, signal })
     await runtime.execute('agent-1', created.tab.tabId, { kind: 'inspect', action: 'snapshot' }, signal)
 
     await expect(runtime.execute('agent-1', created.tab.tabId, {
@@ -148,7 +148,7 @@ describe('BrowserRuntime', () => {
 
   it('rejects a lone fill navigation transaction before the Provider can mutate the page', async () => {
     const provider = background(); const runtime = new BrowserRuntime(); runtime.registerProvider(provider)
-    const created = await runtime.createTab({ sessionId: 'agent-1', turn: 0, workspaceRoot: process.cwd(), selection: { browserId: 'background' }, signal })
+    const created = await runtime.createTab({ sessionId: 'agent-1', turn: 0, workspaceRoot: process.cwd(), selection: { preference: { browserId: 'background' } }, signal })
 
     await expect(runtime.execute('agent-1', created.tab.tabId, {
       kind: 'act', action: 'fill', locator: { kind: 'role', role: 'textbox', name: 'Search', exact: true }, value: 'DeepSeek', expected: 'navigation',
@@ -158,7 +158,7 @@ describe('BrowserRuntime', () => {
 
   it('preserves the final page state and invalidates the snapshot when only the action postcondition fails', async () => {
     const provider = background(); const runtime = new BrowserRuntime(); runtime.registerProvider(provider)
-    const created = await runtime.createTab({ sessionId: 'agent-1', turn: 0, workspaceRoot: process.cwd(), selection: { browserId: 'background' }, signal })
+    const created = await runtime.createTab({ sessionId: 'agent-1', turn: 0, workspaceRoot: process.cwd(), selection: { preference: { browserId: 'background' } }, signal })
     await runtime.execute('agent-1', created.tab.tabId, { kind: 'inspect', action: 'snapshot' }, signal)
     provider.execute.mockImplementationOnce(async (_context, tab) => {
       const finalTab = { ...tab, url: 'https://example.test/partial', title: 'Partial' }
@@ -179,7 +179,7 @@ describe('BrowserRuntime', () => {
 
   it('bounds and redacts the model-facing Browser event ledger', async () => {
     const provider = background(); const runtime = new BrowserRuntime(); runtime.registerProvider(provider)
-    const created = await runtime.createTab({ sessionId: 'agent-1', turn: 0, workspaceRoot: process.cwd(), selection: { browserId: 'background' }, url: 'http://127.0.0.1/?access_token=secret', signal })
+    const created = await runtime.createTab({ sessionId: 'agent-1', turn: 0, workspaceRoot: process.cwd(), selection: { preference: { browserId: 'background' } }, url: 'http://127.0.0.1/?access_token=secret', signal })
     for (let index = 0; index < 30; index++) await runtime.execute('agent-1', created.tab.tabId, { kind: 'inspect', action: 'title' }, signal)
     const result = await runtime.execute('agent-1', created.tab.tabId, { kind: 'inspect', action: 'events' }, signal)
     if (result.kind !== 'events') throw new Error('Expected Browser events.')
@@ -190,7 +190,7 @@ describe('BrowserRuntime', () => {
 
   it('lets an explicit panel address action navigate while interrupting Agent control', async () => {
     const provider = visible(); const runtime = new BrowserRuntime(); runtime.registerProvider(provider)
-    const created = await runtime.createTab({ sessionId: 'agent-1', turn: 0, workspaceRoot: process.cwd(), selection: { browserId: 'visible' }, lifecycle: 'deliverable', signal })
+    const created = await runtime.createTab({ sessionId: 'agent-1', turn: 0, workspaceRoot: process.cwd(), selection: { preference: { browserId: 'visible' } }, lifecycle: 'deliverable', signal })
     runtime.markPresentationPending('agent-1', created.tab.tabId)
     runtime.settlePresentation('agent-1', created.tab.tabId, 'presented')
 
@@ -203,8 +203,8 @@ describe('BrowserRuntime', () => {
 
   it('closes temporary tabs, releases claimed tabs, and preserves one-turn handoff', async () => {
     const provider = background(); const runtime = new BrowserRuntime(); runtime.registerProvider(provider)
-    const temporary = await runtime.createTab({ sessionId: 'agent-1', turn: 4, workspaceRoot: process.cwd(), selection: { browserId: 'background' }, signal })
-    const handoff = await runtime.createTab({ sessionId: 'agent-1', turn: 4, workspaceRoot: process.cwd(), selection: { browserId: 'background' }, signal })
+    const temporary = await runtime.createTab({ sessionId: 'agent-1', turn: 4, workspaceRoot: process.cwd(), selection: { preference: { browserId: 'background' } }, signal })
+    const handoff = await runtime.createTab({ sessionId: 'agent-1', turn: 4, workspaceRoot: process.cwd(), selection: { preference: { browserId: 'background' } }, signal })
     runtime.markLifecycle('agent-1', handoff.tab.tabId, 'handoff')
     await runtime.endTurn('agent-1', 4)
     expect(provider.close).toHaveBeenCalledTimes(1)
@@ -221,7 +221,7 @@ describe('BrowserRuntime', () => {
       return { kind: 'state', tab }
     })
     const runtime = new BrowserRuntime(); runtime.registerProvider(provider)
-    const created = await runtime.createTab({ sessionId: 'agent-1', turn: 0, workspaceRoot: process.cwd(), selection: { browserId: 'background' }, signal })
+    const created = await runtime.createTab({ sessionId: 'agent-1', turn: 0, workspaceRoot: process.cwd(), selection: { preference: { browserId: 'background' } }, signal })
     await Promise.all([
       runtime.execute('agent-1', created.tab.tabId, { kind: 'inspect', action: 'title' }, signal),
       runtime.execute('agent-1', created.tab.tabId, { kind: 'inspect', action: 'url' }, signal),
@@ -231,7 +231,7 @@ describe('BrowserRuntime', () => {
 
   it('closes managed tabs before clearing an isolated Provider profile', async () => {
     const provider = background(); const runtime = new BrowserRuntime(); runtime.registerProvider(provider)
-    const created = await runtime.createTab({ sessionId: 'agent-1', turn: 0, workspaceRoot: process.cwd(), selection: { browserId: 'background' }, signal })
+    const created = await runtime.createTab({ sessionId: 'agent-1', turn: 0, workspaceRoot: process.cwd(), selection: { preference: { browserId: 'background' } }, signal })
     await runtime.clearProviderData('background')
     expect(provider.close).toHaveBeenCalledTimes(1)
     expect(provider.clearData).toHaveBeenCalledTimes(1)

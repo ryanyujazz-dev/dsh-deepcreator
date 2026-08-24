@@ -131,8 +131,7 @@ describe('Workbench store topology', () => {
 })
 
 describe('prepareWorkbenchPersistence', () => {
-  it('removes v1, corrupt and unknown snapshots while retaining valid v2', () => {
-    localStorage.setItem('dsh.deepcreator.workbench.session.v1.old', JSON.stringify({ schemaVersion: 1 }))
+  it('removes corrupt and unknown snapshots while retaining valid v2', () => {
     localStorage.setItem(`${WORKBENCH_PERSIST_KEY}.broken`, '{')
     localStorage.setItem(`${WORKBENCH_PERSIST_KEY}.future`, JSON.stringify({ schemaVersion: 9 }))
     const valid = {
@@ -140,7 +139,6 @@ describe('prepareWorkbenchPersistence', () => {
     }
     localStorage.setItem(`${WORKBENCH_PERSIST_KEY}.valid`, JSON.stringify(valid))
     prepareWorkbenchPersistence()
-    expect(localStorage.getItem('dsh.deepcreator.workbench.session.v1.old')).toBeNull()
     expect(localStorage.getItem(`${WORKBENCH_PERSIST_KEY}.broken`)).toBeNull()
     expect(localStorage.getItem(`${WORKBENCH_PERSIST_KEY}.future`)).toBeNull()
     expect(localStorage.getItem(`${WORKBENCH_PERSIST_KEY}.valid`)).not.toBeNull()

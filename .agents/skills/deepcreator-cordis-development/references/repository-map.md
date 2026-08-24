@@ -33,7 +33,7 @@
 - Default render mode: `classic`
 - Preferences child Slot: `deepcreator.settings.preferences.item`
 - Review panel type id (the change-reveal handoff target): `review`
-- Activity panel type id (job stop + subagent tabs): `activity`; its Host remote namespace: `jobs-admin` (`stop`, `subagentEvents`, `subagentOverview`)
+- Activity panel type id (job stop + subagent tabs): `activity`; its Host remote namespace: `jobs-admin` (`stop`, `subagentOverview`)
 - Embedded child flow Slots: `deepcreator.conversation.embed` + mirror seats `deepcreator.conversation.embed.node` / `deepcreator.conversation.embed.toolview`
 - Artifact content renderer Slot (registered by `ui-workbench-artifact`): `deepcreator.workbench.artifact.renderer`
 - Official shared Slots retain their official names; inspect the owning `contract/slots.ts` before registration.

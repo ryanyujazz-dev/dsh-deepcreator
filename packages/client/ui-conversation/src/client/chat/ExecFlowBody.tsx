@@ -149,7 +149,7 @@ export type ExecFlowBodyProps = ChatRenderSlotProps & ExecFlowBodyInjected
  * delegated keyed seat) or an aggregated tool run (through ExecutionSlot).
  */
 export function ExecFlowBody({
-  useSession, useSessions, useInput, useStore, sessionId, openFile, revealChange, loadOlder, loadImage, renderMessageImages, inspectCall, chatScroll, forkAt,
+  useSession, useSessions, useInput, sessionId, openFile, revealChange, loadOlder, loadImage, renderMessageImages, inspectCall, chatScroll, forkAt,
   fileMentions, selectRenderMode, acknowledgeOutgoing, renderSlot, t, actions, thinkForm, siblingId,
 }: ExecFlowBodyProps) {
   const order = useSession(s => s.chat.order)
@@ -169,7 +169,6 @@ export function ExecFlowBody({
   const openError = useSession(s => s.openError)
   const hasMore = useSession(s => s.hasMore)
   const loadingOlder = useSession(s => s.loadingOlder)
-  const selectedCallId = useStore(s => s.selection?.callId)
   const pendingOutgoing = useInput(s => s.pendingOutgoing)
   const listRef = useRef<HTMLDivElement | null>(null)
   const visibleOutgoing = useVisibleChatOutgoing(pendingOutgoing, listRef, acknowledgeOutgoing)
@@ -348,7 +347,6 @@ export function ExecFlowBody({
       nodeKey={nodeKey}
       thinkMode={thinkForm}
       useSession={useSession}
-      selectedCallId={selectedCallId}
       cwd={cwd}
       openFile={openFile}
       revealChange={revealChange}
@@ -360,7 +358,7 @@ export function ExecFlowBody({
       renderSlot={renderSlot}
       t={t}
     />
-  ), [useSession, thinkForm, selectedCallId, cwd, openFile, revealChange, inspectCall, forkAt, loadImage, fileMentions, renderSlot, t])
+  ), [useSession, thinkForm, cwd, openFile, revealChange, inspectCall, forkAt, loadImage, fileMentions, renderSlot, t])
 
   const columnRef = useRef<HTMLDivElement | null>(null)
   const atBottomRef = useRef(true)
@@ -587,7 +585,6 @@ export function ExecFlowBody({
                 nodeKey={entry.nodeKey}
                 thinkMode={thinkForm}
                 useSession={useSession}
-                selectedCallId={selectedCallId}
                 cwd={cwd}
                 openFile={openFile}
                 revealChange={revealChange}

@@ -2,10 +2,12 @@
 
 Decision records for DeepCreator. One file per durable decision, filed under `.agents/notes/<lifecycle>/<class>/yyyy-mm-dd-topic.md`:
 
-- **Lifecycle**: `implemented` (the decision ships) · `archived` (frozen historical snapshot).
+- **Lifecycle**: `implemented` (the decision ships) · `proposed` (an evidence-backed proposal awaiting an implementing change) · `archived` (frozen historical snapshot).
 - **Class**: `architecture` · `bug-fix` · `feature` · `simplification`.
 
 Notes use a minimal header block (title plus Date / Lifecycle / Class / Status lines), `## Context`, `## Decision`, `## Alternatives considered`, and a link to the owning package README that carries the full behavior text. Keep each paragraph on one physical line and use relative Markdown links. In `implemented/` notes, keep the verification contract (which behaviors and test tiers pin the decision); drop migration plans and future-tense spec language.
+
+A not-yet-implemented simplification is first recorded as a `proposed/` note (`Status: proposed`, carrying `## Problem` with production-vs-test consumer evidence, `## Proposal`, `## What we give up`, `## Acceptance criteria`, `## Risks`); when the change ships, move it to `implemented/` and rewrite the body to the implemented shape with its verification contract.
 
 `archived/` is frozen: never edit, re-record, or modernize its contents; active prose may repair or redirect an inbound link but must not follow cleanups into the frozen target.
 

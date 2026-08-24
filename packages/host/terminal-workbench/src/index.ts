@@ -6,21 +6,20 @@ import {
 } from '@deepseek-ai/dsh-terminal'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {
-  TerminalBackendsResult, TerminalKillRemoteResult, TerminalListResult, TerminalReadRemoteResult,
-  TerminalInputRemoteResult, TerminalRawReadRemoteResult, TerminalReadRequest, TerminalResizeRemoteResult,
-  TerminalSendRemoteResult, TerminalSignalName, TerminalSignalRemoteResult,
+  TerminalBackendsResult, TerminalKillRemoteResult, TerminalListResult,
+  TerminalInputRemoteResult, TerminalRawReadRemoteResult, TerminalResizeRemoteResult,
   TerminalSpawnRemoteResult, TerminalSpawnRequest, TerminalSpawnView, TerminalStatus,
   TerminalWorkbenchFailure,
 } from './types.ts'
 import { SYSTEM_TERMINAL_BACKEND, SystemTerminalBackend } from './native-terminal.ts'
 
 export type {
-  TerminalBackendsResult, TerminalKillRemoteResult, TerminalListResult, TerminalReadPage,
-  TerminalInputRemoteResult, TerminalRawReadPage, TerminalRawReadRemoteResult, TerminalReadRemoteResult,
-  TerminalReadRequest, TerminalResizeRemoteResult, TerminalResizeView, TerminalSendRemoteResult, TerminalSendView,
-  TerminalSessionView, TerminalSignalName, TerminalSignalRemoteResult, TerminalSignalView,
+  TerminalBackendsResult, TerminalKillRemoteResult, TerminalListResult,
+  TerminalInputRemoteResult, TerminalRawReadPage, TerminalRawReadRemoteResult,
+  TerminalResizeRemoteResult, TerminalResizeView,
+  TerminalSessionView,
   TerminalSpawnRemoteResult, TerminalSpawnRequest, TerminalSpawnView, TerminalStatus,
-  TerminalWaitReason, TerminalWorkbenchErrorCode, TerminalWorkbenchFailure,
+  TerminalWorkbenchErrorCode, TerminalWorkbenchFailure,
 } from './types.ts'
 
 declare module '@deepseek-ai/cordis' { interface Context { terminalWorkbench: TerminalWorkbenchService } }
@@ -106,12 +105,6 @@ export class TerminalWorkbenchService extends TypertRemoteService {
     catch (error) { return failure(error) }
   }
 
-  @Remote('read')
-  read(agent: Agent, sessionId: string, request?: TerminalReadRequest): TerminalReadRemoteResult {
-    try { return { ok: true, page: this.ctx.terminals.read(agent, TerminalSessionId(sessionId), request) } }
-    catch (error) { return failure(error) }
-  }
-
   @Remote('readRaw')
   readRaw(agent: Agent, sessionId: string, cursor?: number): TerminalRawReadRemoteResult {
     try {
@@ -131,21 +124,6 @@ export class TerminalWorkbenchService extends TypertRemoteService {
   @Remote('resize')
   resize(agent: Agent, sessionId: string, cols: number, rows: number): TerminalResizeRemoteResult {
     try { return { ok: true, size: this.system.owned(agent, sessionId).resize(cols, rows) } }
-    catch (error) { return failure(error) }
-  }
-
-  @Remote('send')
-  async send(agent: Agent, sessionId: string, text: string, submit: boolean): Promise<TerminalSendRemoteResult> {
-    try {
-      const operation = this.ctx.terminals.startSend(agent, TerminalSessionId(sessionId), { text, submit })
-      const result = await operation.done
-      return { ok: true, result: { ...result, sessionStatus: statusView(result.sessionStatus) } }
-    } catch (error) { return failure(error) }
-  }
-
-  @Remote('signal')
-  async signal(agent: Agent, sessionId: string, terminalSignal: TerminalSignalName): Promise<TerminalSignalRemoteResult> {
-    try { return { ok: true, result: await this.ctx.terminals.signal(agent, TerminalSessionId(sessionId), terminalSignal) } }
     catch (error) { return failure(error) }
   }
 

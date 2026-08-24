@@ -89,7 +89,7 @@ function TurnStatus({ startTime, t }: {
  * keyed renderer seat.
  */
 export function ChatRenderStandard({
-  useSession, useSessions, useInput, useStore, sessionId, openFile, revealChange, loadOlder, loadImage, renderMessageImages, inspectCall, chatScroll, forkAt,
+  useSession, useSessions, useInput, sessionId, openFile, revealChange, loadOlder, loadImage, renderMessageImages, inspectCall, chatScroll, forkAt,
   acknowledgeOutgoing,
   fileMentions, renderSlot, t,
 }: ChatRenderSlotProps) {
@@ -104,7 +104,6 @@ export function ChatRenderStandard({
   const openError = useSession(s => s.openError)
   const hasMore = useSession(s => s.hasMore)
   const loadingOlder = useSession(s => s.loadingOlder)
-  const selectedCallId = useStore(s => s.selection?.callId)
   const pendingOutgoing = useInput(s => s.pendingOutgoing)
   const listRef = useRef<HTMLDivElement | null>(null)
   const visibleOutgoing = useVisibleChatOutgoing(pendingOutgoing, listRef, acknowledgeOutgoing)
@@ -370,7 +369,6 @@ export function ChatRenderStandard({
               <ChatNodeSeat
                 nodeKey={nodeKey}
                 useSession={useSession}
-                selectedCallId={selectedCallId}
                 cwd={cwd}
                 openFile={openFile}
                 revealChange={revealChange}

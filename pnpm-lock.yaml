@@ -5,24 +5,12 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  '@deepseek-ai/dsh-client-runtime@0.1.1-rc.2':
-    hash: e38cc37461871a3e4ad8083d26c438b8823a0c1be01ca18ad3cb284d6c4220f1
-    path: patches/@deepseek-ai__dsh-client-runtime@0.1.1-rc.2.patch
-  '@deepseek-ai/dsh-client-test-runtime@0.1.1-rc.2':
-    hash: 20417217142867bbb2d8540a7daa7b23e065c81a47a22164c2bb93bf6f61f72f
-    path: patches/@deepseek-ai__dsh-client-test-runtime@0.1.1-rc.2.patch
-  '@deepseek-ai/dsh-client-ui-renderer@0.1.1-rc.2':
-    hash: 55e332c9fae5930bd2d1de3d141da209a28783c6791d92c00864b930b3c03b97
-    path: patches/@deepseek-ai__dsh-client-ui-renderer@0.1.1-rc.2.patch
-  '@deepseek-ai/dsh-client-ui-slots@0.1.1-rc.2':
-    hash: a7fbc17b4bc3da49c64c09d0e9162fd94dcd20b43a3d3b51cddae56aa3071877
-    path: patches/@deepseek-ai__dsh-client-ui-slots@0.1.1-rc.2.patch
-  '@deepseek-ai/dsh-tool-fs@0.1.1-rc.2':
-    hash: 268dee68362330cc493227408797b2fce528ecde422cbd2eba2fa6b8f7bb2e38
-    path: patches/@deepseek-ai__dsh-tool-fs@0.1.1-rc.2.patch
-  '@deepseek-ai/dsh-tools@0.1.1-rc.2':
-    hash: c211f0cf4bee8cd4d3ca528e9b4fe8afc0065273a0157914be39f6ccf6626577
-    path: patches/@deepseek-ai__dsh-tools@0.1.1-rc.2.patch
+  '@deepseek-ai/dsh-client-runtime@0.1.1-rc.2': e38cc37461871a3e4ad8083d26c438b8823a0c1be01ca18ad3cb284d6c4220f1
+  '@deepseek-ai/dsh-client-test-runtime@0.1.1-rc.2': 20417217142867bbb2d8540a7daa7b23e065c81a47a22164c2bb93bf6f61f72f
+  '@deepseek-ai/dsh-client-ui-renderer@0.1.1-rc.2': 55e332c9fae5930bd2d1de3d141da209a28783c6791d92c00864b930b3c03b97
+  '@deepseek-ai/dsh-client-ui-slots@0.1.1-rc.2': a7fbc17b4bc3da49c64c09d0e9162fd94dcd20b43a3d3b51cddae56aa3071877
+  '@deepseek-ai/dsh-tool-fs@0.1.1-rc.2': 268dee68362330cc493227408797b2fce528ecde422cbd2eba2fa6b8f7bb2e38
+  '@deepseek-ai/dsh-tools@0.1.1-rc.2': c211f0cf4bee8cd4d3ca528e9b4fe8afc0065273a0157914be39f6ccf6626577
 
 importers:
 

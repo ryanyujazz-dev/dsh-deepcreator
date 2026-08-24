@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // ChatView behavior: flow derivation, streaming isolation (Profiler counts),
-// Tool seat ownership and selection handoff — driven through a scripted
+// Tool seat ownership — driven through a scripted
 // ObservableSnapshot fake, no wire or Tool presentation plugin.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -17,7 +17,7 @@ import {
 } from '@deepseek-ai/dsh-client-runtime/client'
 import { RpcId } from '@deepseek-ai/dsh-client-connection/client'
 import type {
-  ChatNode, ChatNodeOwnerProps, ChatNodeViewProps, ChatRenderOwnerProps, ChatViewSlotProps, SelectionTarget,
+  ChatNode, ChatNodeOwnerProps, ChatNodeViewProps, ChatRenderOwnerProps, ChatViewSlotProps,
   UseChatNodeTurnData,
 } from '@ryanyujazz/dsh-client-ui-conversation/client'
 import type { InputState } from '../src/client/input/contract.ts'
@@ -43,7 +43,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 // Keyless create() persists under the bare declared key; clear between cases
-// so one harness's selection cannot rehydrate into the next.
+// so one harness's state cannot rehydrate into the next.
 beforeEach(() => {
   localStorage.clear()
 })
@@ -188,7 +188,6 @@ function makeHarness(
   turnTail?: { media?: React.ReactNode; official?: React.ReactNode; changes?: React.ReactNode },
 ) {
   const { set, source } = makeSource(init)
-  const openDetails = vi.fn<(t: SelectionTarget) => void>()
   const openFile = vi.fn<(path: string) => void>()
   const loadOlder = vi.fn()
   const inspectCall = vi.fn<(callId: string) => void>()
@@ -220,7 +219,6 @@ function makeHarness(
     callId: string
     toolName: string
     block: ToolCallBlock
-    selectedCallId: string | undefined
     openFile: ChatNodeOwnerProps['openFile']
     inspectCall: ChatNodeOwnerProps['inspectCall']
   }> = []
@@ -300,7 +298,6 @@ function makeHarness(
           callId: block.callId,
           toolName,
           block,
-          selectedCallId: nodeOwner.selectedCallId,
           openFile: nodeOwner.openFile,
           inspectCall: nodeOwner.inspectCall,
         }
@@ -340,7 +337,6 @@ function makeHarness(
     actions: chat.actions,
     renderSlot,
     SessionProvider: SessionProviderStub,
-    openDetails,
     openFile,
     loadOlder,
     loadImage: vi.fn(() => Promise.reject(new Error('not used'))),
@@ -363,10 +359,9 @@ function makeHarness(
     // Mirrors the real lookup chain (conversation namespace, then common).
     t,
   }
-  const setSelection = (next: SelectionTarget | null): void => { chat.actions.select(next) }
   return {
-    set, ChatView, props, openDetails, openFile, loadOlder, inspectCall,
-    chatScroll, chatScrollFor, forkAt, setSelection, toolOwners, renderedOnly: () => renderedOnly,
+    set, ChatView, props, openFile, loadOlder, inspectCall,
+    chatScroll, chatScrollFor, forkAt, toolOwners, renderedOnly: () => renderedOnly,
     snapshot: () => chat.getSnapshot(), input, acknowledgeOutgoing,
   }
 }
@@ -1063,14 +1058,6 @@ describe('ChatView', () => {
     expect(rowRenders).toBe(afterMount)
   })
 
-  it('updates the selected call id handed to the Tool seat', () => {
-    const h = makeHarness({ nodes: [toolResult(3, 'a')] })
-    render(<h.ChatView {...h.props} />)
-    expect(h.toolOwners.at(-1)?.selectedCallId).toBeUndefined()
-    act(() => { h.setSelection({ turnSeq: 3, callId: 'a', toolName: 'bash' }) })
-    expect(h.toolOwners.at(-1)?.selectedCallId).toBe('a')
-  })
-
   it('hands running calls to a live Tool group', () => {
     const h = makeHarness({ runningCalls: [runningCall('r1')], running: true })
     const view = render(<h.ChatView {...h.props} />)
@@ -1167,7 +1154,7 @@ describe('ChatView', () => {
     expect(calls).toHaveLength(1)
     expect(calls[0]).toMatchObject({
       key: 'conversation.chat.node',
-      owner: { node: { kind: 'tool-call' }, selectedCallId: undefined },
+      owner: { node: { kind: 'tool-call' } },
       entryKey: 'tool-call',
     })
     const owner = calls[0]?.owner as RoutedChatNodeOwner

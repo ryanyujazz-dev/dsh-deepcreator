@@ -6,7 +6,7 @@ describe('Terminal Workbench generated Remote', () => {
     const descriptors = TYPERT_REMOTE.descriptors
     expect(descriptors.map(item => item.namespace)).toEqual(Array(descriptors.length).fill('terminal-workbench'))
     expect(descriptors.map(item => item.method).sort()).toEqual([
-      'backends', 'input', 'kill', 'list', 'read', 'readRaw', 'resize', 'send', 'signal', 'spawn',
+      'backends', 'input', 'kill', 'list', 'readRaw', 'resize', 'spawn',
     ])
     for (const descriptor of descriptors) {
       expect(descriptor.parameters[0]).toMatchObject({ name: 'agent', source: 'lookup', lookup: 'agent' })

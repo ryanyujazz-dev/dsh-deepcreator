@@ -127,7 +127,6 @@ function props(remote = remoteMock()): ComponentProps<typeof ReviewPanel> & { re
     tabs: [],
     typeId: 'review',
     openInstance: vi.fn(),
-    activateInstance: vi.fn(),
     closeInstance: vi.fn(),
     showHome: vi.fn(),
     contributeHeaderActions: () => () => undefined,
@@ -552,7 +551,7 @@ describe('Review Panel file stream', () => {
     view.rerender(<ReviewPanel
       {...input}
       visible
-      reveal={{ parameters: { scope: 'unstaged', expand: 'all' }, nonce: 1 }}
+      reveal={{ parameters: { scope: 'unstaged' }, nonce: 1 }}
     />)
 
     await waitFor(() => {
@@ -579,7 +578,7 @@ describe('Review Panel file stream', () => {
     const next = props()
     const revealed = render(<ReviewPanel
       {...next}
-      reveal={{ target: '/workspace/src/b.ts', parameters: { scope: 'turn', turn: '5', expand: 'all' }, nonce: 1 }}
+      reveal={{ target: '/workspace/src/b.ts', parameters: { scope: 'turn', turn: '5' }, nonce: 1 }}
     />)
     await waitFor(() => {
       expect(next.remote.review.diff).toHaveBeenCalledTimes(2)
@@ -594,7 +593,7 @@ describe('Review Panel file stream', () => {
     const fromCard = props()
     const cardView = render(<ReviewPanel
       {...fromCard}
-      reveal={{ parameters: { scope: 'turn', turn: '5', expand: 'all' }, nonce: 1 }}
+      reveal={{ parameters: { scope: 'turn', turn: '5' }, nonce: 1 }}
     />)
     await waitFor(() => {
       expect(fromCard.remote.review.status).toHaveBeenLastCalledWith('session-1', { turn: 5 }, undefined)
@@ -607,7 +606,7 @@ describe('Review Panel file stream', () => {
     const fromHeader = props()
     const headerView = render(<ReviewPanel
       {...fromHeader}
-      reveal={{ parameters: { scope: 'unstaged', expand: 'all' }, nonce: 2 }}
+      reveal={{ parameters: { scope: 'unstaged' }, nonce: 2 }}
     />)
     await waitFor(() => {
       expect(fromHeader.remote.review.status).toHaveBeenLastCalledWith('session-1', 'unstaged', undefined)
@@ -765,7 +764,7 @@ describe('Review Panel file stream', () => {
 
     view.rerender(<ReviewPanel
       {...input}
-      reveal={{ target: `/workspace/${paths.at(-101)}`, parameters: { scope: 'uncommitted', expand: 'all' }, nonce: 1 }}
+      reveal={{ target: `/workspace/${paths.at(-101)}`, parameters: { scope: 'uncommitted' }, nonce: 1 }}
     />)
     const target = paths.at(-101)
     expect(target).toBeDefined()

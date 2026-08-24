@@ -106,7 +106,7 @@ const LOCALES: readonly LocaleDefinition[] = Object.freeze([
  * entry's namespace in the active locale -> that namespace's zh fallback ->
  * the shared common namespace (active, then zh) -> the key itself (missing
  * text stays visible, fail loud in the UI rather than blank). Reads go
- * through {@link getLocale}; writes only through {@link setLocale};
+ * through {@link getSnapshot}; writes only through {@link setLocale};
  * continuous sync through the `locale/change` event, or through the
  * LocaleFace getSnapshot/subscribe pair the render machinery consumes
  * (installed via `ctx.slots.installLocale`).
@@ -136,14 +136,6 @@ export class LocaleRuntime {
       ctx.effect(() => host.subscribe(() => { this.adopt(host) }), 'locale: settings scope adoption')
       this.adopt(host)
     }
-  }
-
-  /**
-   * Read the current immutable locale snapshot.
-   * @returns the current snapshot (stable reference until the next change).
-   */
-  getLocale(): LocaleSnapshot {
-    return this.snapshot
   }
 
   /**
@@ -384,7 +376,7 @@ export function apply(ctx: ClientContext): void {
     bound = actions
     // Re-sync from the getter so no event is lost between registration and
     // first render (the store's revision guard drops stale duplicates).
-    sync(locale.getLocale())
+    sync(locale.getSnapshot())
     return {
       setLocale: (id) => { locale.setLocale(id) },
     }

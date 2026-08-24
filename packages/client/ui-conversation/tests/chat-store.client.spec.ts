@@ -10,18 +10,13 @@ beforeEach(() => {
 })
 
 describe('createChatStore', () => {
-  it('init shape: empty selection/draft/view', () => {
+  it('init shape: empty draft/view/inspect/renderMode', () => {
     const store = createChatStore().create()
-    expect(store.store.getSnapshot()).toEqual({ selection: null, draft: '', view: null, inspect: null, renderMode: null })
+    expect(store.store.getSnapshot()).toEqual({ draft: '', view: null, inspect: null, renderMode: null })
   })
 
   it('actions cover the declared write set', () => {
     const store = createChatStore().create()
-
-    store.actions.select({ turnSeq: 3, callId: 'c1', toolName: 'bash' })
-    expect(store.store.getSnapshot().selection).toEqual({ turnSeq: 3, callId: 'c1', toolName: 'bash' })
-    store.actions.select(null)
-    expect(store.store.getSnapshot().selection).toBeNull()
 
     store.actions.setDraft('hello')
     expect(store.store.getSnapshot().draft).toBe('hello')
@@ -39,7 +34,6 @@ describe('createChatStore', () => {
     const handle = createChatStore()
     const s1 = handle.create('sess-1')
     s1.actions.setDraft('draft for one')
-    s1.actions.select({ turnSeq: 1 })
 
     // Scope-suffixed key: each session persists separately.
     expect(localStorage.getItem(`${KEY}.sess-1`)).not.toBeNull()
@@ -48,7 +42,6 @@ describe('createChatStore', () => {
     // A rebuilt instance under the same scope key rehydrates the state.
     const again = createChatStore().create('sess-1')
     expect(again.store.getSnapshot().draft).toBe('draft for one')
-    expect(again.store.getSnapshot().selection).toEqual({ turnSeq: 1 })
 
     // A sibling scope starts clean.
     const other = createChatStore().create('sess-2')

@@ -15,7 +15,7 @@ export function initialWorkbenchWidth(conversationWidth: number): number {
 
 /** New odd type creates an equal column: two columns use 1/2 Stage, three use 2/3 Stage. */
 export function oddTrackWorkbenchWidth(stageWidth: number, trackCount: number): number {
-  const ratio = trackCount <= 1 ? 1 / 3 : trackCount === 2 ? 1 / 2 : 2 / 3
+  const ratio = trackCount === 2 ? 1 / 2 : 2 / 3
   return Math.round(fitWorkbenchWidth(stageWidth * ratio, stageWidth))
 }
 
