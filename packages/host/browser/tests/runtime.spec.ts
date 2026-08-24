@@ -115,6 +115,67 @@ describe('BrowserRuntime', () => {
     await expect(runtime.execute('agent-1', created.tab.tabId, { kind: 'inspect', action: 'title' }, signal)).resolves.toMatchObject({ kind: 'state' })
   })
 
+  it('executes a node-ref action sequence as one snapshot-fenced transaction and records diagnostics', async () => {
+    const provider = background(); const runtime = new BrowserRuntime(); runtime.registerProvider(provider)
+    const created = await runtime.createTab({ sessionId: 'agent-1', turn: 0, workspaceRoot: process.cwd(), selection: { browserId: 'background' }, signal })
+    await runtime.execute('agent-1', created.tab.tabId, { kind: 'inspect', action: 'snapshot' }, signal)
+
+    await expect(runtime.execute('agent-1', created.tab.tabId, {
+      kind: 'act', steps: [
+        { action: 'fill', locator: { kind: 'node', snapshotId: 'snapshot-1', nodeRef: 'n1' }, value: 'codex cli' },
+        { action: 'press', locator: { kind: 'node', snapshotId: 'snapshot-1', nodeRef: 'n1' }, value: 'Enter' },
+      ], expected: 'navigation', expectedUrl: '**/results', urlMatch: 'glob',
+    }, signal)).resolves.toMatchObject({ kind: 'action', outcome: { actionApplied: true, completedSteps: 2, postcondition: { kind: 'navigation', status: 'satisfied' } } })
+
+    expect(provider.execute).toHaveBeenLastCalledWith(expect.anything(), expect.anything(), expect.objectContaining({ kind: 'act', steps: expect.arrayContaining([expect.objectContaining({ action: 'fill' }), expect.objectContaining({ action: 'press' })]) }))
+    expect(runtime.tab('agent-1', created.tab.tabId).snapshotId).toBeUndefined()
+    await expect(runtime.execute('agent-1', created.tab.tabId, { kind: 'inspect', action: 'events' }, signal)).resolves.toMatchObject({
+      kind: 'events', events: expect.arrayContaining([expect.objectContaining({ kind: 'snapshot-created' }), expect.objectContaining({ kind: 'snapshot-invalidated' }), expect.objectContaining({ kind: 'command-complete', command: 'act:fill>press' })]),
+    })
+  })
+
+  it('rejects a lone fill navigation transaction before the Provider can mutate the page', async () => {
+    const provider = background(); const runtime = new BrowserRuntime(); runtime.registerProvider(provider)
+    const created = await runtime.createTab({ sessionId: 'agent-1', turn: 0, workspaceRoot: process.cwd(), selection: { browserId: 'background' }, signal })
+
+    await expect(runtime.execute('agent-1', created.tab.tabId, {
+      kind: 'act', action: 'fill', locator: { kind: 'role', role: 'textbox', name: 'Search', exact: true }, value: 'DeepSeek', expected: 'navigation',
+    }, signal)).rejects.toMatchObject({ code: 'INVALID_ACTION' })
+    expect(provider.execute).not.toHaveBeenCalled()
+  })
+
+  it('preserves the final page state and invalidates the snapshot when only the action postcondition fails', async () => {
+    const provider = background(); const runtime = new BrowserRuntime(); runtime.registerProvider(provider)
+    const created = await runtime.createTab({ sessionId: 'agent-1', turn: 0, workspaceRoot: process.cwd(), selection: { browserId: 'background' }, signal })
+    await runtime.execute('agent-1', created.tab.tabId, { kind: 'inspect', action: 'snapshot' }, signal)
+    provider.execute.mockImplementationOnce(async (_context, tab) => {
+      const finalTab = { ...tab, url: 'https://example.test/partial', title: 'Partial' }
+      throw new BrowserRuntimeError('POSTCONDITION_TIMEOUT', 'Action completed, but navigation did not occur.', {
+        actionApplied: true, completedSteps: 1, failedPhase: 'postcondition', postcondition: 'navigation', durationMs: 30_000, finalUrl: finalTab.url, finalTab,
+      })
+    })
+
+    await expect(runtime.execute('agent-1', created.tab.tabId, {
+      kind: 'act', action: 'click', locator: { kind: 'node', snapshotId: 'snapshot-1', nodeRef: 'n1' }, expected: 'navigation',
+    }, signal)).rejects.toMatchObject({ code: 'POSTCONDITION_TIMEOUT', details: expect.objectContaining({ actionApplied: true, completedSteps: 1, failedPhase: 'postcondition' }) })
+    expect(runtime.tab('agent-1', created.tab.tabId)).toMatchObject({ url: 'https://example.test/partial', title: 'Partial' })
+    expect(runtime.tab('agent-1', created.tab.tabId).snapshotId).toBeUndefined()
+    await expect(runtime.execute('agent-1', created.tab.tabId, { kind: 'inspect', action: 'events' }, signal)).resolves.toMatchObject({
+      events: expect.arrayContaining([expect.objectContaining({ kind: 'snapshot-invalidated' }), expect.objectContaining({ kind: 'postcondition-failed', detail: 'navigation' })]),
+    })
+  })
+
+  it('bounds and redacts the model-facing Browser event ledger', async () => {
+    const provider = background(); const runtime = new BrowserRuntime(); runtime.registerProvider(provider)
+    const created = await runtime.createTab({ sessionId: 'agent-1', turn: 0, workspaceRoot: process.cwd(), selection: { browserId: 'background' }, url: 'http://127.0.0.1/?access_token=secret', signal })
+    for (let index = 0; index < 30; index++) await runtime.execute('agent-1', created.tab.tabId, { kind: 'inspect', action: 'title' }, signal)
+    const result = await runtime.execute('agent-1', created.tab.tabId, { kind: 'inspect', action: 'events' }, signal)
+    if (result.kind !== 'events') throw new Error('Expected Browser events.')
+    expect(result.events).toHaveLength(50)
+    expect(JSON.stringify(result.events)).not.toContain('access_token=secret')
+    expect(JSON.stringify(result.events)).toContain('access_token=%5BREDACTED%5D')
+  })
+
   it('lets an explicit panel address action navigate while interrupting Agent control', async () => {
     const provider = visible(); const runtime = new BrowserRuntime(); runtime.registerProvider(provider)
     const created = await runtime.createTab({ sessionId: 'agent-1', turn: 0, workspaceRoot: process.cwd(), selection: { browserId: 'visible' }, lifecycle: 'deliverable', signal })

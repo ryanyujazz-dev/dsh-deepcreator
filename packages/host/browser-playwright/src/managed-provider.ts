@@ -4,10 +4,10 @@ import { mkdir, rm } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import {
-  chromium, firefox, webkit, type Browser, type BrowserContext, type BrowserType, type Download, type Locator, type Page,
+  chromium, firefox, webkit, type Browser, type BrowserContext, type BrowserType, type Download, type Frame, type Locator, type Page,
 } from 'playwright-core'
 import {
-  BrowserNetworkPolicy, BrowserRuntimeError, DOCUMENT_EXTRACTION_SCRIPT, INTERACTIVE_SNAPSHOT_SCRIPT, resolveWorkspaceUpload,
+  BrowserNetworkPolicy, BrowserRuntimeError, DOCUMENT_EXTRACTION_SCRIPT, INTERACTIVE_SNAPSHOT_SCRIPT, browserActionSteps, matchBrowserUrl, resolveWorkspaceUpload,
   type BrowserCommand, type BrowserCommandResult, type BrowserDescriptor, type BrowserFamily, type BrowserLocator,
   type BrowserNodeRef, type BrowserProvider, type BrowserProviderContext,
   type BrowserDocumentScriptResult, type BrowserSnapshotScriptRow, type BrowserTabRequest, type PresentationBinding, type ProviderTab,
@@ -16,6 +16,34 @@ import {
 export type PlaywrightEngine = 'chromium' | 'firefox' | 'webkit'
 interface RefEntry { snapshotId: string; selectors: Map<string, string> }
 interface PageEntry { page: Page; context: BrowserContext; browser?: Browser; ownsContext: boolean; presentation: PresentationBinding }
+
+function armMainFrameNavigation(page: Page, timeoutMs: number): { promise: Promise<Error | undefined>; dispose(): void } {
+  let settled = false
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let resolve!: (outcome: Error | undefined) => void
+  const onFrameNavigated = (frame: Frame): void => { if (frame === page.mainFrame()) finish(undefined) }
+  const cleanup = (): void => { page.off('framenavigated', onFrameNavigated); if (timer !== undefined) clearTimeout(timer) }
+  const finish = (outcome: Error | undefined): void => { if (settled) return; settled = true; cleanup(); resolve(outcome) }
+  const promise = new Promise<Error | undefined>(done => { resolve = done })
+  page.on('framenavigated', onFrameNavigated)
+  timer = setTimeout(() => finish(new Error(`Navigation did not occur within ${timeoutMs} ms.`)), timeoutMs)
+  timer.unref?.()
+  return { promise, dispose: () => finish(new Error('Navigation observation was cancelled.')) }
+}
+
+function armDownload(page: Page, timeoutMs: number): { promise: Promise<Download | Error>; dispose(): void } {
+  let settled = false
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let resolve!: (outcome: Download | Error) => void
+  const onDownload = (download: Download): void => finish(download)
+  const cleanup = (): void => { page.off('download', onDownload); if (timer !== undefined) clearTimeout(timer) }
+  const finish = (outcome: Download | Error): void => { if (settled) return; settled = true; cleanup(); resolve(outcome) }
+  const promise = new Promise<Download | Error>(done => { resolve = done })
+  page.on('download', onDownload)
+  timer = setTimeout(() => finish(new Error(`Download did not begin within ${timeoutMs} ms.`)), timeoutMs)
+  timer.unref?.()
+  return { promise, dispose: () => finish(new Error('Download observation was cancelled.')) }
+}
 
 const TYPES: Record<PlaywrightEngine, BrowserType> = { chromium, firefox, webkit }
 function dshRoot(): string { return resolve(process.env.DSH_HOME ?? join(homedir(), '.dsh')) }
@@ -179,30 +207,68 @@ export class OwnedPlaywrightProvider implements BrowserProvider {
     if (command.kind === 'wait') {
       const timeout = command.timeoutMs ?? 15_000
       if (command.condition === 'load') await page.waitForLoadState((command.value as 'load' | 'domcontentloaded' | 'networkidle' | undefined) ?? 'domcontentloaded', { timeout })
-      else if (command.condition === 'url') await page.waitForURL(command.value ?? '**', { timeout })
+      else if (command.condition === 'url') await page.waitForURL(url => matchBrowserUrl(url.toString(), command.value ?? '', command.urlMatch), { timeout })
       else if (command.condition === 'dialog') await page.waitForEvent('dialog', { timeout }).then(dialog => dialog.dismiss())
       else { if (command.locator === undefined) throw new BrowserRuntimeError('STALE_SNAPSHOT', `${command.condition} wait requires a locator.`); await this.#locator(tab.providerTabId, page, command.locator).waitFor({ state: command.condition === 'visible' ? 'visible' : 'hidden', timeout }) }
       return { kind: 'state', tab: await this.#state(tab.providerTabId, page, entry.presentation) }
     }
-    const target = command.action === 'scroll' && command.locator === undefined ? page.locator('body') : command.locator === undefined ? undefined : this.#locator(tab.providerTabId, page, command.locator)
-    if (target === undefined && command.action !== 'press') throw new BrowserRuntimeError('STALE_SNAPSHOT', `${command.action} requires a locator.`)
-    let downloadPromise: Promise<Download> | undefined
-    if (command.expected === 'download') downloadPromise = page.waitForEvent('download', { timeout: 30_000 })
-    if (command.action === 'click') await target!.click()
-    else if (command.action === 'fill') await target!.fill(command.value ?? '')
-    else if (command.action === 'type') await target!.pressSequentially(command.value ?? '')
-    else if (command.action === 'press') await (target ?? page.locator('body')).press(command.value ?? 'Enter')
-    else if (command.action === 'select') await target!.selectOption(command.value ?? '')
-    else if (command.action === 'check') await target!.check()
-    else if (command.action === 'scroll') await target!.evaluate((element, value) => element.scrollBy(0, Number(value) || 600), command.value ?? '600')
-    else if (command.action === 'drag') { if (command.destination === undefined) throw new BrowserRuntimeError('STALE_SNAPSHOT', 'drag requires a destination locator.'); await target!.dragTo(this.#locator(tab.providerTabId, page, command.destination)) }
-    else if (command.action === 'upload') await target!.setInputFiles(await Promise.all((command.files ?? []).map(path => resolveWorkspaceUpload(context.workspaceRoot, path))))
-    if (command.expected === 'navigation') await page.waitForLoadState('domcontentloaded', { timeout: 30_000 })
-    if (downloadPromise !== undefined) {
-      const download = await downloadPromise; const artifactId = `browser-download-${randomUUID()}`; const root = artifactsRoot(); await mkdir(root, { recursive: true, mode: 0o700 }); const fileName = basename(download.suggestedFilename()); await download.saveAs(join(root, `${artifactId}-${fileName}`))
-      return { kind: 'download', artifactId, fileName, tab: await this.#state(tab.providerTabId, page, entry.presentation) }
+    const steps = browserActionSteps(command)
+    const download = command.expected === 'download' ? armDownload(page, 30_000) : undefined
+    const popupPolicy = command.popupPolicy ?? (command.expected === 'navigation' ? 'same-tab' : 'deny')
+    let popup: Page | undefined
+    const popupListener = (opened: Page): void => { popup = opened }
+    page.on('popup', popupListener)
+    const navigation = command.expected === 'navigation' ? armMainFrameNavigation(page, 30_000) : undefined
+    try {
+      for (const [index, step] of steps.entries()) {
+        try {
+          const target = step.action === 'scroll' && step.locator === undefined ? page.locator('body') : step.locator === undefined ? undefined : this.#locator(tab.providerTabId, page, step.locator)
+          if (target === undefined && step.action !== 'press') throw new BrowserRuntimeError('STALE_SNAPSHOT', `${step.action} requires a locator.`)
+          if (target !== undefined) await this.#assertUnique(target)
+          if ((step.action === 'click' || (step.action === 'press' && (step.value ?? 'Enter') === 'Enter')) && popupPolicy === 'same-tab' && target !== undefined) await target.evaluate(element => { if (element instanceof HTMLAnchorElement && element.target === '_blank') element.removeAttribute('target') })
+          if (step.action === 'click') await target!.click()
+          else if (step.action === 'fill') await target!.fill(step.value ?? '')
+          else if (step.action === 'type') await target!.pressSequentially(step.value ?? '')
+          else if (step.action === 'press') await (target ?? page.locator('body')).press(step.value ?? 'Enter')
+          else if (step.action === 'select') await target!.selectOption(step.value ?? '')
+          else if (step.action === 'check') await target!.check()
+          else if (step.action === 'scroll') await target!.evaluate((element, value) => element.scrollBy(0, Number(value) || 600), step.value ?? '600')
+          else if (step.action === 'drag') { if (step.destination === undefined) throw new BrowserRuntimeError('STALE_SNAPSHOT', 'drag requires a destination locator.'); const destination = this.#locator(tab.providerTabId, page, step.destination); await this.#assertUnique(destination); await target!.dragTo(destination) }
+          else if (step.action === 'upload') await target!.setInputFiles(await Promise.all((step.files ?? []).map(path => resolveWorkspaceUpload(context.workspaceRoot, path))))
+        } catch (error) {
+          if (error instanceof BrowserRuntimeError) throw new BrowserRuntimeError(error.code, error.message, { ...(error.details ?? {}), failedStep: index, completedSteps: index, actionApplied: index > 0, failedPhase: 'action', finalTab: await this.#state(tab.providerTabId, page, entry.presentation) })
+          throw new BrowserRuntimeError('BROWSER_UNAVAILABLE', `Browser action step ${index + 1} (${step.action}) failed: ${error instanceof Error ? error.message : String(error)}`, { failedStep: index, completedSteps: index, actionApplied: index > 0, failedPhase: 'action', finalTab: await this.#state(tab.providerTabId, page, entry.presentation) })
+        }
+      }
+      if (popup !== undefined) {
+        const popupUrl = popup.url()
+        if (popupPolicy === 'deny') { await popup.close().catch(() => undefined); throw new BrowserRuntimeError('POPUP_BLOCKED', 'The action requested a new page, but popupPolicy=deny. No navigation wait was performed.', { popupUrl, completedSteps: steps.length, actionApplied: true, failedPhase: 'postcondition', postcondition: 'navigation', finalTab: await this.#state(tab.providerTabId, page, entry.presentation), suggestedNextStep: 'Retry once with popupPolicy=same-tab, or navigate directly to the inspected link href.' }) }
+        await popup.waitForLoadState('domcontentloaded', { timeout: 10_000 }).catch(() => undefined)
+        const adoptedUrl = popup.url(); await popup.close().catch(() => undefined); popup = undefined
+        if (adoptedUrl !== '' && adoptedUrl !== 'about:blank') await page.goto(adoptedUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 })
+      }
+      if (navigation !== undefined) {
+        const postconditionStartedAt = Date.now(); const outcome = await navigation.promise
+        if (outcome instanceof Error) throw new BrowserRuntimeError('POSTCONDITION_TIMEOUT', `Action completed (${steps.length}/${steps.length} steps), but the navigation postcondition did not occur. The mutation was applied and the previous snapshot is invalid.`, { completedSteps: steps.length, actionApplied: true, failedPhase: 'postcondition', postcondition: 'navigation', durationMs: Date.now() - postconditionStartedAt, finalUrl: page.url(), finalTab: await this.#state(tab.providerTabId, page, entry.presentation), suggestedNextStep: 'Inspect Browser events and the current URL; do not retry the mutation or add a fixed sleep.' })
+        await page.waitForLoadState('domcontentloaded', { timeout: 30_000 })
+      }
+      if (command.expectedUrl !== undefined) {
+        const postconditionStartedAt = Date.now()
+        try { await page.waitForURL(url => matchBrowserUrl(url.toString(), command.expectedUrl!, command.urlMatch), { timeout: 30_000 }) }
+        catch { throw new BrowserRuntimeError('POSTCONDITION_TIMEOUT', `Action completed (${steps.length}/${steps.length} steps), but the URL postcondition was not satisfied. The mutation was applied and the previous snapshot is invalid.`, { completedSteps: steps.length, actionApplied: true, failedPhase: 'postcondition', postcondition: 'url', durationMs: Date.now() - postconditionStartedAt, finalUrl: page.url(), finalTab: await this.#state(tab.providerTabId, page, entry.presentation), suggestedNextStep: 'Inspect Browser events and the current URL; do not retry the mutation or add a fixed sleep.' }) }
+      }
+      if (download !== undefined) {
+        const postconditionStartedAt = Date.now()
+        try { const received = await download.promise; if (received instanceof Error) throw received; const artifactId = `browser-download-${randomUUID()}`; const root = artifactsRoot(); await mkdir(root, { recursive: true, mode: 0o700 }); const fileName = basename(received.suggestedFilename()); await received.saveAs(join(root, `${artifactId}-${fileName}`)); return { kind: 'download', artifactId, fileName, tab: await this.#state(tab.providerTabId, page, entry.presentation) } }
+        catch { throw new BrowserRuntimeError('POSTCONDITION_TIMEOUT', `Action completed (${steps.length}/${steps.length} steps), but the download postcondition timed out.`, { completedSteps: steps.length, actionApplied: true, failedPhase: 'postcondition', postcondition: 'download', durationMs: Date.now() - postconditionStartedAt, finalTab: await this.#state(tab.providerTabId, page, entry.presentation) }) }
+      }
+      return { kind: 'state', tab: await this.#state(tab.providerTabId, page, entry.presentation) }
+    } finally {
+      page.off('popup', popupListener)
+      navigation?.dispose()
+      download?.dispose()
+      if (popup !== undefined && !popup.isClosed()) await popup.close().catch(() => undefined)
     }
-    return { kind: 'state', tab: await this.#state(tab.providerTabId, page, entry.presentation) }
   }
 
   async show(context: BrowserProviderContext, tab: ProviderTab): Promise<ProviderTab> { void context; const entry = this.#entry(tab.providerTabId); await entry.page.bringToFront(); return this.#state(tab.providerTabId, entry.page, entry.presentation) }
@@ -236,9 +302,10 @@ export class OwnedPlaywrightProvider implements BrowserProvider {
   async #closeEntry(id: string): Promise<void> { const entry = this.#entries.get(id); this.#entries.delete(id); this.#refs.delete(id); if (entry === undefined) return; await entry.page.close().catch(() => undefined); if (entry.ownsContext) { await entry.context.close().catch(() => undefined); await entry.browser?.close().catch(() => undefined) } }
   #entry(id: string): PageEntry { const entry = this.#entries.get(id); if (entry === undefined || entry.page.isClosed()) throw new BrowserRuntimeError('TAB_NOT_FOUND', `Provider tab ${id} is gone.`); return entry }
   async #state(id: string, page: Page, presentation: PresentationBinding): Promise<ProviderTab> { return { providerTabId: id, url: page.url(), title: await page.title(), loading: false, canGoBack: false, canGoForward: false, presentation } }
-  async #snapshot(id: string, page: Page, presentation: PresentationBinding): Promise<BrowserCommandResult> { const snapshotId = `snapshot-${randomUUID()}`; const rows = await page.evaluate(`(${INTERACTIVE_SNAPSHOT_SCRIPT})()`) as BrowserSnapshotScriptRow[]; const selectors = new Map<string, string>(); const nodes: BrowserNodeRef[] = rows.map((row, index) => { const nodeRef = `n${index + 1}`; selectors.set(nodeRef, row.selector); return { nodeRef, role: row.role, name: row.name, ...(row.value === undefined ? {} : { value: row.value }), ...(row.inputType === undefined ? {} : { inputType: row.inputType }), ...(row.autocomplete === undefined ? {} : { autocomplete: row.autocomplete }) } }); this.#refs.set(id, { snapshotId, selectors }); return { kind: 'snapshot', snapshot: { snapshotId, url: page.url(), title: await page.title(), text: nodes.map(node => `${node.nodeRef} ${node.role ?? 'element'} ${JSON.stringify(node.name ?? '')}`).join('\n'), nodes }, tab: await this.#state(id, page, presentation) } }
-  #locator(id: string, page: Page, locator: BrowserLocator): Locator { if (locator.kind === 'node') { const refs = this.#refs.get(id); if (refs?.snapshotId !== locator.snapshotId) throw new BrowserRuntimeError('STALE_SNAPSHOT', `Snapshot ${locator.snapshotId} is stale.`); const selector = refs.selectors.get(locator.nodeRef); if (selector === undefined) throw new BrowserRuntimeError('STALE_SNAPSHOT', `Node ${locator.nodeRef} is absent.`); return page.locator(selector).first() } if (locator.kind === 'role') return page.getByRole(locator.role as never, locator.name === undefined ? {} : { name: locator.name }).first(); if (locator.kind === 'text') return page.getByText(locator.text, { exact: locator.exact ?? false }).first(); return page.getByLabel(locator.label).first() }
-  async #element(locator: Locator, nodeRef: string): Promise<BrowserNodeRef> { return locator.evaluate((element, ref) => { const input = element as HTMLInputElement; const inputType = input.type || undefined; const autocomplete = input.autocomplete || undefined; return { nodeRef: ref, role: element.getAttribute('role') ?? element.tagName.toLowerCase(), name: element.getAttribute('aria-label') ?? (element as HTMLElement).innerText?.trim() ?? input.placeholder ?? '', ...(inputType === undefined ? {} : { inputType }), ...(autocomplete === undefined ? {} : { autocomplete }) } }, nodeRef) }
+  async #snapshot(id: string, page: Page, presentation: PresentationBinding): Promise<BrowserCommandResult> { const snapshotId = `snapshot-${randomUUID()}`; const rows = await page.evaluate(`(${INTERACTIVE_SNAPSHOT_SCRIPT})()`) as BrowserSnapshotScriptRow[]; const selectors = new Map<string, string>(); const nodes: BrowserNodeRef[] = rows.map((row, index) => { const nodeRef = `n${index + 1}`; selectors.set(nodeRef, row.selector); return { nodeRef, role: row.role, name: row.name, ...(row.stableLocators === undefined ? {} : { stableLocators: row.stableLocators }), ...(row.value === undefined ? {} : { value: row.value }), ...(row.inputType === undefined ? {} : { inputType: row.inputType }), ...(row.autocomplete === undefined ? {} : { autocomplete: row.autocomplete }), ...(row.href === undefined ? {} : { href: row.href }), ...(row.target === undefined ? {} : { target: row.target }), ...(row.opensNewTab === undefined ? {} : { opensNewTab: row.opensNewTab }), ...(row.formAction === undefined ? {} : { formAction: row.formAction }), ...(row.formMethod === undefined ? {} : { formMethod: row.formMethod }) } }); this.#refs.set(id, { snapshotId, selectors }); return { kind: 'snapshot', snapshot: { snapshotId, url: page.url(), title: await page.title(), text: nodes.map(node => `${node.nodeRef} ${node.role ?? 'element'} ${JSON.stringify(node.name ?? '')}${node.stableLocators?.[0] === undefined ? '' : ` stable=${JSON.stringify(node.stableLocators[0])}`}`).join('\n'), nodes }, tab: await this.#state(id, page, presentation) } }
+  #locator(id: string, page: Page, locator: BrowserLocator): Locator { if (locator.kind === 'node') { const refs = this.#refs.get(id); if (refs?.snapshotId !== locator.snapshotId) throw new BrowserRuntimeError('STALE_SNAPSHOT', `Snapshot ${locator.snapshotId} is stale.`); const selector = refs.selectors.get(locator.nodeRef); if (selector === undefined) throw new BrowserRuntimeError('STALE_SNAPSHOT', `Node ${locator.nodeRef} is absent.`); return page.locator(selector) } if (locator.kind === 'role') return page.getByRole(locator.role as never, locator.name === undefined ? {} : { name: locator.name, exact: locator.exact ?? false }); if (locator.kind === 'text') return page.getByText(locator.text, { exact: locator.exact ?? false }); return page.getByLabel(locator.label) }
+  async #assertUnique(locator: Locator): Promise<void> { const count = await locator.count(); if (count > 1) throw new BrowserRuntimeError('AMBIGUOUS_LOCATOR', `Locator matched ${count} elements. Use a unique snapshot nodeRef or a more specific exact locator.`) }
+  async #element(locator: Locator, nodeRef: string): Promise<BrowserNodeRef> { await this.#assertUnique(locator); return locator.evaluate((element, ref) => { const input = element as HTMLInputElement; const inputType = input.type || undefined; const autocomplete = input.autocomplete || undefined; const tag = element.tagName.toLowerCase(); const type = String(input.type || 'text').toLowerCase(); const role = element.getAttribute('role') ?? (tag === 'a' && element.hasAttribute('href') ? 'link' : tag === 'button' ? 'button' : tag === 'textarea' ? 'textbox' : tag === 'select' ? ((input as unknown as HTMLSelectElement).multiple || (input as unknown as HTMLSelectElement).size > 1 ? 'listbox' : 'combobox') : tag === 'input' ? (['button', 'submit', 'reset', 'image'].includes(type) ? 'button' : type === 'checkbox' ? 'checkbox' : type === 'radio' ? 'radio' : type === 'range' ? 'slider' : type === 'number' ? 'spinbutton' : type === 'search' ? 'searchbox' : 'textbox') : tag); const name = element.getAttribute('aria-label') ?? input.labels?.[0]?.innerText?.trim() ?? (element as HTMLElement).innerText?.trim() ?? input.placeholder ?? ''; const anchor = element instanceof HTMLAnchorElement ? element : undefined; const form = element instanceof HTMLInputElement || element instanceof HTMLButtonElement ? element.form : undefined; return { nodeRef: ref, role, name, stableLocators: name === '' ? [] : [{ kind: 'role' as const, role, name, exact: true as const }], ...(inputType === undefined ? {} : { inputType }), ...(autocomplete === undefined ? {} : { autocomplete }), ...(anchor?.href ? { href: anchor.href } : {}), ...(anchor?.target ? { target: anchor.target, opensNewTab: anchor.target === '_blank' } : {}), ...(form?.action ? { formAction: form.action } : {}), ...(form?.method ? { formMethod: form.method.toUpperCase() } : {}) } }, nodeRef) }
   async #assertNoHeadlessAuth(page: Page, status: number | undefined, headed: boolean): Promise<void> {
     if (headed) return
     const finalUrl = page.url()

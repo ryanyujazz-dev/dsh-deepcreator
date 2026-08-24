@@ -26,8 +26,9 @@ export type BrowserCapability = string
 
 export type BrowserErrorCode =
   | 'BROWSER_UNAVAILABLE' | 'PROVIDER_UNAVAILABLE' | 'CAPABILITY_UNSUPPORTED'
-  | 'TAB_NOT_FOUND' | 'TAB_NOT_OWNED' | 'STALE_SNAPSHOT' | 'CONTROL_INTERRUPTED'
+  | 'TAB_NOT_FOUND' | 'TAB_NOT_OWNED' | 'STALE_SNAPSHOT' | 'AMBIGUOUS_LOCATOR' | 'INVALID_ACTION' | 'CONTROL_INTERRUPTED'
   | 'NAVIGATION_BLOCKED' | 'APPROVAL_DENIED' | 'AUTH_REQUIRED' | 'ACCESS_DENIED' | 'HEADLESS_BLOCKED' | 'TIMEOUT'
+  | 'POSTCONDITION_TIMEOUT' | 'POPUP_BLOCKED'
   | 'PAGE_CRASHED' | 'PRESENTATION_UNAVAILABLE' | 'PROFILE_LOCKED'
   | 'PLAYWRIGHT_COMPILE_ERROR' | 'PLAYWRIGHT_RUNTIME_ERROR' | 'PLAYWRIGHT_POLICY_BLOCKED'
   | 'STALE_DOCUMENT' | 'PLAYWRIGHT_ISOLATE_CRASHED'
@@ -43,6 +44,14 @@ export interface BrowserErrorDetails {
   documentId?: string
   tabId?: string
   providerTabId?: string
+  failedStep?: number
+  actionApplied?: boolean
+  completedSteps?: number
+  failedPhase?: 'action' | 'postcondition'
+  postcondition?: 'navigation' | 'url' | 'download'
+  popupUrl?: string
+  durationMs?: number
+  recentEvents?: BrowserTabEvent[]
 }
 export type BrowserRemoteResult<T> = { ok: true; value: T } | { ok: false; code: BrowserErrorCode; message: string; details?: BrowserErrorDetails }
 
@@ -152,6 +161,24 @@ export interface BrowserTabState {
   lastAction?: { action: string; at: number; result: 'ok' | BrowserErrorCode }
 }
 
+export type BrowserTabEventKind =
+  | 'command-start' | 'command-complete' | 'command-failed'
+  | 'preflight-start' | 'preflight-complete'
+  | 'approval-requested' | 'approval-approved' | 'approval-denied'
+  | 'postcondition-complete' | 'postcondition-failed'
+  | 'popup-blocked'
+  | 'url-changed' | 'snapshot-created' | 'snapshot-invalidated'
+  | 'control-handoff' | 'control-resumed'
+export interface BrowserTabEvent {
+  sequence: number
+  at: number
+  kind: BrowserTabEventKind
+  command?: string
+  url?: string
+  detail?: string
+  durationMs?: number
+}
+
 export interface BrowserNodeRef {
   nodeRef: string
   role?: string
@@ -159,6 +186,13 @@ export interface BrowserNodeRef {
   value?: string
   inputType?: string
   autocomplete?: string
+  href?: string
+  target?: string
+  opensNewTab?: boolean
+  formAction?: string
+  formMethod?: string
+  /** Provider-neutral locators that can be resolved again after a new snapshot. */
+  stableLocators?: BrowserStableLocator[]
 }
 export interface BrowserSnapshot { snapshotId: string; url: string; title: string; text: string; nodes: BrowserNodeRef[] }
 export interface BrowserDocumentPage {
@@ -172,23 +206,60 @@ export interface BrowserDocumentPage {
 }
 export type BrowserLocator =
   | { kind: 'node'; snapshotId: string; nodeRef: string }
-  | { kind: 'role'; role: string; name?: string }
+  | { kind: 'role'; role: string; name?: string; exact?: boolean }
   | { kind: 'text'; text: string; exact?: boolean }
   | { kind: 'label'; label: string }
 
+export type BrowserStableLocator = Exclude<BrowserLocator, { kind: 'node' }>
+export type BrowserAction = 'click' | 'fill' | 'type' | 'press' | 'select' | 'check' | 'scroll' | 'drag' | 'upload'
+export type BrowserUrlMatch = 'exact' | 'contains' | 'glob'
+export type BrowserPopupPolicy = 'same-tab' | 'deny'
+export interface BrowserActionOutcome {
+  actionApplied: true
+  completedSteps: number
+  durationMs: number
+  postcondition?: { kind: 'navigation' | 'url' | 'download'; status: 'satisfied' }
+}
+export interface BrowserActionStep {
+  action: BrowserAction
+  locator?: BrowserLocator
+  destination?: BrowserLocator
+  value?: string
+  files?: string[]
+}
+export interface BrowserActCommand {
+  kind: 'act'
+  /** Backward-compatible single-action surface. New callers may use steps instead. */
+  action?: BrowserAction
+  locator?: BrowserLocator
+  destination?: BrowserLocator
+  value?: string
+  files?: string[]
+  steps?: BrowserActionStep[]
+  expected?: 'none' | 'navigation' | 'download'
+  expectedUrl?: string
+  urlMatch?: BrowserUrlMatch
+  /** Agent semantic actions adopt popups into the current logical tab by default when navigation is expected. */
+  popupPolicy?: BrowserPopupPolicy
+  /** Runtime-owned atomic observation; Providers execute only the action and postcondition. */
+  observe?: 'state' | 'snapshot'
+}
+
 export type BrowserCommand =
   | { kind: 'navigate'; action: 'goto' | 'back' | 'forward' | 'reload'; url?: string }
-  | { kind: 'inspect'; action: 'snapshot' | 'screenshot' | 'url' | 'title' | 'elementInfo' | 'document'; locator?: BrowserLocator; documentId?: string; offset?: number; maxChars?: number }
-  | { kind: 'act'; action: 'click' | 'fill' | 'type' | 'press' | 'select' | 'check' | 'scroll' | 'drag' | 'upload'; locator?: BrowserLocator; destination?: BrowserLocator; value?: string; files?: string[]; expected?: 'none' | 'navigation' | 'download' }
-  | { kind: 'wait'; condition: 'url' | 'load' | 'visible' | 'hidden' | 'dialog'; value?: string; locator?: BrowserLocator; timeoutMs?: number }
+  | { kind: 'inspect'; action: 'snapshot' | 'screenshot' | 'url' | 'title' | 'elementInfo' | 'document' | 'events'; locator?: BrowserLocator; documentId?: string; offset?: number; maxChars?: number }
+  | BrowserActCommand
+  | { kind: 'wait'; condition: 'url' | 'load' | 'visible' | 'hidden' | 'dialog'; value?: string; urlMatch?: BrowserUrlMatch; locator?: BrowserLocator; timeoutMs?: number }
 
 export type BrowserCommandResult =
   | { kind: 'state'; tab: ProviderTab }
+  | { kind: 'action'; outcome: BrowserActionOutcome; observation?: BrowserSnapshot; tab: ProviderTab }
   | { kind: 'snapshot'; snapshot: BrowserSnapshot; tab: ProviderTab }
   | { kind: 'screenshot'; dataUrl: string; tab: ProviderTab }
   | { kind: 'document'; document: BrowserDocumentPage; tab: ProviderTab }
   | { kind: 'elementInfo'; element: BrowserNodeRef; tab: ProviderTab }
-  | { kind: 'download'; artifactId: string; fileName: string; tab: ProviderTab }
+  | { kind: 'events'; events: BrowserTabEvent[]; tab: ProviderTab }
+  | { kind: 'download'; artifactId: string; fileName: string; outcome?: BrowserActionOutcome; tab: ProviderTab }
 
 export interface BrowserProvider {
   descriptor(): BrowserDescriptor

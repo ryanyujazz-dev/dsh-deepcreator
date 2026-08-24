@@ -1,4 +1,4 @@
-const SENSITIVE_QUERY_KEY = /(?:^|[-_.])(access[-_]?token|auth(?:orization)?|code|credential|csrf|xsrf|key|logid|nonce|password|rsv_t|secret|session|signature|state|ticket)(?:$|[-_.])/i
+const SENSITIVE_QUERY_KEY = /(?:^|[-_.])(access[-_]?token|token|auth(?:orization)?|code|credential|csrf|xsrf|key|logid|nonce|password|rsv_t|secret|session|signature|state|ticket)(?:$|[-_.])/i
 const NESTED_URL_KEY = /^(?:back|callback|continue|next|redirect|return)[-_]?url$/i
 const SENSITIVE_VALUE_KEY = /^(?:authorization|cookie|set-cookie|password|passwd|otp|one-time-code|payment|card-number|cvv|cvc|client-secret|access-token|refresh-token)$/i
 
@@ -18,7 +18,7 @@ export function redactBrowserUrl(raw: string): string {
 /** Final model/log boundary. Provider and UI state retain the exact URL; tool output receives the redacted copy. */
 export function sanitizeBrowserModelValue(value: unknown, key?: string): unknown {
   if (key !== undefined && SENSITIVE_VALUE_KEY.test(key)) return '[REDACTED]'
-  if (typeof value === 'string') return key === 'url' ? redactBrowserUrl(value) : value
+  if (typeof value === 'string') return key === 'url' || key === 'href' || key === 'popupUrl' || key === 'formAction' ? redactBrowserUrl(value) : value
   if (Array.isArray(value)) return value.map(item => sanitizeBrowserModelValue(item))
   if (value === null || typeof value !== 'object') return value
   return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([childKey, child]) => [childKey, sanitizeBrowserModelValue(child, childKey)]))

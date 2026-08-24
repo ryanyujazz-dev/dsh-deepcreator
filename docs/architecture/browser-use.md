@@ -28,7 +28,7 @@ The previous `browser-mcp -> CDP port -> Session Projection -> Workbench watcher
 - `tabId` is a Host-generated Provider-independent logical identity exposed to tools and clients.
 - `providerTabId` is private to a Provider.
 - `surfaceId` binds one presentable surface to exactly one logical tab.
-- `snapshotId + nodeRef` identifies an element only in one structured snapshot.
+- `snapshotId + nodeRef` identifies an element only in one structured snapshot. A named node may additionally advertise Provider-neutral `stableLocators` that are resolved again against current DOM/ARIA state.
 
 URLs are mutable data, never identity. Browser tab, lease, surface, loading, and snapshot state is process-local and intentionally absent from Session Projection. Normal tool calls, results, `open_in_deepcreator` receipts, and approvals remain in the ordinary Session log.
 
@@ -41,9 +41,9 @@ The Browser Host registers six Browser ToolDefinitions only on root Agents. The 
 | `browser_list` | Resolve Providers by automation, visibility, interaction, profile, family, and namespaced capabilities; explain every candidate mismatch. |
 | `browser_tabs` | List, create, share/claim, show, hand off, resume, close, or mark tab lifecycle. |
 | `browser_navigate` | Go to a URL, back, forward, or reload. |
-| `browser_inspect` | Read a normalized/paginated document, create a structured snapshot, inspect an element, or publish a durable screenshot attachment. |
-| `browser_act` | Perform one semantic action, with approval before classified side effects. |
-| `browser_wait` | Wait for concrete URL, load, element, or dialog conditions. |
+| `browser_inspect` | Read a normalized/paginated document, create a structured snapshot, inspect an element, read the bounded event ledger, or publish a durable screenshot attachment. |
+| `browser_act` | Perform one semantic action or an ordered transaction, settle its navigation/URL postcondition, and optionally return a fresh snapshot; approval precedes classified side effects. |
+| `browser_wait` | Wait for independent asynchronous URL, load, element, or dialog conditions; it never refreshes a snapshot. |
 | `playwright_run` | Run advanced JS/TS against the Playwright Library API in a QuickJS isolate backed by an independent Owner process. |
 | `open_in_deepcreator` | Materialize and present a URL, Browser tab, artifact, review, or future resolver contribution. |
 
@@ -58,6 +58,14 @@ An explicit `browserId`, family, or engine never falls back. Automatic selection
 `BrowserProvider` exposes descriptors, tab creation/list/claim, semantic command execution, release, close, and optional disposal. Core conformance capabilities are tabs, navigation, structured snapshot, screenshot, semantic actions, and waits. Upload, download, user tabs, manual takeover, and live surfaces remain explicit optional capabilities.
 
 `runBrowserProviderConformance()` is shipped with `@ryanyujazz/dsh-browser` so a future extension Provider can validate descriptor stability, tab visibility, snapshot versioning, and cleanup without importing Runtime internals.
+
+Interactive snapshots deliberately have two locator lifetimes. Node refs are exact and version-fenced. A named node advertises a stable exact role/name locator only when that candidate is unique; Providers reject later ambiguity with `AMBIGUOUS_LOCATOR` instead of choosing the first match. Implicit ARIA roles, accessible names, link destinations, popup intent, and form submission metadata are normalized consistently across Providers. The Agent projection keeps the compact text snapshot and a sanitized link summary rather than duplicating the internal node array.
+
+One Browser action command may carry up to 20 ordered steps; Providers retain their ref map through the complete transaction, then Runtime invalidates the snapshot once. A lone fill/type/select cannot claim a navigation postcondition and fails preflight as `INVALID_ACTION`. `observe:"snapshot"` performs the post-action observation in the same Runtime queue before another command can intervene. Side-effecting steps are classified together and produce at most one approval request before any mutation; search Enter is not a side effect when target semantics identify a search control.
+
+Navigation completion is a Provider obligation. Each Provider arms its navigation observation before mutation, accepts ordinary and same-document transitions where its platform exposes them, waits for the final load/settle point, and applies the optional URL postcondition. Popup destinations adopt into the current logical tab by default; deny policy returns `POPUP_BLOCKED` immediately. All Providers share `exact | contains | glob` URL matching; wildcard values default to glob and non-wildcard values to contains for compatibility. Consequently `expected:"navigation"` must not be followed by a compensating wait.
+
+Action mutation and postcondition settlement are separate phases. Success returns applied-step count, total duration, and postcondition status. `POSTCONDITION_TIMEOUT` retains `actionApplied`, completed steps, final tab state, failed phase, and safe recent events so an Agent can inspect instead of replaying a possibly completed action. Runtime retains a bounded, process-local event ledger per logical tab. The last 50 safe command, preflight, approval, postcondition, popup, URL, snapshot, and control-ownership events are available through `browser_inspect events`; the last ten accompany actionable Provider errors together with a zero-based transaction `failedStep`. The ledger is diagnostic state, not Session business state, and ordinary tool results remain the durable Session record.
 
 ### Managed Playwright
 
@@ -152,9 +160,9 @@ Navigation allows HTTP(S), public addresses, and loopback development endpoints.
 
 Page content, DOM, screenshots, downloads, redirects, and dialogs are untrusted. Read, navigation, screenshot, wait, and scroll are direct. Submission, sending, publication, purchase, deletion, permission changes, upload, or sensitive transfer requests a one-time DSH approval before mutation. Password, OTP, payment, cookie, and token entry is manual shielded handoff in IAB or a shared Chrome tab. Non-idempotent actions are never automatically replayed.
 
-IAB and Managed Playwright execute the same Provider-neutral structured-snapshot and document scripts; the Chrome extension carries the same policies inside its MV3 worker. `document` prefers `main/article`, otherwise `body`, preserves headings, paragraphs, lists, tables, code and sanitized links, and directly reads plain text/JSON/XML/Raw GitHub bodies. It excludes hidden content and form values, normalizes at 2 MiB, and returns 12,000-character pages (20,000 maximum) with `documentId`, `nextOffset`, and `STALE_DOCUMENT` protection. Interactive snapshots exclude hidden, inert, `aria-hidden`, non-rendered, and zero-area controls and omit password, OTP, payment, token, secret, session, signature, and related values.
+IAB and Managed Playwright execute the same Provider-neutral structured-snapshot and document scripts; the Chrome extension carries the same policies inside its MV3 worker. `document` prefers `main/article`, otherwise `body`, preserves headings, paragraphs, lists, tables, code and sanitized links, and directly reads plain text/JSON/XML/Raw GitHub bodies. It excludes hidden content and form values, normalizes at 2 MiB, and returns 12,000-character pages (20,000 maximum) with `documentId`, `nextOffset`, and `STALE_DOCUMENT` protection. Interactive snapshots exclude hidden, inert, `aria-hidden`, non-rendered, and zero-area controls, normalize native controls to implicit ARIA roles, emit stable role candidates for named controls, and omit password, OTP, payment, token, secret, session, signature, and related values.
 
-Stable errors additionally distinguish `ACCESS_DENIED`, `HEADLESS_BLOCKED`, `STALE_DOCUMENT`, and `PLAYWRIGHT_ISOLATE_CRASHED`. `AUTH_REQUIRED` is reserved for HTTP 401 or an explicit login/OTP surface; challenges use `HEADLESS_BLOCKED`, while an ordinary 403 uses `ACCESS_DENIED`. Remote failures may include HTTP status, final URL, lifecycle reason, received-byte/timeout phase diagnostics, and a suggested next step.
+Stable errors additionally distinguish `ACCESS_DENIED`, `HEADLESS_BLOCKED`, `STALE_DOCUMENT`, `PLAYWRIGHT_ISOLATE_CRASHED`, `INVALID_ACTION`, `AMBIGUOUS_LOCATOR`, `POSTCONDITION_TIMEOUT`, and `POPUP_BLOCKED`. `AUTH_REQUIRED` is reserved for HTTP 401 or an explicit login/OTP surface; challenges use `HEADLESS_BLOCKED`, while an ordinary 403 uses `ACCESS_DENIED`. Remote failures may include HTTP status, final URL, lifecycle reason, applied-action/postcondition state, popup URL, received-byte/timeout phase diagnostics, and a suggested next step.
 
 ## Package boundaries
 

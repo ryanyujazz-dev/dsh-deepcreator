@@ -1,7 +1,7 @@
 import type {
   BrowserCommand, BrowserCommandResult, BrowserDescriptor, BrowserProvider, BrowserProviderContext, BrowserTabRequest, ProviderTab, UserTabCandidate,
 } from '@ryanyujazz/dsh-browser'
-import { resolveWorkspaceUpload } from '@ryanyujazz/dsh-browser'
+import { browserActionSteps, resolveWorkspaceUpload } from '@ryanyujazz/dsh-browser'
 import { ChromeBridgeServer } from './bridge.ts'
 import { installChromeIntegration, uninstallChromeIntegration } from './install.ts'
 
@@ -17,7 +17,12 @@ export class ChromeExtensionProvider implements BrowserProvider {
   claimUserTab(context: BrowserProviderContext, candidate: UserTabCandidate): Promise<ProviderTab> { return this.bridge.call('claimUserTab', { automationSessionId: context.automationSessionId, candidate }, context.signal) }
   async execute(context: BrowserProviderContext, tab: ProviderTab, command: BrowserCommand): Promise<BrowserCommandResult> {
     let safeCommand = command
-    if (command.kind === 'act' && command.action === 'upload') safeCommand = { ...command, files: await Promise.all((command.files ?? []).map(file => resolveWorkspaceUpload(context.workspaceRoot, file))) }
+    if (command.kind === 'act') {
+      const steps = await Promise.all(browserActionSteps(command).map(async step => step.action === 'upload'
+        ? { ...step, files: await Promise.all((step.files ?? []).map(file => resolveWorkspaceUpload(context.workspaceRoot, file))) }
+        : step))
+      safeCommand = { kind: 'act', steps, ...(command.expected === undefined ? {} : { expected: command.expected }), ...(command.expectedUrl === undefined ? {} : { expectedUrl: command.expectedUrl }), ...(command.urlMatch === undefined ? {} : { urlMatch: command.urlMatch }), ...(command.popupPolicy === undefined ? {} : { popupPolicy: command.popupPolicy }) }
+    }
     return this.bridge.call('execute', { automationSessionId: context.automationSessionId, providerTabId: tab.providerTabId, command: safeCommand }, context.signal)
   }
   show(context: BrowserProviderContext, tab: ProviderTab): Promise<ProviderTab> { return this.bridge.call('show', { providerTabId: tab.providerTabId }, context.signal) }

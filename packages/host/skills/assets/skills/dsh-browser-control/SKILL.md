@@ -30,13 +30,17 @@ Legacy `mode:"visible"|"background"` and `browserId:"headless"` exist for one co
 ## Observe, act, and hand off
 
 1. For research and reading, call `browser_inspect document` first. Continue long pages with the returned `documentId` and `nextOffset`; restart without `documentId` after `STALE_DOCUMENT`.
-2. For interaction, take a fresh `browser_inspect snapshot`. A node locator is the versioned pair `snapshotId + nodeRef`.
-3. Perform one `browser_act` using the node, role/name, text, or label locator.
-4. Use `browser_wait` for actual state, not fixed sleeps, then inspect again.
-5. Use `browser_inspect screenshot` when visual rendering matters. Its result already contains a durable model-visible image; do not search the shell or workspace for screenshot files.
-6. For manual input call `browser_tabs handoffToUser`; wait until the user explicitly confirms they finished, then call `resumeControl` and approve the one-time control-return prompt before re-inspecting. User input during Agent control produces `CONTROL_INTERRUPTED`; `reacquire` has the same approval boundary, so never continue blindly.
+2. For ordinary DOM interaction, take `browser_inspect snapshot`. A node locator is the versioned pair `snapshotId + nodeRef`. A named node advertises an exact entry in `stableLocators` only when role/name is unique; preserve its `exact` field. `AMBIGUOUS_LOCATOR` means inspect and choose a more specific locator, never accept an arbitrary first match.
+3. Use one `browser_act` for one action, or `steps` for a coherent sequence such as fill then press Enter. Input submission must be one transaction containing both the fill/type and the submitting press/click. A lone fill/type/select with `expected:"navigation"` is invalid and is rejected before mutation. Do not split a sequence merely to insert waits.
+4. Put completion in the action when it belongs to the action: use `expected:"navigation"`, optional `expectedUrl`, and `urlMatch`. New-window destinations adopt into the same logical tab by default; use `popupPolicy:"deny"` only when opening a popup must be forbidden. The result is returned only after the postcondition settles. Do not follow it with a compensating `browser_wait`.
+5. Use `observe:"snapshot"` when the next decision needs fresh page state. This returns the action result and a new snapshot in the same tool call.
+6. Use `browser_wait` only for independent asynchronous state such as a delayed result, user-completed handoff, background update, or download. Waiting never refreshes a stale snapshot. URL values containing `*` use glob matching; otherwise they use contains unless `urlMatch` says otherwise.
+7. Treat the action outcome and its postcondition separately. `POSTCONDITION_TIMEOUT` can mean the action was already applied; inspect `actionApplied`, `completedSteps`, final tab state, and `browser_inspect events` before deciding what to do. Never mechanically retry the same mutation. `POPUP_BLOCKED` is immediate and includes the destination when it is safe to expose.
+8. Use `browser_inspect screenshot` when visual rendering matters. Its result already contains a durable image attachment; do not search the shell or workspace for screenshot files. Only claim visual verification when the current model can actually consume the returned image. A text-only placeholder proves attachment persistence, not pixels or layout.
+9. For canvas, virtualized grids, rich editors, maps, or other surfaces whose DOM is not the real editing surface, use screenshots and real coordinate/keyboard actions first. Before a substantial write, make a tiny probe and verify it visually or through a reliable readback.
+10. For manual input call `browser_tabs handoffToUser`; wait until the user explicitly confirms they finished, then call `resumeControl` and approve the one-time control-return prompt before re-inspecting. User input during Agent control produces `CONTROL_INTERRUPTED`; `reacquire` has the same approval boundary, so never continue blindly.
 
-Side-effecting actions require one-time approval before mutation. Passwords, OTP, payment data, cookies, and tokens must never enter Browser tool arguments or results. They are entered by the user during shielded handoff.
+Side-effecting steps are resolved during preflight and aggregated into at most one approval for the whole transaction before mutation. Search submission through an actual search control does not prompt. Passwords, OTP, payment data, cookies, and tokens must never enter Browser tool arguments or results. They are entered by the user during shielded handoff.
 
 ## Lifetime
 
@@ -46,4 +50,4 @@ Side-effecting actions require one-time approval before mutation. Passwords, OTP
 - `markHandoff` preserves a tab for exactly the next turn; mark it again if another continuation is required.
 - Do not replay non-idempotent actions after failures.
 
-Stable errors include `ACCESS_DENIED`, `HEADLESS_BLOCKED`, and `STALE_DOCUMENT` in addition to the existing Browser vocabulary. Do not reinterpret every 403 as login: use a live IAB for an explicit authentication/challenge surface, otherwise report access denial and the returned diagnostic details.
+Stable errors include `ACCESS_DENIED`, `HEADLESS_BLOCKED`, `STALE_DOCUMENT`, `INVALID_ACTION`, `AMBIGUOUS_LOCATOR`, `POSTCONDITION_TIMEOUT`, and `POPUP_BLOCKED` in addition to the existing Browser vocabulary. Do not reinterpret every 403 as login: use a live IAB for an explicit authentication/challenge surface, otherwise report access denial and the returned diagnostic details.

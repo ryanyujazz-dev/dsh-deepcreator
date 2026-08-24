@@ -3,9 +3,10 @@ import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { defineTool, type JsonValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { ApprovalService } from '@deepseek-ai/dsh-user-approval'
 import { BrowserRuntimeError } from './errors.ts'
+import { validateBrowserActionCommand } from './action.ts'
 import { sanitizeBrowserModelValue } from './model-sanitization.ts'
 import type { BrowserRuntime } from './runtime.ts'
-import type { BrowserCommand, BrowserLocator, BrowserNodeRef, BrowserSelectionRequest } from './types.ts'
+import type { BrowserActionStep, BrowserCommand, BrowserCommandResult, BrowserLocator, BrowserNodeRef, BrowserSelectionRequest, BrowserSnapshot } from './types.ts'
 
 const outputSchema = { type: 'json' } as const
 function imageAttachment(value: unknown): ImageAttachmentRef | undefined {
@@ -34,6 +35,26 @@ const locatorSchema = {
     kind: { type: 'string' as const, required: true as const, enum: ['node', 'role', 'text', 'label'] as const },
     snapshotId: { type: 'string' as const }, nodeRef: { type: 'string' as const }, role: { type: 'string' as const },
     name: { type: 'string' as const }, text: { type: 'string' as const }, exact: { type: 'boolean' as const }, label: { type: 'string' as const },
+  },
+}
+function modelSnapshot(snapshot: BrowserSnapshot): Record<string, unknown> {
+  const links = snapshot.nodes.filter(node => node.href !== undefined).map(node => ({
+    nodeRef: node.nodeRef, name: node.name, href: node.href,
+    ...(node.target === undefined ? {} : { target: node.target }),
+    ...(node.opensNewTab === undefined ? {} : { opensNewTab: node.opensNewTab }),
+  }))
+  return { snapshotId: snapshot.snapshotId, url: snapshot.url, title: snapshot.title, text: snapshot.text, nodeCount: snapshot.nodes.length, ...(links.length === 0 ? {} : { links }) }
+}
+function modelResult(result: BrowserCommandResult): unknown {
+  if (result.kind === 'snapshot') return { ...result, snapshot: modelSnapshot(result.snapshot) }
+  if (result.kind === 'action' && result.observation !== undefined) return { ...result, observation: modelSnapshot(result.observation) }
+  return result
+}
+const browserActions = ['click', 'fill', 'type', 'press', 'select', 'check', 'scroll', 'drag', 'upload'] as const
+const actionStepSchema = {
+  type: 'object' as const, additionalProperties: false, properties: {
+    action: { type: 'string' as const, required: true as const, enum: browserActions }, locator: locatorSchema, destination: locatorSchema,
+    value: { type: 'string' as const }, files: { type: 'array' as const, items: { type: 'string' as const } },
   },
 }
 
@@ -73,7 +94,7 @@ function locator(raw: unknown): BrowserLocator | undefined {
   if (raw === undefined || raw === null || typeof raw !== 'object') return undefined
   const value = raw as Record<string, unknown>
   if (value.kind === 'node' && typeof value.snapshotId === 'string' && typeof value.nodeRef === 'string') return { kind: 'node', snapshotId: value.snapshotId, nodeRef: value.nodeRef }
-  if (value.kind === 'role' && typeof value.role === 'string') return { kind: 'role', role: value.role, ...(typeof value.name === 'string' ? { name: value.name } : {}) }
+  if (value.kind === 'role' && typeof value.role === 'string') return { kind: 'role', role: value.role, ...(typeof value.name === 'string' ? { name: value.name } : {}), ...(typeof value.exact === 'boolean' ? { exact: value.exact } : {}) }
   if (value.kind === 'text' && typeof value.text === 'string') return { kind: 'text', text: value.text, ...(typeof value.exact === 'boolean' ? { exact: value.exact } : {}) }
   if (value.kind === 'label' && typeof value.label === 'string') return { kind: 'label', label: value.label }
   throw new BrowserRuntimeError('STALE_SNAPSHOT', 'Locator fields do not match its kind.')
@@ -94,20 +115,29 @@ function sideEffect(action: string, target: string, value: string | undefined, e
     return ['email', 'tel'].includes(element?.inputType ?? '')
       || /(?:name|address|postal|country|organization|email|tel)/i.test(element?.autocomplete ?? '')
   }
-  if (action === 'press' && value === 'Enter') return true
+  if (action === 'press' && value === 'Enter') {
+    if (element?.role === 'searchbox' || element?.inputType === 'search' || /(?:search|find|query|搜索|查询|查找)/i.test(semantics)) return false
+    return true
+  }
   return action === 'click' && (
     element?.inputType === 'submit'
     || element?.inputType === 'image'
     || /(submit|send|post|publish|buy|purchase|order|delete|remove|confirm|allow|permission|提交|发送|发布|购买|下单|删除|授权|确认)/i.test(semantics)
   )
 }
-async function approve(env: BrowserToolEnvironment, exec: ToolRunContext, tabId: string, action: string, target: string, dataCategory: string, value?: string, element?: BrowserNodeRef): Promise<void> {
+function approvalReason(action: string, target: string, dataCategory: string, value: string | undefined, element: BrowserNodeRef | undefined): string | undefined {
+  if (!sideEffect(action, target, value, element)) return undefined
+  return `${action} target ${JSON.stringify(target)}; data category: ${dataCategory}`
+}
+async function approve(env: BrowserToolEnvironment, exec: ToolRunContext, tabId: string, reasons: string[]): Promise<void> {
   const agent = owner(exec)
-  if (sensitive(element)) throw new BrowserRuntimeError('AUTH_REQUIRED', 'Password, OTP, and payment fields require a Browser Provider with shielded manual handoff.')
-  if (!sideEffect(action, target, value, element)) return
+  if (reasons.length === 0) return
   const tab = env.runtime.tab(String(agent.id), tabId)
   const origin = (() => { try { return new URL(tab.url).origin } catch { return tab.url } })()
-  const outcome = await env.approval.request({ agent, toolName: 'browser_act', callId: exec.callId, signal: exec.signal, reason: `${action} on ${origin}, target ${JSON.stringify(target)}; data category: ${dataCategory}.` })
+  const startedAt = Date.now()
+  env.runtime.recordToolEvent?.(String(agent.id), tabId, { kind: 'approval-requested', command: 'browser_act', detail: `${reasons.length} side-effecting step${reasons.length === 1 ? '' : 's'}` })
+  const outcome = await env.approval.request({ agent, toolName: 'browser_act', callId: exec.callId, signal: exec.signal, reason: `Browser transaction on ${origin}: ${reasons.join('; ')}.` })
+  env.runtime.recordToolEvent?.(String(agent.id), tabId, { kind: outcome === 'allowed-once' ? 'approval-approved' : 'approval-denied', command: 'browser_act', detail: outcome, durationMs: Date.now() - startedAt })
   if (outcome !== 'allowed-once') throw new BrowserRuntimeError('APPROVAL_DENIED', `Browser action was not approved (${outcome}).`)
 }
 
@@ -184,9 +214,9 @@ export function createBrowserToolDefinitions(env: BrowserToolEnvironment): ToolD
   })
 
   const browserInspect = defineTool({
-    name: 'browser_inspect', description: 'Read a normalized document (preferred for research), URL/title, a versioned interactive snapshot, element metadata, or a screenshot. document defaults to 12,000 characters per page (20,000 maximum); continue with documentId and nextOffset. Screenshot results include a durable model-visible image attachment. nodeRef values are valid only with their snapshotId.',
+    name: 'browser_inspect', description: 'Read a normalized document (preferred for research), URL/title, a versioned interactive snapshot, recent Browser events, element metadata, or a screenshot. document defaults to 12,000 characters per page (20,000 maximum); continue with documentId and nextOffset. Screenshot results include a durable image attachment; only claim visual verification when the current model can consume its pixels. nodeRef values are valid only with their snapshotId; stableLocators can be resolved after a new snapshot.',
     parameters: {
-      tabId: { type: 'string', required: true }, action: { type: 'string', required: true, enum: ['document', 'snapshot', 'screenshot', 'url', 'title', 'elementInfo'] }, locator: locatorSchema,
+      tabId: { type: 'string', required: true }, action: { type: 'string', required: true, enum: ['document', 'snapshot', 'screenshot', 'url', 'title', 'elementInfo', 'events'] }, locator: locatorSchema,
       documentId: { type: 'string' }, offset: { type: 'integer' }, maxChars: { type: 'integer' },
     },
     output: { schema: outputSchema, render }, isConcurrencySafe: args => args.action !== 'screenshot',
@@ -198,7 +228,7 @@ export function createBrowserToolDefinitions(env: BrowserToolEnvironment): ToolD
         ...(args.offset === undefined ? {} : { offset: Math.max(0, args.offset) }),
         ...(args.maxChars === undefined ? {} : { maxChars: Math.min(Math.max(args.maxChars, 1), 20_000) }),
       }, exec.signal)
-      if (result.kind !== 'screenshot') return json(result)
+      if (result.kind !== 'screenshot') return json(modelResult(result))
       const attachment = env.runtime.tab(String(agent.id), args.tabId).snapshotAttachment
       if (attachment === undefined) throw new BrowserRuntimeError('BROWSER_UNAVAILABLE', 'Browser screenshot did not produce an attachment.')
       return json({ kind: 'screenshot', attachment, artifactId: String(attachment.attachmentId), tab: result.tab })
@@ -206,33 +236,65 @@ export function createBrowserToolDefinitions(env: BrowserToolEnvironment): ToolD
   })
 
   const browserAct = defineTool({
-    name: 'browser_act', description: 'Perform one semantic Browser action. Read a fresh snapshot first and pass snapshotId+nodeRef. Side effects request one-time approval; password, OTP, and payment entry requires shielded manual handoff in a live IAB or shared Chrome tab. Actions are never automatically replayed.',
+    name: 'browser_act', description: 'Perform one semantic action or an ordered transaction of up to 20 steps. Use either action or steps. A fill/type must never be the sole action with expected=navigation: combine the input and submitting press/click in steps. Prefer stable role/text/label locators; snapshot node refs remain version-fenced. expected=navigation is a real postcondition and should not be followed by browser_wait. Popups adopt into the current logical tab by default for navigation transactions. Side effects request at most one approval before mutation; actions are never automatically replayed.',
     parameters: {
-      tabId: { type: 'string', required: true }, action: { type: 'string', required: true, enum: ['click', 'fill', 'type', 'press', 'select', 'check', 'scroll', 'drag', 'upload'] },
+      tabId: { type: 'string', required: true }, action: { type: 'string', enum: browserActions }, steps: { type: 'array', items: actionStepSchema },
       locator: locatorSchema, destination: locatorSchema, value: { type: 'string' }, files: { type: 'array', items: { type: 'string' } }, expected: { type: 'string', enum: ['none', 'navigation', 'download'] },
+      expectedUrl: { type: 'string' }, urlMatch: { type: 'string', enum: ['exact', 'contains', 'glob'] }, popupPolicy: { type: 'string', enum: ['same-tab', 'deny'] }, observe: { type: 'string', enum: ['state', 'snapshot'] },
     }, output: { schema: outputSchema, render },
     async execute(args, exec) {
-      const agent = owner(exec); const loc = locator(args.locator); const destination = locator(args.destination)
-      let element: BrowserNodeRef | undefined
-      if (loc !== undefined && args.action !== 'scroll') {
-        const info = await env.runtime.execute(String(agent.id), args.tabId, { kind: 'inspect', action: 'elementInfo', locator: loc }, exec.signal)
-        if (info.kind === 'elementInfo') element = info.element
+      const agent = owner(exec)
+      if (args.action !== undefined && args.steps !== undefined) throw new BrowserRuntimeError('INVALID_ACTION', 'Use either action or steps, not both.')
+      const parseStep = (step: { action: BrowserActionStep['action']; locator?: unknown; destination?: unknown; value?: string | undefined; files?: string[] | undefined }): BrowserActionStep => {
+        const source = locator(step.locator); const destination = locator(step.destination)
+        return { action: step.action, ...(source === undefined ? {} : { locator: source }), ...(destination === undefined ? {} : { destination }), ...(step.value === undefined ? {} : { value: step.value }), ...(step.files === undefined ? {} : { files: step.files }) }
       }
-      if (args.action === 'drag' && destination === undefined) throw new BrowserRuntimeError('STALE_SNAPSHOT', 'drag requires a semantic destination locator.')
-      const sourceTarget = element?.name === undefined
-        ? locatorLabel(loc)
-        : `${locatorLabel(loc)} (${[element.role, element.name].filter(Boolean).join(' ')})`
-      await approve(env, exec, args.tabId, args.action, destination === undefined ? sourceTarget : `${sourceTarget} to ${locatorLabel(destination)}`, args.action === 'upload' ? 'workspace file' : args.value === undefined ? 'none' : 'form value', args.value, element)
-      const command: BrowserCommand = { kind: 'act', action: args.action, ...(loc === undefined ? {} : { locator: loc }), ...(destination === undefined ? {} : { destination }), ...(args.value === undefined ? {} : { value: args.value }), ...(args.files === undefined ? {} : { files: args.files }), ...(args.expected === undefined ? {} : { expected: args.expected }) }
-      return json(await env.runtime.execute(String(agent.id), args.tabId, command, exec.signal))
+      const steps: BrowserActionStep[] = args.steps === undefined
+        ? args.action === undefined ? [] : [parseStep({ action: args.action, locator: args.locator, destination: args.destination, value: args.value, files: args.files })]
+        : args.steps.map(parseStep)
+      const command: BrowserCommand = {
+        kind: 'act', steps,
+        ...(args.expected === undefined ? {} : { expected: args.expected }),
+        ...(args.expectedUrl === undefined ? {} : { expectedUrl: args.expectedUrl }),
+        ...(args.urlMatch === undefined ? {} : { urlMatch: args.urlMatch }),
+        ...(args.popupPolicy === undefined ? {} : { popupPolicy: args.popupPolicy }),
+        ...(args.observe === undefined ? {} : { observe: args.observe }),
+      }
+      validateBrowserActionCommand(command)
+      const sessionId = String(agent.id); const preflightStartedAt = Date.now()
+      env.runtime.recordToolEvent?.(sessionId, args.tabId, { kind: 'preflight-start', command: `act:${steps.map(step => step.action).join('>')}` })
+      const approvalReasons: string[] = []
+      try {
+        for (const step of steps) {
+          let element: BrowserNodeRef | undefined
+          if (step.locator !== undefined && step.action !== 'scroll') {
+            const info = await env.runtime.execute(sessionId, args.tabId, { kind: 'inspect', action: 'elementInfo', locator: step.locator }, exec.signal)
+            if (info.kind === 'elementInfo') element = info.element
+          }
+          if (sensitive(element)) throw new BrowserRuntimeError('AUTH_REQUIRED', 'Password, OTP, and payment fields require a Browser Provider with shielded manual handoff.')
+          if (step.action === 'drag' && step.destination === undefined) throw new BrowserRuntimeError('STALE_SNAPSHOT', 'drag requires a semantic destination locator.')
+          const locatorText = locatorLabel(step.locator)
+          const elementText = [element?.role, element?.name].filter(Boolean).join(' ')
+          const sourceTarget = elementText === '' || locatorText.includes(element?.name ?? '') ? locatorText : `${locatorText} (${elementText})`
+          const target = step.destination === undefined ? sourceTarget : `${sourceTarget} to ${locatorLabel(step.destination)}`
+          const reason = approvalReason(step.action, target, step.action === 'upload' ? 'workspace file' : step.value === undefined ? 'none' : 'form value', step.value, element)
+          if (reason !== undefined) approvalReasons.push(reason)
+        }
+        env.runtime.recordToolEvent?.(sessionId, args.tabId, { kind: 'preflight-complete', command: `act:${steps.map(step => step.action).join('>')}`, durationMs: Date.now() - preflightStartedAt })
+      } catch (error) {
+        env.runtime.recordToolEvent?.(sessionId, args.tabId, { kind: 'preflight-complete', command: `act:${steps.map(step => step.action).join('>')}`, detail: 'failed', durationMs: Date.now() - preflightStartedAt })
+        throw error
+      }
+      await approve(env, exec, args.tabId, approvalReasons)
+      return json(modelResult(await env.runtime.execute(sessionId, args.tabId, command, exec.signal)))
     },
   })
 
   const browserWait = defineTool({
-    name: 'browser_wait', description: 'Wait for a URL, load state, element visibility/hidden state, or dialog. Prefer this to fixed sleeps.',
-    parameters: { tabId: { type: 'string', required: true }, condition: { type: 'string', required: true, enum: ['url', 'load', 'visible', 'hidden', 'dialog'] }, value: { type: 'string' }, locator: locatorSchema, timeoutMs: { type: 'integer' } },
+    name: 'browser_wait', description: 'Wait only for asynchronous state outside an action postcondition: URL, load state, element visibility/hidden state, or dialog. Waiting never refreshes a stale snapshot. URL values use glob when they contain *, otherwise contains; set urlMatch to override.',
+    parameters: { tabId: { type: 'string', required: true }, condition: { type: 'string', required: true, enum: ['url', 'load', 'visible', 'hidden', 'dialog'] }, value: { type: 'string' }, urlMatch: { type: 'string', enum: ['exact', 'contains', 'glob'] }, locator: locatorSchema, timeoutMs: { type: 'integer' } },
     output: { schema: outputSchema, render }, isConcurrencySafe: () => true,
-    async execute(args, exec) { const agent = owner(exec); const loc = locator(args.locator); return json(await env.runtime.execute(String(agent.id), args.tabId, { kind: 'wait', condition: args.condition, ...(args.value === undefined ? {} : { value: args.value }), ...(loc === undefined ? {} : { locator: loc }), ...(args.timeoutMs === undefined ? {} : { timeoutMs: Math.min(Math.max(args.timeoutMs, 1), 120_000) }) }, exec.signal)) },
+    async execute(args, exec) { const agent = owner(exec); const loc = locator(args.locator); return json(await env.runtime.execute(String(agent.id), args.tabId, { kind: 'wait', condition: args.condition, ...(args.value === undefined ? {} : { value: args.value }), ...(args.urlMatch === undefined ? {} : { urlMatch: args.urlMatch }), ...(loc === undefined ? {} : { locator: loc }), ...(args.timeoutMs === undefined ? {} : { timeoutMs: Math.min(Math.max(args.timeoutMs, 1), 120_000) }) }, exec.signal)) },
   })
 
   return [browserList, browserTabs, browserNavigate, browserInspect, browserAct, browserWait]

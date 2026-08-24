@@ -25,6 +25,37 @@ describe('provider-neutral interactive snapshot policy', () => {
     expect(rows.some(row => row.value === 'password-secret')).toBe(false)
     expect(rows.some(row => row.value === 'button-secret')).toBe(false)
   })
+
+  it('normalizes implicit ARIA roles and emits stable locators beside snapshot refs', () => {
+    document.body.innerHTML = `
+      <label for="query">Search docs</label><input id="query" type="text">
+      <input type="search" aria-label="Site search">
+      <a href="/docs">Documentation</a>
+      <button>Continue</button>
+    `
+    Object.defineProperty(HTMLElement.prototype, 'getBoundingClientRect', { configurable: true, value: () => ({ x: 0, y: 0, width: 100, height: 20, top: 0, right: 100, bottom: 20, left: 0, toJSON() {} }) })
+    const collect = (0, eval)(`(${INTERACTIVE_SNAPSHOT_SCRIPT})`) as () => BrowserSnapshotScriptRow[]
+    const rows = collect()
+
+    expect(rows.find(row => row.name === 'Search docs')).toMatchObject({ role: 'textbox', stableLocators: [{ kind: 'role', role: 'textbox', name: 'Search docs', exact: true }] })
+    expect(rows.find(row => row.name === 'Site search')).toMatchObject({ role: 'searchbox' })
+    expect(rows.find(row => row.name === 'Documentation')).toMatchObject({ role: 'link' })
+    expect(rows.find(row => row.name === 'Continue')).toMatchObject({ role: 'button' })
+  })
+
+  it('exposes link/form transition metadata and withholds ambiguous stable locators', () => {
+    document.body.innerHTML = `
+      <a href="/first" target="_blank">Repeated</a><a href="/second">Repeated</a>
+      <form action="/search" method="post"><label for="q">Query</label><input id="q"><button>Submit</button></form>
+    `
+    Object.defineProperty(HTMLElement.prototype, 'getBoundingClientRect', { configurable: true, value: () => ({ x: 0, y: 0, width: 100, height: 20, top: 0, right: 100, bottom: 20, left: 0, toJSON() {} }) })
+    const collect = (0, eval)(`(${INTERACTIVE_SNAPSHOT_SCRIPT})`) as () => BrowserSnapshotScriptRow[]
+    const rows = collect(); const links = rows.filter(row => row.role === 'link')
+
+    expect(links[0]).toMatchObject({ target: '_blank', opensNewTab: true, stableLocators: [] })
+    expect(links[1]?.stableLocators).toEqual([])
+    expect(rows.find(row => row.name === 'Query')).toMatchObject({ formAction: 'http://localhost:3000/search', formMethod: 'POST' })
+  })
 })
 
 describe('provider-neutral document extraction policy', () => {

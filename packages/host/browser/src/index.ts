@@ -15,6 +15,7 @@ import { BROWSER_SETTINGS_KEY, BrowserSettingsSchema, type BrowserSettings } fro
 import type { BrowserNextAction, BrowserProvider, BrowserRemoteResult, BrowserStateSnapshot, BrowserTabState } from './types.ts'
 
 export * from './errors.ts'
+export * from './action.ts'
 export * from './network-policy.ts'
 export * from './model-sanitization.ts'
 export * from './provider-conformance.ts'
@@ -22,6 +23,7 @@ export * from './runtime.ts'
 export * from './settings.ts'
 export * from './snapshot-script.ts'
 export * from './types.ts'
+export * from './url-match.ts'
 export * from './workspace-file-policy.ts'
 
 export const name = 'browser-runtime'

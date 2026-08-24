@@ -1,12 +1,14 @@
 import { randomUUID } from 'node:crypto'
 import type { AttachmentStore, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { BrowserRuntimeError } from './errors.ts'
+import { validateBrowserActionCommand } from './action.ts'
 import { BrowserNetworkPolicy } from './network-policy.ts'
+import { redactBrowserUrl } from './model-sanitization.ts'
 import type {
   BrowserCapability, BrowserCommand, BrowserCommandResult, BrowserDescriptor, BrowserNextAction, BrowserProvider,
   BrowserProviderBinding, BrowserProviderContext, BrowserRequirementAssessment, BrowserRequirements, BrowserResolution,
   BrowserSelectionRequest, BrowserSignalInput, BrowserStateSnapshot, BrowserTabLifecycle, BrowserTabState, ProviderTab, UserTabCandidate,
-  BrowserTabRemovalReason,
+  BrowserActionOutcome, BrowserTabEvent, BrowserTabRemovalReason,
 } from './types.ts'
 import { browserSignal } from './types.ts'
 
@@ -19,6 +21,8 @@ interface ManagedTab {
   turn: number
   interrupted: boolean
   queue: Promise<void>
+  events: BrowserTabEvent[]
+  eventSequence: number
 }
 interface RevisionWaiter { after: number; resolve(revision: number): void; timer: NodeJS.Timeout; abort(): void }
 interface TabTombstone { ownerSessionId: string; state: BrowserTabState; reason: BrowserTabRemovalReason; removedAt: number }
@@ -140,7 +144,7 @@ export class BrowserRuntime {
       controlState: presentationRequired ? 'presentation-required' : 'ready', presentationState: 'not-requested',
       ...(providerTab.surfaceId === undefined ? {} : { surfaceId: providerTab.surfaceId }),
     }
-    this.#tabs.set(tabId, { state, providerTab, ownerSessionId: input.sessionId, automationSessionId, workspaceRoot: input.workspaceRoot, turn: input.turn, interrupted: false, queue: Promise.resolve() })
+    this.#tabs.set(tabId, { state, providerTab, ownerSessionId: input.sessionId, automationSessionId, workspaceRoot: input.workspaceRoot, turn: input.turn, interrupted: false, queue: Promise.resolve(), events: [], eventSequence: 0 })
     this.#selected.set(input.sessionId, tabId)
     this.#bump(input.sessionId)
     return { tab: { ...state }, nextAction: this.#nextAction(state) }
@@ -168,7 +172,7 @@ export class BrowserRuntime {
       ...(input.providerTab.surfaceId === undefined ? {} : { surfaceId: input.providerTab.surfaceId }),
     }
     const automationSessionId = `${input.sessionId}:${input.turn}`
-    this.#tabs.set(tabId, { state, providerTab: input.providerTab, ownerSessionId: input.sessionId, automationSessionId, workspaceRoot: input.workspaceRoot, turn: input.turn, interrupted: false, queue: Promise.resolve() })
+    this.#tabs.set(tabId, { state, providerTab: input.providerTab, ownerSessionId: input.sessionId, automationSessionId, workspaceRoot: input.workspaceRoot, turn: input.turn, interrupted: false, queue: Promise.resolve(), events: [], eventSequence: 0 })
     this.#selected.set(input.sessionId, tabId)
     this.#bump(input.sessionId)
     return { tab: { ...state }, nextAction: this.#nextAction(state) }
@@ -222,6 +226,7 @@ export class BrowserRuntime {
   }
 
   async #executeNow(sessionId: string, tabId: string, managed: ManagedTab, command: BrowserCommand, signal: BrowserSignalInput): Promise<BrowserCommandResult> {
+    if (command.kind === 'inspect' && command.action === 'events') return { kind: 'events', events: managed.events.map(event => ({ ...event })), tab: managed.providerTab }
     if (signal.aborted) throw new BrowserRuntimeError('CONTROL_INTERRUPTED', 'Browser command was cancelled before execution.')
     if (managed.interrupted || managed.state.controlState === 'interrupted' || managed.state.controlState === 'user-control') throw new BrowserRuntimeError('CONTROL_INTERRUPTED', 'The user has control of this browser tab. Resume control explicitly before continuing.')
     if (managed.state.controlState === 'presentation-required') {
@@ -234,36 +239,94 @@ export class BrowserRuntime {
       if (command.url === undefined) throw new BrowserRuntimeError('NAVIGATION_BLOCKED', 'goto requires a URL.')
       await this.networkPolicy.assertAllowed(command.url)
     }
-    const locator = 'locator' in command ? command.locator : undefined
-    if (locator?.kind === 'node' && managed.state.snapshotId !== locator.snapshotId) {
-      throw new BrowserRuntimeError('STALE_SNAPSHOT', `Snapshot ${locator.snapshotId} is no longer current for ${tabId}.`)
+    const assertLocator = (locator: { kind: string; snapshotId?: string } | undefined, label: string) => {
+      if (locator?.kind === 'node' && managed.state.snapshotId !== locator.snapshotId) throw new BrowserRuntimeError('STALE_SNAPSHOT', `${label} snapshot ${locator.snapshotId} is no longer current for ${tabId}.`, { suggestedNextStep: 'Use a stable role/text/label locator from the last snapshot, or inspect a fresh snapshot.' })
     }
-    const destination = command.kind === 'act' ? command.destination : undefined
-    if (destination?.kind === 'node' && managed.state.snapshotId !== destination.snapshotId) throw new BrowserRuntimeError('STALE_SNAPSHOT', `Destination snapshot ${destination.snapshotId} is no longer current for ${tabId}.`)
+    const actionSteps = command.kind === 'act' ? validateBrowserActionCommand(command) : undefined
+    if (actionSteps !== undefined) {
+      for (const step of actionSteps) { assertLocator(step.locator, 'Source'); assertLocator(step.destination, 'Destination') }
+    } else assertLocator('locator' in command ? command.locator : undefined, 'Locator')
     const provider = this.#providers.get(managed.state.browserId)
     if (provider === undefined) throw new BrowserRuntimeError('PROVIDER_UNAVAILABLE', `Provider ${managed.state.browserId} is unavailable.`)
+    const commandLabel = command.kind === 'act' ? `act:${actionSteps!.map(step => step.action).join('>')}` : `${command.kind}:${'action' in command ? command.action : command.condition}`
+    this.#recordEvent(managed, { kind: 'command-start', command: commandLabel })
+    const startedAt = Date.now()
     try {
       const result = await provider.execute(this.#context(managed.automationSessionId, managed.workspaceRoot, signal), managed.providerTab, command)
       managed.providerTab = result.tab
       this.#syncState(managed, result.tab)
-      managed.state.lastAction = { action: `${command.kind}:${'action' in command ? command.action : command.condition}`, at: Date.now(), result: 'ok' }
-      if (result.kind === 'snapshot') managed.state.snapshotId = result.snapshot.snapshotId
+      managed.state.lastAction = { action: commandLabel, at: Date.now(), result: 'ok' }
+      if (result.kind === 'snapshot') {
+        managed.state.snapshotId = result.snapshot.snapshotId
+        this.#recordEvent(managed, { kind: 'snapshot-created', command: commandLabel, detail: result.snapshot.snapshotId })
+      }
       else if (result.kind === 'screenshot') {
         const attachment = await this.persistScreenshot(sessionId, tabId, result.dataUrl)
         managed.state.snapshotAttachment = attachment
         managed.state.snapshotArtifactId = String(attachment.attachmentId)
       }
-      else if (command.kind !== 'inspect') delete managed.state.snapshotId
+      else if (command.kind !== 'inspect') {
+        if (managed.state.snapshotId !== undefined) this.#recordEvent(managed, { kind: 'snapshot-invalidated', command: commandLabel, detail: managed.state.snapshotId })
+        delete managed.state.snapshotId
+      }
+      let returned = result
+      if (command.kind === 'act') {
+        const durationMs = Date.now() - startedAt
+        const postcondition: 'navigation' | 'download' | 'url' | undefined = command.expected === 'navigation' ? 'navigation' : command.expected === 'download' ? 'download' : command.expectedUrl === undefined ? undefined : 'url'
+        const outcome: BrowserActionOutcome = { actionApplied: true, completedSteps: actionSteps!.length, durationMs, ...(postcondition === undefined ? {} : { postcondition: { kind: postcondition, status: 'satisfied' } }) }
+        if (postcondition !== undefined) this.#recordEvent(managed, { kind: 'postcondition-complete', command: commandLabel, detail: postcondition, durationMs })
+        if (result.kind === 'download') returned = { ...result, outcome }
+        else {
+          let observation
+          if (command.observe === 'snapshot') {
+            const observed = await provider.execute(this.#context(managed.automationSessionId, managed.workspaceRoot, signal), managed.providerTab, { kind: 'inspect', action: 'snapshot' })
+            if (observed.kind !== 'snapshot') throw new BrowserRuntimeError('BROWSER_UNAVAILABLE', 'Provider did not return the requested atomic snapshot observation.')
+            managed.providerTab = observed.tab
+            this.#syncState(managed, observed.tab)
+            managed.state.snapshotId = observed.snapshot.snapshotId
+            this.#recordEvent(managed, { kind: 'snapshot-created', command: commandLabel, detail: observed.snapshot.snapshotId })
+            observation = observed.snapshot
+          }
+          returned = { kind: 'action', outcome, ...(observation === undefined ? {} : { observation }), tab: managed.providerTab }
+        }
+      }
+      this.#recordEvent(managed, { kind: 'command-complete', command: commandLabel, url: managed.state.url })
       this.#selected.set(sessionId, tabId)
       this.#bump(sessionId)
-      return result
+      return returned
     } catch (error) {
       const code = error instanceof BrowserRuntimeError ? error.code : 'BROWSER_UNAVAILABLE'
+      const details = error instanceof BrowserRuntimeError ? error.details : undefined
+      const finalTab = details?.finalTab
+      if (finalTab !== null && typeof finalTab === 'object' && typeof (finalTab as ProviderTab).url === 'string') {
+        managed.providerTab = finalTab as ProviderTab
+        this.#syncState(managed, managed.providerTab)
+      } else if (typeof details?.finalUrl === 'string' && details.finalUrl !== managed.state.url) {
+        const previousUrl = managed.state.url
+        managed.state.url = details.finalUrl
+        managed.providerTab = { ...managed.providerTab, url: details.finalUrl }
+        this.#recordEvent(managed, { kind: 'url-changed', url: details.finalUrl, detail: previousUrl })
+      }
+      if (command.kind === 'act' && managed.state.snapshotId !== undefined) {
+        this.#recordEvent(managed, { kind: 'snapshot-invalidated', command: commandLabel, detail: managed.state.snapshotId })
+        delete managed.state.snapshotId
+      }
       managed.state.lastAction = { action: command.kind, at: Date.now(), result: code }
+      if (details?.failedPhase === 'postcondition') this.#recordEvent(managed, { kind: 'postcondition-failed', command: commandLabel, detail: typeof details.postcondition === 'string' ? details.postcondition : code, durationMs: typeof details.durationMs === 'number' ? details.durationMs : Date.now() - startedAt })
+      if (code === 'POPUP_BLOCKED') this.#recordEvent(managed, { kind: 'popup-blocked', command: commandLabel, url: typeof details?.popupUrl === 'string' ? details.popupUrl : managed.state.url })
+      this.#recordEvent(managed, { kind: 'command-failed', command: commandLabel, detail: code, url: managed.state.url })
       if (code === 'TAB_NOT_FOUND') this.#removeTab(tabId, 'provider-close')
       this.#bump(sessionId)
+      if (error instanceof BrowserRuntimeError) throw new BrowserRuntimeError(error.code, error.message, { ...(error.details ?? {}), recentEvents: managed.events.slice(-10) })
       throw error
     }
+  }
+
+  /** Add a redacted phase event from the Browser Tool preflight/approval layer. */
+  recordToolEvent(sessionId: string, tabId: string, event: Omit<BrowserTabEvent, 'sequence' | 'at'>): void {
+    const managed = this.#owned(sessionId, tabId)
+    this.#recordEvent(managed, event)
+    this.#bump(sessionId)
   }
 
   markPresentationPending(sessionId: string, tabId: string): void {
@@ -288,6 +351,7 @@ export class BrowserRuntime {
     const managed = this.#owned(sessionId, tabId)
     managed.interrupted = false
     managed.state.controlState = managed.state.presentationBinding.owner === 'deepcreator' && managed.state.presentationBinding.requiredBeforeControl && managed.state.presentationState !== 'presented' ? 'presentation-required' : 'ready'
+    this.#recordEvent(managed, { kind: 'control-resumed', url: managed.state.url, detail: 'reacquire' })
     this.#bump(sessionId)
     return { ...managed.state }
   }
@@ -340,7 +404,7 @@ export class BrowserRuntime {
       controlState: presentationBinding.owner === 'deepcreator' && presentationBinding.requiredBeforeControl ? 'presentation-required' : 'ready', presentationState: 'not-requested',
       ...(providerTab.surfaceId === undefined ? {} : { surfaceId: providerTab.surfaceId }),
     }
-    this.#tabs.set(tabId, { state, providerTab, ownerSessionId: input.sessionId, automationSessionId, workspaceRoot: input.workspaceRoot, turn: input.turn, interrupted: false, queue: Promise.resolve() })
+    this.#tabs.set(tabId, { state, providerTab, ownerSessionId: input.sessionId, automationSessionId, workspaceRoot: input.workspaceRoot, turn: input.turn, interrupted: false, queue: Promise.resolve(), events: [], eventSequence: 0 })
     this.#bump(input.sessionId)
     return { tab: { ...state }, nextAction: this.#nextAction(state) }
   }
@@ -369,6 +433,7 @@ export class BrowserRuntime {
     if (provider.handoffToUser !== undefined) managed.providerTab = await provider.handoffToUser(this.#context(managed.automationSessionId, managed.workspaceRoot, signal), managed.providerTab)
     managed.interrupted = true
     managed.state.controlState = 'user-control'
+    this.#recordEvent(managed, { kind: 'control-handoff', url: managed.state.url })
     this.#syncState(managed, managed.providerTab)
     this.#bump(sessionId)
     return { ...managed.state }
@@ -381,6 +446,7 @@ export class BrowserRuntime {
     managed.interrupted = false
     this.#syncState(managed, managed.providerTab)
     managed.state.controlState = managed.state.presentationBinding.owner === 'deepcreator' && managed.state.presentationBinding.requiredBeforeControl && managed.state.presentationState !== 'presented' ? 'presentation-required' : 'ready'
+    this.#recordEvent(managed, { kind: 'control-resumed', url: managed.state.url })
     this.#bump(sessionId)
     return { ...managed.state }
   }
@@ -592,8 +658,19 @@ export class BrowserRuntime {
   }
   #context(automationSessionId: string, workspaceRoot: string, signal: BrowserSignalInput): BrowserProviderContext { return { automationSessionId, workspaceRoot, signal: browserSignal(signal) } }
   #syncState(managed: ManagedTab, tab: ProviderTab): void {
+    const previousUrl = managed.state.url
     Object.assign(managed.state, { url: tab.url, title: tab.title, loading: tab.loading, canGoBack: tab.canGoBack, canGoForward: tab.canGoForward })
+    if (previousUrl !== tab.url) this.#recordEvent(managed, { kind: 'url-changed', url: tab.url, detail: previousUrl })
     if (tab.surfaceId !== undefined) managed.state.surfaceId = tab.surfaceId
+  }
+  #recordEvent(managed: ManagedTab, event: Omit<BrowserTabEvent, 'sequence' | 'at'>): void {
+    const safeEvent = {
+      ...event,
+      ...(event.url === undefined ? {} : { url: redactBrowserUrl(event.url) }),
+      ...(event.kind !== 'url-changed' || event.detail === undefined ? {} : { detail: redactBrowserUrl(event.detail) }),
+    }
+    managed.events.push({ sequence: ++managed.eventSequence, at: Date.now(), ...safeEvent })
+    if (managed.events.length > 50) managed.events.splice(0, managed.events.length - 50)
   }
   async #drain(managed: ManagedTab): Promise<void> {
     await Promise.race([managed.queue.catch(() => undefined), new Promise<void>(resolve => { const timer = setTimeout(resolve, 5_000); timer.unref?.() })])

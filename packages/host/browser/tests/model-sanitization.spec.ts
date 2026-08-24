@@ -11,12 +11,13 @@ describe('Browser model-output sanitization', () => {
   })
 
   it('redacts every URL field recursively without mutating non-URL text', () => {
-    const original = { tab: { url: 'https://example.test/?signature=s3cr3t&q=public#access_token=fragment-secret', title: 'signature=s3cr3t' } }
+    const original = { tab: { url: 'https://example.test/?signature=s3cr3t&q=public#access_token=fragment-secret', title: 'signature=s3cr3t' }, link: { href: 'https://example.test/docs?token=secret' } }
     const result = sanitizeBrowserModelValue(original) as typeof original
     expect(new URL(result.tab.url).searchParams.get('signature')).toBe('[REDACTED]')
     expect(new URL(result.tab.url).searchParams.get('q')).toBe('public')
     expect(new URL(result.tab.url).hash).not.toContain('fragment-secret')
     expect(result.tab.title).toBe('signature=s3cr3t')
+    expect(new URL(result.link.href).searchParams.get('token')).toBe('[REDACTED]')
     expect(original.tab.url).toContain('s3cr3t')
   })
 })
