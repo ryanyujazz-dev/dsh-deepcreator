@@ -35,6 +35,7 @@ const OWNED_DEPENDENCIES = new Set([
   '@ryanyujazz/dsh-client-ui-primitives',
   '@ryanyujazz/dsh-client-ui-settings',
   '@ryanyujazz/dsh-client-ui-settings-general',
+  '@ryanyujazz/dsh-client-ui-skills',
   '@ryanyujazz/dsh-client-ui-sidebar',
   '@ryanyujazz/dsh-client-ui-subagent',
   '@ryanyujazz/dsh-client-ui-theme',
@@ -54,6 +55,7 @@ const OWNED_DEPENDENCIES = new Set([
   '@ryanyujazz/dsh-browser-mcp',
   '@ryanyujazz/dsh-jobs-admin',
   '@ryanyujazz/dsh-session-admin',
+  '@ryanyujazz/dsh-skill-admin',
   '@ryanyujazz/dsh-review',
   '@ryanyujazz/dsh-skills',
   '@ryanyujazz/dsh-terminal-workbench',
@@ -268,6 +270,8 @@ if (!dump.includes('@ryanyujazz/dsh-client-ui-conversation')
   || !activeCompositionRow('deepcreator-client-presentation', '@ryanyujazz/dsh-client-presentation')
   || !activeCompositionRow('deepcreator-ui-browser', '@ryanyujazz/dsh-client-ui-browser')
   || !activeCompositionRow('deepcreator-ui-image-generation', '@ryanyujazz/dsh-client-ui-image-generation')
+  || !activeCompositionRow('deepcreator-skill-admin', '@ryanyujazz/dsh-skill-admin')
+  || !activeCompositionRow('deepcreator-ui-skills', '@ryanyujazz/dsh-client-ui-skills')
   || dump.includes('deepcreator-browser-mcp')
   || dump.includes('execflow-conversation')
   || dump.includes('execflow-tool')) {

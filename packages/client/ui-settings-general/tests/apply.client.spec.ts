@@ -49,6 +49,10 @@ async function bench(isLoopback = true) {
     api: { settings: { describe: settingsDescribe, openDocument: settingsOpenDocument } },
     isLoopback,
   } as never)
+  ctx.provide('settingsNavigation', {
+    commands: { getSnapshot: () => ({ sequence: 0, request: null }), subscribe: () => () => undefined },
+    open: vi.fn(), close: vi.fn(),
+  })
   return { ctx, slots: ctx.get('slots') as SlotRegistry, locale, settingsDescribe, settingsOpenDocument }
 }
 
@@ -76,7 +80,7 @@ function generalEntry(slots: SlotRegistry) {
 
 describe('ui-settings-general apply', () => {
   it('declares the services it uses', () => {
-    expect(inject).toEqual(['slots', 'locale', 'connection'])
+    expect(inject).toEqual(['slots', 'locale', 'connection', 'settingsNavigation'])
   })
 
   it('fills all five seats for declarations before or after apply', async () => {

@@ -12,8 +12,7 @@ import type { WorkbenchPanelIconProps, WorkbenchPanelProps } from '@ryanyujazz/d
 import type {} from '@ryanyujazz/dsh-client-ui-workbench/client'
 import type {} from '@ryanyujazz/dsh-client-ui-settings/client'
 import { BrowserPanel } from './BrowserPanel.tsx'
-import { BrowserDataSetting } from './BrowserDataSetting.tsx'
-import { BrowserPreferenceSetting } from './BrowserPreferenceSetting.tsx'
+import { BrowserSettingsGroup } from './BrowserSettingsGroup.tsx'
 import { en, NS, zh, type BrowserLocaleKey } from './locales.ts'
 import { BrowserClientRuntime, type BrowserRemoteClient } from './runtime.ts'
 
@@ -74,8 +73,7 @@ export function apply(ctx: ClientContext): void {
       ctx.workbench.registerType({ id: 'browser', label: () => ctx.locale.bind(NS)('browser'), scope: 'session', order: 5, supportsHome: true, supportsCreate: false, supportsMultipleInstances: true, minWidth: 150, minHeight: 280, preferredWidth: 640, initialWidthRatio: 1 / 2, closePolicy: 'provider-controlled', disabledWhenAddressed: true }),
       ctx.slots.inject('deepcreator.workbench.panel', () => ctx.slots.register({ name: 'deepcreator.workbench.panel', id: 'browser', locale: NS }, panel)),
       ctx.slots.inject('deepcreator.workbench.panel-icon', () => ctx.slots.register({ name: 'deepcreator.workbench.panel-icon', id: 'browser' }, ({ size }: WorkbenchPanelIconProps) => DeepCreatorIconPreview16({ size }))),
-      ctx.slots.inject('deepcreator.settings.preferences.item', () => ctx.slots.register({ name: 'deepcreator.settings.preferences.item', id: 'browser-data', order: 50, locale: NS, inject: () => ({ remote, browser }) }, BrowserDataSetting)),
-      ctx.slots.inject('deepcreator.settings.preferences.item', () => ctx.slots.register({ name: 'deepcreator.settings.preferences.item', id: 'browser-preferences', order: 40, locale: NS, inject: () => ({ settings: browserSettings }) }, BrowserPreferenceSetting)),
+      ctx.slots.inject('settings.general.item', () => ctx.slots.register({ name: 'settings.general.item', id: 'browser-settings', order: 15, locale: NS, inject: () => ({ remote, browser, settings: browserSettings }) }, BrowserSettingsGroup)),
       ctx.locale.register(NS, { zh, en }), ctx.presentation.providers.register(presenter),
       ctx.workbench.dismissals.subscribe(() => {
         const dismissal = ctx.workbench.dismissals.getSnapshot()

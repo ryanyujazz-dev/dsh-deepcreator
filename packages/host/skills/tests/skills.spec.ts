@@ -50,6 +50,10 @@ describe('bundled official skills provider', () => {
       expect(candidate.rank).toBe(600)
       expect(candidate.resourceBase).toMatchObject({ kind: 'directory' })
       expect(typeof candidate.locator).toBe('string')
+      expect(candidate.metadata).toMatchObject({
+        developer: expect.stringMatching(/^(DeepSeek Harness|DeepCreator)$/),
+        localizedDescriptions: { en: candidate.description, zh: expect.any(String) },
+      })
     }
   })
 
@@ -62,11 +66,14 @@ describe('bundled official skills provider', () => {
       expect(definition.content.startsWith('#')).toBe(true)
       expect(definition.name).toBe(candidate.name)
       expect(definition.resourceBase).toEqual(candidate.resourceBase)
+      expect(definition.metadata).toEqual(candidate.metadata)
     }
     const translate = candidates.find(candidate => candidate.name === 'dsh-translate-docs')
     expect(translate?.invocation).toEqual({ modelInvocable: false, userInvocable: true })
     const review = candidates.find(candidate => candidate.name === 'dsh-code-review')
     expect(review?.invocation).toEqual({ modelInvocable: true, userInvocable: true })
+    expect(review?.metadata?.developer).toBe('DeepSeek Harness')
+    expect(candidates.find(candidate => candidate.name === 'dsh-browser-control')?.metadata?.developer).toBe('DeepCreator')
   })
 
   it('resolves packaged skill resources through the directory resource base', async () => {

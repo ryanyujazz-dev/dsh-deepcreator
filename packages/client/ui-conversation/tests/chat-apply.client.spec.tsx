@@ -97,6 +97,7 @@ describe('apply wiring', () => {
     expect(b.slots.spec('conversation.hero.workspace')).toEqual({ kind: 'single', scope: 'root' })
     expect(b.slots.spec('conversation.hero.agentPreset')).toEqual({ kind: 'single', scope: 'root' })
     expect(b.slots.entries('settings.general.item').map(entry => entry.options.id)).toEqual(['composer-enter'])
+    expect(b.slots.entries('settings.general.item')[0]!.options.order).toBe(5)
     expect(b.slots.entries('deepcreator.settings.preferences.item').map(entry => entry.options.id))
       .toEqual(['default-render-mode'])
     await b.runtime.dispose()

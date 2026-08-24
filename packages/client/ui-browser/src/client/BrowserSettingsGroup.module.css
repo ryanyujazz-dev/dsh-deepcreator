@@ -1,0 +1,4 @@
+.group { display:flex; flex-direction:column; padding-top:16px; }
+.title { margin:0 0 8px; color:var(--dsw-alias-label-primary); font-size:14px; line-height:22px; font-weight:600; }
+.items { display:flex; flex-direction:column; }
+.items > * + * { border-top:1px solid var(--dsw-alias-border-l2); }

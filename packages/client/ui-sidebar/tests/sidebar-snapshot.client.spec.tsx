@@ -5,8 +5,8 @@
  * supplies the layout's owner share at the render site, and the snapshot
  * captures exactly the 'sidebar' slot's output (CSS-module class names
  * folded to their semantic locals by the runtime's serializer). The child
- * holes (sidebar.workspaces / sidebar.settings) have no registrant here, so
- * the snapshots pin the shell chrome itself.
+ * holes (primary feature actions / workspaces / settings) have no registrant
+ * here, so the snapshots pin the shell chrome itself.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, waitFor } from '@testing-library/react'
@@ -47,7 +47,7 @@ describe('sidebar shell snapshots', () => {
     const slot = runtime.renderSlot('sidebar', { collapsed: false, width: 300 })
     // Wordmark + capsule both start a session in the expanded state.
     expect(slot.view.getAllByRole('button', { name: '新建会话' })).toHaveLength(2)
-    expect(slot.view.getByRole('button', { name: '技能（即将推出）' })).toHaveProperty('disabled', true)
+    expect(slot.view.queryByRole('button', { name: /技能/ })).toBeNull()
     expect(slot.view.getByRole('button', { name: '定时任务（即将推出）' })).toHaveProperty('disabled', true)
     expect(slot.container.querySelector('text')?.textContent).toBe('DeepCreator')
     expect(slot.container).toMatchSnapshot()
@@ -59,7 +59,7 @@ describe('sidebar shell snapshots', () => {
     const slot = runtime.renderSlot('sidebar', { collapsed: false, width: 300 })
     // Wordmark + capsule both start a session in the expanded state.
     expect(slot.view.getAllByRole('button', { name: 'New session' })).toHaveLength(2)
-    expect(slot.view.getByRole('button', { name: 'Skills (coming soon)' })).toHaveProperty('disabled', true)
+    expect(slot.view.queryByRole('button', { name: /Skills/ })).toBeNull()
     expect(slot.view.getByRole('button', { name: 'Scheduled tasks (coming soon)' })).toHaveProperty('disabled', true)
     expect(slot.container).toMatchSnapshot()
     await runtime.dispose()

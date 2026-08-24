@@ -18,7 +18,7 @@
 import { useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
-  BrandWordmark, DeepCreatorIconSkillOutline16, DeepCreatorIconTimer16,
+  BrandWordmark, DeepCreatorIconTimer16,
   IconNewChatOutline16, IconPanelLeftOutline16,
   SIDEBAR_ICON_SIZE, SidebarRow, Tooltip,
 } from '@ryanyujazz/dsh-client-ui-primitives'
@@ -161,9 +161,8 @@ export function SidebarRoot({
         </Tooltip>
       </div>
 
-      {/* Shell-owned primary list: identical SidebarRow geometry to project
-          and Session titles. Skills and Scheduled Tasks are visual
-          placeholders until feature plugins own their behavior. */}
+      {/* Shell-owned New Session and Scheduled Tasks rows frame a list of
+          independently disposable feature actions. */}
       <ul className={css.primaryList} aria-label={t('primary.aria')}>
         <li className={css.primaryListItem}>
           <Tooltip label={t('session.new.label')} delayMs={500} disabled={wide}>
@@ -179,18 +178,7 @@ export function SidebarRoot({
             </SidebarRow>
           </Tooltip>
         </li>
-        <li className={css.primaryListItem}>
-          <SidebarRow
-            as="button"
-            type="button"
-            className={css.skillsPlaceholder}
-            aria-label={t('skills.placeholder.label')}
-            disabled
-          >
-            <DeepCreatorIconSkillOutline16 size={SIDEBAR_ICON_SIZE} />
-            {wide && <span className={clsx(css.primaryLabel, css.wide)}>{t('skills')}</span>}
-          </SidebarRow>
-        </li>
+        {renderSlot('sidebar.primary.action', { wide })}
         <li className={css.primaryListItem}>
           <SidebarRow
             as="button"

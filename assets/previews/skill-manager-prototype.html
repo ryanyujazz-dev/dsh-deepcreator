@@ -1,0 +1,1328 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>DeepCreator · Skill 管理原型</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --base: #fff;
+      --sidebar: #f9fafb;
+      --module: #f5f6f7;
+      --elevated: #fff;
+      --text: #0f1115;
+      --text-2: #61666b;
+      --text-3: #81858c;
+      --caption: #adb2b8;
+      --border-1: rgba(0, 0, 0, .04);
+      --border-2: rgba(0, 0, 0, .10);
+      --hover: rgba(38, 49, 72, .06);
+      --active: rgba(38, 49, 72, .10);
+      --brand: #4176e6;
+      --brand-hover: #679efe;
+      --brand-soft: #e4edfd;
+      --danger: #ec1313;
+      --danger-soft: rgba(236, 19, 19, .05);
+      --warning: #d98216;
+      --warning-soft: #fef5e7;
+      --success: #22c55e;
+      --shadow: 0 18px 55px rgba(34, 43, 62, .14);
+      --font-ui: "SF Pro Text", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      --font-code: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, monospace;
+      --sidebar-width: 252px;
+      --catalog-width: 330px;
+      --header-height: 48px;
+    }
+
+    body.dark {
+      color-scheme: dark;
+      --base: #151517;
+      --sidebar: #1b1b1c;
+      --module: #353638;
+      --elevated: #2c2c2e;
+      --text: #f9fafb;
+      --text-2: #cfd3d6;
+      --text-3: #adb2b8;
+      --caption: #81858c;
+      --border-1: rgba(255, 255, 255, .06);
+      --border-2: rgba(255, 255, 255, .12);
+      --hover: rgba(255, 255, 255, .08);
+      --active: rgba(255, 255, 255, .14);
+      --brand: #679efe;
+      --brand-hover: #4176e6;
+      --brand-soft: rgba(103, 158, 254, .14);
+      --danger: #f25a5a;
+      --danger-soft: rgba(242, 90, 90, .15);
+      --warning: #f7ad31;
+      --warning-soft: rgba(247, 173, 49, .12);
+      --shadow: 0 20px 60px rgba(0, 0, 0, .42);
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body { width: 100%; height: 100%; }
+
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: var(--base);
+      color: var(--text);
+      font: 400 14px/22px var(--font-ui);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button,
+    input { font: inherit; }
+
+    button { color: inherit; }
+    svg { display: block; }
+    [hidden] { display: none !important; }
+
+    .app {
+      display: grid;
+      grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+      width: 100%;
+      height: 100%;
+      min-width: 760px;
+    }
+
+    .icon {
+      width: 16px;
+      height: 16px;
+      flex: none;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .icon-14 { width: 14px; height: 14px; }
+    .icon-12 { width: 12px; height: 12px; }
+
+    .sidebar {
+      display: flex;
+      min-width: 0;
+      flex-direction: column;
+      overflow: hidden;
+      border-right: 1px solid var(--border-1);
+      background: var(--sidebar);
+    }
+
+    .sidebar-head {
+      display: flex;
+      height: var(--header-height);
+      flex: none;
+      align-items: center;
+      padding: 0 14px;
+    }
+
+    .traffic { display: flex; gap: 8px; }
+    .traffic i { width: 12px; height: 12px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); }
+    .traffic i:nth-child(1) { background: #ff5f57; }
+    .traffic i:nth-child(2) { background: #febc2e; }
+    .traffic i:nth-child(3) { background: #28c840; }
+
+    .brand {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      gap: 6px;
+      margin-left: 10px;
+      font-weight: 600;
+      letter-spacing: -.35px;
+    }
+
+    .whale { width: 17px; height: 14px; fill: currentColor; stroke: none; }
+
+    .sidebar-body {
+      min-height: 0;
+      flex: 1;
+      overflow-y: auto;
+      padding: 0 7px 16px;
+    }
+
+    .nav-list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+
+    .nav-row {
+      display: flex;
+      width: 100%;
+      height: 30px;
+      align-items: center;
+      gap: 8px;
+      padding: 0 8px;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .nav-row:hover { background: var(--hover); }
+    .nav-row.active { background: var(--active); }
+    .nav-row .label { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .nav-add {
+      display: grid;
+      width: 24px;
+      height: 24px;
+      place-items: center;
+      padding: 0;
+      border: 0;
+      border-radius: 7px;
+      background: transparent;
+      color: var(--text-3);
+      cursor: pointer;
+      opacity: 0;
+    }
+
+    .nav-row:hover .nav-add,
+    .nav-add:focus-visible { opacity: 1; }
+    .nav-add:hover { color: var(--text); background: var(--hover); }
+
+    .section { margin-top: 10px; }
+    .section-title { height: 30px; padding: 4px 8px; color: var(--text-3); font-size: 12px; }
+
+    .workspace-row {
+      display: flex;
+      height: 30px;
+      align-items: center;
+      gap: 8px;
+      padding: 0 8px;
+      border-radius: 8px;
+      color: var(--text-2);
+    }
+
+    .workspace-row:hover { background: var(--hover); }
+
+    .session-row {
+      display: flex;
+      height: 30px;
+      align-items: center;
+      padding: 0 8px 0 32px;
+      border-radius: 8px;
+      color: var(--text-3);
+      font-size: 13px;
+    }
+
+    .session-row:hover { color: var(--text); background: var(--hover); }
+
+    .sidebar-foot { padding: 7px; flex: none; }
+
+    .skills-shell {
+      display: grid;
+      min-width: 0;
+      grid-template-rows: var(--header-height) minmax(0, 1fr);
+      overflow: hidden;
+      background: var(--base);
+    }
+
+    .topbar {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      gap: 10px;
+      padding: 0 14px 0 18px;
+      border-bottom: 1px solid var(--border-1);
+    }
+
+    .page-title { display: flex; min-width: 132px; align-items: baseline; gap: 8px; }
+    .page-title strong { font-size: 14px; font-weight: 600; }
+    .page-count { color: var(--text-3); font-size: 12px; }
+
+    .toolbar-spacer { flex: 1; }
+
+    .search {
+      position: relative;
+      width: min(300px, 28vw);
+    }
+
+    .search svg {
+      position: absolute;
+      top: 50%;
+      left: 11px;
+      color: var(--text-3);
+      transform: translateY(-50%);
+      pointer-events: none;
+    }
+
+    .search input {
+      width: 100%;
+      height: 32px;
+      padding: 0 34px;
+      border: 0;
+      border-radius: 9px;
+      outline: 0;
+      background: var(--module);
+      color: var(--text);
+      font-size: 12px;
+    }
+
+    .search input::placeholder { color: var(--caption); }
+    .search input:focus { box-shadow: inset 0 0 0 1px var(--brand); }
+    .search kbd { position: absolute; top: 7px; right: 9px; color: var(--caption); font: 400 10px/18px var(--font-ui); }
+
+    .button,
+    .selector,
+    .icon-button {
+      display: inline-flex;
+      height: 32px;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      padding: 0 11px;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .button:hover,
+    .selector:hover,
+    .icon-button:hover { background: var(--hover); }
+    .button:focus-visible,
+    .selector:focus-visible,
+    .icon-button:focus-visible,
+    .nav-row:focus-visible,
+    .skill-row:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+
+    .selector { background: var(--module); color: var(--text-2); font-size: 12px; }
+    .button.primary { background: var(--brand); color: #fff; }
+    .button.primary:hover { background: var(--brand-hover); }
+    .button.outline { box-shadow: inset 0 0 0 1px var(--border-2); }
+    .button.danger { color: var(--danger); background: var(--danger-soft); }
+    .button:disabled { cursor: default; opacity: .45; }
+    .icon-button { width: 32px; padding: 0; color: var(--text-2); }
+
+    .main {
+      display: grid;
+      min-width: 0;
+      grid-template-columns: var(--catalog-width) minmax(0, 1fr);
+      overflow: hidden;
+    }
+
+    .catalog {
+      display: flex;
+      min-width: 0;
+      flex-direction: column;
+      overflow: hidden;
+      border-right: 1px solid var(--border-1);
+      background: var(--sidebar);
+    }
+
+    .catalog-summary {
+      display: flex;
+      height: 36px;
+      flex: none;
+      align-items: center;
+      padding: 0 12px;
+      color: var(--text-3);
+      font-size: 11px;
+    }
+
+    .catalog-summary .right { margin-left: auto; }
+    .skill-list { flex: 1; min-height: 0; margin: 0; padding: 0 7px 16px; overflow-x: hidden; overflow-y: auto; list-style: none; }
+
+    .skill-row {
+      position: relative;
+      display: grid;
+      width: 100%;
+      min-height: 60px;
+      grid-template-columns: 28px minmax(0, 1fr) auto;
+      align-items: center;
+      column-gap: 8px;
+      padding: 7px 8px;
+      border: 0;
+      border-radius: 9px;
+      background: transparent;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .skill-row:hover { background: var(--hover); }
+    .skill-row.active { background: var(--active); }
+
+    .skill-glyph {
+      display: grid;
+      width: 28px;
+      height: 28px;
+      place-items: center;
+      border-radius: 8px;
+      background: var(--module);
+      color: var(--text-2);
+    }
+
+    .skill-row.active .skill-glyph { color: var(--brand); background: var(--brand-soft); }
+    .skill-row.problem .skill-glyph { color: var(--warning); background: var(--warning-soft); }
+    .skill-copy { min-width: 0; }
+    .skill-name { display: block; overflow: hidden; color: var(--text); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+    .skill-meta { display: block; overflow: hidden; color: var(--text-3); font-size: 11px; line-height: 17px; text-overflow: ellipsis; white-space: nowrap; }
+
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: transparent; }
+    .status-dot.update { background: var(--brand); }
+    .status-dot.problem { background: var(--warning); }
+    .status-dot.shadowed { box-shadow: inset 0 0 0 1px var(--text-3); }
+
+    .empty-list { padding: 48px 20px; color: var(--text-3); text-align: center; }
+    .empty-list strong { display: block; margin-bottom: 5px; color: var(--text-2); font-weight: 500; }
+
+    .detail {
+      position: relative;
+      min-width: 0;
+      overflow-y: auto;
+      background: var(--base);
+      scrollbar-gutter: stable;
+    }
+
+    .detail-inner { width: min(760px, calc(100% - 48px)); margin: 0 auto; padding: 34px 0 72px; }
+
+    .detail-head {
+      display: grid;
+      grid-template-columns: 48px minmax(0, 1fr) auto;
+      align-items: start;
+      gap: 14px;
+      padding-bottom: 24px;
+    }
+
+    .detail-icon {
+      display: grid;
+      width: 48px;
+      height: 48px;
+      place-items: center;
+      border-radius: 13px;
+      background: var(--brand-soft);
+      color: var(--brand);
+    }
+
+    .detail-icon .icon { width: 22px; height: 22px; }
+    .detail-title { min-width: 0; }
+    .detail-title h1 { margin: 0; font-size: 21px; line-height: 27px; font-weight: 600; letter-spacing: -.025em; }
+    .detail-title p { max-width: 590px; margin: 4px 0 0; color: var(--text-2); }
+    .detail-actions { display: flex; align-items: center; gap: 5px; }
+
+    .notice {
+      display: flex;
+      align-items: flex-start;
+      gap: 9px;
+      margin: 0 0 18px;
+      padding: 10px 12px;
+      border-radius: 9px;
+      background: var(--warning-soft);
+      color: var(--text-2);
+      font-size: 12px;
+    }
+
+    .notice svg { margin-top: 3px; color: var(--warning); }
+
+    .facts {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      margin: 0 0 26px;
+      border-top: 1px solid var(--border-1);
+    }
+
+    .fact {
+      display: grid;
+      min-height: 54px;
+      grid-template-columns: 88px minmax(0, 1fr);
+      align-items: center;
+      border-bottom: 1px solid var(--border-1);
+      color: var(--text-2);
+      font-size: 12px;
+    }
+
+    .fact:nth-child(odd) { padding-right: 20px; }
+    .fact:nth-child(even) { padding-left: 20px; border-left: 1px solid var(--border-1); }
+    .fact dt { color: var(--text-3); }
+    .fact dd { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .fact code { font: 400 11px/18px var(--font-code); }
+
+    .invocation { display: flex; flex-wrap: wrap; gap: 6px; }
+    .mini-tag { padding: 2px 7px; border-radius: 6px; background: var(--module); color: var(--text-2); font-size: 10px; line-height: 16px; }
+
+    .tabs { display: flex; height: 36px; align-items: end; gap: 20px; border-bottom: 1px solid var(--border-1); }
+    .tab { position: relative; height: 36px; padding: 0; border: 0; background: transparent; color: var(--text-3); cursor: pointer; }
+    .tab.active { color: var(--text); }
+    .tab.active::after { content: ""; position: absolute; right: 0; bottom: -1px; left: 0; height: 2px; border-radius: 2px; background: var(--brand); }
+
+    .tab-panel { padding-top: 20px; }
+    .section-block + .section-block { margin-top: 24px; }
+    .section-block h2 { margin: 0 0 8px; font-size: 12px; line-height: 18px; font-weight: 600; }
+    .section-block p { margin: 0; color: var(--text-2); }
+
+    .instruction-preview {
+      position: relative;
+      max-height: 260px;
+      overflow: hidden;
+      padding: 17px 18px 30px;
+      border-radius: 11px;
+      background: var(--sidebar);
+      color: var(--text-2);
+      font-size: 13px;
+    }
+
+    .instruction-preview.expanded { max-height: none; }
+    .instruction-preview:not(.expanded)::after { content: ""; position: absolute; right: 0; bottom: 0; left: 0; height: 70px; background: linear-gradient(transparent, var(--sidebar)); pointer-events: none; }
+    .instruction-preview h3 { margin: 0 0 10px; color: var(--text); font-size: 14px; }
+    .instruction-preview p { margin: 8px 0; }
+    .instruction-preview ul { margin: 8px 0; padding-left: 20px; }
+    .instruction-preview code { padding: 1px 5px; border-radius: 4px; background: var(--module); font: 400 11px/18px var(--font-code); }
+    .expand-instructions { position: relative; z-index: 1; margin-top: -24px; }
+
+    .file-table { margin: 0; padding: 0; border-top: 1px solid var(--border-1); list-style: none; }
+    .file-row { display: grid; height: 38px; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 8px; border-bottom: 1px solid var(--border-1); color: var(--text-2); font-size: 12px; }
+    .file-row code { overflow: hidden; font: 400 11px/18px var(--font-code); text-overflow: ellipsis; white-space: nowrap; }
+    .file-row span { color: var(--text-3); font-size: 10px; }
+
+    .back-button { display: none; margin: 0 0 16px; }
+
+    .menu {
+      position: fixed;
+      z-index: 40;
+      width: 190px;
+      padding: 5px;
+      border: 1px solid var(--border-1);
+      border-radius: 10px;
+      background: var(--elevated);
+      box-shadow: var(--shadow);
+    }
+
+    .menu button {
+      display: flex;
+      width: 100%;
+      height: 32px;
+      align-items: center;
+      gap: 9px;
+      padding: 0 9px;
+      border: 0;
+      border-radius: 7px;
+      background: transparent;
+      text-align: left;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .menu button:hover { background: var(--hover); }
+    .menu button.danger { color: var(--danger); }
+    .menu-sep { height: 1px; margin: 4px 6px; background: var(--border-1); }
+
+    .scrim {
+      position: fixed;
+      z-index: 60;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: rgba(0, 0, 0, .24);
+    }
+
+    .dialog {
+      width: min(520px, calc(100vw - 32px));
+      max-height: min(720px, calc(100vh - 48px));
+      overflow: auto;
+      border: 1px solid var(--border-1);
+      border-radius: 18px;
+      background: var(--elevated);
+      box-shadow: var(--shadow);
+    }
+
+    .dialog-head { display: flex; align-items: flex-start; padding: 20px 20px 12px; }
+    .dialog-head h2 { margin: 0; font-size: 17px; line-height: 23px; font-weight: 600; }
+    .dialog-head p { margin: 3px 0 0; color: var(--text-3); font-size: 12px; }
+    .dialog-close { margin: -4px -4px 0 auto; }
+    .dialog-body { padding: 8px 20px 20px; }
+    .dialog-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 13px 20px 18px; border-top: 1px solid var(--border-1); }
+
+    .drop-zone {
+      position: relative;
+      display: grid;
+      min-height: 150px;
+      place-items: center;
+      padding: 20px;
+      border: 1px dashed var(--border-2);
+      border-radius: 12px;
+      background: var(--sidebar);
+      text-align: center;
+      transition: border .15s ease, background .15s ease;
+    }
+
+    .drop-zone.dragging { border-color: var(--brand); background: var(--brand-soft); }
+    .drop-icon { display: grid; width: 36px; height: 36px; margin: 0 auto 8px; place-items: center; border-radius: 10px; background: var(--module); color: var(--text-2); }
+    .drop-zone strong { display: block; font-size: 13px; font-weight: 500; }
+    .drop-zone p { margin: 2px 0 12px; color: var(--text-3); font-size: 11px; }
+    .drop-actions { display: flex; justify-content: center; gap: 6px; }
+
+    .or { display: flex; align-items: center; gap: 10px; margin: 16px 0; color: var(--caption); font-size: 10px; }
+    .or::before,
+    .or::after { content: ""; height: 1px; flex: 1; background: var(--border-1); }
+
+    .url-field { position: relative; }
+    .url-field svg { position: absolute; top: 50%; left: 11px; color: var(--text-3); transform: translateY(-50%); }
+    .url-field input { width: 100%; height: 38px; padding: 0 12px 0 35px; border: 0; border-radius: 9px; outline: 0; background: var(--module); color: var(--text); font-size: 12px; }
+    .url-field input:focus { box-shadow: inset 0 0 0 1px var(--brand); }
+
+    .scope-row { display: flex; align-items: center; margin-top: 18px; }
+    .scope-row > span { color: var(--text-3); font-size: 12px; }
+    .segmented { display: flex; margin-left: auto; padding: 3px; border-radius: 8px; background: var(--module); }
+    .segment { height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--text-3); cursor: pointer; font-size: 11px; }
+    .segment.active { background: var(--elevated); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+
+    .preflight { border-top: 1px solid var(--border-1); }
+    .preflight-skill { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+    .preflight-skill strong { display: block; font-size: 14px; }
+    .preflight-skill span { color: var(--text-3); font-size: 11px; }
+    .preflight-grid { display: grid; grid-template-columns: 82px minmax(0, 1fr); row-gap: 12px; color: var(--text-2); font-size: 12px; }
+    .preflight-grid dt { color: var(--text-3); }
+    .preflight-grid dd { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .conflict { display: flex; align-items: flex-start; gap: 8px; margin-top: 18px; padding: 10px; border-radius: 9px; background: var(--warning-soft); color: var(--text-2); font-size: 11px; }
+    .conflict svg { margin-top: 2px; color: var(--warning); }
+
+    .confirm-copy p { margin: 0 0 14px; color: var(--text-2); }
+    .path-box { padding: 9px 10px; border-radius: 8px; background: var(--module); color: var(--text-2); font: 400 11px/18px var(--font-code); overflow-wrap: anywhere; }
+    .ack { display: flex; align-items: flex-start; gap: 8px; margin-top: 15px; color: var(--text-2); font-size: 12px; cursor: pointer; }
+    .ack input { margin: 4px 0 0; accent-color: var(--danger); }
+
+    .toast {
+      position: fixed;
+      z-index: 90;
+      left: 50%;
+      bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 8px 10px 8px 12px;
+      border-radius: 9px;
+      background: #353638;
+      color: #fff;
+      box-shadow: 0 12px 32px rgba(0,0,0,.20);
+      font-size: 12px;
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-50%, 10px);
+      transition: opacity .18s ease, transform .18s ease;
+    }
+
+    .toast.show { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
+    .toast button { height: 25px; padding: 0 7px; border: 0; border-radius: 6px; background: rgba(255,255,255,.12); color: #fff; cursor: pointer; }
+
+    @media (max-width: 1040px) {
+      :root { --sidebar-width: 224px; --catalog-width: 300px; }
+      .search { width: 220px; }
+      .detail-inner { width: calc(100% - 32px); }
+      .fact { grid-template-columns: 72px minmax(0, 1fr); }
+    }
+
+    @media (max-width: 820px) {
+      .app { grid-template-columns: 0 minmax(0, 1fr); min-width: 0; }
+      .sidebar { visibility: hidden; }
+      .topbar { padding-left: 12px; }
+      .page-title { min-width: auto; }
+      .selector span { display: none; }
+      .search { width: auto; flex: 1; }
+      .main { grid-template-columns: 1fr; }
+      .catalog { border-right: 0; }
+      .detail { display: none; }
+      .main.detail-open .catalog { display: none; }
+      .main.detail-open .detail { display: block; }
+      .back-button { display: inline-flex; }
+      .detail-inner { width: calc(100% - 28px); padding-top: 16px; }
+      .facts { grid-template-columns: 1fr; }
+      .fact:nth-child(odd),
+      .fact:nth-child(even) { padding: 0; border-left: 0; }
+    }
+
+    @media (max-width: 560px) {
+      .page-title strong { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <svg aria-hidden="true" width="0" height="0" style="position:absolute">
+    <symbol id="i-skill" viewBox="0 0 16 16"><path d="M8 1.7 9.4 5l3.5.3-2.7 2.3.8 3.4-3-1.8L5 11l.8-3.4-2.7-2.3L6.6 5 8 1.7Z"/><path d="M4.2 11.7 3.5 14l2.2-.8L8 14l2.3-.8 2.2.8-.7-2.3"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 16 16"><path d="M3 2.5h10a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H7l-3.5 2v-2H3a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1Z"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.2"/><path d="M6.7 2.2h2.6l.4 1.5 1.2.7 1.5-.4 1.3 2.2-1.1 1.1v1.4l1.1 1.1-1.3 2.2-1.5-.4-1.2.7-.4 1.5H6.7l-.4-1.5-1.2-.7-1.5.4-1.3-2.2 1.1-1.1V7.3L2.3 6.2 3.6 4l1.5.4 1.2-.7.4-1.5Z"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 16 16"><path d="M1.8 4.3h4l1.1 1.3h7.3v6.6a1 1 0 0 1-1 1H2.8a1 1 0 0 1-1-1V4.3Z"/><path d="M1.8 5.6V3.8a1 1 0 0 1 1-1H6l1.2 1.5h6a1 1 0 0 1 1 1v.3"/></symbol>
+    <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="m10.4 10.4 3.1 3.1"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 16 16"><path d="m5 6 3 3 3-3"/></symbol>
+    <symbol id="i-more" viewBox="0 0 16 16"><circle cx="3" cy="8" r=".8" fill="currentColor" stroke="none"/><circle cx="8" cy="8" r=".8" fill="currentColor" stroke="none"/><circle cx="13" cy="8" r=".8" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-close" viewBox="0 0 16 16"><path d="m4 4 8 8m0-8-8 8"/></symbol>
+    <symbol id="i-link" viewBox="0 0 16 16"><path d="M6.3 9.7 9.7 6.3M5.3 11.6l-1 .9a2.3 2.3 0 0 1-3.2-3.2l2.2-2.2a2.3 2.3 0 0 1 3.2 0M10.7 4.4l1-.9a2.3 2.3 0 1 1 3.2 3.2l-2.2 2.2a2.3 2.3 0 0 1-3.2 0"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 16 16"><path d="M8 10V2.5m0 0L5.2 5.3M8 2.5l2.8 2.8"/><path d="M3 9.5v3a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-3"/></symbol>
+    <symbol id="i-file" viewBox="0 0 16 16"><path d="M4 1.8h5l3 3v9.4H4V1.8Z"/><path d="M9 1.8v3h3"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 16 16"><path d="M7.1 2.5 1.7 12a1 1 0 0 0 .9 1.5h10.8a1 1 0 0 0 .9-1.5L8.9 2.5a1 1 0 0 0-1.8 0Z"/><path d="M8 6v3.2m0 1.9v.1"/></symbol>
+    <symbol id="i-git" viewBox="0 0 16 16"><circle cx="5" cy="3" r="1.4"/><circle cx="11" cy="13" r="1.4"/><circle cx="11" cy="7" r="1.4"/><path d="M5 4.4V10a3 3 0 0 0 3 3h1.6M6.4 4.2A3 3 0 0 0 9 7h.6"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 16 16"><path d="M3.5 4.5h9M6 4.5v-2h4v2M5 6.5v5m3-5v5m3-5v5M4.2 4.5l.5 9h6.6l.5-9"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 16 16"><path d="M13 5.5V2.8l-1.2 1.1A5.7 5.7 0 1 0 13.3 9"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 16 16"><rect x="5" y="5" width="8" height="8" rx="1"/><path d="M3 10H2.5A1.5 1.5 0 0 1 1 8.5v-6A1.5 1.5 0 0 1 2.5 1h6A1.5 1.5 0 0 1 10 2.5V3"/></symbol>
+    <symbol id="i-arrow-left" viewBox="0 0 16 16"><path d="m9.5 3.5-4.5 4.5 4.5 4.5M5 8h8"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 16 16"><path d="M12.8 10.5A5.8 5.8 0 0 1 5.5 3.2 5.8 5.8 0 1 0 12.8 10.5Z"/></symbol>
+  </svg>
+
+  <main class="app">
+    <aside class="sidebar" aria-label="主侧栏">
+      <header class="sidebar-head">
+        <div class="traffic" aria-hidden="true"><i></i><i></i><i></i></div>
+        <div class="brand">
+          <svg class="whale" viewBox="0 0 20 16"><path d="M3 8.2C3 4.3 6.2 1.5 10.1 1.5c2.7 0 5 1.2 6.3 3.1.8 1.1 1.8 1.6 2.6 1.8-.1 1.4-.9 2.5-2.3 3.1-.6 3-3.1 5-6.6 5C5.9 14.5 3 12.1 3 8.2Z"/><path d="M3.7 6.6C1.6 5.9.7 4.5 1 2.5c1.8.4 3.1 1.4 3.8 3"/></svg>
+          <span>DeepCreator</span>
+        </div>
+      </header>
+
+      <div class="sidebar-body">
+        <ul class="nav-list">
+          <li><button class="nav-row"><svg class="icon"><use href="#i-chat"/></svg><span class="label">新会话</span></button></li>
+          <li>
+            <div class="nav-row active" id="skillsNav">
+              <svg class="icon"><use href="#i-skill"/></svg><span class="label">技能</span>
+              <span class="nav-add" id="quickAdd" role="button" tabindex="0" aria-label="添加 Skill"><svg class="icon icon-14"><use href="#i-plus"/></svg></span>
+            </div>
+          </li>
+          <li><button class="nav-row"><svg class="icon"><use href="#i-clock"/></svg><span class="label">定时任务</span></button></li>
+        </ul>
+
+        <section class="section">
+          <div class="section-title">工作区</div>
+          <div class="workspace-row"><svg class="icon icon-14"><use href="#i-folder"/></svg><span>DeepCreator</span></div>
+          <div class="session-row">Skill 图形化管理</div>
+          <div class="session-row">浏览器插件设计</div>
+          <div class="workspace-row"><svg class="icon icon-14"><use href="#i-folder"/></svg><span>Personal Notes</span></div>
+          <div class="session-row">知识库结构</div>
+        </section>
+      </div>
+
+      <footer class="sidebar-foot">
+        <button class="nav-row"><svg class="icon"><use href="#i-settings"/></svg><span class="label">设置</span></button>
+      </footer>
+    </aside>
+
+    <section class="skills-shell">
+      <header class="topbar">
+        <div class="page-title"><strong>Skills</strong><span class="page-count" id="pageCount">0</span></div>
+        <div class="toolbar-spacer"></div>
+        <button class="selector" id="filterButton" aria-haspopup="menu" aria-expanded="false">
+          <span id="filterLabel">全部来源</span><svg class="icon icon-12"><use href="#i-chevron"/></svg>
+        </button>
+        <label class="search">
+          <svg class="icon icon-14"><use href="#i-search"/></svg>
+          <input id="searchInput" type="search" placeholder="搜索名称、描述或路径" autocomplete="off">
+          <kbd>/</kbd>
+        </label>
+        <button class="icon-button" id="themeButton" aria-label="切换深色模式" title="切换深色模式"><svg class="icon icon-14"><use href="#i-moon"/></svg></button>
+        <button class="button primary" id="addButton"><svg class="icon icon-14"><use href="#i-plus"/></svg>添加</button>
+      </header>
+
+      <div class="main" id="mainArea">
+        <section class="catalog" aria-label="Skill 列表">
+          <div class="catalog-summary"><span id="catalogSummary">全部</span><span class="right">↑↓ 选择 · Enter 打开</span></div>
+          <ul class="skill-list" id="skillList"></ul>
+        </section>
+        <section class="detail" id="detail" aria-live="polite"></section>
+      </div>
+    </section>
+  </main>
+
+  <div class="menu" id="filterMenu" role="menu" hidden>
+    <button role="menuitem" data-filter="all">全部来源</button>
+    <button role="menuitem" data-filter="project">当前项目</button>
+    <button role="menuitem" data-filter="personal">个人</button>
+    <button role="menuitem" data-filter="installed">Git / URL 安装</button>
+    <button role="menuitem" data-filter="bundled">Bundled</button>
+    <div class="menu-sep"></div>
+    <button role="menuitem" data-filter="attention">需要处理</button>
+  </div>
+
+  <div class="menu" id="actionMenu" role="menu" hidden></div>
+
+  <div class="scrim" id="addScrim" hidden>
+    <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="addTitle">
+      <header class="dialog-head">
+        <div><h2 id="addTitle">添加 Skill</h2><p id="addSubtitle">导入本地文件，或从 Git / URL 安装</p></div>
+        <button class="icon-button dialog-close" data-close="add" aria-label="关闭"><svg class="icon"><use href="#i-close"/></svg></button>
+      </header>
+
+      <div id="sourceStep">
+        <div class="dialog-body">
+          <div class="drop-zone" id="dropZone">
+            <div>
+              <div class="drop-icon"><svg class="icon"><use href="#i-upload"/></svg></div>
+              <strong>拖入 Skill 文件夹或 SKILL.md</strong>
+              <p>本地导入默认复制到受管理目录，不修改原始文件</p>
+              <div class="drop-actions">
+                <button class="button outline" id="chooseFile">选择文件</button>
+                <button class="button outline" id="chooseFolder">选择文件夹</button>
+              </div>
+            </div>
+          </div>
+
+          <input id="fileInput" type="file" accept=".md,text/markdown" hidden>
+          <input id="folderInput" type="file" webkitdirectory multiple hidden>
+
+          <div class="or">或者粘贴来源</div>
+          <label class="url-field">
+            <svg class="icon icon-14"><use href="#i-link"/></svg>
+            <input id="sourceInput" placeholder="GitHub / Git URL 或本地路径" autocomplete="off">
+          </label>
+
+          <div class="scope-row">
+            <span>安装范围</span>
+            <div class="segmented" id="scopeControl">
+              <button class="segment active" data-scope="personal">个人</button>
+              <button class="segment" data-scope="project">当前项目</button>
+            </div>
+          </div>
+        </div>
+        <footer class="dialog-foot">
+          <button class="button" data-close="add">取消</button>
+          <button class="button primary" id="analyzeButton">继续检查</button>
+        </footer>
+      </div>
+
+      <div id="preflightStep" hidden>
+        <div class="dialog-body preflight">
+          <div class="preflight-skill">
+            <div class="skill-glyph"><svg class="icon"><use href="#i-skill"/></svg></div>
+            <div><strong id="preflightName">browser-control</strong><span>格式有效，可安装</span></div>
+          </div>
+          <dl class="preflight-grid">
+            <dt>来源</dt><dd id="preflightSource"></dd>
+            <dt>目标</dt><dd id="preflightTarget"></dd>
+            <dt>内容</dt><dd>1 个 SKILL.md · 2 个 references · 1 个 script</dd>
+            <dt>调用方式</dt><dd>模型可调用 · 用户可调用</dd>
+          </dl>
+          <div class="conflict" id="conflictNotice">
+            <svg class="icon icon-14"><use href="#i-alert"/></svg>
+            <span>同名 Bundled Skill 已存在；安装后当前版本将在所选范围中优先生效。</span>
+          </div>
+        </div>
+        <footer class="dialog-foot">
+          <button class="button" id="backToSource">返回</button>
+          <button class="button primary" id="installButton">安装</button>
+        </footer>
+      </div>
+    </section>
+  </div>
+
+  <div class="scrim" id="confirmScrim" hidden>
+    <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+      <header class="dialog-head">
+        <div><h2 id="confirmTitle"></h2><p id="confirmSubtitle"></p></div>
+        <button class="icon-button dialog-close" data-close="confirm" aria-label="关闭"><svg class="icon"><use href="#i-close"/></svg></button>
+      </header>
+      <div class="dialog-body confirm-copy">
+        <p id="confirmMessage"></p>
+        <div class="path-box" id="confirmPath"></div>
+        <label class="ack" id="ackLabel" hidden><input id="confirmAck" type="checkbox"><span>我了解此操作无法撤销</span></label>
+      </div>
+      <footer class="dialog-foot">
+        <button class="button" data-close="confirm">取消</button>
+        <button class="button danger" id="confirmAction">确认</button>
+      </footer>
+    </section>
+  </div>
+
+  <div class="toast" id="toast" role="status"><span id="toastText"></span><button id="toastAction" hidden></button></div>
+
+  <script>
+    const icon = (name, className = '') => `<svg class="icon ${className}" aria-hidden="true"><use href="#i-${name}"/></svg>`
+    const escapeHtml = (value) => String(value).replace(/[&<>"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[char])
+
+    let skills = [
+      {
+        id: 'deepcreator-cordis-development', name: 'deepcreator-cordis-development', source: 'project', sourceLabel: '当前项目',
+        description: '开发、重构并验证 DeepCreator 的 Cordis 插件与桌面集成。',
+        path: '.agents/skills/deepcreator-cordis-development', version: '工作区', status: 'active', provider: 'filesystem',
+        invocation: ['模型可调用', '用户可调用'], files: [['SKILL.md', '6.8 KB'], ['references/repository-map.md', '3.1 KB'], ['agents/openai.yaml', '0.5 KB']],
+      },
+      {
+        id: 'browser-control', name: 'browser-control', source: 'installed', sourceLabel: 'Git 安装',
+        description: '通过语义动作控制浏览器、检查页面并完成可验证的交互。',
+        path: '~/.agents/skills/browser-control', version: 'v1.4.0', latest: 'v1.5.0', status: 'update', provider: 'github.com/deepcreator-labs/browser-control',
+        invocation: ['模型可调用', '用户可调用'], files: [['SKILL.md', '9.2 KB'], ['references/actions.md', '4.6 KB'], ['scripts/inspect.mjs', '2.1 KB']],
+      },
+      {
+        id: 'ui-design', name: 'ui-design', source: 'personal', sourceLabel: '个人',
+        description: '在实现前确定界面层级、视觉方向和交互规格。',
+        path: '~/.agents/skills/ui-design', version: '本地', status: 'shadowed', provider: 'filesystem',
+        invocation: ['模型可调用', '用户可调用'], files: [['SKILL.md', '12.1 KB'], ['checklist.md', '1.4 KB']],
+      },
+      {
+        id: 'research-notes', name: 'research-notes', source: 'linked', sourceLabel: '外部链接',
+        description: '在个人研究笔记中搜索、交叉引用并生成带出处的摘要。',
+        path: '~/Documents/Knowledge/skills/research-notes', version: '链接', status: 'active', provider: 'filesystem-link',
+        invocation: ['模型可调用', '用户可调用'], files: [['SKILL.md', '5.2 KB'], ['references/sources.md', '18 KB']],
+      },
+      {
+        id: 'dsh-code-review', name: 'dsh-code-review', source: 'bundled', sourceLabel: 'Bundled',
+        description: '依据 DeepSeek Harness 工程约束审查代码变更。',
+        path: 'DeepCreator.app/Contents/Resources/skills/dsh-code-review', version: '0.1.1-rc.2', status: 'active', provider: 'deepcreator-bundled',
+        invocation: ['模型可调用', '用户可调用'], files: [['SKILL.md', '7.7 KB'], ['references/checklist.md', '3.8 KB']],
+      },
+      {
+        id: 'dsh-translate-docs', name: 'dsh-translate-docs', source: 'bundled', sourceLabel: 'Bundled',
+        description: '执行官方文档的中英文双语翻译工作流。',
+        path: 'DeepCreator.app/Contents/Resources/skills/dsh-translate-docs', version: '0.1.1-rc.2', status: 'active', provider: 'deepcreator-bundled',
+        invocation: ['仅用户调用'], files: [['SKILL.md', '6.3 KB'], ['references/terminology.md', '4.2 KB']],
+      },
+      {
+        id: 'knowledge-curator', name: 'knowledge-curator', source: 'personal', sourceLabel: '个人',
+        description: '整理个人知识库中的主题、来源与交叉链接。',
+        path: '~/.agents/skills/knowledge-curator', version: '本地', status: 'problem', provider: 'filesystem',
+        invocation: ['未载入'], issue: 'SKILL.md 缺少必填的 description 字段', files: [['SKILL.md', '2.8 KB'], ['scripts/index.mjs', '1.6 KB']],
+      },
+      {
+        id: 'record-browser-gif', name: 'record-browser-gif', source: 'bundled', sourceLabel: 'Bundled',
+        description: '录制浏览器演示并生成经过优化的 GIF。',
+        path: 'DeepCreator.app/Contents/Resources/skills/record-browser-gif', version: '0.1.1-rc.2', status: 'active', provider: 'deepcreator-bundled',
+        invocation: ['模型可调用', '用户可调用'], files: [['SKILL.md', '8.9 KB'], ['scripts/record.sh', '3.5 KB'], ['references/quality.md', '2.2 KB']],
+      },
+    ]
+
+    const filterLabels = { all: '全部来源', project: '当前项目', personal: '个人', installed: 'Git / URL 安装', bundled: 'Bundled', attention: '需要处理' }
+    let selectedId = skills[0].id
+    let activeFilter = 'all'
+    let activeTab = 'overview'
+    let sourceScope = 'personal'
+    let pendingSource = ''
+    let confirmMode = ''
+    let removedSkill = null
+    let toastTimer
+
+    const list = document.querySelector('#skillList')
+    const detail = document.querySelector('#detail')
+    const mainArea = document.querySelector('#mainArea')
+    const searchInput = document.querySelector('#searchInput')
+    const filterButton = document.querySelector('#filterButton')
+    const filterMenu = document.querySelector('#filterMenu')
+    const actionMenu = document.querySelector('#actionMenu')
+    const addScrim = document.querySelector('#addScrim')
+    const confirmScrim = document.querySelector('#confirmScrim')
+    const toast = document.querySelector('#toast')
+
+    function visibleSkills() {
+      const term = searchInput.value.trim().toLowerCase()
+      return skills.filter(skill => {
+        const filterMatch = activeFilter === 'all'
+          || skill.source === activeFilter
+          || (activeFilter === 'attention' && ['problem', 'update', 'shadowed'].includes(skill.status))
+        const termMatch = !term || [skill.name, skill.description, skill.path, skill.sourceLabel].some(value => value.toLowerCase().includes(term))
+        return filterMatch && termMatch
+      }).sort((a, b) => {
+        const priority = { problem: 0, update: 1, shadowed: 2, active: 3 }
+        return priority[a.status] - priority[b.status] || a.name.localeCompare(b.name)
+      })
+    }
+
+    function renderList() {
+      const visible = visibleSkills()
+      const selectionChanged = visible.length > 0 && !visible.some(skill => skill.id === selectedId)
+      if (selectionChanged) {
+        selectedId = visible[0].id
+        activeTab = 'overview'
+      }
+      document.querySelector('#pageCount').textContent = `${skills.length}`
+      document.querySelector('#catalogSummary').textContent = `${filterLabels[activeFilter]} · ${visible.length}`
+      if (!visible.length) {
+        list.innerHTML = '<li class="empty-list"><strong>没有匹配的 Skill</strong>尝试更换搜索词或来源过滤。</li>'
+        return
+      }
+      list.innerHTML = visible.map(skill => `
+        <li>
+          <button class="skill-row ${skill.id === selectedId ? 'active' : ''} ${skill.status === 'problem' ? 'problem' : ''}" data-skill="${escapeHtml(skill.id)}">
+            <span class="skill-glyph">${icon('skill', 'icon-14')}</span>
+            <span class="skill-copy">
+              <span class="skill-name">${escapeHtml(skill.name)}</span>
+              <span class="skill-meta">${escapeHtml(skill.sourceLabel)} · ${escapeHtml(skill.description)}</span>
+            </span>
+            <span class="status-dot ${escapeHtml(skill.status)}" aria-label="${escapeHtml(skill.status)}"></span>
+          </button>
+        </li>
+      `).join('')
+      if (selectionChanged) renderDetail()
+    }
+
+    function instructionFor(skill) {
+      return `
+        <h3>${escapeHtml(skill.name)}</h3>
+        <p>${escapeHtml(skill.description)}</p>
+        <p>在任务明确命中本 Skill 的用途时，先读取完整说明，再执行任何会改变工作区的操作。</p>
+        <ul>
+          <li>确认当前工作目录和 Skill 来源。</li>
+          <li>只加载完成任务所需的 references 与 scripts。</li>
+          <li>完成后报告实际执行的验证，而不是推测结果。</li>
+        </ul>
+        <p>相对资源路径从 <code>${escapeHtml(skill.path)}</code> 解析。</p>
+      `
+    }
+
+    function primaryAction(skill) {
+      if (skill.status === 'update') return `<button class="button primary" data-primary="update">${icon('refresh', 'icon-14')}更新到 ${escapeHtml(skill.latest)}</button>`
+      if (skill.status === 'problem') return `<button class="button outline" data-primary="folder">${icon('folder', 'icon-14')}打开文件夹</button>`
+      if (skill.source === 'bundled') return `<button class="button outline" data-primary="copy">${icon('copy', 'icon-14')}复制到个人</button>`
+      return `<button class="button outline" data-primary="folder">${icon('folder', 'icon-14')}打开文件夹</button>`
+    }
+
+    function renderDetail() {
+      const skill = skills.find(item => item.id === selectedId) || skills[0]
+      if (!skill) {
+        detail.innerHTML = '<div class="empty-list"><strong>尚未安装 Skill</strong>点击“添加”开始导入或安装。</div>'
+        return
+      }
+      selectedId = skill.id
+      const issue = skill.status === 'problem'
+        ? `<div class="notice">${icon('alert', 'icon-14')}<span>${escapeHtml(skill.issue)}</span></div>`
+        : skill.status === 'shadowed'
+          ? `<div class="notice">${icon('alert', 'icon-14')}<span>当前项目存在同名 Skill；会话位于该项目时，项目版本优先生效。</span></div>`
+          : skill.status === 'update'
+            ? `<div class="notice">${icon('refresh', 'icon-14')}<span>发现新版本 ${escapeHtml(skill.latest)}。更新前可在来源仓库中查看变更。</span></div>`
+            : ''
+
+      detail.innerHTML = `
+        <div class="detail-inner">
+          <button class="button back-button" id="backButton">${icon('arrow-left', 'icon-14')}返回列表</button>
+          <header class="detail-head">
+            <div class="detail-icon">${icon('skill')}</div>
+            <div class="detail-title">
+              <h1>${escapeHtml(skill.name)}</h1>
+              <p>${escapeHtml(skill.description)}</p>
+            </div>
+            <div class="detail-actions">
+              ${primaryAction(skill)}
+              <button class="icon-button" id="moreButton" aria-label="更多操作" aria-haspopup="menu">${icon('more')}</button>
+            </div>
+          </header>
+          ${issue}
+          <dl class="facts">
+            <div class="fact"><dt>来源</dt><dd>${escapeHtml(skill.sourceLabel)}</dd></div>
+            <div class="fact"><dt>版本</dt><dd>${escapeHtml(skill.version)}</dd></div>
+            <div class="fact"><dt>路径</dt><dd><code title="${escapeHtml(skill.path)}">${escapeHtml(skill.path)}</code></dd></div>
+            <div class="fact"><dt>Provider</dt><dd>${escapeHtml(skill.provider)}</dd></div>
+            <div class="fact"><dt>调用方式</dt><dd class="invocation">${skill.invocation.map(value => `<span class="mini-tag">${escapeHtml(value)}</span>`).join('')}</dd></div>
+            <div class="fact"><dt>状态</dt><dd>${statusLabel(skill)}</dd></div>
+          </dl>
+
+          <nav class="tabs" aria-label="Skill 详情">
+            <button class="tab ${activeTab === 'overview' ? 'active' : ''}" data-tab="overview">概览</button>
+            <button class="tab ${activeTab === 'instructions' ? 'active' : ''}" data-tab="instructions">Instructions</button>
+            <button class="tab ${activeTab === 'files' ? 'active' : ''}" data-tab="files">文件 ${skill.files.length}</button>
+          </nav>
+
+          <div class="tab-panel" id="tabPanel">${tabContent(skill)}</div>
+        </div>
+      `
+    }
+
+    function statusLabel(skill) {
+      return ({ active: '正常生效', update: `可更新至 ${skill.latest}`, shadowed: '被项目版本覆盖', problem: '配置错误' })[skill.status]
+    }
+
+    function tabContent(skill) {
+      if (activeTab === 'files') {
+        return `<ul class="file-table">${skill.files.map(([path, size]) => `<li class="file-row">${icon(path.endsWith('.md') ? 'file' : 'git', 'icon-14')}<code>${escapeHtml(path)}</code><span>${escapeHtml(size)}</span></li>`).join('')}</ul>`
+      }
+      if (activeTab === 'instructions') {
+        return `<div class="instruction-preview expanded">${instructionFor(skill)}</div>`
+      }
+      return `
+        <section class="section-block"><h2>使用说明</h2><div class="instruction-preview" id="instructionPreview">${instructionFor(skill)}</div><button class="button expand-instructions" id="expandInstructions">展开完整说明</button></section>
+        <section class="section-block"><h2>安装来源</h2><p>${escapeHtml(skill.provider)} · ${escapeHtml(skill.path)}</p></section>
+      `
+    }
+
+    function selectSkill(id) {
+      selectedId = id
+      activeTab = 'overview'
+      mainArea.classList.add('detail-open')
+      renderList()
+      renderDetail()
+    }
+
+    function positionMenu(menu, anchor) {
+      const rect = anchor.getBoundingClientRect()
+      menu.hidden = false
+      const width = menu.offsetWidth
+      const left = Math.min(window.innerWidth - width - 8, Math.max(8, rect.right - width))
+      menu.style.left = `${left}px`
+      menu.style.top = `${Math.min(window.innerHeight - menu.offsetHeight - 8, rect.bottom + 5)}px`
+    }
+
+    function closeMenus() {
+      filterMenu.hidden = true
+      actionMenu.hidden = true
+      filterButton.setAttribute('aria-expanded', 'false')
+    }
+
+    function openActionMenu(anchor) {
+      const skill = skills.find(item => item.id === selectedId)
+      if (!skill) return
+      const shared = `<button data-action="copy-path">${icon('copy', 'icon-14')}复制路径</button><button data-action="open-source">${icon('link', 'icon-14')}查看来源</button>`
+      let destructive = ''
+      if (skill.source === 'installed') destructive = `<div class="menu-sep"></div><button class="danger" data-action="uninstall">${icon('trash', 'icon-14')}卸载</button>`
+      if (skill.source === 'linked') destructive = `<div class="menu-sep"></div><button class="danger" data-action="unlink">${icon('link', 'icon-14')}解除链接</button>`
+      if (['project', 'personal'].includes(skill.source)) destructive = `<div class="menu-sep"></div><button class="danger" data-action="delete">${icon('trash', 'icon-14')}永久删除</button>`
+      actionMenu.innerHTML = shared + destructive
+      positionMenu(actionMenu, anchor)
+    }
+
+    function openAdd() {
+      closeMenus()
+      addScrim.hidden = false
+      document.querySelector('#sourceStep').hidden = false
+      document.querySelector('#preflightStep').hidden = true
+      document.querySelector('#sourceInput').value = ''
+      pendingSource = ''
+      requestAnimationFrame(() => document.querySelector('#sourceInput').focus())
+    }
+
+    function closeAdd() { addScrim.hidden = true }
+
+    function deriveSkillName(source) {
+      const cleaned = source.replace(/[?#].*$/, '').replace(/\/$/, '')
+      const tail = cleaned.split(/[\\/]/).filter(Boolean).pop() || 'imported-skill'
+      return tail.replace(/\.git$/i, '').replace(/\.md$/i, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'imported-skill'
+    }
+
+    function analyzeSource() {
+      const input = document.querySelector('#sourceInput').value.trim()
+      const source = pendingSource || input
+      if (!source) {
+        showToast('请选择文件、文件夹，或粘贴一个来源 URL')
+        document.querySelector('#sourceInput').focus()
+        return
+      }
+      pendingSource = source
+      const name = deriveSkillName(source)
+      document.querySelector('#preflightName').textContent = name
+      document.querySelector('#preflightSource').textContent = source
+      document.querySelector('#preflightTarget').textContent = sourceScope === 'personal' ? '~/.agents/skills' : '.agents/skills'
+      document.querySelector('#conflictNotice').hidden = !skills.some(skill => skill.name === name)
+      document.querySelector('#sourceStep').hidden = true
+      document.querySelector('#preflightStep').hidden = false
+      document.querySelector('#addSubtitle').textContent = '确认来源、目标和覆盖关系'
+    }
+
+    function installPending() {
+      const name = document.querySelector('#preflightName').textContent
+      const baseId = name || 'imported-skill'
+      const id = skills.some(skill => skill.id === baseId) ? `${baseId}-${Date.now()}` : baseId
+      const skill = {
+        id, name: baseId, source: pendingSource.startsWith('http') ? 'installed' : sourceScope,
+        sourceLabel: pendingSource.startsWith('http') ? 'Git 安装' : (sourceScope === 'personal' ? '个人' : '当前项目'),
+        description: '刚刚添加的 Skill；此处展示安装完成后的目录状态。',
+        path: `${sourceScope === 'personal' ? '~/.agents/skills' : '.agents/skills'}/${baseId}`,
+        version: pendingSource.startsWith('http') ? 'v1.0.0' : '本地', status: 'active', provider: pendingSource,
+        invocation: ['模型可调用', '用户可调用'], files: [['SKILL.md', '4.2 KB'], ['references/guide.md', '1.8 KB']],
+      }
+      skills.unshift(skill)
+      selectedId = id
+      activeFilter = 'all'
+      document.querySelector('#filterLabel').textContent = filterLabels.all
+      closeAdd()
+      renderAll()
+      showToast(`已安装 ${baseId}`)
+    }
+
+    function openConfirm(mode) {
+      const skill = skills.find(item => item.id === selectedId)
+      if (!skill) return
+      confirmMode = mode
+      const destructive = mode === 'delete'
+      const copy = {
+        uninstall: [`卸载 ${skill.name}？`, '将移除受管理的安装副本，可以随时从原来源重新安装。', '卸载'],
+        unlink: [`解除 ${skill.name} 的链接？`, '只移除 DeepCreator 中的链接，不会删除外部原始文件。', '解除链接'],
+        delete: [`永久删除 ${skill.name}？`, '将删除这个可写 Skill 目录及其中的所有资源。', '永久删除'],
+      }[mode]
+      document.querySelector('#confirmTitle').textContent = copy[0]
+      document.querySelector('#confirmSubtitle').textContent = destructive ? '这是不可撤销的破坏性操作' : '操作完成后目录会立即刷新'
+      document.querySelector('#confirmMessage').textContent = copy[1]
+      document.querySelector('#confirmPath').textContent = skill.path
+      document.querySelector('#ackLabel').hidden = !destructive
+      document.querySelector('#confirmAck').checked = false
+      const action = document.querySelector('#confirmAction')
+      action.textContent = copy[2]
+      action.disabled = destructive
+      confirmScrim.hidden = false
+    }
+
+    function performConfirmedAction() {
+      const index = skills.findIndex(item => item.id === selectedId)
+      if (index === -1) return
+      const [skill] = skills.splice(index, 1)
+      removedSkill = confirmMode === 'uninstall' ? { skill, index } : null
+      selectedId = skills[Math.min(index, skills.length - 1)]?.id || ''
+      confirmScrim.hidden = true
+      renderAll()
+      if (confirmMode === 'uninstall') showToast(`已卸载 ${skill.name}`, '撤销', undoRemoval)
+      else showToast(confirmMode === 'unlink' ? `已解除 ${skill.name} 的链接` : `已删除 ${skill.name}`)
+    }
+
+    function undoRemoval() {
+      if (!removedSkill) return
+      skills.splice(removedSkill.index, 0, removedSkill.skill)
+      selectedId = removedSkill.skill.id
+      removedSkill = null
+      renderAll()
+      hideToast()
+    }
+
+    function showToast(text, actionText = '', action = null) {
+      clearTimeout(toastTimer)
+      document.querySelector('#toastText').textContent = text
+      const button = document.querySelector('#toastAction')
+      button.hidden = !actionText
+      button.textContent = actionText
+      button.onclick = action
+      toast.classList.add('show')
+      toastTimer = setTimeout(hideToast, actionText ? 10000 : 2800)
+    }
+
+    function hideToast() { toast.classList.remove('show') }
+
+    function renderAll() {
+      renderList()
+      renderDetail()
+    }
+
+    list.addEventListener('click', event => {
+      const row = event.target.closest('[data-skill]')
+      if (row) selectSkill(row.dataset.skill)
+    })
+
+    detail.addEventListener('click', event => {
+      const tab = event.target.closest('[data-tab]')
+      if (tab) { activeTab = tab.dataset.tab; renderDetail(); return }
+      if (event.target.closest('#backButton')) { mainArea.classList.remove('detail-open'); return }
+      if (event.target.closest('#expandInstructions')) {
+        document.querySelector('#instructionPreview')?.classList.add('expanded')
+        event.target.closest('#expandInstructions').hidden = true
+        return
+      }
+      const more = event.target.closest('#moreButton')
+      if (more) { openActionMenu(more); return }
+      const primary = event.target.closest('[data-primary]')
+      if (!primary) return
+      const skill = skills.find(item => item.id === selectedId)
+      if (primary.dataset.primary === 'update') {
+        skill.version = skill.latest
+        skill.status = 'active'
+        renderAll()
+        showToast(`${skill.name} 已更新到 ${skill.version}`)
+      } else if (primary.dataset.primary === 'copy') {
+        const copy = { ...skill, id: `${skill.id}-personal`, source: 'personal', sourceLabel: '个人', path: `~/.agents/skills/${skill.name}`, version: '本地副本', status: 'active', provider: 'filesystem' }
+        skills.unshift(copy)
+        selectedId = copy.id
+        renderAll()
+        showToast(`已将 ${skill.name} 复制到个人目录`)
+      } else {
+        showToast(`将在系统文件管理器中打开 ${skill.path}`)
+      }
+    })
+
+    filterButton.addEventListener('click', event => {
+      const willOpen = filterMenu.hidden
+      closeMenus()
+      if (willOpen) {
+        positionMenu(filterMenu, event.currentTarget)
+        filterButton.setAttribute('aria-expanded', 'true')
+      }
+    })
+
+    filterMenu.addEventListener('click', event => {
+      const item = event.target.closest('[data-filter]')
+      if (!item) return
+      activeFilter = item.dataset.filter
+      document.querySelector('#filterLabel').textContent = filterLabels[activeFilter]
+      closeMenus()
+      renderList()
+    })
+
+    actionMenu.addEventListener('click', async event => {
+      const item = event.target.closest('[data-action]')
+      if (!item) return
+      const skill = skills.find(entry => entry.id === selectedId)
+      closeMenus()
+      if (item.dataset.action === 'copy-path') {
+        try { await navigator.clipboard.writeText(skill.path) } catch {}
+        showToast('已复制 Skill 路径')
+      } else if (item.dataset.action === 'open-source') {
+        showToast(`来源：${skill.provider}`)
+      } else {
+        openConfirm(item.dataset.action)
+      }
+    })
+
+    document.querySelector('#addButton').addEventListener('click', openAdd)
+    document.querySelector('#quickAdd').addEventListener('click', event => { event.stopPropagation(); openAdd() })
+    document.querySelector('#quickAdd').addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openAdd() } })
+    document.querySelector('#themeButton').addEventListener('click', () => document.body.classList.toggle('dark'))
+    searchInput.addEventListener('input', renderList)
+
+    document.querySelectorAll('[data-close="add"]').forEach(button => button.addEventListener('click', closeAdd))
+    document.querySelectorAll('[data-close="confirm"]').forEach(button => button.addEventListener('click', () => { confirmScrim.hidden = true }))
+    document.querySelector('#chooseFile').addEventListener('click', () => document.querySelector('#fileInput').click())
+    document.querySelector('#chooseFolder').addEventListener('click', () => document.querySelector('#folderInput').click())
+    document.querySelector('#analyzeButton').addEventListener('click', analyzeSource)
+    document.querySelector('#backToSource').addEventListener('click', () => {
+      document.querySelector('#sourceStep').hidden = false
+      document.querySelector('#preflightStep').hidden = true
+      document.querySelector('#addSubtitle').textContent = '导入本地文件，或从 Git / URL 安装'
+    })
+    document.querySelector('#installButton').addEventListener('click', installPending)
+    document.querySelector('#confirmAction').addEventListener('click', performConfirmedAction)
+    document.querySelector('#confirmAck').addEventListener('change', event => { document.querySelector('#confirmAction').disabled = !event.target.checked })
+
+    document.querySelector('#scopeControl').addEventListener('click', event => {
+      const segment = event.target.closest('[data-scope]')
+      if (!segment) return
+      sourceScope = segment.dataset.scope
+      document.querySelectorAll('#scopeControl .segment').forEach(item => item.classList.toggle('active', item === segment))
+    })
+
+    function acceptFiles(files) {
+      if (!files.length) return
+      const skillFile = [...files].find(file => file.name.toLowerCase() === 'skill.md') || files[0]
+      pendingSource = files.length > 1 ? `${skillFile.webkitRelativePath.split('/')[0] || 'Imported Skill'}/` : skillFile.name
+      document.querySelector('#sourceInput').value = pendingSource
+      showToast(`已选择 ${files.length} 个文件，继续检查安装内容`)
+    }
+
+    document.querySelector('#fileInput').addEventListener('change', event => acceptFiles(event.target.files))
+    document.querySelector('#folderInput').addEventListener('change', event => acceptFiles(event.target.files))
+
+    const dropZone = document.querySelector('#dropZone')
+    ;['dragenter', 'dragover'].forEach(type => dropZone.addEventListener(type, event => { event.preventDefault(); dropZone.classList.add('dragging') }))
+    ;['dragleave', 'drop'].forEach(type => dropZone.addEventListener(type, event => { event.preventDefault(); dropZone.classList.remove('dragging') }))
+    dropZone.addEventListener('drop', event => acceptFiles(event.dataTransfer.files))
+
+    document.addEventListener('pointerdown', event => {
+      if (!filterMenu.hidden && !filterMenu.contains(event.target) && !filterButton.contains(event.target)) closeMenus()
+      if (!actionMenu.hidden && !actionMenu.contains(event.target) && !event.target.closest('#moreButton')) closeMenus()
+    })
+
+    document.addEventListener('keydown', event => {
+      if (event.key === '/' && !['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
+        event.preventDefault()
+        searchInput.focus()
+      }
+      if (event.key === 'Escape') {
+        closeMenus()
+        if (!addScrim.hidden) closeAdd()
+        if (!confirmScrim.hidden) confirmScrim.hidden = true
+      }
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        if (document.activeElement === searchInput) return
+        const visible = visibleSkills()
+        const current = visible.findIndex(skill => skill.id === selectedId)
+        const next = event.key === 'ArrowDown' ? Math.min(visible.length - 1, current + 1) : Math.max(0, current - 1)
+        if (visible[next]) { event.preventDefault(); selectSkill(visible[next].id) }
+      }
+    })
+
+    renderAll()
+  </script>
+</body>
+</html>

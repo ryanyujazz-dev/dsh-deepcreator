@@ -9,6 +9,7 @@ afterEach(cleanup)
 
 type Row = { id: string; order: number; label: string }
 type Step = { id: string; order: number }
+type Navigation = { sequence: number; request: { kind: 'open'; sectionId?: string } | { kind: 'close' } | null }
 
 /** Slot-content stand-ins: the shell renders whatever the seats contribute. */
 const SEAT_CONTENT: Record<string, string> = {
@@ -34,7 +35,9 @@ function mount({
   // Mutable row source standing in for the bound useSections hook; bump()
   // plays a ledger change through the same observable contract.
   let current = rows
+  let currentNavigation: Navigation = { sequence: 0, request: null }
   const listeners = new Set<() => void>()
+  const navigationListeners = new Set<() => void>()
   const renderSlot = vi.fn(
     ((key: string, _owner: unknown, opts?: { only?: string }) => {
       if (key === 'settings.section') return <div data-testid={`section-${opts?.only ?? 'all'}`} />
@@ -54,6 +57,15 @@ function mount({
     useWorkspaces: unusedHook,
     wide,
     useOnboardingSteps: select => select(steps),
+    useNavigation: (select) => {
+      const [, force] = useState(0)
+      useEffect(() => {
+        const listener = () => { force(n => n + 1) }
+        navigationListeners.add(listener)
+        return () => { navigationListeners.delete(listener) }
+      }, [])
+      return select(currentNavigation)
+    },
     useSections: (select) => {
       const [, force] = useState(0)
       useEffect(() => {
@@ -72,7 +84,13 @@ function mount({
       for (const fn of [...listeners]) fn()
     })
   }
-  return { view, renderSlot, bump, listeners }
+  const navigate = (request: Navigation['request']) => {
+    act(() => {
+      currentNavigation = { sequence: currentNavigation.sequence + 1, request }
+      for (const fn of [...navigationListeners]) fn()
+    })
+  }
+  return { view, renderSlot, bump, navigate, listeners }
 }
 
 function openPanel() {
@@ -162,6 +180,21 @@ describe('SettingsPanel close paths', () => {
 })
 
 describe('SettingsPanel navigation', () => {
+  it('opens a requested section through the public navigation edge', () => {
+    const { navigate } = mount({
+      rows: [
+        { id: 'general', order: 0, label: 'General' },
+        { id: 'skills', order: 50, label: 'Skills' },
+      ],
+    })
+    navigate({ kind: 'open', sectionId: 'skills' })
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Skills' }).getAttribute('aria-current')).toBe('true')
+    expect(screen.getByTestId('section-skills')).toBeTruthy()
+    navigate({ kind: 'close' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
   it('projects rows, marks the first active, and renders only that section', () => {
     mount()
     openPanel()

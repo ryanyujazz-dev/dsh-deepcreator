@@ -27,6 +27,7 @@
     { "path": "./packages/host/browser-chrome" },
     { "path": "./packages/host/presentation" },
     { "path": "./packages/host/session-admin" },
+    { "path": "./packages/host/skill-admin" },
     { "path": "./packages/host/jobs-admin" },
     { "path": "./packages/host/review" },
     { "path": "./packages/host/terminal-workbench" }

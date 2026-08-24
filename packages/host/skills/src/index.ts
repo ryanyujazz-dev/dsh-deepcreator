@@ -28,6 +28,7 @@ import {
   type SkillLookupOptions,
   type SkillProvider,
 } from '@deepseek-ai/dsh-skill'
+import { developerFor, ZH_DESCRIPTIONS } from './localized-descriptions.ts'
 
 const PROVIDER_NAME = 'deepcreator-bundled'
 const SKILLS_DIR = fileURLToPath(new URL('../assets/skills/', import.meta.url))
@@ -95,6 +96,9 @@ async function loadSkills(): Promise<BundledSkill[]> {
     if (parsed.meta.name !== entry.name) {
       throw new Error(`bundled skill ${markdown} frontmatter name does not match its directory`)
     }
+    if (ZH_DESCRIPTIONS[parsed.meta.name] === undefined) {
+      throw new Error(`bundled skill ${markdown} has no Chinese catalog description`)
+    }
     loaded.push({ meta: parsed.meta, path: markdown })
   }
   return loaded
@@ -122,6 +126,13 @@ const provider: SkillProvider = {
       rank: BUNDLED_SKILL_RANK,
       path: skill.path,
       locator: skill.path,
+      metadata: {
+        developer: developerFor(skill.meta.name),
+        localizedDescriptions: {
+          en: skill.meta.description,
+          zh: ZH_DESCRIPTIONS[skill.meta.name]!,
+        },
+      },
     }))
   },
   async get(candidate: SkillCandidate, _options: SkillLookupOptions): Promise<SkillDefinition | undefined> {
@@ -137,6 +148,13 @@ const provider: SkillProvider = {
       resourceBase: RESOURCE_BASE,
       content: parsed.body,
       path: candidate.locator,
+      metadata: {
+        developer: developerFor(parsed.meta.name),
+        localizedDescriptions: {
+          en: parsed.meta.description,
+          zh: ZH_DESCRIPTIONS[parsed.meta.name]!,
+        },
+      },
     }
   },
 }

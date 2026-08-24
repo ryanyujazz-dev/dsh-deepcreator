@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
-  IconAgentPresetOutline16, IconCloseOutline16, IconDataOutline16,
+  DeepCreatorIconSkillOutline16, IconAgentPresetOutline16, IconCloseOutline16, IconDataOutline16,
   IconPersonalizationOutline16, IconSettingsOutline16,
   SidebarRow,
 } from '@ryanyujazz/dsh-client-ui-primitives'
@@ -25,6 +25,7 @@ function navIcon(id: string) {
   if (id === 'models') return <IconDataOutline16 className={css.navIcon} size={16} />
   if (id === 'agent-presets') return <IconAgentPresetOutline16 className={css.navIcon} size={16} />
   if (id === 'plugins') return <IconPersonalizationOutline16 className={css.navIcon} size={16} />
+  if (id === 'skills') return <DeepCreatorIconSkillOutline16 className={css.navIcon} size={16} />
   return <IconSettingsOutline16 className={css.navIcon} size={16} />
 }
 
@@ -103,7 +104,7 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
  * @returns the settings shell element tree.
  */
 export function SettingsRoot(props: SettingsRootComponentProps) {
-  const { wide, useSections, useOnboardingSteps, useSessions, renderSlot } = props
+  const { wide, useSections, useOnboardingSteps, useNavigation, useSessions, renderSlot } = props
   const [open, setOpen] = useState(false)
   const [activeId, setActiveId] = useState<string | undefined>(undefined)
   const [completedOnboarding, setCompletedOnboarding] = useState<ReadonlySet<string>>(() => new Set())
@@ -121,6 +122,8 @@ export function SettingsRoot(props: SettingsRootComponentProps) {
   // seats re-render through their own outlets' subscriptions.
   const rows = useSections(s => s)
   const onboardingSteps = useOnboardingSteps(s => s)
+  const navigation = useNavigation(snapshot => snapshot)
+  const navigationWatermark = useRef(navigation.sequence)
   const onboardingActive = useSessions(state =>
     state.phase === 'ready'
     && (state.current === undefined || state.byId[state.current]?.blank === true))
@@ -132,6 +135,19 @@ export function SettingsRoot(props: SettingsRootComponentProps) {
     if (onboardingActive) return
     setCompletedOnboarding(new Set())
   }, [onboardingActive])
+
+  useEffect(() => {
+    if (navigation.sequence <= navigationWatermark.current) return
+    navigationWatermark.current = navigation.sequence
+    if (navigation.request?.kind === 'close') {
+      close()
+      return
+    }
+    if (navigation.request?.kind === 'open') {
+      setActiveId(navigation.request.sectionId)
+      setOpen(true)
+    }
+  }, [close, navigation])
 
   const completeOnboardingStep = useCallback((id: string) => {
     setCompletedOnboarding((previous) => {

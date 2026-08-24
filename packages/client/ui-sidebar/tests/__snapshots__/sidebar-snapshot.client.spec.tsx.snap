@@ -69,31 +69,10 @@ exports[`sidebar shell snapshots > renders the expanded column (wordmark, capsul
           </span>
         </button>
       </li>
-      <li
-        class="primaryListItem"
-      >
-        <button
-          aria-label="Skills (coming soon)"
-          class="row skillsPlaceholder"
-          disabled=""
-          type="button"
-        >
-          <svg
-            data-content="8571130c"
-            data-deepcreator-icon="skill"
-            fill="none"
-            height="14"
-            viewBox="0 0 16 16"
-            width="14"
-            xmlns="http://www.w3.org/2000/svg"
-          />
-          <span
-            class="primaryLabel wide"
-          >
-            Skills
-          </span>
-        </button>
-      </li>
+      <div
+        data-slot="sidebar.primary.action"
+        style="display: contents;"
+      />
       <li
         class="primaryListItem"
       >
@@ -221,31 +200,10 @@ exports[`sidebar shell snapshots > renders the expanded column in the default lo
           </span>
         </button>
       </li>
-      <li
-        class="primaryListItem"
-      >
-        <button
-          aria-label="技能（即将推出）"
-          class="row skillsPlaceholder"
-          disabled=""
-          type="button"
-        >
-          <svg
-            data-content="8571130c"
-            data-deepcreator-icon="skill"
-            fill="none"
-            height="14"
-            viewBox="0 0 16 16"
-            width="14"
-            xmlns="http://www.w3.org/2000/svg"
-          />
-          <span
-            class="primaryLabel wide"
-          >
-            技能
-          </span>
-        </button>
-      </li>
+      <div
+        data-slot="sidebar.primary.action"
+        style="display: contents;"
+      />
       <li
         class="primaryListItem"
       >

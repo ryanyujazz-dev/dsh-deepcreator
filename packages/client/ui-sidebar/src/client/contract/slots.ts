@@ -2,6 +2,7 @@
  * Sidebar slot contract: the registrant-side props composition for the
  * layout-owned `sidebar` slot, plus the holes this shell declares. The shell
  * owns column geometry (fold state machine, brand row, New Session);
+ * feature-owned primary actions register into `sidebar.primary.action`,
  * everything between the section header and the list bottom is the
  * `sidebar.workspaces` registrant's (ui-workspace), and the foot is the
  * `sidebar.settings` registrant's (ui-settings), followed by optional footer
@@ -15,6 +16,8 @@ import type { WorkspaceId } from '@deepseek-ai/dsh-client-runtime/client'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
+    /** Feature-owned rows immediately after the shell-owned New Session row. */
+    'sidebar.primary.action': { kind: 'list'; scope: 'root'; owner: SidebarPrimaryActionOwnerProps }
     /**
      * The workspace/session browsing region: section header, search, the
      * grouped/flat session list, and every workspace dialog. Declared by this
@@ -52,6 +55,12 @@ export interface SidebarSectionOwnerProps {
  * occupant's trigger row renders only while the expanded surface exists.
  */
 export interface SidebarSettingsOwnerProps {
+  /** Whether expanded sidebar content is visible. */
+  wide: boolean
+}
+
+/** Owner share of a feature row in the sidebar's primary action list. */
+export interface SidebarPrimaryActionOwnerProps {
   /** Whether expanded sidebar content is visible. */
   wide: boolean
 }
@@ -97,5 +106,5 @@ export type SidebarClosedToggleComponentProps =
  */
 export type SidebarRootComponentProps =
   PropsRuntime<'sidebar'>
-  & PropsRenderSlots<'sidebar.workspaces' | 'sidebar.settings' | 'sidebar.footer.action'>
+  & PropsRenderSlots<'sidebar.primary.action' | 'sidebar.workspaces' | 'sidebar.settings' | 'sidebar.footer.action'>
   & SidebarRootInjected & PropsLocale<'sidebar'>

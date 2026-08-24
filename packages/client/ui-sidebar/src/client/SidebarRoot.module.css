@@ -154,7 +154,6 @@
   overflow: hidden;
 }
 
-.skillsPlaceholder,
 .scheduledTasksPlaceholder {
   margin: 0;
   overflow: hidden;
@@ -162,7 +161,6 @@
   color: var(--dsw-alias-label-primary);
 }
 
-.skillsPlaceholder:disabled,
 .scheduledTasksPlaceholder:disabled {
   opacity: 1;
 }

@@ -1,14 +1,17 @@
-import { useState, useSyncExternalStore } from 'react'
-import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import { useId, useState, useSyncExternalStore } from 'react'
+import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
+import { IconChevronDownOutline14, IconChevronRightOutline14 } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { BrowserClientRuntime, BrowserRemoteClient } from './runtime.ts'
 import css from './BrowserDataSetting.module.css'
 
-type Props = PropsRuntime<'deepcreator.settings.preferences.item'> & PropsLocale<'browser'> & { remote: BrowserRemoteClient; browser: BrowserClientRuntime }
+type Props = PropsLocale<'browser'> & { remote: BrowserRemoteClient; browser: BrowserClientRuntime }
 
 export function BrowserDataSetting({ remote, browser, t }: Props) {
   const [state, setState] = useState<'idle' | 'working' | 'done' | 'error'>('idle')
   const [managing, setManaging] = useState<string>()
   const [diagnostic, setDiagnostic] = useState<string>()
+  const [providersOpen, setProvidersOpen] = useState(false)
+  const providersId = useId()
   const snapshot = useSyncExternalStore(browser.subscribe, browser.getSnapshot, browser.getSnapshot)
   const clear = async () => {
     if (remote.clearBrowserData === undefined || !window.confirm(t('clearConfirm'))) return
@@ -38,12 +41,24 @@ export function BrowserDataSetting({ remote, browser, t }: Props) {
       {state === 'done' ? <span className={css.status}>{t('cleared')}</span> : state === 'error' ? <span className={css.error}>{t('clearFailed')}</span> : null}
     </div>
     <div className={css.providers}>
-      <div><div className={css.title}>{t('providerStatus')}</div><div className={css.description}>{t('providerStatusDescription')}</div></div>
-      {manageable.map(provider => <div className={css.provider} key={provider.browserId}>
-        <div className={css.copy}><div className={css.providerName}>{provider.name}</div><div className={provider.availability === 'available' ? css.status : css.error}>{provider.availability === 'available' ? t('providerReady') : provider.diagnostic ?? t('providerUnavailable')}</div></div>
-        {provider.availability === 'unavailable' ? <button type="button" className={css.button} disabled={managing !== undefined || remote.manageProvider === undefined} onClick={() => { void manage(provider.browserId) }}>{managing === provider.browserId ? t('installing') : t('installAction')}</button> : null}
-      </div>)}
-      {diagnostic === undefined ? null : <div className={css.diagnostic}>{diagnostic}</div>}
+      <button
+        type="button"
+        className={css.providersToggle}
+        aria-expanded={providersOpen}
+        aria-controls={providersId}
+        aria-label={t(providersOpen ? 'collapseProviders' : 'expandProviders')}
+        onClick={() => { setProvidersOpen(open => !open) }}
+      >
+        <span className={css.copy}><span className={css.title}>{t('providerStatus')}</span><span className={css.description}>{t('providerStatusDescription')}</span></span>
+        {providersOpen ? <IconChevronDownOutline14 className={css.providersChevron} /> : <IconChevronRightOutline14 className={css.providersChevron} />}
+      </button>
+      {providersOpen ? <div id={providersId} className={css.providerList}>
+        {manageable.map(provider => <div className={css.provider} key={provider.browserId}>
+          <div className={css.copy}><div className={css.providerName}>{provider.name}</div><div className={provider.availability === 'available' ? css.status : css.error}>{provider.availability === 'available' ? t('providerReady') : provider.diagnostic ?? t('providerUnavailable')}</div></div>
+          {provider.availability === 'unavailable' ? <button type="button" className={css.button} disabled={managing !== undefined || remote.manageProvider === undefined} onClick={() => { void manage(provider.browserId) }}>{managing === provider.browserId ? t('installing') : t('installAction')}</button> : null}
+        </div>)}
+        {diagnostic === undefined ? null : <div className={css.diagnostic}>{diagnostic}</div>}
+      </div> : null}
     </div>
   </div>
 }

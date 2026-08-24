@@ -35,6 +35,7 @@
     "@ryanyujazz/dsh-client-ui-primitives": "workspace:^",
     "@ryanyujazz/dsh-client-ui-settings": "workspace:^",
     "@ryanyujazz/dsh-client-ui-settings-general": "workspace:^",
+    "@ryanyujazz/dsh-client-ui-skills": "workspace:^",
     "@ryanyujazz/dsh-client-ui-sidebar": "workspace:^",
     "@ryanyujazz/dsh-client-ui-subagent": "workspace:^",
     "@ryanyujazz/dsh-client-ui-theme": "workspace:^",
@@ -48,6 +49,7 @@
     "@ryanyujazz/dsh-client-workbench-remotes": "workspace:^",
     "@ryanyujazz/dsh-review": "workspace:^",
     "@ryanyujazz/dsh-session-admin": "workspace:^",
+    "@ryanyujazz/dsh-skill-admin": "workspace:^",
     "@ryanyujazz/dsh-skills": "workspace:^",
     "@ryanyujazz/dsh-terminal-workbench": "workspace:^",
     "@ryanyujazz/dsh-client-ui-workspace": "workspace:^"

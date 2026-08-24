@@ -2,9 +2,9 @@
 
 [English](README.md) | 中文
 
-DeepCreator 的设置扩展契约，叠加在保留的官方 `@deepseek-ai/dsh-client-ui-settings` 底座之上。`ctx.settingsScope`、`ctx.settingsSchema`、共享 describe mirror 及全部官方设置 slot 仍只由官方插件持有。本包仅声明产品专属的 `deepcreator.settings.preferences.item` 列表座位，并为自定义消费方重导出官方设置类型。
+DeepCreator 的设置扩展契约，叠加在保留的官方 `@deepseek-ai/dsh-client-ui-settings` 底座之上。`ctx.settingsScope`、`ctx.settingsSchema`、共享 describe mirror 及全部官方设置 slot 仍只由官方插件持有。本包声明产品专属的 `deepcreator.settings.preferences.item` 列表座位，并提供仅用于呈现控制的 `settingsNavigation` 命令边沿，让功能快捷入口打开或关闭既有设置外壳；同时为自定义消费方重导出官方设置类型。
 
-把传输与 schema 服务留在官方层就是升级边界：官方新增的设置功能可以继续注入官方模块，无需依赖 DeepCreator 的复刻实现。本包不实现任何运行时服务，也不得禁用或遮蔽 composition 中的官方 `ui-settings` 行。
+把传输与 schema 服务留在官方层就是升级边界：官方新增的设置功能可以继续注入官方模块，无需依赖 DeepCreator 的复刻实现。导航命令只携带分区 id 与边沿序号；弹窗开关及当前分区状态仍由外壳本地持有。本包不得禁用或遮蔽 composition 中的官方 `ui-settings` 行。
 
 ## 模型体验
 

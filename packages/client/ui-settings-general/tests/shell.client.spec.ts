@@ -22,6 +22,10 @@ async function bench() {
     isLoopback: false,
   } as never)
   ctx.provide('remote', { $on: () => () => {} } as never)
+  ctx.provide('settingsNavigation', {
+    commands: { getSnapshot: () => ({ sequence: 0, request: null }), subscribe: () => () => {} },
+    open: () => {}, close: () => {},
+  } as never)
   return { ctx, slots: ctx.get('slots') as SlotRegistry }
 }
 
@@ -48,8 +52,8 @@ const CHILD_SPECS = {
 } as const
 
 describe('ui-settings apply', () => {
-  it('declares only the slot registry (a pure composition face, no locale)', () => {
-    expect(inject).toEqual(['slots', 'locale', 'connection'])
+  it('declares its composition and navigation dependencies', () => {
+    expect(inject).toEqual(['slots', 'locale', 'connection', 'settingsNavigation'])
   })
 
   it('registers the shell and declares every child slot, before or after the declaration', async () => {

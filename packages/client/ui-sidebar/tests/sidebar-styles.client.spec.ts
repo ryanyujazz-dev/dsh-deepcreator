@@ -60,7 +60,6 @@ describe('SidebarRoot.module.css', () => {
     expect(list?.get('padding')).toBe('0')
     expect(declarations('.primaryListItem')?.get('margin')).toBe('0')
     expect(declarations('.newSession')?.get('margin')).toBe('0')
-    expect(declarations('.skillsPlaceholder')?.get('margin')).toBe('0')
     expect(declarations('.scheduledTasksPlaceholder')?.get('margin')).toBe('0')
   })
 })

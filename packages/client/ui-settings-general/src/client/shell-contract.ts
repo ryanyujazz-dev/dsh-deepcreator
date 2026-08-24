@@ -37,6 +37,8 @@ export type SettingsRootInjected = {
     sections: HostObservable<readonly SettingsSectionRow[]>
     /** settings.onboarding ledger projected into coordinator order. */
     onboardingSteps: HostObservable<readonly SettingsOnboardingStep[]>
+    /** Edge-triggered requests from external settings shortcuts. */
+    navigation: HostObservable<import('@ryanyujazz/dsh-client-ui-settings/client').SettingsNavigationSnapshot>
   }
 }
 

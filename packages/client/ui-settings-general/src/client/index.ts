@@ -55,7 +55,7 @@ const NS = 'settings'
  * ui-settings' apply, whose activation order relative to this one is NOT
  * constrained; registrations depend on their slots through `slots.inject()`.
  */
-export const inject = ['slots', 'locale', 'connection']
+export const inject = ['slots', 'locale', 'connection', 'settingsNavigation']
 
 /**
  * Register the `settings` dictionaries, the chrome content, and the General
@@ -138,6 +138,7 @@ export function apply(ctx: ClientContext): void {
         },
         subscribe: listener => ctx.slots.subscribe('settings.onboarding', listener),
       },
+      navigation: ctx.settingsNavigation.commands,
     },
   })
   ctx.slots.inject('sidebar.settings', () => ctx.slots.register({
