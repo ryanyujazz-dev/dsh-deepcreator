@@ -5,24 +5,12 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  '@deepseek-ai/dsh-client-runtime@0.1.1-rc.2':
-    hash: e38cc37461871a3e4ad8083d26c438b8823a0c1be01ca18ad3cb284d6c4220f1
-    path: patches/@deepseek-ai__dsh-client-runtime@0.1.1-rc.2.patch
-  '@deepseek-ai/dsh-client-test-runtime@0.1.1-rc.2':
-    hash: 20417217142867bbb2d8540a7daa7b23e065c81a47a22164c2bb93bf6f61f72f
-    path: patches/@deepseek-ai__dsh-client-test-runtime@0.1.1-rc.2.patch
-  '@deepseek-ai/dsh-client-ui-renderer@0.1.1-rc.2':
-    hash: 55e332c9fae5930bd2d1de3d141da209a28783c6791d92c00864b930b3c03b97
-    path: patches/@deepseek-ai__dsh-client-ui-renderer@0.1.1-rc.2.patch
-  '@deepseek-ai/dsh-client-ui-slots@0.1.1-rc.2':
-    hash: a7fbc17b4bc3da49c64c09d0e9162fd94dcd20b43a3d3b51cddae56aa3071877
-    path: patches/@deepseek-ai__dsh-client-ui-slots@0.1.1-rc.2.patch
-  '@deepseek-ai/dsh-tool-fs@0.1.1-rc.2':
-    hash: 268dee68362330cc493227408797b2fce528ecde422cbd2eba2fa6b8f7bb2e38
-    path: patches/@deepseek-ai__dsh-tool-fs@0.1.1-rc.2.patch
-  '@deepseek-ai/dsh-tools@0.1.1-rc.2':
-    hash: c211f0cf4bee8cd4d3ca528e9b4fe8afc0065273a0157914be39f6ccf6626577
-    path: patches/@deepseek-ai__dsh-tools@0.1.1-rc.2.patch
+  '@deepseek-ai/dsh-client-runtime@0.1.1-rc.2': e38cc37461871a3e4ad8083d26c438b8823a0c1be01ca18ad3cb284d6c4220f1
+  '@deepseek-ai/dsh-client-test-runtime@0.1.1-rc.2': 20417217142867bbb2d8540a7daa7b23e065c81a47a22164c2bb93bf6f61f72f
+  '@deepseek-ai/dsh-client-ui-renderer@0.1.1-rc.2': 55e332c9fae5930bd2d1de3d141da209a28783c6791d92c00864b930b3c03b97
+  '@deepseek-ai/dsh-client-ui-slots@0.1.1-rc.2': a7fbc17b4bc3da49c64c09d0e9162fd94dcd20b43a3d3b51cddae56aa3071877
+  '@deepseek-ai/dsh-tool-fs@0.1.1-rc.2': 268dee68362330cc493227408797b2fce528ecde422cbd2eba2fa6b8f7bb2e38
+  '@deepseek-ai/dsh-tools@0.1.1-rc.2': c211f0cf4bee8cd4d3ca528e9b4fe8afc0065273a0157914be39f6ccf6626577
 
 importers:
 
@@ -451,9 +439,6 @@ importers:
       '@deepseek-ai/dsh-client-ui-input-trigger':
         specifier: 0.1.1-rc.2
         version: 0.1.1-rc.2(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-client-locale@0.1.1-rc.2(9fced9a80cf0261475239b8920fdcc8b))(@deepseek-ai/dsh-client-runtime@0.1.1-rc.2(patch_hash=e38cc37461871a3e4ad8083d26c438b8823a0c1be01ca18ad3cb284d6c4220f1)(be22c32b70fee6776f1b33d3cc1b6024))(@deepseek-ai/dsh-file-reference@0.1.1-rc.2(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-agent@0.1.1-rc.2(c1537a8836b04097f168b024f1e38d85))(@deepseek-ai/dsh-invariants@0.1.1-rc.2(@deepseek-ai/cordis@4.0.1))(@deepseek-ai/dsh-typert-protocol@0.1.1-rc.2(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.1-rc.2(@deepseek-ai/cordis@4.0.1))))(@deepseek-ai/dsh-invariants@0.1.1-rc.2(@deepseek-ai/cordis@4.0.1))
-      '@deepseek-ai/dsh-client-ui-primitives':
-        specifier: 0.1.1-rc.2
-        version: 0.1.1-rc.2(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.1-rc.2(@deepseek-ai/cordis@4.0.1))
       '@deepseek-ai/dsh-client-ui-slots':
         specifier: 0.1.1-rc.2
         version: 0.1.1-rc.2(patch_hash=a7fbc17b4bc3da49c64c09d0e9162fd94dcd20b43a3d3b51cddae56aa3071877)(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.1-rc.2(@deepseek-ai/cordis@4.0.1))
@@ -2673,12 +2658,6 @@ packages:
       '@deepseek-ai/dsh-client-ui-conversation': ^0.1.1-rc.2
       '@deepseek-ai/dsh-invariants': ^0.1.1-rc.2
       '@deepseek-ai/dsh-plan-mode': ^0.1.1-rc.2
-
-  '@deepseek-ai/dsh-client-ui-primitives@0.1.1-rc.2':
-    resolution: {integrity: sha512-vCWEha1yhY//26j/LppHC/xZrU6MOuw6lcI4bJr5L7ppbY8h7GAR24ozBr+4ESMtQ5OmsvqGnsa/Kj5ZjSLfEQ==}
-    peerDependencies:
-      '@deepseek-ai/cordis': ^4.0.1
-      '@deepseek-ai/dsh-invariants': ^0.1.1-rc.2
 
   '@deepseek-ai/dsh-client-ui-reference@0.1.1-rc.2':
     resolution: {integrity: sha512-45Fsle7tGJsIjODdFFESK5PvO0Uk505UgRAy8vKUz36VGUl4v5WpofW562hFSaDBkUztbJQ6/UpCeEQnWs4bjw==}
@@ -8465,33 +8444,6 @@ snapshots:
       '@deepseek-ai/dsh-client-ui-conversation': 0.1.1-rc.2(bada0d56d3d0f996ab7864575861671f)
       '@deepseek-ai/dsh-invariants': 0.1.1-rc.2(@deepseek-ai/cordis@4.0.1)
       '@deepseek-ai/dsh-plan-mode': 0.1.1-rc.2(0491d88fe316770707ce127fc27f4cbb)
-
-  '@deepseek-ai/dsh-client-ui-primitives@0.1.1-rc.2(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.1-rc.2(@deepseek-ai/cordis@4.0.1))':
-    dependencies:
-      '@deepseek-ai/cordis': 4.0.1(@deepseek-ai/cordis-plugin-include@1.0.6)(@deepseek-ai/cordis-plugin-loader@1.0.2)
-      '@deepseek-ai/dsh-invariants': 0.1.1-rc.2(@deepseek-ai/cordis@4.0.1)
-      '@shikijs/langs': 4.4.3
-      '@types/mdast': 4.0.4
-      anser: 2.3.5
-      clsx: 2.1.1
-      katex: 0.16.47
-      mdast-util-from-markdown: 2.0.3
-      mdast-util-gfm: 3.1.0
-      mdast-util-math: 3.0.0
-      micromark-core-commonmark: 2.0.3
-      micromark-extension-gfm: 3.0.0
-      micromark-extension-math: 3.1.0
-      micromark-factory-space: 2.0.1
-      micromark-util-character: 2.1.1
-      micromark-util-classify-character: 2.0.1
-      micromark-util-sanitize-uri: 2.0.1
-      micromark-util-symbol: 2.0.1
-      micromark-util-types: 2.0.2
-      react: 18.2.0
-      react-dom: 18.2.0(react@18.2.0)
-      shiki: 4.4.3
-    transitivePeerDependencies:
-      - supports-color
 
   '@deepseek-ai/dsh-client-ui-reference@0.1.1-rc.2(e3cc82873a02cc3558816db0fd61763e)':
     dependencies:
