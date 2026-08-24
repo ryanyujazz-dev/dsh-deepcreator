@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { JsonBlock, MarkdownText, MessageText } from '@ryanyujazz/dsh-client-ui-primitives'
 import { cjkFriendlyStrong } from '../src/markdown/cjkFriendlyStrong.ts'
 import { mathCompatibility } from '../src/markdown/mathCompatibility.ts'
@@ -255,6 +255,37 @@ describe('MarkdownText', () => {
       expect(image.getAttribute('decoding')).toBe('async')
       expect(image.getAttribute('referrerpolicy')).toBe('no-referrer')
     }
+  })
+
+  it('resolves document-relative images only through an explicit settled resolver', async () => {
+    const imageResolver = vi.fn((destination: string) => {
+      if (destination === 'images/chart.png') return Promise.resolve('http://127.0.0.1:3199/chart.png')
+      if (destination === '../shared/legend.png') return 'https://loopback.example/legend.png'
+      return 'file:///workspace/private.png'
+    })
+    const markdown = [
+      '![chart](images/chart.png)',
+      '![legend][local]',
+      '![blocked](private.png)',
+      '![file](file:///workspace/file.png)',
+      '',
+      '[local]: ../shared/legend.png',
+    ].join('\n\n')
+    const { container } = render(<MarkdownText text={markdown} imageResolver={imageResolver} />)
+
+    await waitFor(() => {
+      expect([...container.querySelectorAll('img')].map(image => image.getAttribute('src'))).toEqual([
+        'http://127.0.0.1:3199/chart.png',
+        'https://loopback.example/legend.png',
+      ])
+    })
+    expect(imageResolver.mock.calls.map(([destination]) => destination)).toEqual([
+      'images/chart.png',
+      '../shared/legend.png',
+      'private.png',
+    ])
+    expect(screen.getByText('blocked')).toBeTruthy()
+    expect(screen.getByText('file')).toBeTruthy()
   })
 
   it('neutralizes raw HTML, unsafe or relative links, and unsupported images', () => {

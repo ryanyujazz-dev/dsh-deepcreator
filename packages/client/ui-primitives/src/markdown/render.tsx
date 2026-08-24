@@ -16,7 +16,7 @@
  * may add node types this renderer has no mapping for.
  */
 
-import { Fragment, createElement } from 'react'
+import { Fragment, createElement, useEffect, useState } from 'react'
 import type { Key, ReactNode } from 'react'
 import type * as Md from 'mdast'
 import type {} from 'mdast-util-math'
@@ -116,6 +116,14 @@ export interface MarkdownFileMentions {
 }
 
 /**
+ * Owner-supplied resolver for a document-relative Markdown image destination.
+ * The shared renderer keeps local paths inert unless a settled document view
+ * explicitly supplies this capability; the returned value must still be an
+ * absolute HTTP(S) URL before it can enter an img element.
+ */
+export type MarkdownImageResolver = (destination: string) => string | undefined | Promise<string | undefined>
+
+/**
  * One render pass's state: immutable options and targets plus the footnote
  * numbering accumulated in document order while references render.
  */
@@ -126,6 +134,8 @@ export interface MarkdownRenderContext {
   readonly codeLabels: MarkdownCodeLabels | undefined
   /** Inline-code file mentions; absent wherever no opener vocabulary exists. */
   readonly fileMentions: MarkdownFileMentions | undefined
+  /** Settled document-relative image resolver; absent for untrusted chat output and streaming renders. */
+  readonly imageResolver?: MarkdownImageResolver | undefined
   /** Inside an anchor's children: interactive mentions must not nest there. */
   readonly inLink?: boolean
   /** Reference targets visible to this pass. */
@@ -281,7 +291,7 @@ function renderNode(node: Md.RootContent, key: Key, context: MarkdownRenderConte
     case 'linkReference':
       return renderLinkReference(node, key, context)
     case 'image':
-      return renderImage(node.url, node.alt ?? '', key)
+      return renderImage(node.url, node.alt ?? '', key, context.imageResolver)
     case 'imageReference':
       return renderImageReference(node, key, context)
     case 'footnoteReference':
@@ -471,14 +481,55 @@ function inlineCodeHttpUrl(value: string): string | undefined {
   }
 }
 
-function renderImage(url: string, alt: string, key: Key): ReactNode {
-  const imageSrc = remoteImageUrl(sanitizeUrl(normalizeUri(url)))
+/** A destination eligible for an owner resolver: relative, non-empty, and scheme-free. */
+function relativeImageDestination(url: string): string | undefined {
+  const normalized = normalizeUri(url)
+  if (normalized === '' || normalized.startsWith('/') || normalized.startsWith('\\') || normalized.startsWith('#') || normalized.startsWith('?')) {
+    return undefined
+  }
+  if (/^[A-Za-z][A-Za-z\d+.-]*:/.test(normalized)) return undefined
+  return normalized
+}
+
+interface ResolvedImageState {
+  readonly destination: string
+  readonly resolver: MarkdownImageResolver
+  readonly src: string | undefined
+}
+
+/** Resolve local document images after commit without putting async work in the render pass. */
+function MarkdownImage({ url, alt, resolver }: {
+  url: string
+  alt: string
+  resolver: MarkdownImageResolver | undefined
+}) {
+  const directSrc = remoteImageUrl(sanitizeUrl(normalizeUri(url)))
+  const destination = directSrc === undefined ? relativeImageDestination(url) : undefined
+  const [resolved, setResolved] = useState<ResolvedImageState | null>(null)
+  const resolvedSrc = destination !== undefined && resolver !== undefined
+    && resolved?.destination === destination && resolved.resolver === resolver
+    ? resolved.src
+    : undefined
+  const imageSrc = directSrc ?? resolvedSrc
+
+  useEffect(() => {
+    if (directSrc !== undefined || destination === undefined || resolver === undefined) return
+    let live = true
+    void Promise.resolve(resolver(destination)).then((candidate) => {
+      if (!live) return
+      const src = candidate === undefined ? undefined : remoteImageUrl(sanitizeUrl(normalizeUri(candidate)))
+      setResolved({ destination, resolver, src })
+    }).catch(() => {
+      if (live) setResolved({ destination, resolver, src: undefined })
+    })
+    return () => { live = false }
+  }, [destination, directSrc, resolver])
+
   if (imageSrc === undefined) {
-    return <span key={key} className={css.imageAlt}>{alt}</span>
+    return <span className={css.imageAlt}>{alt}</span>
   }
   return (
     <img
-      key={key}
       className={css.image}
       src={imageSrc}
       alt={alt}
@@ -487,6 +538,10 @@ function renderImage(url: string, alt: string, key: Key): ReactNode {
       referrerPolicy="no-referrer"
     />
   )
+}
+
+function renderImage(url: string, alt: string, key: Key, resolver: MarkdownImageResolver | undefined): ReactNode {
+  return <MarkdownImage key={key} url={url} alt={alt} resolver={resolver} />
 }
 
 /** The bracketed source text a reference reverts to when its definition is missing. */
@@ -519,7 +574,7 @@ function renderImageReference(
 ): ReactNode {
   const definition = context.targets.definitions.get(node.identifier.toUpperCase())
   if (definition === undefined) return `![${node.alt ?? ''}${referenceSuffix(node)}`
-  return renderImage(definition.url, node.alt ?? '', key)
+  return renderImage(definition.url, node.alt ?? '', key, context.imageResolver)
 }
 
 function renderFootnoteReference(

@@ -100,6 +100,36 @@ export function artifactParentDirectory(path: string): string {
   return path.slice(0, separator)
 }
 
+/**
+ * Resolve one scheme-free Markdown image destination against the document's
+ * containing directory. The Host remains authoritative for canonicalization
+ * and workspace fencing; this helper only preserves the document-relative
+ * base across POSIX and Windows path spellings.
+ */
+export function resolveMarkdownImageArtifactPath(markdownPath: string, destination: string): string | undefined {
+  const encodedPath = destination.split(/[?#]/, 1)[0]
+  if (encodedPath === undefined || encodedPath === '') return undefined
+  let relativePath: string
+  try {
+    relativePath = decodeURIComponent(encodedPath)
+  } catch {
+    return undefined
+  }
+  if (
+    relativePath === ''
+    || relativePath.includes('\0')
+    || relativePath.startsWith('/')
+    || relativePath.startsWith('\\')
+    || /^[A-Za-z][A-Za-z\d+.-]*:/.test(relativePath)
+  ) return undefined
+
+  const parent = artifactParentDirectory(markdownPath)
+  const separator = parent.includes('\\') && !parent.includes('/') ? '\\' : '/'
+  const child = relativePath.replaceAll(/[\\/]+/g, separator)
+  if (parent === '.') return child
+  return `${parent.replace(/[\\/]+$/, '')}${separator}${child.replace(/^[\\/]+/, '')}`
+}
+
 /** Compact locale-neutral age, e.g. `45s`, `3m`, `2h`, `5d`. */
 export function formatAge(updatedAt: number, now: number): string {
   const seconds = Math.max(0, Math.floor((now - updatedAt) / 1000))
