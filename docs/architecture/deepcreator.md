@@ -8,6 +8,8 @@ Session deletion is the one lifecycle verb the official harness does not expose,
 
 ## Package boundaries
 
+Markdown Artifact previews resolve scheme-free image destinations from the open document's containing directory, deduplicate loads through the existing workspace-fenced Artifact Remote, and accept only image-kind loopback HTTP results. Chat Markdown keeps the shared renderer's default remote-only image policy, so this capability does not broaden untrusted conversation output.
+
 Each UI feature is one Cordis Client plugin. A feature may contain `contract`, `model-adapter`, `view-model`, and `view` directories when the code needs those distinctions; the directories do not create additional plugins. The model adapter reads official Runtime objects, the view model owns presentation-only stores and actions, and React views consume Slot-derived props. `apply.ts` is the only cross-domain assembly point.
 
 `@ryanyujazz/dsh-client-compat` records the supported official package version and Git SHA and exports public types. Runtime object identity still comes directly from the official ModuleLoader table. `@ryanyujazz/dsh-client-ui-primitives` is an immediately available Client module whose Host apply is empty; it publishes shared React controls once and injects its global browser styles without owning business state. Its product icon set owns the locally bundled DeepSeeker CodeAgent folder Lottie used by Workspace, Conversation hero, Agent Preset and Artifact surfaces; the animation is lazy-loaded, theme-colored through `currentColor`, and reduced-motion aware, while consumers provide only presentation state such as open/closed.

@@ -95,6 +95,12 @@ the supplied eye glyph; Code uses the product `</>` glyph. Both options expose
 localized hover/focus hints and accessible names. Preview is the default and
 renders through the same shared `MarkdownText` pipeline as settled assistant
 prose, including GFM, math, code fences, and the same untrusted-link policy.
+Scheme-free image destinations such as `./images/chart.png` and reference-style
+equivalents resolve from the open Markdown file's containing directory. The
+panel reads each distinct path once through the fenced `artifacts.read`
+boundary and supplies only an image-kind loopback HTTP URL to `MarkdownText`;
+workspace escapes, absolute local paths, `file:` URLs, and non-image results
+remain alt text, while authored HTTP(S) images continue to render directly.
 The panel-wide scroll surface remains responsible for overflow, while the
 preview document is centered at `width: 100%` with the shared
 `--dsh-reading-content-width` maximum; narrow panels shrink naturally and the

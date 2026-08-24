@@ -10,12 +10,13 @@ import {
   DeepCreatorIconAnimatedFolder16, DeepCreatorIconMarkdownCode16, DeepCreatorIconMarkdownPreview16, FileIcon, FileLabel,
   IconChevronRightOutline14, IconListPenOutline16, IconRefreshOutline14, MarkdownText, Tooltip, WorkbenchPanelIconButton,
 } from '@ryanyujazz/dsh-client-ui-primitives'
+import type { MarkdownImageResolver } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { WorkbenchPanelProps } from '@ryanyujazz/dsh-client-ui-workbench/client'
 import { EMPTY_ARTIFACTS_SNAPSHOT, EMPTY_PLANS_SNAPSHOT } from './artifact-contract.ts'
 import type { PlanArtifactStatus } from './artifact-contract.ts'
 import {
   artifactPathSegments, artifactTabFilePaths, artifactTabLabels, basename, formatAge, isMarkdownArtifactPath,
-  planCallIdFromInstance, planInstanceId, planTabLabels,
+  planCallIdFromInstance, planInstanceId, planTabLabels, resolveMarkdownImageArtifactPath,
 } from './artifact-view-model.ts'
 import type { MarkdownRenderMode } from './artifact-view-model.ts'
 import css from './ArtifactPanel.module.css'
@@ -141,6 +142,26 @@ export function ArtifactPanel({ artifacts, sessionId, route, tabs, activeInstanc
   const active = snapshot.records.find(item => normalizeInstanceId(item.path) === normalizedActiveInstanceId)
   const activePlanCallId = normalizedActiveInstanceId === undefined ? null : planCallIdFromInstance(normalizedActiveInstanceId)
   const activePlan = activePlanCallId === null ? undefined : plans.records.find(item => item.callId === activePlanCallId)
+  const activeFilePath = normalizedActiveInstanceId !== undefined && activePlanCallId === null
+    ? normalizeInstanceId(active?.path ?? normalizedActiveInstanceId)
+    : undefined
+
+  const markdownImageResolver = useMemo<MarkdownImageResolver | undefined>(() => {
+    if (activeFilePath === undefined || !isMarkdownArtifactPath(activeFilePath)) return undefined
+    const requests = new Map<string, Promise<string | undefined>>()
+    return (destination) => {
+      const imagePath = resolveMarkdownImageArtifactPath(activeFilePath, destination)
+      if (imagePath === undefined) return undefined
+      const cached = requests.get(imagePath)
+      if (cached !== undefined) return cached
+      const request = artifacts.read(sessionId, imagePath).then((wire) => {
+        if (!wire.ok || !wire.value.ok || wire.value.kind !== 'image') return undefined
+        return wire.value.url
+      }).catch(() => undefined)
+      requests.set(imagePath, request)
+      return request
+    }
+  }, [activeFilePath, artifacts, refreshTick, sessionId])
 
   useLayoutEffect(() => {
     for (const tab of tabs) {
@@ -215,7 +236,7 @@ export function ArtifactPanel({ artifacts, sessionId, route, tabs, activeInstanc
   }
 
   if (route === 'instance' && normalizedActiveInstanceId !== undefined) {
-    const activePath = normalizeInstanceId(active?.path ?? normalizedActiveInstanceId)
+    const activePath = activeFilePath ?? normalizedActiveInstanceId
     const markdown = isMarkdownArtifactPath(activePath)
     const markdownMode = markdownModes[activePath] ?? 'preview'
     const changeMarkdownMode = (mode: MarkdownRenderMode) => {
@@ -239,7 +260,7 @@ export function ArtifactPanel({ artifacts, sessionId, route, tabs, activeInstanc
               {content.kind === 'text' && markdown && markdownMode === 'preview'
                 ? (
                   <div className={css.markdownDocument} data-artifact-markdown-document>
-                    <MarkdownText text={content.content} codeLabels={markdownCodeLabels} />
+                    <MarkdownText text={content.content} codeLabels={markdownCodeLabels} imageResolver={markdownImageResolver} />
                   </div>
                 )
                 : content.kind === 'text'

@@ -28,7 +28,9 @@ import {
 } from '../src/client/ArtifactBinaryRenderers.tsx'
 import { EMPTY_ARTIFACTS_SNAPSHOT, EMPTY_PLANS_SNAPSHOT } from '../src/client/artifact-contract.ts'
 import type { ArtifactsSnapshot, PlansSnapshot } from '../src/client/artifact-contract.ts'
-import { artifactParentDirectory, artifactPathSegments, planInstanceId } from '../src/client/artifact-view-model.ts'
+import {
+  artifactParentDirectory, artifactPathSegments, planInstanceId, resolveMarkdownImageArtifactPath,
+} from '../src/client/artifact-view-model.ts'
 
 afterEach(cleanup)
 
@@ -79,6 +81,16 @@ describe('ArtifactPanel', () => {
     expect(artifactParentDirectory('E:\\repo\\src\\a.ts')).toBe('E:\\repo\\src')
     expect(artifactParentDirectory('/a.ts')).toBe('/')
     expect(artifactParentDirectory('E:\\a.ts')).toBe('E:\\')
+  })
+
+  it('resolves encoded Markdown image destinations from the document directory across path formats', () => {
+    expect(resolveMarkdownImageArtifactPath('/repo/docs/report.md', 'images/chart%20one.png?raw=1#view'))
+      .toBe('/repo/docs/images/chart one.png')
+    expect(resolveMarkdownImageArtifactPath('E:\\repo\\docs\\report.md', '..\\images\\chart.png'))
+      .toBe('E:\\repo\\docs\\..\\images\\chart.png')
+    expect(resolveMarkdownImageArtifactPath('/repo/docs/report.md', 'https://example.com/chart.png')).toBeUndefined()
+    expect(resolveMarkdownImageArtifactPath('/repo/docs/report.md', '%2Foutside.png')).toBeUndefined()
+    expect(resolveMarkdownImageArtifactPath('/repo/docs/report.md', 'bad%ZZ.png')).toBeUndefined()
   })
 
   it('keeps the path tail visible and fades its leading edge only when truncated', () => {
@@ -288,6 +300,52 @@ describe('ArtifactPanel', () => {
     expect(view.container.querySelector('[data-artifact]')).not.toBeNull()
     expect(view.container.querySelector('[data-artifact-markdown-document]')).toBeNull()
     expect(read).toHaveBeenCalledTimes(1)
+  })
+
+  it('loads relative Markdown images from the document directory through fenced artifact URLs', async () => {
+    const path = '/workspace/docs/report.md'
+    const markdown = [
+      '![chart](images/chart.png)',
+      '![chart duplicate](images/chart.png)',
+      '![legend][shared]',
+      '![remote](https://example.com/remote.png)',
+      '',
+      '[shared]: ../shared/legend.png',
+    ].join('\n\n')
+    const read = vi.fn(async (_sessionId: string, requestedPath: string) => {
+      if (requestedPath === path) {
+        return { ok: true as const, value: { ok: true as const, kind: 'text' as const, content: markdown } }
+      }
+      if (requestedPath === '/workspace/docs/images/chart.png') {
+        return {
+          ok: true as const,
+          value: { ok: true as const, kind: 'image' as const, url: 'http://127.0.0.1:3199/chart.png', mediaType: 'image/png' },
+        }
+      }
+      if (requestedPath === '/workspace/docs/../shared/legend.png') {
+        return {
+          ok: true as const,
+          value: { ok: true as const, kind: 'image' as const, url: 'http://127.0.0.1:3199/legend.png', mediaType: 'image/png' },
+        }
+      }
+      return { ok: true as const, value: { ok: false as const, code: 'NOT_FOUND' as const, message: 'missing' } }
+    })
+    const input = props(snapshotOf([{ path, updatedAt: 1_000, turn: 1 }]), read)
+    const view = render(<ArtifactPanel {...{ ...input.input, route: 'instance', activeInstanceId: path }} />)
+
+    await waitFor(() => {
+      expect([...view.container.querySelectorAll('[data-artifact-markdown-document] img')].map(image => image.getAttribute('src'))).toEqual([
+        'http://127.0.0.1:3199/chart.png',
+        'http://127.0.0.1:3199/chart.png',
+        'http://127.0.0.1:3199/legend.png',
+        'https://example.com/remote.png',
+      ])
+    })
+    expect(read.mock.calls).toEqual([
+      ['session-1', path],
+      ['session-1', '/workspace/docs/images/chart.png'],
+      ['session-1', '/workspace/docs/../shared/legend.png'],
+    ])
   })
 
   it('keeps non-Markdown artifacts on code rendering without a mode switch', async () => {
