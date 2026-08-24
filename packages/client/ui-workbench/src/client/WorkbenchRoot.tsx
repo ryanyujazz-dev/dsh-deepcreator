@@ -121,7 +121,6 @@ function Group({
     tabs: group.tabs,
     ...(group.activeInstanceId === undefined ? {} : { activeInstanceId: group.activeInstanceId }),
     openInstance,
-    activateInstance: openInstance,
     closeInstance,
     replaceInstanceId,
     showHome,
@@ -193,7 +192,7 @@ export function WorkbenchRoot({
         nonce: command.sequence,
       }
     : null
-  const dragStart = useRef<number | null>(null)
+  const dragging = useRef(false)
   const tracksRef = useRef<HTMLDivElement | null>(null)
   const responsiveTrackCount = visibleTrackCount(tracks.length, width)
   const responsiveTracks = tracks.slice(0, responsiveTrackCount)
@@ -248,13 +247,13 @@ export function WorkbenchRoot({
 
   useEffect(() => {
     if (resizeGesture !== null) {
-      dragStart.current ??= resizeGesture.startWidth
+      dragging.current = true
       if (width > 0) actions.setOuterWidth(width)
       return
     }
-    if (dragStart.current !== null) {
-      actions.completeOuterResize(dragStart.current, width)
-      dragStart.current = null
+    if (dragging.current) {
+      actions.setOuterWidth(width)
+      dragging.current = false
     }
   }, [actions, resizeGesture, width])
 

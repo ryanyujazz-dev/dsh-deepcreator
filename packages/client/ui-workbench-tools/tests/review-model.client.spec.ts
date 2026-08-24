@@ -1,15 +1,15 @@
 // @vitest-environment jsdom
 // The Review panel's pure presentation model: parse-once layers, cache-
 // keeping merges, event staleness marks, collapsed-cache eviction, settled
-// mutation digests, and per-repository expansion persistence.
+// mutation digests.
 
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { ConversationNode, RunningToolCall, ToolResultNode } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ReviewDiffResult, ReviewFileStatus } from '@ryanyujazz/dsh-review/types'
 import {
   REVIEW_CACHE_LIMIT, decodeMutationSignal, encodeMutationSignal, evictCollapsedCaches, markStale,
-  isReviewPanelFile, matchReviewFile, mergeFileEntries, mutationSignal, mutationToolPath, parseDiffResult, readExpandedPaths, ReviewDiffParser,
-  sameDiffResult, writeExpandedPaths, type FileEntries, type FileEntry,
+  isReviewPanelFile, matchReviewFile, mergeFileEntries, mutationSignal, mutationToolPath, parseDiffResult, ReviewDiffParser,
+  sameDiffResult, type FileEntries, type FileEntry,
 } from '../src/client/review-model.ts'
 
 beforeEach(() => { localStorage.clear() })
@@ -250,34 +250,6 @@ describe('mutation signal', () => {
     expect(mutationToolPath('{"path":""}')).toBeNull()
     expect(mutationToolPath('not json')).toBeNull()
     expect(mutationToolPath(undefined)).toBeNull()
-  })
-})
-
-describe('expansion persistence', () => {
-  it('round-trips per repository and reports null for unknown roots', () => {
-    writeExpandedPaths('/repo/one', ['src/a.ts', 'src/b.ts'])
-    writeExpandedPaths('/repo/one', ['src/c.ts'])
-    expect(readExpandedPaths('/repo/one')).toEqual(new Set(['src/c.ts']))
-    expect(readExpandedPaths('/repo/two')).toBeNull()
-  })
-
-  it('trims the oldest paths beyond the cap and keeps the newest repositories', () => {
-    const paths = Array.from({ length: 250 }, (_value, index) => `p${index}.ts`)
-    writeExpandedPaths('/repo/capped', paths)
-    const stored = readExpandedPaths('/repo/capped')
-    expect(stored?.size).toBe(200)
-    expect(stored?.has('p0.ts')).toBe(false)
-    expect(stored?.has('p249.ts')).toBe(true)
-    for (let index = 0; index < 12; index += 1) writeExpandedPaths(`/repo/r${index}`, ['x.ts'])
-    writeExpandedPaths('/repo/newest', ['y.ts'])
-    expect(readExpandedPaths('/repo/r0')).toBeNull()
-    expect(readExpandedPaths('/repo/newest')).toEqual(new Set(['y.ts']))
-  })
-
-  it('survives corrupt storage', () => {
-    localStorage.setItem('dsh.deepcreator.review.expansion.v1', '{not json')
-    expect(readExpandedPaths('/repo/one')).toBeNull()
-    expect(() => writeExpandedPaths('/repo/one', ['a.ts'])).not.toThrow()
   })
 })
 

@@ -3,7 +3,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { WorkbenchController } from '../src/client/service.ts'
 
 const layout = {
-  toggleSidebar: vi.fn(), openDetails: vi.fn(), closeDetails: vi.fn(),
+  toggleSidebar: vi.fn(), closeDetails: vi.fn(),
   setWorkbenchWidth: vi.fn(), setWorkbenchFocused: vi.fn(),
 }
 

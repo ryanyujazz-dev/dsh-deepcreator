@@ -81,7 +81,7 @@ describe('WorkbenchControls responsive placement', () => {
       types: {
         ...(input.value.controller.types as object),
         list: () => definitions.map(definition => definition.id === 'review'
-          ? { ...definition, openParameters: { scope: 'unstaged', expand: 'all' } }
+          ? { ...definition, openParameters: { scope: 'unstaged' } }
           : definition),
       },
     }
@@ -96,7 +96,7 @@ describe('WorkbenchControls responsive placement', () => {
     view.rerender(<WorkbenchControls {...{ ...input.value, controller } as unknown as WorkbenchControlsProps} />)
     fireEvent.click(view.getByRole('button', { name: '打开Review面板' }))
     expect(input.present).toHaveBeenCalledWith({
-      typeId: 'review', route: 'home', parameters: { scope: 'unstaged', expand: 'all' }, reveal: true, reason: 'user',
+      typeId: 'review', route: 'home', parameters: { scope: 'unstaged' }, reveal: true, reason: 'user',
     })
   })
 

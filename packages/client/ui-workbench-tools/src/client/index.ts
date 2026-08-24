@@ -74,7 +74,7 @@ export function apply(ctx: ClientContext): void {
       void controller.resolveTurnFile(turn, path).then(state => {
         if (state === 'pending') {
           ctx.workbench.present({
-            typeId: 'review', target: path, parameters: { scope: 'turn', turn: String(turn), expand: 'all' }, reveal: true, reason: 'user',
+            typeId: 'review', target: path, parameters: { scope: 'turn', turn: String(turn) }, reveal: true, reason: 'user',
           })
           return
         }
@@ -83,7 +83,7 @@ export function apply(ctx: ClientContext): void {
           // turn-start snapshot may still be settling; keep the click on its
           // owning Turn so a subsequent Host read cannot drift to a Git scope.
           ctx.workbench.present({
-            typeId: 'review', target: path, parameters: { scope: 'turn', turn: String(turn), expand: 'all' }, reveal: true, reason: 'user',
+            typeId: 'review', target: path, parameters: { scope: 'turn', turn: String(turn) }, reveal: true, reason: 'user',
           })
           return
         }
@@ -123,7 +123,7 @@ export function apply(ctx: ClientContext): void {
     workbench: ctx.workbench,
   })
   const providers: Array<{ definition: PanelTypeDefinition; panel: PanelComponent; icon: IconComponent }> = [
-    { definition: { id:'review',label:()=>t('review'),scope:'workspace',order:4,supportsHome:true,supportsCreate:false,supportsMultipleInstances:true,minWidth:150,minHeight:260,preferredWidth:560,closePolicy:'dispose',openParameters:{scope:'unstaged',expand:'all'} }, panel: reviewPanel, icon: DeepCreatorIconReview16 },
+    { definition: { id:'review',label:()=>t('review'),scope:'workspace',order:4,supportsHome:true,supportsCreate:false,supportsMultipleInstances:true,minWidth:150,minHeight:260,preferredWidth:560,closePolicy:'dispose',openParameters:{scope:'unstaged'} }, panel: reviewPanel, icon: DeepCreatorIconReview16 },
   ]
   if (terminal !== undefined) providers.push({
     definition: { id:'terminal',label:()=>t('terminal'),scope:'session',order:1,supportsHome:false,supportsCreate:true,supportsMultipleInstances:true,minWidth:150,minHeight:220,preferredWidth:520,closePolicy:'provider-controlled',disabledWhenAddressed:true },

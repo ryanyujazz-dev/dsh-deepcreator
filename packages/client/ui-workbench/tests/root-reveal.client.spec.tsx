@@ -20,7 +20,7 @@ const definitions: PanelTypeDefinition[] = [
  *  synthesizes the same selector-hook + baked-actions pair from one instance. */
 function mountRoot(beforeRender?: (controller: WorkbenchController) => void) {
   const layout = {
-    toggleSidebar: vi.fn(), openDetails: vi.fn(), closeDetails: vi.fn(),
+    toggleSidebar: vi.fn(), closeDetails: vi.fn(),
     setWorkbenchWidth: vi.fn(), setWorkbenchFocused: vi.fn(),
   }
   const controller = new WorkbenchController(new Context(), layout as never)
@@ -112,13 +112,13 @@ describe('WorkbenchRoot reveal delivery', () => {
     await act(() => {
       controller.present({
         typeId: 'review',
-        parameters: { scope: 'unstaged', expand: 'all' },
+        parameters: { scope: 'unstaged' },
         reveal: true,
         reason: 'user',
       })
     })
     expect(owners.get('review')?.reveal).toMatchObject({
-      parameters: { scope: 'unstaged', expand: 'all' },
+      parameters: { scope: 'unstaged' },
     })
     expect(owners.get('review')?.reveal?.target).toBeUndefined()
   })
