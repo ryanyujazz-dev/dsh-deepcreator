@@ -8,6 +8,19 @@ On Windows, the native title bar is hidden too, but the native minimize/maximize
 
 Run `pnpm run profile:migrate` for initial setup, then use `pnpm run dev:desktop` from the repository root. Desktop launch runs `profile:ensure`, which automatically refreshes an outdated managed profile when the presentation bundle gains or retires workspace plugins.
 
+### Parallel development and test instances
+
+The default Desktop keeps its existing `DeepCreator DSH` Electron data directory and `~/.dsh` runtime home. A second Desktop can run concurrently when its launcher supplies a unique `DEEPCREATOR_INSTANCE_ID` plus absolute, distinct `DSH_HOME` and `DSH_AGENTS_HOME` paths:
+
+```sh
+DEEPCREATOR_INSTANCE_ID=test \
+DSH_HOME="$HOME/.dsh-deepcreator-test" \
+DSH_AGENTS_HOME="$HOME/.agents-deepcreator-test" \
+pnpm run dev:desktop
+```
+
+The instance id must contain 1–32 lowercase letters, digits, underscores, or hyphens and begin with a letter or digit. It suffixes the Electron `userData` directory, scopes the single-instance lock, and appears in the window name (`DeepCreator [test]`). Named instances fail at startup unless both runtime roots are explicit; Chromium isolation alone must never be mistaken for isolated profiles, Sessions, settings, Skills, and Agent configuration. Each `DSH_HOME` needs its own source `web` profile before the first `profile:migrate`/`profile:ensure` run. `--port 0` remains unchanged, so every Host receives an independent dynamic loopback port.
+
 At startup, Desktop resolves the operating system proxy/PAC route through Electron and projects it into the official Host's standard proxy environment when the deployment did not already provide one. Host plugins such as image generation therefore follow Clash and other system proxies when the app is launched from Finder, Dock, or Start Menu; explicit deployment proxy variables retain priority.
 
 The main renderer keeps `sandbox`, `contextIsolation`, and `webSecurity` enabled and does not enable Node integration. Its window-state bridge exposes only zoom/fullscreen presentation state. The separate Browser Surface bridge exposes only mount, bounds, visibility, and unmount for an existing `surfaceId`; renderer code cannot create or navigate pages, inspect DOM, automate input, or access files. Electron Main owns IAB `WebContentsView` instances in a dedicated persistent partition and serves Host Browser commands over an owner-only Unix socket or Windows named pipe authenticated with a random process token. No remote-debugging port is opened.

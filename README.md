@@ -141,6 +141,8 @@ pnpm run dev:desktop
 
 `profile:migrate` creates the managed `deepcreator` profile from the existing `web` profile. It backs up both profiles, preserves unrelated third-party Bundles and user patches, removes retired rows, links the local plugins, and validates the assembled Cordis tree. Later Desktop starts run the lightweight `profile:ensure` check and migrate only when the managed composition is stale.
 
+For side-by-side development and test Desktops, set a unique `DEEPCREATOR_INSTANCE_ID` and separate absolute `DSH_HOME`/`DSH_AGENTS_HOME` roots for the second process. The instance id separates Electron browser state and the single-instance lock; the two runtime homes separate profiles, Sessions, settings, Skills, and Agent configuration. See [`apps/desktop/README.md`](./apps/desktop/README.md#parallel-development-and-test-instances) for the launch contract.
+
 The original `web` profile remains the rollback path.
 
 <details>

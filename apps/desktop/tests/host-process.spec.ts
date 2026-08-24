@@ -3,8 +3,53 @@ import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { firstSystemProxy, IMAGE_PROXY_PROBE_URL, resolveDesktopDshLaunch, resolveDesktopWorkspace, resolveSystemProxyEnvironment } from '../src/dsh-launch.ts'
 import { parseDesktopHostUrl, startDesktopHost } from '../src/host-process.ts'
+import { resolveDesktopInstance } from '../src/desktop-instance.ts'
 
 const noop = (): void => {}
+
+describe('desktop instance isolation', () => {
+  const appData = resolve(process.cwd(), 'desktop-instance-spec', 'app-data')
+
+  it('preserves the existing default Desktop identity and user data', () => {
+    expect(resolveDesktopInstance({}, appData)).toEqual({
+      applicationName: 'DeepCreator',
+      userDataPath: join(appData, 'DeepCreator DSH'),
+    })
+  })
+
+  it('isolates a named instance and labels its window', () => {
+    expect(resolveDesktopInstance({
+      DEEPCREATOR_INSTANCE_ID: 'test',
+      DSH_HOME: resolve(appData, 'dsh-test'),
+      DSH_AGENTS_HOME: resolve(appData, 'agents-test'),
+    }, appData)).toEqual({
+      id: 'test',
+      applicationName: 'DeepCreator [test]',
+      userDataPath: join(appData, 'DeepCreator DSH-test'),
+    })
+  })
+
+  it('rejects named instances without complete isolated runtime roots', () => {
+    expect(() => resolveDesktopInstance({ DEEPCREATOR_INSTANCE_ID: 'test' }, appData))
+      .toThrow('requires an explicit DSH_HOME')
+    expect(() => resolveDesktopInstance({
+      DEEPCREATOR_INSTANCE_ID: 'test',
+      DSH_HOME: resolve(appData, 'shared'),
+    }, appData)).toThrow('requires an explicit DSH_AGENTS_HOME')
+    expect(() => resolveDesktopInstance({
+      DEEPCREATOR_INSTANCE_ID: 'test',
+      DSH_HOME: resolve(appData, 'shared'),
+      DSH_AGENTS_HOME: resolve(appData, 'shared'),
+    }, appData)).toThrow('requires distinct DSH_HOME and DSH_AGENTS_HOME')
+  })
+
+  it('rejects ambiguous or path-like instance ids', () => {
+    for (const id of ['Test', ' test', '../test', 'test.two', 'test two']) {
+      expect(() => resolveDesktopInstance({ DEEPCREATOR_INSTANCE_ID: id }, appData))
+        .toThrow('DEEPCREATOR_INSTANCE_ID')
+    }
+  })
+})
 
 describe('parseDesktopHostUrl', () => {
   it('accepts only the settled Web profile loopback URL line', () => {

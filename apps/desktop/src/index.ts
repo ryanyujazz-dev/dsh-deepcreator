@@ -15,12 +15,13 @@ import { BrowserRpcServer } from './browser-rpc-server.ts'
 import { BrowserSurfaceDriver } from './browser-views.ts'
 import { TitleBarThemeBridge } from './titlebar-theme.ts'
 import { WindowStateBridge } from './window-state.ts'
+import { resolveDesktopInstance } from './desktop-instance.ts'
 
 const require = createRequire(import.meta.url)
-const APP_NAME = 'DeepCreator'
-const USER_DATA_DIRECTORY = 'DeepCreator DSH'
 const STARTUP_TIMEOUT_MS = 30_000
 const SHUTDOWN_TIMEOUT_MS = 10_000
+const desktopInstance = resolveDesktopInstance(process.env, app.getPath('appData'))
+const APP_NAME = desktopInstance.applicationName
 
 let mainWindow: BrowserWindow | undefined
 let host: DesktopHost | undefined
@@ -161,8 +162,10 @@ async function start(): Promise<void> {
 
 app.setName(APP_NAME)
 // Keep this Harness-based desktop isolated from earlier local applications
-// that also used the public DeepCreator product name.
-app.setPath('userData', join(app.getPath('appData'), USER_DATA_DIRECTORY))
+// that also used the public DeepCreator product name. A named instance gets
+// its own Chromium state and single-instance lock in addition to the separate
+// official runtime data roots validated above.
+app.setPath('userData', desktopInstance.userDataPath)
 
 if (!app.requestSingleInstanceLock()) {
   app.quit()
