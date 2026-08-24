@@ -72,7 +72,8 @@ for (const entry of readdirSync(clientRoot, { withFileTypes: true })) {
   }
 }
 
-const bundlePatch = readFileSync(join(root, 'packages/bundle/deepcreator-web/cordis.patch.yml'), 'utf8')
+// Normalize CRLF working trees (core.autocrlf=true on Windows) so needle checks match the committed LF text.
+const bundlePatch = readFileSync(join(root, 'packages/bundle/deepcreator-web/cordis.patch.yml'), 'utf8').replaceAll('\r\n', '\n')
 if (!bundlePatch.includes('- id: ui-brand-official\n  disabled: true')) {
   failures.push('deepcreator-web must disable the official brand row while DeepCreator owns brand seats')
 }
