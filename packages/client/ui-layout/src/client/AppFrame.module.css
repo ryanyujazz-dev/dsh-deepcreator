@@ -148,6 +148,11 @@
    Sidebar remains visible and interactive. */
 .frame[data-details-focused] .detailsCol {
   position: absolute;
+  /* An absolutely positioned grid child still uses its explicit grid area
+   * as the containing block. detailsCol normally belongs to column 3, so
+   * clear that right-rail constraint by spanning the complete frame before
+   * applying the Stage inset below. */
+  grid-column: 1 / -1;
   inset: 0 0 0 var(--dsh-stage-left);
   z-index: 18;
   background: var(--dsw-alias-bg-base);
@@ -278,6 +283,7 @@
 
 .frame[data-phone][data-mobile-details-open] .detailsCol {
   position: absolute;
+  grid-column: 1 / -1;
   inset: 0;
   z-index: 18;
   width: 100%;

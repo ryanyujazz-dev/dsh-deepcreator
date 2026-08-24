@@ -3,7 +3,9 @@
  * timers, stoppable through the `jobs-admin` Host remote) plus its subagent
  * catalog. Each subagent opens as a real Workbench tab — a panel instance
  * keyed by the child session id — whose body mounts the real child Session
- * transcript without changing the current conversation. Views receive the
+ * transcript without changing the current conversation. Background jobs open
+ * namespaced instances derived from the same official JobView snapshot; no
+ * output cursor is consumed by presentation. Views receive the
  * Host actions as plain callbacks through the slot inject; no React
  * component touches Cordis context or the RPC surface.
  */

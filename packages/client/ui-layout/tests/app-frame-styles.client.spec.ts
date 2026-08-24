@@ -31,9 +31,13 @@ describe('AppFrame native title-bar drag region', () => {
   })
 
   it('moves a focused details panel in lockstep with the animated Sidebar track', () => {
-    expect(css).toMatch(/\.frame\[data-details-focused\] \.detailsCol\s*\{[\s\S]*?inset: 0 0 0 var\(--dsh-stage-left\);[\s\S]*?transition: left var\(--ds-transition-duration-slow\) var\(--ds-ease-in-out\);/)
+    expect(css).toMatch(/\.frame\[data-details-focused\] \.detailsCol\s*\{[\s\S]*?grid-column: 1 \/ -1;[\s\S]*?inset: 0 0 0 var\(--dsh-stage-left\);[\s\S]*?transition: left var\(--ds-transition-duration-slow\) var\(--ds-ease-in-out\);/)
     expect(css).toMatch(/\.frame\[data-dragging\]\[data-details-focused\] \.detailsCol\s*\{[\s\S]*?transition: none;/)
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*?\.frame\[data-details-focused\] \.detailsCol\s*\{[\s\S]*?transition: none;/)
+  })
+
+  it('releases the ordinary third-column placement for the phone details overlay', () => {
+    expect(css).toMatch(/\.frame\[data-phone\]\[data-mobile-details-open\] \.detailsCol\s*\{[\s\S]*?grid-column: 1 \/ -1;[\s\S]*?inset: 0;/)
   })
 
   it('reveals a full-height left-edge line on the details strip hover or drag', () => {

@@ -98,6 +98,7 @@ describe('ArtifactPanel', () => {
     expect(stylesheet).toMatch(/\.panel\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*0;[^}]*overflow:\s*hidden;/)
     expect(stylesheet).toMatch(/\.pathBar\s*\{[^}]*flex:\s*none;/)
     expect(stylesheet).toMatch(/\.content\s*\{[^}]*flex:\s*1;[^}]*overflow:\s*auto;/)
+    expect(stylesheet).toMatch(/\.embeddedContent\s*\{[^}]*display:\s*flex;[^}]*overflow:\s*hidden;/)
     expect(stylesheet).toMatch(/\.markdownDocument\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*var\(--dsh-reading-content-width,\s*748px\);[^}]*margin:\s*0 auto;/)
     expect(stylesheet).toMatch(/\.pathViewport\[data-truncated\]\s*\{[^}]*justify-content:\s*flex-end;/)
     expect(stylesheet).toMatch(/\.pathViewport\[data-truncated\]\s*\{[^}]*mask-image:\s*linear-gradient\(to right, transparent 0, #000 16px, #000 100%\);/)
@@ -377,6 +378,7 @@ describe('ArtifactPanel', () => {
     view.rerender(<ArtifactPanel {...{ ...pdfInput.input, route: 'instance', activeInstanceId: pdfPath }} />)
     await waitFor(() => { expect(view.container.querySelector(`[data-artifact-pdf="${pdfPath}"]`)).not.toBeNull() })
     expect(view.getByTitle('report.pdf').getAttribute('src')).toBe('http://127.0.0.1:1234/report.pdf')
+    expect(view.getByTitle('report.pdf').parentElement?.className).toContain('embeddedContent')
 
     const docxPath = 'E:/repo/brief.docx'
     const docxInput = props(snapshotOf([{ path: docxPath, updatedAt: 3_000, turn: 1 }]), vi.fn(async () => ({

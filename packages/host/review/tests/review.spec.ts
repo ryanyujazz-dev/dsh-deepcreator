@@ -388,6 +388,50 @@ describe('Review Service', () => {
     await review.deleteSessionSnapshots(session)
   })
 
+  it('maps Git-quoted Unicode paths in a live reconciling turn generation', async () => {
+    const repository = await mkdtemp(join(tmpdir(), 'dsh-review-unicode-')); temporary.push(repository)
+    await exec('git', ['init', '-q', repository])
+    await exec('git', ['-C', repository, 'config', 'user.email', 'test@example.com'])
+    await exec('git', ['-C', repository, 'config', 'user.name', 'Test'])
+    await writeFile(join(repository, 'base.txt'), 'base\n')
+    await exec('git', ['-C', repository, 'add', '.'])
+    await exec('git', ['-C', repository, 'commit', '-qm', 'initial'])
+    const session = { id: 'unicode-generation', header: { cwd: repository } } as unknown as Session
+    const review = new ReviewService(new Context())
+    const internals = review as unknown as {
+      captureStart(session: Session, turn: number): Promise<void>
+      ensureTracker(session: Session, turn: number): Promise<unknown>
+      rootCallTurns: Map<string, number>
+      observeToolResult(execution: unknown, result: unknown): void
+    }
+    await internals.captureStart(session, 9)
+    await internals.ensureTracker(session, 9)
+    internals.rootCallTurns.set('unicode-generation\0root-call', 9)
+    await mkdir(join(repository, '自媒体生产线'))
+    await writeFile(join(repository, '自媒体生产线', '配置卡.yaml'), 'name: demo\nmode: live\n')
+    internals.observeToolResult(
+      { agent: { session }, rootCallId: 'root-call', name: 'bash' },
+      { isError: false, value: {} },
+    )
+
+    const manifest = await review.manifest(session, { turn: 9 })
+    expect(manifest).toMatchObject({
+      ok: true, consistency: 'live-reconciling', additions: 2,
+      files: [{ path: '自媒体生产线/配置卡.yaml', additions: 2, deletions: 0 }],
+    })
+    if (!manifest.ok) throw new Error(manifest.message)
+    const patches = await review.patches(session, manifest.generation, ['自媒体生产线/配置卡.yaml'])
+    expect(patches).toMatchObject({
+      ok: true,
+      files: [{
+        path: '自媒体生产线/配置卡.yaml', additions: 2, deletions: 0,
+        layers: [{ kind: 'turn' }],
+      }],
+    })
+    expect(patches.ok && patches.files[0]?.layers[0]?.patch).toContain('+mode: live')
+    await review.deleteSessionSnapshots(session)
+  })
+
   it('computes one cached path batch for many files without per-file Git processes', async () => {
     const repository = await mkdtemp(join(tmpdir(), 'dsh-review-batch-')); temporary.push(repository)
     await exec('git', ['init', '-q', repository])

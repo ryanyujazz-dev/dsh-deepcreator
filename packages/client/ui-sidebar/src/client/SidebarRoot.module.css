@@ -185,12 +185,15 @@
   overflow: hidden;
 }
 
-/* Footer seats: additive actions stack above Settings. Each occupant owns its
-   button geometry and hover chrome. */
+/* Footer seats: additive actions stack above Settings. The shell owns the
+   trigger-row chrome at this composition boundary, so retained official
+   contributors cannot introduce a second sidebar grid. Their panels remain
+   feature-owned descendants and are deliberately left untouched. */
 .footArea {
   flex: none;
   display: flex;
   flex-direction: column;
+  gap: 2px;
 }
 
 .settingsArea,
@@ -200,8 +203,48 @@
   width: 100%;
 }
 
-.footerActions {
+.footArea > .footerActions {
   display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* The retained official Cordis contribution carries a positioned panel beside
+   its trigger. Its stable data marker lets this compatibility bridge normalize
+   the contribution root and trigger without relying on generated class names
+   or reaching any panel controls. The extra .footArea scope also outranks
+   contributor-local single-class geometry regardless of bundle order. */
+.footArea .footerActions > :has(button[data-cordis-badge]) {
+  flex: none;
+  width: 100%;
+  min-width: 0;
+  height: var(--dsw-sidebar-row-height, 32px);
+  margin: 0;
+}
+
+.footArea .footerActions button[data-cordis-badge] {
+  width: 100%;
+  height: var(--dsw-sidebar-row-height, 32px);
+  margin: 0;
+  padding: 0 8px;
+  box-sizing: border-box;
+  border-radius: 8px;
+  gap: 6px;
+  font-family: inherit;
+  font-size: var(--dsw-font-sidebar-font-size, 12px);
+  line-height: var(--dsw-font-sidebar-line-height, 18px);
+  text-align: left;
+}
+
+.footArea .footerActions button[data-cordis-badge] > svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+.footArea .footerActions button[data-cordis-badge] > span {
+  font-size: inherit;
+  line-height: inherit;
 }
 
 @media (prefers-reduced-motion: reduce) {

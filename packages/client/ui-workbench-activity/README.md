@@ -8,7 +8,12 @@ Registers the `activity` Workbench type and owns two routes:
   of re-scoping to the child). Sections: the subagent catalog first, then
   running/finished background jobs (`jobsBySession`, live-ticking durations in
   the official two-unit format, stoppable through the `jobs-admin` Host
-  remote). Subagents group by participation: **This turn** (children whose
+  remote). Every job row is pointer- and keyboard-openable as a Workbench tab;
+  its instance shows the complete untruncated command, id, kind, live status,
+  duration and Stop action from the official `JobView`. It deliberately does
+  not call the consuming `ctx.jobs.read()` cursor: output appears in the shared
+  conversation execution flow after the Agent reads it with `job_output`.
+  Subagents group by participation: **This turn** (children whose
   latest activity postdates the parent's latest user-authored message,
   running first, most recently active first — a re-invoked continuable child
   bumps back to the top) and **Earlier**, from the `jobs-admin`
@@ -19,9 +24,10 @@ Registers the `activity` Workbench type and owns two routes:
   dimmed with a "Close from conversation" control in place of the mode·state
   meta (the official breadcrumb path, `sessions.open(parent)`); clicking the
   card still opens its tab.
-- **Instance** — one subagent child per tab (the Workbench's own
+- **Instance** — one subagent child or background job per tab (the Workbench's own
   `WorkbenchPanelTabs`; the instance id is the child session id, the label
-  rides `contributePanelInfo`). The body mounts an explicit non-navigating
+  rides `contributePanelInfo`; job ids use a `job:` presentation namespace).
+  A subagent body mounts an explicit non-navigating
   `SessionProvider` and invokes the main area's authorized
   `conversation.session` renderer in `transcriptOnly` form. It therefore uses
   the same complete resident Turn window as the main conversation on first
@@ -33,8 +39,10 @@ Registers the `activity` Workbench type and owns two routes:
   Workbench's shared header remains reserved for tabs and panel controls, and
   the body adds no duplicate child title. A child observation lease exists only while
   the tab, panel and document are visible. Hidden tabs mount no Session and do
-  no transcript assembly or React commits. Closing a tab is view-only — the
-  child keeps running.
+  no transcript assembly or React commits. Job instances render directly from
+  the same official session snapshot as Home and keep Stop in their local
+  toolbar. Closing either kind of tab is view-only — the child or job keeps
+  running.
 
 The provider owns only disposable render state (tick clock, optimistic
 stopping set and overview snapshot); Job and Session lifecycle stay with the

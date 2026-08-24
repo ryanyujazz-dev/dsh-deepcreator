@@ -13,8 +13,10 @@
 .groupTitle span { font-variant-numeric: tabular-nums; }
 
 .list { display: flex; flex-direction: column; gap: 6px; }
-.row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 8px; padding: 10px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 8px; background: var(--dsw-alias-fill-l1); }
+.row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 8px; padding: 10px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 8px; background: var(--dsw-alias-fill-l1); cursor: pointer; }
 .row[data-live] { background: var(--dsw-alias-fill-l2); }
+.row:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.row:focus-visible { outline: 1px solid var(--dsw-alias-state-business-primary); outline-offset: -1px; }
 .stateDot { margin-top: 4px; }
 .copy { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
 .copy strong { overflow: hidden; color: var(--dsw-alias-label-primary); font-size: 13px; line-height: 18px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
@@ -61,6 +63,26 @@
 
 .tabRoot .notice { margin: 10px 10px 0; }
 
+/* --- Background-job instance route --- */
+
+.jobInstance { display: flex; width: 100%; height: 100%; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden; }
+.jobToolbar { display: flex; flex: none; width: 100%; min-width: 0; min-height: 36px; align-items: center; gap: 6px; padding: 5px 10px; border-bottom: 1px solid var(--dsw-alias-border-l1); box-sizing: border-box; }
+.jobToolbarStatus { flex: 1 1 auto; min-width: 0; overflow: hidden; color: var(--dsw-alias-label-tertiary); font-size: var(--dsw-font-sidebar-font-size, 12px); line-height: var(--dsw-font-sidebar-line-height, 18px); text-overflow: ellipsis; white-space: nowrap; }
+.jobToolbar time { flex: none; color: var(--dsw-alias-label-tertiary); font-family: var(--dsw-font-mono); font-size: var(--dsw-font-markdown-code-block-small-font-size, 11px); line-height: var(--dsw-font-markdown-code-block-small-line-height, 16px); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.jobBody { min-width: 0; min-height: 0; flex: 1 1 auto; padding: 12px; overflow: auto; box-sizing: border-box; }
+.jobBlock { display: flex; min-width: 0; flex-direction: column; gap: 8px; }
+.jobBlock h3 { margin: 0; color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 18px; font-weight: 500; }
+.jobBlock pre { max-width: 100%; margin: 0; padding: 12px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 8px; background: var(--dsw-specific-sidebar-fill); color: var(--dsw-alias-label-primary); box-sizing: border-box; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.jobBlock code { font-family: var(--dsw-font-markdown-code-font-family, var(--dsw-font-mono)); font-size: var(--dsw-font-markdown-code-block-small-font-size, 11px); line-height: var(--dsw-font-markdown-code-block-small-line-height, 16px); }
+.jobFacts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; margin: 16px 0 0; padding: 0; }
+.jobFacts div { min-width: 0; }
+.jobFacts dt { color: var(--dsw-alias-label-caption); font-size: 11px; line-height: 16px; }
+.jobFacts dd { min-width: 0; margin: 2px 0 0; overflow-wrap: anywhere; color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 18px; }
+.jobFacts div:first-child dd { font-family: var(--dsw-font-markdown-code-font-family, var(--dsw-font-mono)); }
+.jobOutputNote { margin: 16px 0 0; padding-top: 10px; border-top: 1px solid var(--dsw-alias-border-l1); color: var(--dsw-alias-label-caption); font-size: 11px; line-height: 16px; }
+.jobGone { display: grid; min-height: 100%; place-content: center; gap: 4px; padding: 24px; color: var(--dsw-alias-label-tertiary); text-align: center; font-size: 12px; line-height: 18px; }
+.jobGone strong { color: var(--dsw-alias-label-secondary); font-size: 13px; line-height: 18px; font-weight: 500; }
+
 /* The explicit transcript is the conversation surface itself; it owns all
    content width and typography, so Activity adds no secondary inset. */
 .embedBody { display: flex; width: 100%; min-width: 0; min-height: 0; flex: 1 1 auto; flex-direction: column; overflow: hidden; }
@@ -68,4 +90,8 @@
 @keyframes activity-tail-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.45; }
+}
+
+@media (max-width: 640px) {
+  .jobFacts { grid-template-columns: minmax(0, 1fr); }
 }

@@ -12,6 +12,8 @@ Review 标题旁的范围菜单在 Git 工作区提供「未暂存」「已暂�
 
 Controller 优先使用 `manifest/patches/source/probe`，连接旧 Host 时自动回退。官方 mutation 与 Turn 事件驱动刷新；精确 write/edit 即使在 Review 隐藏时也会刷新并预热受影响路径。面板可见时每两秒只调用纯内存 probe，隐藏时零周期 RPC。generation、请求所有权与本地 sequence 会丢弃范围／仓库／视口快速切换后的晚到结果。焦点、真实视口和滚动方向 overscan 使用独立 patch 优先级；路径离开 resident 集合后会取消排队任务并释放未决请求所有权，因此滚动条跳转不再等待旧屏。初始响应与 raw cache 不包含完整新旧源码，点击省略上下文 FoldRow 时才懒读当前文件的一侧源码。文件列表使用 `@tanstack/react-virtual`，以“仓库／范围／路径”联合 key、保守折叠估高、动态测量、overscan 和滚动锚定只挂载视口附近 section；「全部展开」仅代表逻辑展开。展开态或仓库／范围变化时，会在绘制前重置离屏估算并同步复测有界的已挂载窗口。Review Adapter 另行持有可释放的行 border-box observer，覆盖滚动容器与首批行同 commit 挂载时 TanStack 在 `targetWindow` 建立前先缓存节点、因而漏挂内部 observer 的竞态；异步 patch 长高后会把真实高度写回 `resizeItem`，不再让后续行停在 108px 加载估算上重叠。unified patch 在 controller 私有 Worker 中解析；已挂载 hunk 先显示纯文本，再按预算在 idle 队列补语法色。500／2000 文件夹具会同时约束挂载 section 数与 patch RPC 规模只随视口增长。
 
+文本条目若已有非零权威行统计，但 patch 载荷没有任何可渲染 hunk，会显示明确的可重试不可用提示；Review 不再把这种协议异常呈现为无法解释的展开白块。
+
 Terminal Body 使用内嵌 xterm emulator，并连接到受 Agent fence 保护的 `system` PTY Remote。键盘数据按顺序作为 raw input 发送；ANSI 输出通过单调 cursor 增量消费；`ResizeObserver` 与 Fit addon 让 PTY 行列数跟随 Panel。隐藏 Group 只改变可见性，不终止 PTY。旧的逐行终端仍可列出和关闭，但界面会提示新建交互式终端。
 
 Terminal Group 首次初始化时会自动打开一个标签：优先恢复当前 Session 仍在运行的终端，否则创建一个 `system` PTY。初始化按 Session 防重，因此用户明确关闭最后一个标签后不会立刻生成替代终端；Header 加号只用于创建额外终端。Terminal 不提供管理 Home、返回、SIGINT 或独立终止按钮；没有标签时正文只显示空态。关闭 Terminal 标签会直接终止对应 PTY，不显示确认弹窗；隐藏 Terminal Group 会保留所有标签和进程。Tab 标签以每个 PTY 工作目录的项目文件夹命名（重名追加序号；无 cwd 的会话回退到 shell 名称、再到会话 id），Group 的可访问标题携带活动 PTY 的 shell 程序名后缀，均通过 `contributePanelInfo()` 提交。

@@ -13,6 +13,9 @@ export const zh = {
   'subagent.gone': '该子代理不在当前目录中,可能已被移除。',
   'events.error': '读取执行流失败:{code}',
   'stop': '停止', 'stop.stopping': '停止中', 'stop.failed': '停止失败:{code}',
+  'job.command': '完整命令', 'job.id': '任务 ID', 'job.kind': '类型', 'job.status': '状态', 'job.duration': '持续时间',
+  'job.output.note': '命令输出在 Agent 通过 job_output 读取后显示在对话执行流中；此处不会消费后台任务的共享输出游标。',
+  'job.gone.title': '后台任务已不可用', 'job.gone.body': '该任务已从当前会话的活动目录中移除。',
   'duration.hours': '{hours}时{minutes}分', 'duration.minutes': '{minutes}分{seconds}秒', 'duration.seconds': '{seconds}秒',
 } as const
 export type ActivityKey = keyof typeof zh
@@ -30,5 +33,8 @@ export const en: Record<ActivityKey, string> = {
   'subagent.gone': 'This subagent is no longer in the catalog; it may have been removed.',
   'events.error': 'Failed to read the execution stream: {code}',
   'stop': 'Stop', 'stop.stopping': 'Stopping', 'stop.failed': 'Stop failed: {code}',
+  'job.command': 'Full command', 'job.id': 'Job ID', 'job.kind': 'Kind', 'job.status': 'Status', 'job.duration': 'Duration',
+  'job.output.note': 'Command output appears in the conversation execution flow after the agent reads it with job_output; this view does not consume the background job\'s shared output cursor.',
+  'job.gone.title': 'Background job unavailable', 'job.gone.body': 'This job was removed from the current session\'s activity catalog.',
   'duration.hours': '{hours}h {minutes}m', 'duration.minutes': '{minutes}m {seconds}s', 'duration.seconds': '{seconds}s',
 }

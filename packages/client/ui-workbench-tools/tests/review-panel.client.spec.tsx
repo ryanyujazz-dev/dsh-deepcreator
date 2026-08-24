@@ -267,6 +267,23 @@ describe('Review Panel file stream', () => {
     expect(input.remote.review.diff).toHaveBeenCalledTimes(2)
   })
 
+  it('surfaces a nonzero text change whose patch payload is unexpectedly empty', async () => {
+    const remote = remoteMock()
+    remote.review.diff.mockImplementation(async (_sessionId: string, path: string) => ({
+      ok: true,
+      value: {
+        ok: true, repositoryRoot: '/workspace', path, presentation: 'text' as const,
+        layers: [],
+      },
+    }))
+    const input = props(remote)
+    const view = render(<ReviewPanel {...input} />)
+
+    await waitFor(() => {
+      expect(view.getAllByText('review.patchUnavailable')).toHaveLength(2)
+    })
+  })
+
   it('one header action toggles every file between expand-all and collapse-all', async () => {
     // Header actions render in the shell's Header, not the panel body: the
     // test drives the captured contribution directly (labels, order, and the

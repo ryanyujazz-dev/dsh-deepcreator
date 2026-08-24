@@ -6,6 +6,8 @@ import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@ryanyujazz/dsh-presentation'
+import type { PresentationMaterializeContext, PresentationResource, PresentationSettleContext } from '@ryanyujazz/dsh-presentation'
+import type { BrowserPresentationService } from '@ryanyujazz/dsh-browser'
 import mammoth from 'mammoth'
 import WordExtractor from 'word-extractor'
 import { ArtifactPreviewRegistry, ArtifactResourceRegistry } from './preview-server.ts'
@@ -39,6 +41,7 @@ export const ARTIFACT_PRESENTATION_PROMPT = [
 export const ARTIFACT_RESOLVER_DESCRIPTION = [
   'Present a primary user-consumable workspace artifact.',
   'After creating and verifying a report, document, image, export, or standalone prototype entry file, present the primary output once unless the user asked not to.',
+  'HTML and HTM entry files open in the built-in DeepCreator Browser; other files open in the Artifact panel.',
   'Do not proactively present ordinary source, test, config, dependency, temporary, or secondary implementation files.',
   'Fields: kind="artifact", workspacePath. workspacePath must be the verified absolute or workspace-relative path of an existing file; never pass an attachmentId, content hash, or URL.',
 ].join(' ')
@@ -67,6 +70,11 @@ export class ArtifactReader extends TypertRemoteService {
     })
     const presentation = ctx.presentationRuntime
     if (presentation === undefined) return
+    const browserPresentation = (): BrowserPresentationService => {
+      const browser = ctx.get('browserPresentation') as BrowserPresentationService | undefined
+      if (browser === undefined) throw new Error('BROWSER_UNAVAILABLE: HTML artifacts require the DeepCreator Browser Runtime.')
+      return browser
+    }
     const dispose = presentation.registerResolver({
       kind: 'artifact', description: ARTIFACT_RESOLVER_DESCRIPTION,
       inputSchema: { type: 'object', additionalProperties: false, properties: {
@@ -81,7 +89,21 @@ export class ArtifactReader extends TypertRemoteService {
         }
         return { kind: 'artifact' as const, workspacePath: value.workspacePath }
       },
-      materialize: async (context, input) => ({ kind: 'artifact', id: await resolveArtifactInstanceId(context.workspaceRoot, input.workspacePath), mode: 'none' }),
+      materialize: async (context: PresentationMaterializeContext, input) => {
+        const target = await resolveArtifactInstanceId(context.workspaceRoot, input.workspacePath)
+        if (!['.html', '.htm'].includes(extname(target).toLowerCase())) {
+          return { kind: 'artifact', id: target, mode: 'none' }
+        }
+        // Artifact instance identity preserves the Session's path spelling
+        // (notably macOS /var vs /private/var), while the preview registry
+        // computes a relative URL against a canonical directory root.
+        const url = await this.previews.urlFor(await realpath(target))
+        return browserPresentation().materializeUrl(context, { url, browserId: 'iab' })
+      },
+      settle: async (context: PresentationSettleContext, _input, resource: PresentationResource) => {
+        if (resource.kind !== 'browser-tab') return
+        await browserPresentation().settleUrl(context, resource, true)
+      },
     })
     ctx.effect(() => dispose, 'artifacts: presentation resolver')
   }

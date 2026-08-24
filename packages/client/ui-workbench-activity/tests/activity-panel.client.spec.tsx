@@ -2,7 +2,10 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { JobView, SessionId, SessionSummary, SubagentAddress, SubagentCatalogSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
-import { ActivityPanel, formatDuration, groupSubagents, isLive, subagentRows, type SubagentRow } from '../src/client/ActivityPanel.tsx'
+import {
+  ActivityPanel, formatDuration, groupSubagents, isLive, jobIdFromInstance, jobInstanceId,
+  subagentRows, type SubagentRow,
+} from '../src/client/ActivityPanel.tsx'
 import type { ActivityInjected } from '../src/client/injected.ts'
 import { formatTokens, tokenTotal } from '../src/client/SubagentTab.tsx'
 import type { ActivityKey } from '../src/client/locales.ts'
@@ -72,6 +75,12 @@ describe('activity helpers', () => {
     expect(isLive({ status: 'running' })).toBe(true)
     expect(isLive({ status: 'stopping' })).toBe(true)
     expect(isLive({ status: 'completed' })).toBe(false)
+  })
+
+  it('namespaces job tabs away from child Session ids', () => {
+    expect(jobInstanceId('bash-7')).toBe('job:bash-7')
+    expect(jobIdFromInstance('job:bash-7')).toBe('bash-7')
+    expect(jobIdFromInstance('session-child-1')).toBeUndefined()
   })
 
   it('orders subagent rows running-first with label fallback', () => {
@@ -171,12 +180,36 @@ describe('ActivityPanel home route', () => {
       subagentsByParent: { [SESSION]: catalog([]) },
     }
     const stopJob = vi.fn(async () => ({ ok: false as const, code: 'NOT_LIVE' as const, message: 'settled' }))
-    const view = render(<ActivityPanel {...panelProps(state, { stopJob })} />)
+    const props = panelProps(state, { stopJob })
+    const view = render(<ActivityPanel {...props} />)
     fireEvent.click(screen.getByRole('button', { name: 'stop' }))
     expect(stopJob).toHaveBeenCalledExactlyOnceWith(SESSION, 'bash-1')
+    expect(props.openInstance).not.toHaveBeenCalled()
     await act(async () => { await vi.advanceTimersByTimeAsync(0) })
     expect(view.container.textContent).toContain('stop.failed')
     expect(screen.getByRole('button', { name: 'stop' }).hasAttribute('disabled')).toBe(false)
+  })
+
+  it('opens running and settled jobs as keyboard-accessible Workbench tabs', () => {
+    const state: ListState = {
+      byId: {},
+      currentAddress: undefined,
+      jobsBySession: { [SESSION]: [
+        job({ id: 'bash-1', status: 'running', startedAt: Date.now() }),
+        job({ id: 'bash-2', status: 'completed', startedAt: 1_000, finishedAt: 2_000 }),
+      ] },
+      subagentsByParent: { [SESSION]: catalog([]) },
+    }
+    const props = panelProps(state)
+    render(<ActivityPanel {...props} />)
+
+    const running = screen.getByRole('button', { name: /label-bash-1/ })
+    fireEvent.click(running)
+    expect(props.openInstance).toHaveBeenLastCalledWith('job:bash-1')
+
+    const settled = screen.getByRole('button', { name: /label-bash-2/ })
+    fireEvent.keyDown(settled, { key: 'Enter' })
+    expect(props.openInstance).toHaveBeenLastCalledWith('job:bash-2')
   })
 
   it('lists subagents and opens a tab on click', () => {
@@ -328,5 +361,60 @@ describe('ActivityPanel instance route', () => {
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
     act(() => { document.dispatchEvent(new Event('visibilitychange')) })
     expect(embedCalls.length).toBeGreaterThan(visibleCalls)
+  })
+})
+
+describe('ActivityPanel job instance route', () => {
+  beforeEach(() => { vi.useFakeTimers() })
+  afterEach(() => { cleanup(); vi.useRealTimers() })
+
+  it('shows the complete command and official job facts without reading output', () => {
+    const state: ListState = {
+      byId: {},
+      currentAddress: undefined,
+      jobsBySession: { [SESSION]: [job({
+        id: 'bash-1', status: 'running', startedAt: Date.now() - 5_000,
+        label: 'brew reinstall --build-from-source ffmpeg 2>&1 | tail -3',
+      })] },
+      subagentsByParent: { [SESSION]: catalog([]) },
+    }
+    const contributePanelInfo = vi.fn(() => () => undefined)
+    const props = panelProps(state, {}, { route: 'instance', activeInstanceId: 'job:bash-1' })
+    props.contributePanelInfo = contributePanelInfo
+    const view = render(<ActivityPanel {...props} />)
+
+    expect(view.getByText('brew reinstall --build-from-source ffmpeg 2>&1 | tail -3')).toBeTruthy()
+    expect(view.container.textContent).toContain('job.id')
+    expect(view.container.textContent).toContain('bash-1')
+    expect(view.container.textContent).toContain('job.output.note')
+    expect(contributePanelInfo).toHaveBeenCalledWith({
+      tabLabels: { 'job:bash-1': 'brew reinstall --build-from-source ffmpeg 2>&1 | tail -3' },
+    })
+  })
+
+  it('keeps Stop available in a live job tab and does not navigate elsewhere', async () => {
+    const state: ListState = {
+      byId: {},
+      currentAddress: undefined,
+      jobsBySession: { [SESSION]: [job({ id: 'bash-1', status: 'running', startedAt: Date.now() })] },
+      subagentsByParent: { [SESSION]: catalog([]) },
+    }
+    const stopJob = vi.fn(async () => ({ ok: true as const }))
+    const props = panelProps(state, { stopJob }, { route: 'instance', activeInstanceId: 'job:bash-1' })
+    const view = render(<ActivityPanel {...props} />)
+    fireEvent.click(view.getByRole('button', { name: 'stop' }))
+    expect(stopJob).toHaveBeenCalledExactlyOnceWith(SESSION, 'bash-1')
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    expect(props.openInstance).not.toHaveBeenCalled()
+  })
+
+  it('keeps an opened tab explainable after the job leaves the official catalog', () => {
+    const state: ListState = {
+      byId: {}, currentAddress: undefined, jobsBySession: { [SESSION]: [] },
+      subagentsByParent: { [SESSION]: catalog([]) },
+    }
+    const view = render(<ActivityPanel {...panelProps(state, {}, { route: 'instance', activeInstanceId: 'job:bash-9' })} />)
+    expect(view.container.textContent).toContain('job.gone.title')
+    expect(view.container.textContent).toContain('job.gone.body')
   })
 })

@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-侧边栏外壳插件：负责字标、无外边距的主要操作列表、关闭／恢复控件、可感知滚动的区域 seat，以及固定在底部的 Settings seat。主要操作列表与 Workspace／项目和 Session 标题复用同一个 `SidebarRow` 几何：外壳持有的 New Session 下方依次渲染功能插件通过可叠加 `sidebar.primary.action` Slot 贡献的行，以及禁用的「定时任务」占位，2px 行节奏由列表持有，列表没有上下外边距。[ui-skills](../ui-skills/README.md) 当前贡献「技能」；[ui-workspace](../ui-workspace/README.md) 持有渲染到 `sidebar.workspaces` 的 Workspace 与 Session 浏览器。本包既不派生这些功能行，也不持有其视图状态。关闭时会彻底移除侧边栏表面；本包把唯一的恢复按钮贡献到布局拥有的 `deepcreator.shell.sidebar-toggle` 框架 seat。约定：[slot 系统标准](../../../.agents/notes/implemented/architecture/2026-07-22-slot-type-chain-implementation.md)。
+侧边栏外壳插件：负责字标、无外边距的主要操作列表、关闭／恢复控件、可感知滚动的区域 seat，以及固定在底部的页脚 seat。主要操作列表与 Workspace／项目和 Session 标题复用同一个 `SidebarRow` 几何：外壳持有的 New Session 下方依次渲染功能插件通过可叠加 `sidebar.primary.action` Slot 贡献的行，以及禁用的「定时任务」占位，2px 行节奏由列表持有，列表没有上下外边距。[ui-skills](../ui-skills/README.md) 当前贡献「技能」；[ui-workspace](../ui-workspace/README.md) 持有渲染到 `sidebar.workspaces` 的 Workspace 与 Session 浏览器。本包既不派生这些功能行，也不持有其视图状态。关闭时会彻底移除侧边栏表面；本包把唯一的恢复按钮贡献到布局拥有的 `deepcreator.shell.sidebar-toggle` 框架 seat。约定：[slot 系统标准](../../../.agents/notes/implemented/architecture/2026-07-22-slot-type-chain-implementation.md)。
 
 外壳在无外边距的 48px 品牌行中渲染 DeepCreator 字标，并为主要操作列表之后的独立内容分区发布 `--dsh-sidebar-section-margin-top: 10px`。分区只消费这一个顶部外边距，不设置底部外边距；当前 WorkspaceBrowser 已使用它，未来置顶区也将复用相同节奏。标准侧边栏操作图标采用 ui-primitives 共享的 14px 规格；16px 鲸鱼仅作为展开态字标中的品牌视觉例外。在 macOS Electron 标记下，展开态字标从原生红黄绿按钮右侧开始；命中区只贴合可见字标，品牌行其余空白全部用于拖窗，而字标和面板按钮显式保持为不可拖拽的交互面。关闭时不再保留侧栏品牌元素，面板图标改在布局稳定的 28px 框架 seat 中出现。
 
@@ -14,7 +14,7 @@ New Session 会启动运行时的页面局部前端 Session Intent。运行时�
 
 栏内的滚动条是一种指针可供性：只要指针不在栏内，外壳就把 ui-theme 的[滚动条间接层](../ui-theme/README.md)重新绑定为 `transparent`；指针离开后滑块再保留 2 秒，因此没人指向的列表不会带着滚动条。避免行位移的空间预留属于滚动区域本身（[ui-workspace](../ui-workspace/README.md)），所以显示滑块不会引起重排。
 
-页脚承载 `sidebar.settings`：侧边栏只渲染固定在底部的布局 slot，并共享其栏状态（`wide`）；ui-settings 在此注册触发行和设置面板。
+页脚把可叠加的 `sidebar.footer.action` 贡献排列在 `sidebar.settings` seat 上方，并向两者共享栏状态（`wide`）。页脚贡献者应使用共享 `SidebarRow` 网格。外壳只针对保留的官方 Cordis 触发行稳定标记 `data-cordis-badge` 提供兼容桥，把它的行高、字体、间距、圆角与图标规格统一起来，不依赖生成类名，也不触及嵌套面板。Cordis 继续持有文案、状态、行为、运行时与面板；ui-settings 则在专属 seat 注册 Settings 触发行和面板。
 
 `/client` 导出表层只包含插件主体（`apply`／`inject`）及约定类型；SidebarRoot、行组件和树派生仍由 slot 注册封装在包内。
 

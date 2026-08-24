@@ -30,6 +30,23 @@ function fail(response: ServerResponse, status: number, message: string): void {
 
 interface PreviewOrigin { server: Server; origin: string }
 
+function requestedByteRange(value: string | undefined, size: number): { start: number; end: number } | null | undefined {
+  if (value === undefined) return undefined
+  const match = /^bytes=(\d*)-(\d*)$/.exec(value.trim())
+  if (match === null || size <= 0) return null
+  const [, first = '', last = ''] = match
+  if (first === '' && last === '') return null
+  if (first === '') {
+    const suffixLength = Number(last)
+    if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) return null
+    return { start: Math.max(0, size - suffixLength), end: size - 1 }
+  }
+  const start = Number(first)
+  const requestedEnd = last === '' ? size - 1 : Number(last)
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(requestedEnd) || start < 0 || start >= size || requestedEnd < start) return null
+  return { start, end: Math.min(requestedEnd, size - 1) }
+}
+
 /**
  * Same-origin, unguessable single-file capabilities for image/PDF rendering.
  * Authentication remains the outer transport's concern; the random token
@@ -44,7 +61,12 @@ export class ArtifactResourceRegistry {
     this.disposeRoute = webServer.register({
       kind: 'prefix',
       path: '/deepcreator-artifacts',
-      handler: (request, response) => this.respond(request.method ?? 'GET', request.url ?? '/', response),
+      handler: (request, response) => this.respond(
+        request.method ?? 'GET',
+        request.url ?? '/',
+        typeof request.headers.range === 'string' ? request.headers.range : undefined,
+        response,
+      ),
     })
   }
 
@@ -65,7 +87,7 @@ export class ArtifactResourceRegistry {
     this.disposeRoute()
   }
 
-  private async respond(method: string, rawUrl: string, response: ServerResponse): Promise<void> {
+  private async respond(method: string, rawUrl: string, rangeHeader: string | undefined, response: ServerResponse): Promise<void> {
     response.setHeader('cache-control', 'private, no-store')
     response.setHeader('referrer-policy', 'no-referrer')
     response.setHeader('x-content-type-options', 'nosniff')
@@ -89,11 +111,22 @@ export class ArtifactResourceRegistry {
       fail(response, 403, 'Artifact resource type is not remotely previewable.'); return
     }
     const content = await readFile(target)
-    response.statusCode = 200
     response.setHeader('content-type', mime)
-    response.setHeader('content-length', String(content.byteLength))
+    response.setHeader('accept-ranges', 'bytes')
+    const range = requestedByteRange(rangeHeader, content.byteLength)
+    if (range === null) {
+      response.statusCode = 416
+      response.setHeader('content-range', `bytes */${content.byteLength}`)
+      response.setHeader('content-length', '0')
+      response.end()
+      return
+    }
+    const body = range === undefined ? content : content.subarray(range.start, range.end + 1)
+    response.statusCode = range === undefined ? 200 : 206
+    if (range !== undefined) response.setHeader('content-range', `bytes ${range.start}-${range.end}/${content.byteLength}`)
+    response.setHeader('content-length', String(body.byteLength))
     if (method === 'HEAD') response.end()
-    else response.end(content)
+    else response.end(body)
   }
 }
 

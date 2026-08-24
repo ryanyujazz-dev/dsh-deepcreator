@@ -1,4 +1,4 @@
-import type { Context } from '@deepseek-ai/cordis'
+import { Service, type Context } from '@deepseek-ai/cordis'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-settings'
@@ -7,7 +7,9 @@ import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type {} from '@deepseek-ai/dsh-attachment'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@ryanyujazz/dsh-presentation'
-import type { OpenInDeepCreatorResult, PresentationResource } from '@ryanyujazz/dsh-presentation/types'
+import type {
+  OpenInDeepCreatorResult, PresentationMaterializeContext, PresentationResource, PresentationSettleContext,
+} from '@ryanyujazz/dsh-presentation'
 import { BrowserRuntimeError, browserFailure } from './errors.ts'
 import { BrowserRuntime } from './runtime.ts'
 import { createBrowserToolDefinitions } from './tools.ts'
@@ -35,13 +37,97 @@ export interface Config {
   visibleProviderOrder?: string[]
 }
 
-declare module '@deepseek-ai/cordis' { interface Context { browserRuntime: BrowserHostService } }
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    browserRuntime: BrowserHostService
+  }
+}
 
 export function isBrowserToolOwner(agents: { roots(): readonly Agent[] }, agent: Agent): boolean { return agents.roots().includes(agent) }
 
 export function shouldCloseAfterFailedPresentation(tab: BrowserTabState, resolverCreatedTab: boolean): boolean {
   return resolverCreatedTab || (tab.lifecycle === 'temporary' && tab.presentationBinding.owner === 'deepcreator'
     && tab.controlState === 'presentation-required' && tab.presentationState === 'pending')
+}
+
+/** Host-only composition seam for resources that must present through Browser. */
+export interface BrowserPresentationService {
+  materializeUrl(
+    context: PresentationMaterializeContext,
+    input: { url: string; browserId?: string },
+  ): Promise<PresentationResource>
+  settleUrl(context: PresentationSettleContext, resource: PresentationResource, rollback: boolean): Promise<void>
+}
+
+class BrowserPresentationController extends Service implements BrowserPresentationService {
+  constructor(ctx: Context, private readonly browser: BrowserRuntime) { super(ctx, 'browserPresentation') }
+
+  async materializeUrl(
+    context: PresentationMaterializeContext,
+    input: { url: string; browserId?: string },
+  ): Promise<PresentationResource> {
+    let created
+    if (input.browserId !== undefined) {
+      const selected = this.browser.resolve({ preference: { browserId: input.browserId } }).browser
+      if (selected.presentation.owner === 'provider' && selected.presentation.mode === 'live') {
+        throw new BrowserRuntimeError('PRESENTATION_UNAVAILABLE', `${input.browserId} owns its system-visible window and cannot be opened implicitly by presentation. Create or claim it with browser_tabs, then explicitly present that browser-tab as a snapshot if desired.`)
+      }
+      created = await this.browser.createTab({
+        sessionId: context.sessionId,
+        turn: context.turn,
+        workspaceRoot: context.workspaceRoot,
+        selection: { preference: { browserId: input.browserId } },
+        url: input.url,
+        signal: context.signal,
+      })
+    } else {
+      try {
+        created = await this.browser.createTab({
+          sessionId: context.sessionId,
+          turn: context.turn,
+          workspaceRoot: context.workspaceRoot,
+          selection: { requirements: { visibility: 'live', capabilities: ['presentation.deepcreator-surface'] } },
+          url: input.url,
+          signal: context.signal,
+        })
+      } catch (error) {
+        if (!(error instanceof BrowserRuntimeError) || !['BROWSER_UNAVAILABLE', 'PROVIDER_UNAVAILABLE', 'CAPABILITY_UNSUPPORTED'].includes(error.code)) throw error
+        created = await this.browser.createTab({
+          sessionId: context.sessionId,
+          turn: context.turn,
+          workspaceRoot: context.workspaceRoot,
+          selection: { requirements: { visibility: 'background', automation: 'playwright' } },
+          url: input.url,
+          signal: context.signal,
+        })
+      }
+    }
+    const presentationMode = created.tab.presentationBinding.owner === 'provider' ? 'snapshot' : created.tab.presentation
+    if (presentationMode === 'snapshot' && created.tab.snapshotAttachment === undefined) {
+      await this.browser.execute(context.sessionId, created.tab.tabId, { kind: 'inspect', action: 'screenshot' }, context.signal)
+    }
+    this.browser.markPresentationPending(context.sessionId, created.tab.tabId)
+    return {
+      kind: 'browser-tab',
+      id: created.tab.tabId,
+      mode: presentationMode,
+      metadata: { browserId: created.tab.browserId, url: created.tab.url },
+    }
+  }
+
+  async settleUrl(context: PresentationSettleContext, resource: PresentationResource, rollback: boolean): Promise<void> {
+    let rollbackUnpresentedTemporaryTab = false
+    try {
+      const tab = this.browser.tab(context.sessionId, resource.id)
+      rollbackUnpresentedTemporaryTab = shouldCloseAfterFailedPresentation(tab, rollback)
+    } catch { /* The resource may already have been cleaned up. */ }
+    try { this.browser.settlePresentation(context.sessionId, resource.id, context.result.status) }
+    catch { return }
+    if (rollback && context.result.status === 'presented') this.browser.markLifecycle(context.sessionId, resource.id, 'deliverable')
+    if (rollbackUnpresentedTemporaryTab && context.result.status !== 'presented') {
+      await this.browser.close(context.sessionId, resource.id, AbortSignal.timeout(5_000), 'presentation-rollback').catch(() => undefined)
+    }
+  }
 }
 
 declare module '@ryanyujazz/dsh-presentation/types' {
@@ -63,8 +149,9 @@ export class BrowserHostService extends TypertRemoteService {
   constructor(ctx: Context, config: Config = {}) {
     super(ctx, 'browserRuntime', { namespace: 'browser' })
     this.browser = new BrowserRuntime({ ...config, attachments: ctx.attachments })
+    const browserPresentation = new BrowserPresentationController(ctx, this.browser)
     ctx.inject(['settings'], settingsCtx => settingsCtx.settings.register(BROWSER_SETTINGS_KEY, BrowserSettingsSchema))
-    const resolverDisposers = this.registerResolvers(ctx)
+    const resolverDisposers = this.registerResolvers(ctx, browserPresentation)
 
     ctx.on('agent/session-start', ({ agent }: { agent: Agent }) => {
       if (!isBrowserToolOwner(ctx.agents, agent)) return
@@ -179,7 +266,7 @@ export class BrowserHostService extends TypertRemoteService {
     return turn
   }
 
-  private registerResolvers(ctx: Context): Array<() => void> {
+  private registerResolvers(ctx: Context, browserPresentation: BrowserPresentationService): Array<() => void> {
     const prepareSnapshot = async (context: { sessionId: string; signal: { readonly aborted: boolean } }, tab: BrowserTabState) => {
       const presentationMode = tab.presentationBinding.owner === 'provider' ? 'snapshot' : tab.presentation
       if (presentationMode !== 'snapshot' || tab.snapshotAttachment !== undefined) return
@@ -211,23 +298,9 @@ export class BrowserHostService extends TypertRemoteService {
         return { kind: 'url' as const, url: value.url, ...(value.browserId === undefined ? {} : { browserId: value.browserId }) }
       },
       materialize: async (context, input) => {
-        let created
-        if (input.browserId !== undefined) {
-          const selected = this.browser.resolve({ preference: { browserId: input.browserId } }).browser
-          if (selected.presentation.owner === 'provider' && selected.presentation.mode === 'live') throw new BrowserRuntimeError('PRESENTATION_UNAVAILABLE', `${input.browserId} owns its system-visible window and cannot be opened implicitly by open_in_deepcreator({kind:"url"}). Create or claim it with browser_tabs, then explicitly present that browser-tab as a snapshot if desired.`)
-          created = await this.browser.createTab({ sessionId: context.sessionId, turn: context.turn, workspaceRoot: context.workspaceRoot, selection: { preference: { browserId: input.browserId } }, url: input.url, signal: context.signal })
-        } else {
-          try { created = await this.browser.createTab({ sessionId: context.sessionId, turn: context.turn, workspaceRoot: context.workspaceRoot, selection: { requirements: { visibility: 'live', capabilities: ['presentation.deepcreator-surface'] } }, url: input.url, signal: context.signal }) }
-          catch (error) {
-            if (!(error instanceof BrowserRuntimeError) || !['BROWSER_UNAVAILABLE', 'PROVIDER_UNAVAILABLE', 'CAPABILITY_UNSUPPORTED'].includes(error.code)) throw error
-            created = await this.browser.createTab({ sessionId: context.sessionId, turn: context.turn, workspaceRoot: context.workspaceRoot, selection: { requirements: { visibility: 'background', automation: 'playwright' } }, url: input.url, signal: context.signal })
-          }
-        }
-        await prepareSnapshot(context, created.tab)
-        this.browser.markPresentationPending(context.sessionId, created.tab.tabId)
-        return { kind: 'browser-tab', id: created.tab.tabId, mode: created.tab.presentationBinding.owner === 'provider' ? 'snapshot' : created.tab.presentation, metadata: { browserId: created.tab.browserId, url: created.tab.url } }
+        return browserPresentation.materializeUrl(context, input)
       },
-      settle: async (context, _input, resource) => settle(context, resource, true),
+      settle: async (context, _input, resource) => browserPresentation.settleUrl(context, resource, true),
     }))
     disposers.push(ctx.presentationRuntime.registerResolver({
       kind: 'browser-tab',

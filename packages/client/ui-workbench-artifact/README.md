@@ -48,7 +48,9 @@ Every Artifact entry point resolves its instance id against the owning Session w
 The read boundary returns a tagged presentation payload instead of decoding
 every file as UTF-8. Images render directly inside the Artifact instance from
 a fenced loopback URL, and PDFs stay in the same instance while Chromium's
-embedded PDF renderer consumes that URL. DOCX files are converted to
+embedded PDF renderer consumes byte-range responses from that URL. The PDF
+iframe exclusively owns the content viewport and scrolling; the Artifact
+wrapper adds no second scroll layer. DOCX files are converted to
 structural HTML with Mammoth and rendered in a scriptless sandboxed iframe;
 legacy DOC files use `word-extractor` and render their extracted body as a
 readable document surface. None of these paths activates the Browser panel.
@@ -75,6 +77,10 @@ the normal Workbench Browser Presenter owns visibility and mount receipt.
 “Open in system browser” sends the real HTML path to the official Workspace/OS
 path opener. Selecting the row outside that split control still opens the
 read-only source artifact tab.
+When the Agent proactively presents `{ kind: "artifact", workspacePath }`, the
+Host applies the same exception during materialization: HTML/HTM becomes an
+IAB `browser-tab`, while every other supported file remains an Artifact-panel
+resource.
 Remote surfaces keep that same source row and Artifact renderer but omit the
 HTML split action entirely, because Browser and native OS path opening are not
 part of the remote capability set.

@@ -95,6 +95,53 @@ describe('ArtifactReader', () => {
     await ctx.fiber.dispose()
   })
 
+  it('routes Agent-presented HTML artifacts through the built-in Browser resource', async () => {
+    const workspace = await mkdtemp(join(tmpdir(), 'dsh-artifacts-workspace-')); temporary.push(workspace)
+    await writeFile(join(workspace, 'prototype.html'), '<!doctype html><title>Prototype</title>')
+    await writeFile(join(workspace, 'report.md'), '# Report')
+    const { ctx } = artifactContext()
+    const materializeUrl = vi.fn(async () => ({ kind: 'browser-tab', id: 'iab-tab-1', mode: 'live' as const }))
+    const settleUrl = vi.fn(async () => undefined)
+    ctx.provide('browserPresentation', { materializeUrl, settleUrl } as never)
+    let registered: {
+      materialize(context: {
+        sessionId: string
+        turn: number
+        workspaceRoot: string
+        signal: { readonly aborted: boolean; subscribe(listener: () => void): () => void }
+      }, input: { kind: 'artifact'; workspacePath: string }): Promise<{ kind: string; id: string; mode?: string }>
+      settle?(context: {
+        sessionId: string
+        turn: number
+        workspaceRoot: string
+        signal: { readonly aborted: boolean; subscribe(listener: () => void): () => void }
+        result: { requestId: string; status: 'presented' }
+      }, input: { kind: 'artifact'; workspacePath: string }, resource: { kind: string; id: string; mode?: string }): Promise<void>
+    } | undefined
+    ctx.provide('presentationRuntime', {
+      registerResolver: (resolver: typeof registered) => { registered = resolver; return () => undefined },
+    } as never)
+    new ArtifactReader(ctx)
+    if (registered === undefined) throw new Error('artifact resolver was not registered')
+    const signal = { aborted: false, subscribe: () => () => undefined }
+    const context = { sessionId: 's1', turn: 4, workspaceRoot: workspace, signal }
+
+    await expect(registered.materialize(context, { kind: 'artifact', workspacePath: 'prototype.html' }))
+      .resolves.toEqual({ kind: 'browser-tab', id: 'iab-tab-1', mode: 'live' })
+    expect(materializeUrl).toHaveBeenCalledWith(
+      context,
+      { url: expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+\/prototype\.html$/), browserId: 'iab' },
+    )
+    await expect(registered.materialize(context, { kind: 'artifact', workspacePath: 'report.md' }))
+      .resolves.toMatchObject({ kind: 'artifact', id: join(workspace, 'report.md'), mode: 'none' })
+
+    const resource = { kind: 'browser-tab', id: 'iab-tab-1', mode: 'live' }
+    const settleContext = { ...context, result: { requestId: 'request-1', status: 'presented' as const } }
+    await registered.settle?.(settleContext, { kind: 'artifact', workspacePath: 'prototype.html' }, resource)
+    expect(settleUrl).toHaveBeenCalledWith(settleContext, resource, true)
+    await ctx.fiber.dispose()
+  })
+
   it('reads workspace files by absolute or relative path', async () => {
     const workspace = await mkdtemp(join(tmpdir(), 'dsh-artifacts-workspace-')); temporary.push(workspace)
     await writeFile(join(workspace, 'plan.md'), '# plan')
@@ -187,6 +234,19 @@ describe('ArtifactReader', () => {
     expect(pdf).toMatchObject({ ok: true, kind: 'pdf', mediaType: 'application/pdf', url: expect.stringMatching(/^\/deepcreator-artifacts\/[A-Za-z0-9_-]+$/) })
     if (!pdf.ok || pdf.kind !== 'pdf') throw new Error('pdf payload missing')
     await expect(fetch(`${origin}${pdf.url}`).then(response => response.headers.get('content-type'))).resolves.toBe('application/pdf')
+    await expect(fetch(`${origin}${pdf.url}`, { headers: { range: 'bytes=0-7' } }).then(async response => ({
+      status: response.status,
+      acceptRanges: response.headers.get('accept-ranges'),
+      contentRange: response.headers.get('content-range'),
+      contentLength: response.headers.get('content-length'),
+      body: await response.text(),
+    }))).resolves.toEqual({
+      status: 206,
+      acceptRanges: 'bytes',
+      contentRange: 'bytes 0-7/14',
+      contentLength: '8',
+      body: '%PDF-1.4',
+    })
 
     await expect(reader.read(session, 'brief.docx')).resolves.toMatchObject({
       ok: true, kind: 'document', contentType: 'html', content: expect.stringContaining('<p>'),

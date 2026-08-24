@@ -1,9 +1,11 @@
 // ActivityPanel: the Workbench's live activity home. The Home route is one
 // vertical page — this session's subagent catalog (grouped by participation
 // in the current turn) plus running/finished background jobs (live-ticking,
-// stoppable); each subagent opens as a real Workbench tab (a panel instance
-// keyed by the child session id) carrying a non-navigating occurrence of the
-// shared conversation surface. The panel anchors to the conversation's
+// stoppable); every row opens as a real Workbench tab. Subagent instances are
+// keyed by child session id and carry a non-navigating occurrence of the
+// shared conversation surface; job instances use a namespaced job id and show
+// the complete command plus the official live snapshot without consuming the
+// job registry's shared output cursor. The panel anchors to the conversation's
 // home session: while a subagent is opened in the conversation area, Home
 // keeps showing the PARENT's activity instead of re-scoping to the child.
 
@@ -37,6 +39,15 @@ type T = PropsLocale<'workbench-activity'>['t']
 
 const EMPTY_JOBS = [] as const
 const EMPTY_ENTRIES = [] as const
+const JOB_INSTANCE_PREFIX = 'job:'
+
+/** Namespace a registry job id away from child Session ids in the shared tab set. */
+export function jobInstanceId(jobId: string): string { return `${JOB_INSTANCE_PREFIX}${jobId}` }
+
+/** Decode one Activity instance id when it addresses a background job. */
+export function jobIdFromInstance(instanceId: string): string | undefined {
+  return instanceId.startsWith(JOB_INSTANCE_PREFIX) ? instanceId.slice(JOB_INSTANCE_PREFIX.length) : undefined
+}
 
 interface SelectedChildState {
   listed: boolean
@@ -174,7 +185,24 @@ export function ActivityPanel(props: Props) {
   // Anchor to the conversation's home session: while an addressed subagent is
   // current, the Activity panel keeps showing the PARENT's catalog and jobs.
   const homeId = address?.parentSessionId ?? props.sessionId
+  // Subagents and jobs share Workbench's instance-tab set. Labels are pure
+  // presentation derived from the current official catalog/snapshot; identity
+  // remains the child Session id or namespaced registry Job id.
+  const tabLabels = props.useSessions((snapshot: SessionsListState) => {
+    const labels: Record<string, string> = {}
+    for (const candidate of snapshot.subagentsByParent[homeId]?.entries ?? EMPTY_ENTRIES) {
+      if (candidate.kind === 'child') labels[candidate.id] = candidate.label ?? candidate.id
+    }
+    for (const job of snapshot.jobsBySession[homeId] ?? EMPTY_JOBS) {
+      labels[jobInstanceId(job.id)] = job.label
+    }
+    return labels
+  }, equalLabels)
+  const contributePanelInfo = props.contributePanelInfo
+  useEffect(() => contributePanelInfo({ tabLabels }), [contributePanelInfo, tabLabels])
   if (props.route === 'instance' && props.activeInstanceId !== undefined) {
+    const jobId = jobIdFromInstance(props.activeInstanceId)
+    if (jobId !== undefined) return <JobInstance {...props} homeId={homeId} jobId={jobId} />
     return <ActivityInstance {...props} homeId={homeId} childId={props.activeInstanceId as SessionId} />
   }
   return <ActivityHome {...props} homeId={homeId} addressedId={address?.childSessionId} />
@@ -202,14 +230,6 @@ function ActivityHome(props: Props & { homeId: SessionId; addressedId: SessionId
     }).catch(() => {})
     return () => { cancelled = true }
   }, [homeId, visible, catalog, jobs, subagentOverview])
-  // Tab pills carry the catalog label; the instance id stays the child id.
-  const contributePanelInfo = props.contributePanelInfo
-  useEffect(() => {
-    const tabLabels: Record<string, string> = {}
-    for (const row of subagents) tabLabels[row.id] = row.label
-    return contributePanelInfo({ tabLabels })
-  }, [contributePanelInfo, subagents])
-
   return <TasksPage
     sessionId={homeId}
     jobs={jobs}
@@ -239,18 +259,9 @@ function ActivityInstance(props: Props & { homeId: SessionId; childId: SessionId
       SessionProjectionMap['tokenUsage'] | undefined,
     equalUsage,
   )
-  const tabLabels = useSessions((snapshot: SessionsListState) => {
-    const labels: Record<string, string> = {}
-    for (const candidate of snapshot.subagentsByParent[homeId]?.entries ?? EMPTY_ENTRIES) {
-      if (candidate.kind === 'child') labels[candidate.id] = candidate.label ?? candidate.id
-    }
-    return labels
-  }, equalLabels)
   const { listed, mode } = child
   const running = child.running || summaryRunning
   const visible = props.visible !== false
-  const contributePanelInfo = props.contributePanelInfo
-  useEffect(() => contributePanelInfo({ tabLabels }), [contributePanelInfo, tabLabels])
 
   const openInConversation = props.openInConversation
   const showHome = props.showHome
@@ -294,6 +305,73 @@ function ActivityInstance(props: Props & { homeId: SessionId; childId: SessionId
       renderEmbed={renderEmbed}
       t={t}
     />
+  )
+}
+
+function JobInstance(props: Props & { homeId: SessionId; jobId: string }) {
+  const { homeId, jobId, useSessions, stopJob, t } = props
+  const job = useSessions((snapshot: SessionsListState) => (
+    snapshot.jobsBySession[homeId]?.find(candidate => candidate.id === jobId)
+  ))
+  const live = job !== undefined && isLive(job)
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!live || props.visible === false) return
+    setNow(Date.now())
+    const timer = setInterval(() => { setNow(Date.now()) }, 1000)
+    return () => { clearInterval(timer) }
+  }, [live, props.visible])
+  const [stopping, setStopping] = useState(false)
+  const [stopError, setStopError] = useState<string | null>(null)
+  useEffect(() => { if (!live) setStopping(false) }, [live])
+
+  if (job === undefined) {
+    return <div className={css.jobGone}><strong>{t('job.gone.title')}</strong><span>{t('job.gone.body')}</span></div>
+  }
+
+  const elapsedMs = (job.finishedAt ?? now) - job.startedAt
+  const status = stopping && job.status === 'running' ? t('stopping') : t(job.status as ActivityKey)
+  const onStop = (): void => {
+    if (!live || stopping) return
+    setStopping(true)
+    setStopError(null)
+    void stopJob(homeId, job.id).then(result => {
+      if (result.ok) return
+      setStopping(false)
+      setStopError(t('stop.failed', { code: result.code }))
+    }).catch(() => {
+      setStopping(false)
+      setStopError(t('stop.failed', { code: 'transport' }))
+    })
+  }
+
+  return (
+    <div className={css.jobInstance}>
+      <div className={css.jobToolbar}>
+        <StateDot state={stateDot(stopping && job.status === 'running' ? 'stopping' : job.status)} />
+        <span className={css.jobToolbarStatus}>{job.kind} · {job.detail ?? status}</span>
+        <time>{formatDuration(elapsedMs, t)}</time>
+        {live && (
+          <button type="button" className={css.stop} disabled={stopping} onClick={onStop}>
+            {stopping ? t('stop.stopping') : t('stop')}
+          </button>
+        )}
+      </div>
+      {stopError !== null && <div className={css.notice} role="alert">{stopError}</div>}
+      <div className={css.jobBody}>
+        <section className={css.jobBlock}>
+          <h3>{t('job.command')}</h3>
+          <pre><code>{job.label}</code></pre>
+        </section>
+        <dl className={css.jobFacts}>
+          <div><dt>{t('job.id')}</dt><dd>{job.id}</dd></div>
+          <div><dt>{t('job.kind')}</dt><dd>{job.kind}</dd></div>
+          <div><dt>{t('job.status')}</dt><dd>{job.detail ?? status}</dd></div>
+          <div><dt>{t('job.duration')}</dt><dd>{formatDuration(elapsedMs, t)}</dd></div>
+        </dl>
+        <p className={css.jobOutputNote}>{t('job.output.note')}</p>
+      </div>
+    </div>
   )
 }
 
@@ -394,7 +472,15 @@ function TasksPage({
           <h3 className={css.sectionTitle}>{t('section.live')}<span>{liveCount}</span></h3>
           <div className={css.list}>
             {live.map(job => (
-              <JobRow key={job.id} job={job} now={now} stopping={stopping.has(job.id) || job.status === 'stopping'} onStop={onStop} t={t} />
+              <JobRow
+                key={job.id}
+                job={job}
+                now={now}
+                stopping={stopping.has(job.id) || job.status === 'stopping'}
+                onOpen={() => { openInstance(jobInstanceId(job.id)) }}
+                onStop={onStop}
+                t={t}
+              />
             ))}
           </div>
         </section>
@@ -403,7 +489,17 @@ function TasksPage({
         <section className={css.section}>
           <h3 className={css.sectionTitle}>{t('section.finished')}<span>{settled.length}</span></h3>
           <div className={css.list}>
-            {settled.map(job => <JobRow key={job.id} job={job} now={now} stopping={false} onStop={onStop} t={t} />)}
+            {settled.map(job => (
+              <JobRow
+                key={job.id}
+                job={job}
+                now={now}
+                stopping={false}
+                onOpen={() => { openInstance(jobInstanceId(job.id)) }}
+                onStop={onStop}
+                t={t}
+              />
+            ))}
           </div>
         </section>
       )}
@@ -471,16 +567,30 @@ interface JobRowProps {
   job: JobView
   now: number
   stopping: boolean
+  onOpen(): void
   onStop(jobId: string): void
   t: T
 }
 
-function JobRow({ job, now, stopping, onStop, t }: JobRowProps) {
+function JobRow({ job, now, stopping, onOpen, onStop, t }: JobRowProps) {
   const elapsedMs = stopping && job.status === 'running'
     ? now - job.startedAt
     : (job.finishedAt ?? now) - job.startedAt
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLElement>): void => {
+    if (event.target !== event.currentTarget) return
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    onOpen()
+  }
   return (
-    <article className={css.row} data-live={isLive(job) || undefined}>
+    <article
+      role="button"
+      tabIndex={0}
+      className={css.row}
+      data-live={isLive(job) || undefined}
+      onClick={onOpen}
+      onKeyDown={onKeyDown}
+    >
       <StateDot className={css.stateDot} state={stateDot(job.status)} />
       <div className={css.copy}>
         <strong title={job.label}>{job.label}</strong>
@@ -494,7 +604,7 @@ function JobRow({ job, now, stopping, onStop, t }: JobRowProps) {
             className={css.stop}
             disabled={stopping}
             aria-label={t('stop')}
-            onClick={() => { onStop(job.id) }}
+            onClick={event => { event.stopPropagation(); onStop(job.id) }}
           >
             {stopping ? t('stop.stopping') : t('stop')}
           </button>

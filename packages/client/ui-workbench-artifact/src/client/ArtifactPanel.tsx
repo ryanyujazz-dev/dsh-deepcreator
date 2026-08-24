@@ -256,7 +256,7 @@ export function ArtifactPanel({ artifacts, sessionId, route, tabs, activeInstanc
         {error !== null && <div className={css.error}>{error}</div>}
         {content !== null
           ? (
-            <div className={`${css.content}${content.kind === 'text' && markdown && markdownMode === 'preview' ? ` ${css.markdownPreview}` : ''}`}>
+            <div className={`${css.content}${content.kind === 'text' && markdown && markdownMode === 'preview' ? ` ${css.markdownPreview}` : ''}${content.kind === 'pdf' || (content.kind === 'document' && content.contentType === 'html') ? ` ${css.embeddedContent}` : ''}`}>
               {content.kind === 'text' && markdown && markdownMode === 'preview'
                 ? (
                   <div className={css.markdownDocument} data-artifact-markdown-document>

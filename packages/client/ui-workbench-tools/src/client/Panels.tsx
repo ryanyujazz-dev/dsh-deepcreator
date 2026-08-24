@@ -165,6 +165,8 @@ const ReviewFileRow = memo(function ReviewFileRow({
   const presentation = summary?.presentation ?? ready?.raw.presentation ?? file.presentation ?? 'unknown'
   const atomic = file.kind === 'repository' || file.kind === 'submodule'
   const hasRenderableDiff = ready?.layers.some(layer => layer.files.some(parsed => parsed.binary || parsed.hunks.length > 0)) ?? false
+  const patchUnavailable = ready !== null && !hasRenderableDiff && presentation === 'text' && showCounts
+    && ((additions ?? 0) > 0 || (deletions ?? 0) > 0)
   return (
     <article className={css.reviewFile} data-review-path={file.path}>
       <button
@@ -184,7 +186,8 @@ const ReviewFileRow = memo(function ReviewFileRow({
         <div className={css.reviewFileContent}>
           {pending && <div className={css.reviewFileMessage}>{t('loading')}</div>}
           {failed !== null && <div className={css.reviewFileError}>{failed}</div>}
-          {ready !== null && !hasRenderableDiff && presentation !== 'text' && (
+          {patchUnavailable && <div className={css.reviewFileError}>{t('review.patchUnavailable')}</div>}
+          {ready !== null && !hasRenderableDiff && !patchUnavailable && presentation !== 'text' && (
             <div className={css.binary}>{t(`review.presentation.${presentation}`)}</div>
           )}
           {ready !== null && hasRenderableDiff && ready.layers.map(layer => (

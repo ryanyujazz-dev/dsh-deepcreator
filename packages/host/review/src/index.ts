@@ -204,18 +204,78 @@ function splitPatchBlocks(patch: string): string[] {
   return starts.map((start, index) => patch.slice(start, starts[index + 1] ?? patch.length).trimEnd())
 }
 
+interface GitPathToken { path: string; end: number }
+
+/** Decode one Git double-quoted path token, including UTF-8 octal escapes. */
+function readGitPathToken(input: string, offset = 0): GitPathToken | null {
+  let start = offset
+  while (input[start] === ' ') start += 1
+  if (start >= input.length) return null
+  if (input[start] !== '"') {
+    const end = input.indexOf(' ', start)
+    return { path: input.slice(start, end < 0 ? input.length : end), end: end < 0 ? input.length : end }
+  }
+  const bytes: number[] = []
+  const controls: Record<string, number> = {
+    a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13, '"': 34, '\\': 92,
+  }
+  for (let index = start + 1; index < input.length; index += 1) {
+    const character = input[index]
+    if (character === '"') return { path: Buffer.from(bytes).toString('utf8'), end: index + 1 }
+    if (character !== '\\') {
+      const codePoint = input.codePointAt(index)
+      if (codePoint === undefined) return null
+      const literal = String.fromCodePoint(codePoint)
+      bytes.push(...Buffer.from(literal))
+      index += literal.length - 1
+      continue
+    }
+    const escaped = input[++index]
+    if (escaped === undefined) return null
+    if (/^[0-7]$/u.test(escaped)) {
+      let octal = escaped
+      while (octal.length < 3 && /^[0-7]$/u.test(input[index + 1] ?? '')) octal += input[++index]
+      bytes.push(Number.parseInt(octal, 8))
+      continue
+    }
+    const control = controls[escaped]
+    if (control !== undefined) bytes.push(control)
+    else bytes.push(...Buffer.from(escaped))
+  }
+  return null
+}
+
+function patchLinePath(block: string, expression: RegExp): string | undefined {
+  const raw = expression.exec(block)?.[1]
+  if (raw === undefined || !raw.startsWith('"')) return raw
+  return readGitPathToken(raw)?.path
+}
+
+function patchHeaderMatches(header: string | undefined, file: GenerationFile): boolean {
+  if (header === undefined) return false
+  const oldPath = file.workspaceOldPath ?? file.workspacePath
+  if (header === `${oldPath} ${file.workspacePath}` || header === `a/${oldPath} b/${file.workspacePath}`) return true
+  const oldToken = readGitPathToken(header)
+  const newToken = oldToken === null ? null : readGitPathToken(header, oldToken.end)
+  if (oldToken === null || newToken === null || header.slice(newToken.end).trim() !== '') return false
+  const decodedOld = oldToken.path.startsWith('a/') ? oldToken.path.slice(2) : oldToken.path
+  const decodedNew = newToken.path.startsWith('b/') ? newToken.path.slice(2) : newToken.path
+  return decodedOld === oldPath && decodedNew === file.workspacePath
+}
+
 function mapPatchBlocks(patch: string, files: readonly GenerationFile[]): Map<string, string> {
   const result = new Map<string, string>()
   const byNew = new Map(files.map(file => [file.workspacePath, file] as const))
   const byOld = new Map(files.map(file => [file.workspaceOldPath ?? file.workspacePath, file] as const))
   for (const block of splitPatchBlocks(patch)) {
-    const newPath = /^\+\+\+ (?:b\/)?(.+)$/m.exec(block)?.[1]
-      ?? /^rename to (.+)$/m.exec(block)?.[1]
-    const oldPath = /^--- (?:a\/)?(.+)$/m.exec(block)?.[1]
-      ?? /^rename from (.+)$/m.exec(block)?.[1]
+    const newPath = patchLinePath(block, /^\+\+\+ (.+)$/m)
+      ?? patchLinePath(block, /^rename to (.+)$/m)
+    const oldPath = patchLinePath(block, /^--- (.+)$/m)
+      ?? patchLinePath(block, /^rename from (.+)$/m)
+    const header = /^diff --git (.+)$/m.exec(block)?.[1]
     const file = (newPath === undefined || newPath === '/dev/null' ? undefined : byNew.get(newPath))
       ?? (oldPath === undefined || oldPath === '/dev/null' ? undefined : byOld.get(oldPath))
-      ?? files.find(candidate => block.startsWith(`diff --git a/${candidate.workspaceOldPath ?? candidate.workspacePath} b/${candidate.workspacePath}`))
+      ?? files.find(candidate => patchHeaderMatches(header, candidate))
     if (file !== undefined) result.set(file.path, block)
   }
   return result
