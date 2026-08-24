@@ -11,9 +11,9 @@ Business UI packages register only their wire Tool names and atomic views. They 
 
 ## Rendering contract
 
-`ToolCallTree` receives one root `ToolCallBlock` that already contains recursive `subCalls`, selection state, the session `cwd`, and Host callbacks for opening files and inspecting calls. It recursively walks the standard call blocks and sends the root and children at every depth through the same atomic dispatch path, without subscribing to a separate parent-to-children map.
+`ToolCallTree` receives one root `ToolCallBlock` that already contains recursive `subCalls`, the session `cwd`, and Host callbacks for opening files and inspecting calls. It recursively walks the standard call blocks and sends the root and children at every depth through the same atomic dispatch path, without subscribing to a separate parent-to-children map.
 
-Each root and child wrapper preserves the `data-chat-anchor-key="call:<id>"` and `data-chat-call-id` DOM contract used for paging and selection.
+Each root and child wrapper preserves the `data-chat-anchor-key="call:<id>"` and `data-chat-call-id` DOM contract used for paging.
 
 The former `conversation.details.tool` registration and its `ToolDetails` renderer are removed together with `ui-conversation`'s retired DetailsPanel; the slot is gone from the contract. Tool inspection must be reintroduced later as a keyed Workbench Inspector Provider. Chat-row renderers continue to share pure card models for `terminal`, `read`, `diff`, `search`, and `web` render intents.
 

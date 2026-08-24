@@ -455,9 +455,6 @@ export function apply(ctx: Context): void {
       const conversation = concreteConversation(ctx)
       const scoped = scopedConversation(sessions, sessionId)
       return {
-        openDetails: (target) => {
-          actions.select(target)
-        },
         fileMentions: owner => ctx.get('chatFileMentions')?.forClosing(owner),
         acknowledgeOutgoing: ids => { inputHub.shell(sessionId).acknowledgeOutgoing(ids) },
         openFile: (path) => {

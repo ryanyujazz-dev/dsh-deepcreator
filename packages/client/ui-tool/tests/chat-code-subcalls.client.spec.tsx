@@ -116,7 +116,7 @@ async function bench(snapshot: ConversationSnapshot, isLoopback = false) {
     phase: 'ready', subagentsByParent: {}, jobsBySession: {}, currentAddress: undefined,
   })
   const scoped = { send: vi.fn(async () => {}), cancel: vi.fn(async () => {}) }
-  const layout = { openDetails: vi.fn(), closeDetails: vi.fn() }
+  const layout = { closeDetails: vi.fn() }
   // Provide-channel contributions land in this bundle the way the runtime
   // materializes them; the renderer host serves it through provideInfo.
   const provided: { hooks: Record<string, unknown>; props: Record<string, unknown> } = { hooks: {}, props: {} }
@@ -261,7 +261,7 @@ describe('run_code sub-calls through the real chat machinery', () => {
     expect(nested).not.toBeNull()
   })
 
-  it('a file sub-row click opens the host path; bash sub-rows do not open details', async () => {
+  it('a file sub-row click opens the host path', async () => {
     const parent = 'call-64'
     const subCalls = [
       subCall(11, parent, 1, 'read', { path: 'notes/demo.txt' }, 'ok'),
@@ -270,12 +270,9 @@ describe('run_code sub-calls through the real chat machinery', () => {
     const b = await bench(snapshotWith([codeResult(10, parent)], subCalls), true)
     const view = mountApp(b.slots)
     view.getByText('demo.txt').click()
-    expect(b.layout.openDetails).not.toHaveBeenCalled()
     await vi.waitFor(() => {
       expect(b.workspaces.openPath).toHaveBeenCalledWith('notes/demo.txt')
     })
-    view.getByText('List notes').click()
-    expect(b.layout.openDetails).not.toHaveBeenCalled()
   })
 
   it('a RUNNING run_code call nests its so-far dispatches under the spinner row', async () => {

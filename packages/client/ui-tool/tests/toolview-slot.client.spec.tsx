@@ -68,7 +68,7 @@ async function bench(nodes: ToolResultNode[], isLoopback = false) {
   // ui-theme's Appearance row binds a durable scope through these two.
   runtime.provide('remote', { $on: () => () => {} })
   runtime.provide('settingsScope', { bind: () => stubSettingsScope().scope } as never)
-  const layout = { openDetails: vi.fn(), closeDetails: vi.fn() }
+  const layout = { closeDetails: vi.fn() }
   runtime.provide('layout', layout)
   const locale = new LocaleRuntime(runtime.ctx)
   runtime.provide('locale', locale)
@@ -134,7 +134,6 @@ describe('keyed toolview hole through the real machinery', () => {
     b.runtime.provide('workbench', { types: { list: () => [{ id: 'artifact' }] }, activate })
     const view = b.runtime.renderRoot()
     view.getByText('a.ts').click()
-    expect(b.layout.openDetails).not.toHaveBeenCalled()
     expect(activate).toHaveBeenCalledWith('artifact', 'src/a.ts')
     expect(b.runtime.workspaces.calls.some(call => call.method === 'openPath')).toBe(false)
     await b.runtime.dispose()
@@ -166,11 +165,10 @@ describe('keyed toolview hole through the real machinery', () => {
     await b.runtime.dispose()
   })
 
-  it('bash summary clicks do not open details or host paths', async () => {
+  it('bash summary clicks do not open host paths', async () => {
     const b = await bench([toolResult(3, 'c1', 'bash')])
     const view = b.runtime.renderRoot()
     view.getByText('Build').click()
-    expect(b.layout.openDetails).not.toHaveBeenCalled()
     expect(b.runtime.workspaces.calls.some(c => c.method === 'openPath')).toBe(false)
     await b.runtime.dispose()
   })
@@ -234,7 +232,7 @@ describe('registrant declaration injection', () => {
     // ui-theme's Appearance row binds a durable scope through these two.
     runtime.provide('remote', { $on: () => () => {} })
     runtime.provide('settingsScope', { bind: () => stubSettingsScope().scope } as never)
-    runtime.provide('layout', { openDetails: vi.fn(), closeDetails: vi.fn() })
+    runtime.provide('layout', { closeDetails: vi.fn() })
     const locale = new LocaleRuntime(runtime.ctx)
     runtime.provide('locale', locale)
     runtime.slots.installLocale(locale)

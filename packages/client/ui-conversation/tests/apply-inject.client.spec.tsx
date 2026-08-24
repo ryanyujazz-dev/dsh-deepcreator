@@ -3,10 +3,9 @@
 // API: the strict session API (views triple, draft mirror), the
 // provide-channel input face (machine-sink submit choreography incl.
 // optimistic clear + failure restore), the resident API (selectWorkspace
-// draft carrying), the composer-bar stop face, and openDetails as a selection
-// action. The root details seat now belongs exclusively to ui-workbench.
-// chat-apply.spec.tsx (registration) and selection-survival.spec.tsx (store
-// axis). History opening is NOT an inject concern — the runtime sessions
+// draft carrying), the composer-bar stop face. The root details seat now
+// belongs exclusively to ui-workbench.
+// History opening is NOT an inject concern — the runtime sessions
 // service opens on watch (sessions-service.spec.ts owns that behavior).
 //
 // The inject APIs are read off the ledger entries deliberately (typed at
@@ -57,7 +56,7 @@ async function bench(isLoopback = false) {
     summary: { title: 'R', displayTitle: 'R', cwd: '/proj' },
     session: sessionFake,
   })
-  const layoutFake = { openDetails: vi.fn(), closeDetails: vi.fn() }
+  const layoutFake = { closeDetails: vi.fn() }
   runtime.provide('layout', layoutFake)
   const locale = new LocaleRuntime(runtime.ctx)
   runtime.provide('locale', locale)
@@ -124,7 +123,7 @@ async function bench(isLoopback = false) {
   return {
     runtime, feature, slots: runtime.slots, entryOf,
     conversationApi, conversationHeaderApi, residentApi, composerApi, chatViewApi, inputApi,
-    sessionFake, layoutFake,
+    sessionFake,
   }
 }
 
@@ -214,19 +213,6 @@ describe('conversation slot inject API', () => {
     const stop = injectFn(ROOT).stop!
     await b.feature.dispose()
     expect(() => { stop() }).toThrow(/unavailable through the session scope/)
-    await b.runtime.dispose()
-  })
-
-  it('openDetails (chat view face) writes selection without claiming the Workbench seat', async () => {
-    const b = await bench()
-    const { instance, injected } = b.chatViewApi(ROOT)
-    injected.openDetails({ turnSeq: 2, callId: 'c1' })
-    expect(instance.store.getSnapshot().selection).toEqual({ turnSeq: 2, callId: 'c1' })
-    expect(b.layoutFake.openDetails).not.toHaveBeenCalled()
-    // The chat view shares the conversation entry's store instance: selection
-    // writes land where the skeleton and details read.
-    const conv = b.conversationApi(ROOT)
-    expect(conv.instance).toBe(instance)
     await b.runtime.dispose()
   })
 

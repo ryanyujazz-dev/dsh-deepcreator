@@ -1,10 +1,7 @@
-/** Shared conversation view, selection, and store-state contracts. */
+/** Shared conversation view and store-state contracts. */
 
 /** Tool call identity as carried on the wire (branded upstream in connection). */
 export type CallId = string
-
-/** Selection target for the details linkage channel (toolcall is the step special case). */
-export interface SelectionTarget { turnSeq: number; stepSeq?: number; callId?: CallId; toolName?: string }
 
 /**
  * One conversation view tab, projected from a 'conversation.view' slot
@@ -17,8 +14,6 @@ export interface ViewTab { id: string; label: string }
  * Unknown persisted view ids fall back to the stable Chat view.
  */
 export interface ChatStoreState {
-  /** Details-linkage channel (conversation writes, details reads). */
-  selection: SelectionTarget | null
   /** Composer draft (persisted; survives session switches and reloads). */
   draft: string
   /** Active conversation view id ('conversation.view' entry id); null falls back to Chat. */

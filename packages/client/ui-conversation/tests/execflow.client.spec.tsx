@@ -16,7 +16,6 @@ import {
 } from '@deepseek-ai/dsh-client-runtime/client'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import type { ChatRenderSlotProps } from '../src/client/contract/slots.ts'
-import type { SelectionTarget } from '../src/client/contract/views.ts'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@ryanyujazz/dsh-client-locale/src/locales/zh.ts'
 import { createChatStore } from '../src/client/stores.ts'
@@ -109,7 +108,6 @@ function emptyWorkspaces() {
 
 function makeHarness(init?: Partial<ConversationSnapshot>) {
   const { set, source } = makeSource(init)
-  const openDetails = vi.fn<(t: SelectionTarget) => void>()
   const openFile = vi.fn<(path: string) => void>()
   const loadOlder = vi.fn()
   const inspectCall = vi.fn<(callId: string) => void>()
@@ -144,7 +142,6 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
     useStore: bindSnapshotSelector(chat),
     actions: chat.actions,
     renderSlot,
-    openDetails,
     openFile,
     loadOlder,
     loadImage: vi.fn(() => Promise.reject(new Error('not used'))),
@@ -159,7 +156,7 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
     siblingId: 'think',
   }
   return {
-    set, Body: ExecFlowBody, props, openDetails, openFile, loadOlder, inspectCall,
+    set, Body: ExecFlowBody, props, openFile, loadOlder, inspectCall,
     chatScroll, forkAt, selectRenderMode, input,
   }
 }
