@@ -1,13 +1,12 @@
 import { randomUUID } from 'node:crypto'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
-import { join, resolve } from 'node:path'
+import type { AttachmentStore, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { BrowserRuntimeError } from './errors.ts'
 import { BrowserNetworkPolicy } from './network-policy.ts'
 import type {
   BrowserCapability, BrowserCommand, BrowserCommandResult, BrowserDescriptor, BrowserNextAction, BrowserProvider,
   BrowserProviderBinding, BrowserProviderContext, BrowserRequirementAssessment, BrowserRequirements, BrowserResolution,
   BrowserSelectionRequest, BrowserSignalInput, BrowserStateSnapshot, BrowserTabLifecycle, BrowserTabState, ProviderTab, UserTabCandidate,
+  BrowserTabRemovalReason,
 } from './types.ts'
 import { browserSignal } from './types.ts'
 
@@ -22,10 +21,12 @@ interface ManagedTab {
   queue: Promise<void>
 }
 interface RevisionWaiter { after: number; resolve(revision: number): void; timer: NodeJS.Timeout; abort(): void }
+interface TabTombstone { ownerSessionId: string; state: BrowserTabState; reason: BrowserTabRemovalReason; removedAt: number }
 
 export interface RuntimeTabResult { tab: BrowserTabState; nextAction: BrowserNextAction }
 
 export interface BrowserRuntimeOptions {
+  attachments?: AttachmentStore
   allowPrivateNetwork?: boolean
   visibleProviderOrder?: string[]
   defaultAutomation?: 'semantic' | 'playwright'
@@ -44,12 +45,15 @@ export class BrowserRuntime {
   readonly #revisions = new Map<string, number>()
   readonly #selected = new Map<string, string>()
   readonly #revisionWaiters = new Map<string, Set<RevisionWaiter>>()
+  readonly #tombstones = new Map<string, TabTombstone>()
   readonly networkPolicy: BrowserNetworkPolicy
   #visibleProviderOrder: string[]
   #defaultAutomation: 'semantic' | 'playwright'
   #defaultEngine: 'chromium' | 'firefox' | 'webkit'
+  readonly #attachments: AttachmentStore | undefined
 
   constructor(options: BrowserRuntimeOptions = {}) {
+    this.#attachments = options.attachments
     this.networkPolicy = new BrowserNetworkPolicy(options)
     this.#visibleProviderOrder = options.visibleProviderOrder ?? ['iab', 'chrome', 'playwright-chromium']
     this.#defaultAutomation = options.defaultAutomation ?? 'playwright'
@@ -244,7 +248,11 @@ export class BrowserRuntime {
       this.#syncState(managed, result.tab)
       managed.state.lastAction = { action: `${command.kind}:${'action' in command ? command.action : command.condition}`, at: Date.now(), result: 'ok' }
       if (result.kind === 'snapshot') managed.state.snapshotId = result.snapshot.snapshotId
-      else if (result.kind === 'screenshot') managed.state.snapshotArtifactId = await this.persistScreenshot(sessionId, tabId, result.dataUrl)
+      else if (result.kind === 'screenshot') {
+        const attachment = await this.persistScreenshot(sessionId, tabId, result.dataUrl)
+        managed.state.snapshotAttachment = attachment
+        managed.state.snapshotArtifactId = String(attachment.attachmentId)
+      }
       else if (command.kind !== 'inspect') delete managed.state.snapshotId
       this.#selected.set(sessionId, tabId)
       this.#bump(sessionId)
@@ -252,6 +260,7 @@ export class BrowserRuntime {
     } catch (error) {
       const code = error instanceof BrowserRuntimeError ? error.code : 'BROWSER_UNAVAILABLE'
       managed.state.lastAction = { action: command.kind, at: Date.now(), result: code }
+      if (code === 'TAB_NOT_FOUND') this.#removeTab(tabId, 'provider-close')
       this.#bump(sessionId)
       throw error
     }
@@ -391,7 +400,7 @@ export class BrowserRuntime {
     return { ...managed.state }
   }
 
-  async close(sessionId: string, tabId: string, signal: BrowserSignalInput): Promise<void> {
+  async close(sessionId: string, tabId: string, signal: BrowserSignalInput, reason: BrowserTabRemovalReason = 'client-close'): Promise<void> {
     const managed = this.#tabs.get(tabId)
     // Resource destruction is idempotent: Workbench dismissal, Presenter
     // teardown, and a direct Home-row close may converge on the same tab.
@@ -400,8 +409,7 @@ export class BrowserRuntime {
     await this.#drain(managed)
     const provider = this.#providers.get(managed.state.browserId)
     if (provider !== undefined) await provider.close(this.#context(managed.automationSessionId, managed.workspaceRoot, signal), managed.providerTab)
-    this.#tabs.delete(tabId)
-    if (this.#selected.get(sessionId) === tabId) this.#selected.delete(sessionId)
+    this.#removeTab(tabId, reason)
     this.#bump(sessionId)
   }
 
@@ -412,10 +420,10 @@ export class BrowserRuntime {
       const provider = this.#providers.get(managed.state.browserId)
       if (managed.state.lifecycle === 'temporary') {
         await provider?.close(this.#context(managed.automationSessionId, managed.workspaceRoot, AbortSignal.timeout(5_000)), managed.providerTab).catch(() => undefined)
-        this.#tabs.delete(tabId)
+        this.#removeTab(tabId, 'turn-cleanup')
       } else if (managed.state.lifecycle === 'claimed') {
         await provider?.release(this.#context(managed.automationSessionId, managed.workspaceRoot, AbortSignal.timeout(5_000)), managed.providerTab).catch(() => undefined)
-        this.#tabs.delete(tabId)
+        this.#removeTab(tabId, 'turn-cleanup')
       } else if (managed.state.lifecycle === 'handoff') {
         managed.turn = turn + 1
         managed.state.lifecycle = 'temporary'
@@ -452,27 +460,30 @@ export class BrowserRuntime {
 
   tab(sessionId: string, tabId: string): BrowserTabState { return { ...this.#owned(sessionId, tabId).state } }
 
-  async persistScreenshot(sessionId: string, tabId: string, dataUrl: string): Promise<string> {
+  async persistScreenshot(sessionId: string, tabId: string, dataUrl: string): Promise<ImageAttachmentRef> {
     this.#owned(sessionId, tabId)
     const match = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl)
     if (match === null) throw new BrowserRuntimeError('BROWSER_UNAVAILABLE', 'Provider returned an invalid screenshot payload.')
-    const artifactId = `browser-screenshot-${randomUUID()}`
-    const root = resolve(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'artifacts', 'browser-screenshots')
-    await mkdir(root, { recursive: true, mode: 0o700 })
-    await writeFile(join(root, `${artifactId}.png`), Buffer.from(match[1]!, 'base64'), { mode: 0o600 })
-    return artifactId
+    if (this.#attachments === undefined) throw new BrowserRuntimeError('BROWSER_UNAVAILABLE', 'The official Attachment Store is unavailable; the screenshot was not published.')
+    return this.#attachments.saveImage({
+      data: Buffer.from(match[1]!, 'base64'), mediaType: 'image/png', name: `browser-${tabId}.png`,
+    })
   }
 
-  async screenshotImage(sessionId: string, tabId: string): Promise<{ artifactId: string; dataUrl: string }> {
+  async screenshotImage(sessionId: string, tabId: string): Promise<{ attachment: ImageAttachmentRef; artifactId: string; dataUrl: string }> {
     const tab = this.#owned(sessionId, tabId).state
-    if (tab.snapshotArtifactId === undefined) throw new BrowserRuntimeError('TAB_NOT_FOUND', `Browser tab ${tabId} has no screenshot artifact.`)
-    const root = resolve(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'artifacts', 'browser-screenshots')
-    const bytes = await readFile(join(root, `${tab.snapshotArtifactId}.png`))
-    return { artifactId: tab.snapshotArtifactId, dataUrl: `data:image/png;base64,${bytes.toString('base64')}` }
+    if (tab.snapshotAttachment === undefined) throw new BrowserRuntimeError('TAB_NOT_FOUND', `Browser tab ${tabId} has no screenshot attachment.`)
+    if (this.#attachments === undefined) throw new BrowserRuntimeError('BROWSER_UNAVAILABLE', 'The official Attachment Store is unavailable.')
+    const stored = await this.#attachments.readImage(tab.snapshotAttachment)
+    return {
+      attachment: stored.ref,
+      artifactId: String(stored.ref.attachmentId),
+      dataUrl: `data:${stored.ref.mediaType};base64,${Buffer.from(stored.data).toString('base64')}`,
+    }
   }
 
   async dispose(): Promise<void> {
-    for (const [tabId, managed] of [...this.#tabs]) await this.close(managed.ownerSessionId, tabId, AbortSignal.timeout(2_000)).catch(() => undefined)
+    for (const [tabId, managed] of [...this.#tabs]) await this.close(managed.ownerSessionId, tabId, AbortSignal.timeout(2_000), 'runtime-dispose').catch(() => undefined)
     for (const provider of this.#providers.values()) await provider.dispose?.().catch(() => undefined)
     this.#providers.clear()
   }
@@ -486,7 +497,7 @@ export class BrowserRuntime {
       if (managed.state.browserId !== browserId) continue
       await this.#drain(managed)
       await provider.close(this.#context(managed.automationSessionId, managed.workspaceRoot, AbortSignal.timeout(2_000)), managed.providerTab).catch(() => undefined)
-      this.#tabs.delete(tabId); owners.add(managed.ownerSessionId)
+      this.#removeTab(tabId, 'provider-close'); owners.add(managed.ownerSessionId)
     }
     await provider.clearData()
     for (const owner of owners) { this.#selected.delete(owner); this.#bump(owner) }
@@ -499,6 +510,17 @@ export class BrowserRuntime {
     const result = await provider.manage(action)
     for (const sessionId of this.#revisions.keys()) this.#bump(sessionId)
     return result
+  }
+
+  /** Invalidate logical tabs after a Provider process restart; stale pages are never silently reused. */
+  invalidateProvider(browserId: string, reason: Extract<BrowserTabRemovalReason, 'owner-restarted' | 'provider-close'>): void {
+    const owners = new Set<string>()
+    for (const [tabId, managed] of [...this.#tabs]) {
+      if (managed.state.browserId !== browserId) continue
+      owners.add(managed.ownerSessionId)
+      this.#removeTab(tabId, reason)
+    }
+    for (const owner of owners) this.#bump(owner)
   }
 
   #normalizeSelection(request: BrowserSelectionRequest): Required<Pick<BrowserSelectionRequest, 'requirements'>> & Pick<BrowserSelectionRequest, 'preference' | 'url'> {
@@ -551,9 +573,22 @@ export class BrowserRuntime {
 
   #owned(sessionId: string, tabId: string): ManagedTab {
     const managed = this.#tabs.get(tabId)
-    if (managed === undefined) throw new BrowserRuntimeError('TAB_NOT_FOUND', `Browser tab ${tabId} does not exist in this process.`)
+    if (managed === undefined) {
+      const tombstone = this.#tombstones.get(tabId)
+      if (tombstone !== undefined && tombstone.ownerSessionId === sessionId) throw new BrowserRuntimeError('TAB_NOT_FOUND', `Browser tab ${tabId} is no longer available (last URL ${tombstone.state.url}; removed by ${tombstone.reason}).`, { tabId, finalUrl: tombstone.state.url, lifecycleReason: tombstone.reason, suggestedNextStep: tombstone.reason === 'owner-restarted' ? 'Create a new Browser tab; tabs from the previous Playwright Owner are invalid.' : 'List Browser tabs and select a current tabId.' })
+      throw new BrowserRuntimeError('TAB_NOT_FOUND', `Browser tab ${tabId} does not exist in this process.`, { tabId, suggestedNextStep: 'List Browser tabs and select a current tabId.' })
+    }
     if (managed.ownerSessionId !== sessionId) throw new BrowserRuntimeError('TAB_NOT_OWNED', `Browser tab ${tabId} is owned by another session.`)
     return managed
+  }
+  #removeTab(tabId: string, reason: BrowserTabRemovalReason): void {
+    const managed = this.#tabs.get(tabId)
+    if (managed === undefined) return
+    this.#tabs.delete(tabId)
+    if (this.#selected.get(managed.ownerSessionId) === tabId) this.#selected.delete(managed.ownerSessionId)
+    this.#tombstones.delete(tabId)
+    this.#tombstones.set(tabId, { ownerSessionId: managed.ownerSessionId, state: { ...managed.state }, reason, removedAt: Date.now() })
+    while (this.#tombstones.size > 256) this.#tombstones.delete(this.#tombstones.keys().next().value as string)
   }
   #context(automationSessionId: string, workspaceRoot: string, signal: BrowserSignalInput): BrowserProviderContext { return { automationSessionId, workspaceRoot, signal: browserSignal(signal) } }
   #syncState(managed: ManagedTab, tab: ProviderTab): void {

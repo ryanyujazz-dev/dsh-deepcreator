@@ -125,8 +125,8 @@ export class BrowserRpcServer {
       const result = await this.#driver.dispatch(request.method, request.params)
       response = { id: request.id, ok: true, result }
     } catch (error) {
-      const candidate = error as { code?: unknown; message?: unknown }
-      response = { id: request.id, ok: false, error: { code: typeof candidate.code === 'string' ? candidate.code as never : 'BROWSER_UNAVAILABLE', message: typeof candidate.message === 'string' ? candidate.message : String(error) } }
+      const candidate = error as { code?: unknown; message?: unknown; details?: unknown }
+      response = { id: request.id, ok: false, error: { code: typeof candidate.code === 'string' ? candidate.code as never : 'BROWSER_UNAVAILABLE', message: typeof candidate.message === 'string' ? candidate.message : String(error), ...(candidate.details !== null && typeof candidate.details === 'object' ? { details: candidate.details as Record<string, unknown> } : {}) } }
     }
     if (!socket.destroyed) socket.write(`${JSON.stringify(response)}\n`)
   }

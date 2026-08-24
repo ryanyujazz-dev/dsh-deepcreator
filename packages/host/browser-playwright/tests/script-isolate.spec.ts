@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { BrowserRuntimeError } from '@ryanyujazz/dsh-browser'
-import { PlaywrightScriptIsolate } from '../src/script-isolate.ts'
+import { applyApiRequestProxy, PlaywrightScriptIsolate } from '../src/script-isolate.ts'
 
 const signal = new AbortController().signal
 const policy = { mode: 'controlled' as const, beforeCall: async () => undefined }
@@ -13,6 +13,15 @@ beforeEach(async () => { testDshHome = await mkdtemp(join(tmpdir(), 'dsh-playwri
 afterEach(async () => { if (originalDshHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = originalDshHome; await rm(testDshHome, { recursive: true, force: true }) })
 
 describe('PlaywrightScriptIsolate', () => {
+  it('creates and tears down 100 isolates without retaining pending jobs', async () => {
+    for (let index = 0; index < 100; index++) {
+      const result = await new PlaywrightScriptIsolate({ page: { async title() { return `page-${index}` } }, workspaceRoot: process.cwd() }, policy).run(
+        'async ({ page }) => await page.title()', 5_000, signal,
+      )
+      expect(result.value).toBe(`page-${index}`)
+    }
+  }, 30_000)
+
   it('executes TypeScript against async host handles and returns JSON', async () => {
     const page = { async title() { return 'DeepCreator' }, async answer(value: number) { return value + 1 } }
     const result = await new PlaywrightScriptIsolate({ page, workspaceRoot: process.cwd() }, policy).run(
@@ -22,6 +31,27 @@ describe('PlaywrightScriptIsolate', () => {
     )
     expect(result.value).toEqual({ title: 'DeepCreator', answer: 42, process: 'undefined', require: 'undefined' })
   })
+
+  it('rejects final values containing an un-awaited Playwright proxy with actionable guidance', async () => {
+    const page = { url() { return 'https://example.test/' } }
+    await expect(new PlaywrightScriptIsolate({ page, workspaceRoot: process.cwd() }, policy).run(
+      'async ({ page }) => ({ url: page.url() })', 5_000, signal,
+    )).rejects.toMatchObject({ code: 'PLAYWRIGHT_RUNTIME_ERROR', message: expect.stringContaining('Await every Playwright method') })
+  })
+
+  it('applies the Desktop proxy to standalone APIRequestContext creation', async () => {
+    const args: unknown[] = [{ ignoreHTTPSErrors: true, proxy: { server: 'http://ignored.test' } }]
+    applyApiRequestProxy(args, { server: 'http://proxy.test:3128', bypass: 'localhost' })
+    expect(args[0]).toEqual({ ignoreHTTPSErrors: true, proxy: { server: 'http://proxy.test:3128', bypass: 'localhost' } })
+  })
+
+  it.each([500_000, 3_000_000])('handles a %i-character page body when the script extracts a bounded result', async size => {
+    const page = { async content() { return 'x'.repeat(size) } }
+    const result = await new PlaywrightScriptIsolate({ page, workspaceRoot: process.cwd() }, policy).run(
+      'async ({ page }) => { const html = await page.content(); return { length: html.length, sample: html.slice(0, 32) } }', 10_000, signal,
+    )
+    expect(result.value).toEqual({ length: size, sample: 'x'.repeat(32) })
+  }, 20_000)
 
   it('blocks opaque methods in controlled mode before the host side effect', async () => {
     let called = false

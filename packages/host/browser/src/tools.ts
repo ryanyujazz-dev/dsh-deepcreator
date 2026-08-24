@@ -1,4 +1,5 @@
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { defineTool, type JsonValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { ApprovalService } from '@deepseek-ai/dsh-user-approval'
 import { BrowserRuntimeError } from './errors.ts'
@@ -7,7 +8,26 @@ import type { BrowserRuntime } from './runtime.ts'
 import type { BrowserCommand, BrowserLocator, BrowserNodeRef, BrowserSelectionRequest } from './types.ts'
 
 const outputSchema = { type: 'json' } as const
-const render = (_args: unknown, value: unknown) => [{ type: 'text' as const, text: JSON.stringify(value) }]
+function imageAttachment(value: unknown): ImageAttachmentRef | undefined {
+  if (value === null || typeof value !== 'object') return undefined
+  const candidate = (value as { attachment?: unknown }).attachment
+  if (candidate === null || typeof candidate !== 'object') return undefined
+  const ref = candidate as Partial<ImageAttachmentRef>
+  return typeof ref.attachmentId === 'string' && typeof ref.mediaType === 'string' && typeof ref.bytes === 'number'
+    && typeof ref.width === 'number' && typeof ref.height === 'number' ? ref as ImageAttachmentRef : undefined
+}
+const render = (_args: unknown, value: unknown) => {
+  const attachment = imageAttachment(value)
+  const textValue = attachment === undefined || value === null || typeof value !== 'object'
+    ? value
+    : (() => {
+        const { attachment: _attachment, tab, ...metadata } = value as Record<string, unknown>
+        const page = tab !== null && typeof tab === 'object' ? tab as Record<string, unknown> : undefined
+        return { ...metadata, attachmentId: String(attachment.attachmentId), mediaType: attachment.mediaType, width: attachment.width, height: attachment.height, ...(page === undefined ? {} : { url: page.url, title: page.title }) }
+      })()
+  const text = { type: 'text' as const, text: JSON.stringify(textValue) }
+  return attachment === undefined ? [text] : [text, { type: 'image' as const, attachment }]
+}
 function json(value: unknown): JsonValue { return JSON.parse(JSON.stringify(sanitizeBrowserModelValue(value))) as JsonValue }
 const locatorSchema = {
   type: 'object' as const, additionalProperties: false, properties: {
@@ -164,16 +184,24 @@ export function createBrowserToolDefinitions(env: BrowserToolEnvironment): ToolD
   })
 
   const browserInspect = defineTool({
-    name: 'browser_inspect', description: 'Read URL/title, capture a versioned structured snapshot, inspect an element, or capture a screenshot. nodeRef values are valid only with their snapshotId.',
-    parameters: { tabId: { type: 'string', required: true }, action: { type: 'string', required: true, enum: ['snapshot', 'screenshot', 'url', 'title', 'elementInfo'] }, locator: locatorSchema },
+    name: 'browser_inspect', description: 'Read a normalized document (preferred for research), URL/title, a versioned interactive snapshot, element metadata, or a screenshot. document defaults to 12,000 characters per page (20,000 maximum); continue with documentId and nextOffset. Screenshot results include a durable model-visible image attachment. nodeRef values are valid only with their snapshotId.',
+    parameters: {
+      tabId: { type: 'string', required: true }, action: { type: 'string', required: true, enum: ['document', 'snapshot', 'screenshot', 'url', 'title', 'elementInfo'] }, locator: locatorSchema,
+      documentId: { type: 'string' }, offset: { type: 'integer' }, maxChars: { type: 'integer' },
+    },
     output: { schema: outputSchema, render }, isConcurrencySafe: args => args.action !== 'screenshot',
     async execute(args, exec) {
       const agent = owner(exec); const loc = locator(args.locator)
-      const result = await env.runtime.execute(String(agent.id), args.tabId, { kind: 'inspect', action: args.action, ...(loc === undefined ? {} : { locator: loc }) }, exec.signal)
+      const result = await env.runtime.execute(String(agent.id), args.tabId, {
+        kind: 'inspect', action: args.action, ...(loc === undefined ? {} : { locator: loc }),
+        ...(args.documentId === undefined ? {} : { documentId: args.documentId }),
+        ...(args.offset === undefined ? {} : { offset: Math.max(0, args.offset) }),
+        ...(args.maxChars === undefined ? {} : { maxChars: Math.min(Math.max(args.maxChars, 1), 20_000) }),
+      }, exec.signal)
       if (result.kind !== 'screenshot') return json(result)
-      const artifactId = env.runtime.tab(String(agent.id), args.tabId).snapshotArtifactId
-      if (artifactId === undefined) throw new BrowserRuntimeError('BROWSER_UNAVAILABLE', 'Browser screenshot did not produce an artifact.')
-      return json({ kind: 'screenshot', artifactId, tab: result.tab })
+      const attachment = env.runtime.tab(String(agent.id), args.tabId).snapshotAttachment
+      if (attachment === undefined) throw new BrowserRuntimeError('BROWSER_UNAVAILABLE', 'Browser screenshot did not produce an attachment.')
+      return json({ kind: 'screenshot', attachment, artifactId: String(attachment.attachmentId), tab: result.tab })
     },
   })
 

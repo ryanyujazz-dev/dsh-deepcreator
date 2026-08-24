@@ -3,6 +3,8 @@ import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-user-approval'
+import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
+import type {} from '@deepseek-ai/dsh-attachment'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@ryanyujazz/dsh-presentation'
 import type { OpenInDeepCreatorResult, PresentationResource } from '@ryanyujazz/dsh-presentation/types'
@@ -23,7 +25,7 @@ export * from './types.ts'
 export * from './workspace-file-policy.ts'
 
 export const name = 'browser-runtime'
-export const inject = ['agents', 'tools', 'approval', 'presentationRuntime']
+export const inject = ['agents', 'tools', 'approval', 'attachments', 'presentationRuntime']
 export interface Config {
   allowPrivateNetwork?: boolean
   defaultAutomation?: 'semantic' | 'playwright'
@@ -58,7 +60,7 @@ export class BrowserHostService extends TypertRemoteService {
 
   constructor(ctx: Context, config: Config = {}) {
     super(ctx, 'browserRuntime', { namespace: 'browser' })
-    this.browser = new BrowserRuntime(config)
+    this.browser = new BrowserRuntime({ ...config, attachments: ctx.attachments })
     ctx.inject(['settings'], settingsCtx => settingsCtx.settings.register(BROWSER_SETTINGS_KEY, BrowserSettingsSchema))
     const resolverDisposers = this.registerResolvers(ctx)
 
@@ -158,7 +160,7 @@ export class BrowserHostService extends TypertRemoteService {
   }
 
   @Remote('snapshotImage')
-  async snapshotImage(agent: Agent, tabId: string): Promise<BrowserRemoteResult<{ artifactId: string; dataUrl: string }>> {
+  async snapshotImage(agent: Agent, tabId: string): Promise<BrowserRemoteResult<{ attachment: ImageAttachmentRef; artifactId: string; dataUrl: string }>> {
     try { return { ok: true, value: await this.browser.screenshotImage(String(agent.id), tabId) } }
     catch (error) { return browserFailure(error) }
   }
@@ -178,7 +180,7 @@ export class BrowserHostService extends TypertRemoteService {
   private registerResolvers(ctx: Context): Array<() => void> {
     const prepareSnapshot = async (context: { sessionId: string; signal: { readonly aborted: boolean } }, tab: BrowserTabState) => {
       const presentationMode = tab.presentationBinding.owner === 'provider' ? 'snapshot' : tab.presentation
-      if (presentationMode !== 'snapshot' || tab.snapshotArtifactId !== undefined) return
+      if (presentationMode !== 'snapshot' || tab.snapshotAttachment !== undefined) return
       await this.browser.execute(context.sessionId, tab.tabId, { kind: 'inspect', action: 'screenshot' }, context.signal)
     }
     const settle = async (context: { sessionId: string; signal: { readonly aborted: boolean }; result: OpenInDeepCreatorResult }, resource: PresentationResource, rollback: boolean) => {
@@ -191,7 +193,7 @@ export class BrowserHostService extends TypertRemoteService {
       catch { return }
       if (rollback && context.result.status === 'presented') this.browser.markLifecycle(context.sessionId, resource.id, 'deliverable')
       if (rollbackUnpresentedTemporaryTab && context.result.status !== 'presented') {
-        await this.browser.close(context.sessionId, resource.id, AbortSignal.timeout(5_000)).catch(() => undefined)
+        await this.browser.close(context.sessionId, resource.id, AbortSignal.timeout(5_000), 'presentation-rollback').catch(() => undefined)
       }
     }
     const disposers: Array<() => void> = []

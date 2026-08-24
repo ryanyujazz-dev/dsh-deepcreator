@@ -16,6 +16,36 @@ const NETWORK_METHOD = /^(goto|navigate|get|head|post|put|patch|delete|fetch|con
 const OPAQUE_RISK_METHOD = /^(evaluate|evaluateHandle|evaluateAll|addInitScript|newCDPSession|connect|connectOverCDP|launchServer)$/i
 
 function json(value: unknown): JsonValue { return JSON.parse(JSON.stringify(sanitizeBrowserModelValue(value))) as JsonValue }
+export function budgetPlaywrightOutput(value: unknown): JsonValue {
+  const warnings: string[] = []
+  const visit = (candidate: unknown, depth: number): unknown => {
+    if (depth > 10) { warnings.push('Output depth exceeded 10 levels; deeper values were truncated.'); return '[TRUNCATED: depth > 10]' }
+    if (typeof candidate === 'string') {
+      if (candidate.length <= 20_000) return candidate
+      warnings.push(`A string was truncated from ${candidate.length} to 20,000 characters.`)
+      return `${candidate.slice(0, 20_000)}\n[TRUNCATED ${candidate.length - 20_000} characters; extract a smaller field or use browser_inspect document.]`
+    }
+    if (Array.isArray(candidate)) {
+      if (candidate.length > 100) warnings.push(`An array was truncated from ${candidate.length} to 100 items.`)
+      return candidate.slice(0, 100).map(item => visit(item, depth + 1))
+    }
+    if (candidate === null || typeof candidate !== 'object') return candidate
+    return Object.fromEntries(Object.entries(candidate as Record<string, unknown>).map(([key, child]) => [key, visit(child, depth + 1)]))
+  }
+  const sanitized = sanitizeBrowserModelValue(value)
+  const originalBytes = Buffer.byteLength(JSON.stringify(sanitized))
+  const capped = visit(sanitized, 0) as Record<string, unknown>
+  if (warnings.length > 0) capped.warnings = [...new Set([...(Array.isArray(capped.warnings) ? capped.warnings.map(String) : []), ...warnings])]
+  const cappedJson = JSON.stringify(capped)
+  if (Buffer.byteLength(cappedJson) <= 64 * 1024) return JSON.parse(cappedJson) as JsonValue
+  const finalWarnings = [...new Set([...warnings, `Final JSON exceeded 64 KiB (original ${originalBytes} bytes). Return a smaller object or use browser_inspect document with pagination.`])]
+  let previewLength = Math.min(cappedJson.length, 60_000)
+  for (;;) {
+    const result = json({ truncated: true, originalBytes, preview: cappedJson.slice(0, previewLength), warnings: finalWarnings })
+    if (Buffer.byteLength(JSON.stringify(result)) <= 64 * 1024 || previewLength === 0) return result
+    previewLength = Math.max(0, Math.floor(previewLength * 0.8))
+  }
+}
 function owner(exec: ToolRunContext): Agent {
   if (exec.agent === undefined) throw new BrowserRuntimeError('TAB_NOT_OWNED', 'playwright_run requires an owning root Agent session.')
   return exec.agent
@@ -34,9 +64,10 @@ async function requestApproval(env: PlaywrightToolEnvironment, exec: ToolRunCont
 }
 
 export function createPlaywrightRunTool(env: PlaywrightToolEnvironment): ToolDefinition {
+  const crashState = new Map<string, { turn: number; consecutive: number }>()
   return defineTool({
     name: 'playwright_run',
-    description: 'Run JavaScript or TypeScript against the full Playwright Library API in a QuickJS isolate. Use this for multi-page, network, route, trace, video, download, request, CDP, or other advanced Playwright workflows. Code must be an async function receiving { playwright, browser, context, page, workspace, artifacts }. Await workspace.file(relativePath) for inputs, artifacts.output(kind, extension) for output files, and artifacts.directory(kind) for recordVideo/download/trace directories. controlled is default; opaque evaluation/CDP/launch requires per-call trusted approval. New Pages are returned as logical Browser tabIds.',
+    description: 'Run JavaScript or TypeScript against the full Playwright Library API in a QuickJS isolate. Use only for advanced multi-page, network, route, trace, video, download, request, or CDP workflows; ordinary research should use browser_inspect document. Code must be an async function receiving { playwright, browser, context, page, workspace, artifacts }. Every proxy method must be awaited, including Playwright methods that are synchronous in native JavaScript such as page.url() and response.status(). Await workspace.file(relativePath) for inputs, artifacts.output(kind, extension) for output files, and artifacts.directory(kind) for recordVideo/download/trace directories. controlled is default; trusted grants opaque API capability once for the whole invocation. Real external side effects still require separate approval. New Pages are returned as logical Browser tabIds. Do not mechanically retry an isolate crash.',
     parameters: {
       target: { type: 'object', required: true, additionalProperties: false, properties: {
         kind: { type: 'string', required: true, enum: ['tab', 'new'] }, tabId: { type: 'string' },
@@ -48,6 +79,12 @@ export function createPlaywrightRunTool(env: PlaywrightToolEnvironment): ToolDef
     output: { schema: outputSchema, render },
     async execute(args, exec) {
       const agent = owner(exec); const sessionId = String(agent.id); const turn = env.turnOf(agent); const workspaceRoot = cwd(agent)
+      let crashes = crashState.get(sessionId)
+      if (crashes === undefined || crashes.turn !== turn) {
+        crashes = { turn, consecutive: 0 }; crashState.delete(sessionId); crashState.set(sessionId, crashes)
+        while (crashState.size > 256) crashState.delete(crashState.keys().next().value as string)
+      }
+      if (crashes.consecutive >= 2) throw new BrowserRuntimeError('PLAYWRIGHT_ISOLATE_CRASHED', 'playwright_run is circuit-broken for this turn after two consecutive isolate crashes.', { suggestedNextStep: 'Use browser_inspect with action=document, or wait for the next turn before trying a substantially simpler script.' })
       const mode = (args.mode ?? 'controlled') as PlaywrightScriptMode
       if (mode === 'trusted') await requestApproval(env, exec, agent, 'Allow this playwright_run call to use opaque Playwright browser APIs (evaluate, raw CDP, BrowserType launch, or init scripts) inside the isolated script runtime. Node.js, arbitrary processes, unbrokered files, and credential export remain blocked.')
 
@@ -75,19 +112,27 @@ export function createPlaywrightRunTool(env: PlaywrightToolEnvironment): ToolDef
             const origin = request.summary.origin ?? 'unknown origin'
             await requestApproval(env, exec, agent, `${request.type}.${request.method} may change external state on ${origin}. The action and any transmitted form/workspace data are approved for this invocation only.`)
           }
-          if (OPAQUE_RISK_METHOD.test(request.method)) {
+          if (mode !== 'trusted' && OPAQUE_RISK_METHOD.test(request.method)) {
             const origin = request.summary.origin ?? 'unknown origin'
             await requestApproval(env, exec, agent, `${request.type}.${request.method} is opaque automation on ${origin} and may cause browser-visible or external side effects. Approve this specific opaque action only.`)
           }
       }
-      const result = await provider.runScript(binding.context, binding.providerTab.providerTabId, args.code, mode, Math.min(Math.max(args.timeoutMs ?? 60_000, 1), 300_000), policy)
+      let result
+      try {
+        result = await provider.runScript(binding.context, binding.providerTab.providerTabId, args.code, mode, Math.min(Math.max(args.timeoutMs ?? 60_000, 1), 300_000), policy)
+        crashes.consecutive = 0
+      } catch (error) {
+        if (error instanceof BrowserRuntimeError && error.code === 'PLAYWRIGHT_ISOLATE_CRASHED') crashes.consecutive++
+        else crashes.consecutive = 0
+        throw error
+      }
       const tabs = new Map<string, BrowserTabState>()
       tabs.set(targetTab.tabId, env.runtime.tab(sessionId, targetTab.tabId))
       for (const adopted of result.providerTabs) {
         const logical = env.runtime.adoptProviderTab({ sessionId, turn, workspaceRoot, browserId: `playwright-${adopted.engine}`, providerTab: adopted.tab })
         tabs.set(logical.tab.tabId, logical.tab)
       }
-      return json({ value: result.value ?? null, tabs: [...tabs.values()].map(tab => ({ tabId: tab.tabId, url: tab.url, title: tab.title })), artifacts: result.artifacts, logs: result.logs, warnings: result.warnings })
+      return budgetPlaywrightOutput({ value: result.value ?? null, tabs: [...tabs.values()].map(tab => ({ tabId: tab.tabId, url: tab.url, title: tab.title })), artifacts: result.artifacts, logs: result.logs, warnings: result.warnings })
     },
   })
 }

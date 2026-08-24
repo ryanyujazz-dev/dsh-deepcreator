@@ -70,6 +70,14 @@ describe('expanded Read source', () => {
 })
 
 describe('execution-flow guide rails', () => {
+  it('keeps result images full-column and aligns only execution-flow media to the 22px title column', () => {
+    expect(declarations('.media')).toEqual(expect.arrayContaining(['margin: 4px 0 4px 4px']))
+    expect(css).toMatch(/\.root\[data-execflow\] \.media\s*\{[^}]*margin-left: 22px;/s)
+    expect(css).toMatch(/\.root\[data-execflow\] \.bodyWrap::before\s*\{[^}]*left: 7\.5px;[^}]*width: 1px;/s)
+    expect(css).toContain('max-height: 420px')
+    expect(css).toContain('object-fit: contain !important')
+  })
+
   it('anchors a Code sub-call branch to its parent icon axis', () => {
     expect(treeCss).toContain('.subCalls::before')
     expect(treeCss).toContain('left: calc(var(--dsh-execflow-icon-axis) - var(--dsh-execflow-title-column))')

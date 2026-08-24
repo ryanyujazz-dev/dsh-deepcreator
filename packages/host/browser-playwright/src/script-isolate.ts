@@ -17,11 +17,18 @@ export interface PlaywrightScriptEnvironment {
   context?: unknown
   page?: unknown
   workspaceRoot: string
+  proxy?: { server: string; bypass?: string; username?: string; password?: string }
   observe?(value: unknown, invocation: { type: string; method: string }): Promise<void>
 }
 export interface PlaywrightScriptPolicy {
   mode: PlaywrightScriptMode
   beforeCall(type: string, method: string, args: unknown[]): Promise<void>
+}
+
+export function applyApiRequestProxy(args: unknown[], proxy: PlaywrightScriptEnvironment['proxy']): void {
+  if (proxy === undefined) return
+  const options = typeof args[0] === 'object' && args[0] !== null && !Array.isArray(args[0]) ? args[0] as Record<string, unknown> : {}
+  args[0] = { ...options, proxy }
 }
 
 type Wire = null | boolean | number | string | Wire[] | { [key: string]: Wire }
@@ -115,6 +122,7 @@ const BOOTSTRAP = String.raw`
   globalThis.__pwRoot = raw => parse(raw);
   globalThis.__pwInvokeCallback = (id,argsRaw) => callbacks.get(id)(...parse(argsRaw));
   globalThis.__pwEncodeResult = value => JSON.stringify(encode(value));
+  globalThis.__pwDispose = () => { callbacks.clear(); nextCallback = 1; delete globalThis.__pwRootData; };
 })();`
 
 export class PlaywrightScriptIsolate {
@@ -155,7 +163,7 @@ export class PlaywrightScriptIsolate {
       const promise = vm.unwrapResult(evaluated)
       // Drive synchronous async-function completion/rejection before awaiting the
       // native bridge. Later host promises schedule this again when they settle.
-      vm.runtime.executePendingJobs()
+      this.#drainPendingJobs(vm)
       const initialState = vm.getPromiseState(promise)
       const resolved = initialState.type === 'pending'
         ? await Promise.race([
@@ -177,18 +185,34 @@ export class PlaywrightScriptIsolate {
       const handle = resolved.value
       if (handle === undefined) throw new BrowserRuntimeError('PLAYWRIGHT_RUNTIME_ERROR', 'QuickJS returned neither a value nor an error.')
       const encoder = vm.getProp(vm.global, '__pwEncodeResult')
-      const encodedResult = vm.callFunction(encoder, vm.undefined, handle)
-      encoder.dispose(); handle.dispose()
-      const encodedHandle = vm.unwrapResult(encodedResult); const value = this.#decodeResult(JSON.parse(vm.getString(encodedHandle)) as Wire); encodedHandle.dispose()
+      let encodedHandle: QuickJSHandle | undefined
+      let encodedWire: Wire
+      try {
+        const encodedResult = vm.callFunction(encoder, vm.undefined, handle)
+        encodedHandle = vm.unwrapResult(encodedResult)
+        encodedWire = JSON.parse(vm.getString(encodedHandle)) as Wire
+      } finally {
+        encodedHandle?.dispose(); encoder.dispose(); handle.dispose()
+      }
+      if (this.#containsUnresolvedProxy(encodedWire!)) throw new BrowserRuntimeError('PLAYWRIGHT_RUNTIME_ERROR', 'The final playwright_run value contains an un-awaited Playwright call, callback, or proxy. Await every Playwright method (including page.url() and response.status()) and return JSON primitives only.')
+      const value = this.#decodeResult(encodedWire!)
       return { value: sanitizeBrowserModelValue(value), artifacts: [...this.#artifacts], logs: [...this.#logs], warnings: [...this.#warnings] }
     } catch (error) {
       if (error instanceof BrowserRuntimeError) throw error
       throw new BrowserRuntimeError('PLAYWRIGHT_RUNTIME_ERROR', error instanceof Error ? error.message : String(error))
     } finally {
       await this.#drainHostCalls(deadline).catch(() => undefined)
+      let disposalError: unknown
+      try {
+        this.#drainPendingJobs(vm)
+        const cleanup = vm.getProp(vm.global, '__pwDispose')
+        try { vm.unwrapResult(vm.callFunction(cleanup, vm.undefined)).dispose() } finally { cleanup.dispose() }
+        this.#drainPendingJobs(vm)
+      } catch (error) { disposalError = error }
       this.#vm = undefined
-      vm.runtime.executePendingJobs()
-      vm.dispose()
+      this.#handles.clear(); this.#pathTokens.clear(); this.#pendingHostCalls.clear()
+      try { vm.runtime.removeInterruptHandler(); vm.dispose() } catch (error) { disposalError ??= error }
+      if (disposalError !== undefined) throw new BrowserRuntimeError('PLAYWRIGHT_ISOLATE_CRASHED', `The Playwright isolate failed during teardown: ${disposalError instanceof Error ? disposalError.message : String(disposalError)}`, { suggestedNextStep: 'Use browser_inspect document for ordinary research; retry a simplified playwright_run at most once.' })
     }
   }
 
@@ -206,7 +230,7 @@ export class PlaywrightScriptIsolate {
       const hostCall = this.#invoke(parsed.id, parsed.method, parsed.args).then(
         value => { const handle = vm.newString(JSON.stringify(this.#encode(value))); deferred.resolve(handle); handle.dispose() },
         error => { const code = error instanceof BrowserRuntimeError ? `${error.code}: ` : ''; const handle = vm.newError(`${code}${error instanceof Error ? error.message : String(error)}`); deferred.reject(handle); handle.dispose() },
-      ).then(() => deferred.settled).then(() => { vm.runtime.executePendingJobs() })
+      ).then(() => deferred.settled).then(() => { this.#drainPendingJobs(vm) })
       let tracked: Promise<void>
       tracked = hostCall.catch(() => undefined).finally(() => this.#pendingHostCalls.delete(tracked))
       this.#pendingHostCalls.add(tracked)
@@ -229,6 +253,7 @@ export class PlaywrightScriptIsolate {
     if (this.policy.mode === 'controlled' && OPAQUE_METHODS.has(method)) throw new BrowserRuntimeError('PLAYWRIGHT_POLICY_BLOCKED', `${entry.type}.${method} requires trusted mode.`)
     if (method === 'launch' && this.policy.mode !== 'trusted') throw new BrowserRuntimeError('PLAYWRIGHT_POLICY_BLOCKED', 'BrowserType.launch requires trusted mode; use the managed target in controlled mode.')
     const args = this.#decodeArgs(argsWire, entry.type) as unknown[]
+    if (entry.type === 'APIRequest' && method === 'newContext') applyApiRequestProxy(args, this.environment.proxy)
     if (method === 'launch' && typeof args[0] === 'object' && args[0] !== null && 'executablePath' in (args[0] as object)) throw new BrowserRuntimeError('PLAYWRIGHT_POLICY_BLOCKED', 'Custom executablePath is not available to playwright_run.')
     this.#brokerPaths(method, args)
     const targetUrl = this.#targetUrl(entry)
@@ -293,6 +318,29 @@ export class PlaywrightScriptIsolate {
     const output: Record<string, unknown> = {}; for (const [key, item] of Object.entries(value)) output[key] = this.#decodeArgs(item, lineage); return output
   }
   #decodeResult(value: Wire): unknown { if (Array.isArray(value)) return value.map(item => this.#decodeResult(item)); if (value === null || typeof value !== 'object') return value; if ('$undefined' in value) return undefined; if ('$bigint' in value) return String(value.$bigint); if ('$handle' in value) return { handle: String(value.$handle), type: String(value.$type ?? 'Object') }; const output: Record<string, unknown> = {}; for (const [key, item] of Object.entries(value)) output[key] = this.#decodeResult(item); return output }
+
+  #containsUnresolvedProxy(value: Wire, seen = new Set<object>()): boolean {
+    if (value === null || typeof value !== 'object') return false
+    if (seen.has(value)) return false
+    seen.add(value)
+    if (!Array.isArray(value) && ('$callback' in value || '$handle' in value || '$functionSource' in value)) return true
+    return (Array.isArray(value) ? value : Object.values(value)).some(item => this.#containsUnresolvedProxy(item, seen))
+  }
+
+  #drainPendingJobs(vm: QuickJSContext): void {
+    let stableEmptyPasses = 0
+    while (stableEmptyPasses < 2) {
+      if (!vm.runtime.hasPendingJob()) { stableEmptyPasses++; continue }
+      stableEmptyPasses = 0
+      const jobs = vm.runtime.executePendingJobs()
+      try {
+        if (jobs.error !== undefined) {
+          const dumped = jobs.error.context.dump(jobs.error)
+          throw new Error(`QuickJS pending job failed: ${JSON.stringify(dumped)}`)
+        }
+      } finally { jobs.dispose() }
+    }
+  }
 
   async #invokeCallback(id: number, args: unknown[]): Promise<unknown> {
     const vm = this.#vm; if (vm === undefined) throw new BrowserRuntimeError('PLAYWRIGHT_RUNTIME_ERROR', 'Playwright callback outlived its script run.')

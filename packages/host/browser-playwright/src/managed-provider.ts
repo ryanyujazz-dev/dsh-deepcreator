@@ -7,10 +7,10 @@ import {
   chromium, firefox, webkit, type Browser, type BrowserContext, type BrowserType, type Download, type Locator, type Page,
 } from 'playwright-core'
 import {
-  BrowserNetworkPolicy, BrowserRuntimeError, INTERACTIVE_SNAPSHOT_SCRIPT, resolveWorkspaceUpload,
+  BrowserNetworkPolicy, BrowserRuntimeError, DOCUMENT_EXTRACTION_SCRIPT, INTERACTIVE_SNAPSHOT_SCRIPT, resolveWorkspaceUpload,
   type BrowserCommand, type BrowserCommandResult, type BrowserDescriptor, type BrowserFamily, type BrowserLocator,
   type BrowserNodeRef, type BrowserProvider, type BrowserProviderContext,
-  type BrowserSnapshotScriptRow, type BrowserTabRequest, type PresentationBinding, type ProviderTab,
+  type BrowserDocumentScriptResult, type BrowserSnapshotScriptRow, type BrowserTabRequest, type PresentationBinding, type ProviderTab,
 } from '@ryanyujazz/dsh-browser'
 
 export type PlaywrightEngine = 'chromium' | 'firefox' | 'webkit'
@@ -21,6 +21,33 @@ const TYPES: Record<PlaywrightEngine, BrowserType> = { chromium, firefox, webkit
 function dshRoot(): string { return resolve(process.env.DSH_HOME ?? join(homedir(), '.dsh')) }
 function profileRoot(engine: PlaywrightEngine, headed: boolean): string { return join(dshRoot(), 'browser', 'playwright', `${engine}-${headed ? 'headed' : 'headless'}`) }
 function artifactsRoot(): string { return join(dshRoot(), 'artifacts', 'browser-downloads') }
+
+/** Convert Desktop-forwarded proxy environment into Playwright's explicit proxy contract. */
+export interface ManagedProxySettings { server: string; bypass?: string; username?: string; password?: string }
+export function resolvePlaywrightProxy(env: NodeJS.ProcessEnv = process.env): ManagedProxySettings | undefined {
+  const raw = env.HTTPS_PROXY ?? env.https_proxy ?? env.HTTP_PROXY ?? env.http_proxy
+  if (raw === undefined || raw.trim() === '') return undefined
+  let server = raw.trim(); let username: string | undefined; let password: string | undefined
+  try {
+    const url = new URL(server.includes('://') ? server : `http://${server}`)
+    username = url.username === '' ? undefined : decodeURIComponent(url.username)
+    password = url.password === '' ? undefined : decodeURIComponent(url.password)
+    url.username = ''; url.password = ''; server = url.toString().replace(/\/$/, '')
+  } catch { /* Playwright will report an actionable proxy parse error. */ }
+  const configuredBypass = (env.NO_PROXY ?? env.no_proxy)?.trim()
+  const bypass = configuredBypass === '*' ? '*' : [...new Set(['localhost', '127.0.0.1', '::1', ...(configuredBypass === undefined || configuredBypass === '' ? [] : configuredBypass.split(',').map(item => item.trim()).filter(Boolean))])].join(',')
+  return { server, bypass, ...(username === undefined ? {} : { username }), ...(password === undefined ? {} : { password }) }
+}
+
+export function classifyHeadlessAccess(input: { status?: number; finalUrl: string; challenge: boolean; authField: boolean; headed: boolean }): BrowserRuntimeError | undefined {
+  if (input.headed) return undefined
+  const details = { ...(input.status === undefined ? {} : { httpStatus: input.status }), finalUrl: input.finalUrl, suggestedNextStep: 'Switch to a live IAB only when the page requires a challenge or manual authentication.' }
+  if (input.status === 401) return new BrowserRuntimeError('AUTH_REQUIRED', 'The server requires authentication. Continue in a live Browser Provider for shielded login.', details)
+  if (input.challenge || /(?:captcha|challenge|cdn-cgi\/challenge)/i.test(input.finalUrl)) return new BrowserRuntimeError('HEADLESS_BLOCKED', 'The site presented an anti-automation or CAPTCHA challenge.', { ...details, suggestedNextStep: 'Open the URL in the live IAB and complete the challenge manually.' })
+  if (input.authField && /(?:login|log-in|signin|sign-in|auth|verify|otp)/i.test(input.finalUrl)) return new BrowserRuntimeError('AUTH_REQUIRED', 'Authentication requires a live Browser Provider with shielded manual handoff.', details)
+  if (input.status === 403) return new BrowserRuntimeError('ACCESS_DENIED', 'The server denied access to this page.', { ...details, suggestedNextStep: 'Verify permissions or try the live IAB if this site treats interactive browsers differently.' })
+  return undefined
+}
 
 function chromiumSystemCandidates(): string[] {
   const values = ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/Applications/Chromium.app/Contents/MacOS/Chromium', '/usr/bin/google-chrome-stable', '/usr/bin/google-chrome', '/usr/bin/chromium']
@@ -82,7 +109,7 @@ export class OwnedPlaywrightProvider implements BrowserProvider {
         const response = await page.goto(request.url, { waitUntil: 'domcontentloaded', timeout: 30_000 })
         await this.#assertNoHeadlessAuth(page, response?.status(), headed)
       }
-    } catch (error) { await this.#closeEntry(providerTabId); throw error }
+    } catch (error) { await this.#closeEntry(providerTabId); throw this.#navigationError(error, page.url()) }
     return this.#state(providerTabId, page, presentation)
   }
 
@@ -129,16 +156,23 @@ export class OwnedPlaywrightProvider implements BrowserProvider {
     if (context.signal.aborted) throw new BrowserRuntimeError('CONTROL_INTERRUPTED', 'Browser command was cancelled.')
     if (command.kind === 'navigate') {
       let status: number | undefined
-      if (command.action === 'goto') { if (command.url === undefined) throw new BrowserRuntimeError('NAVIGATION_BLOCKED', 'goto requires url.'); await this.#network.assertAllowed(command.url); status = (await page.goto(command.url, { waitUntil: 'domcontentloaded', timeout: 30_000 }))?.status() }
-      else if (command.action === 'back') status = (await page.goBack({ waitUntil: 'domcontentloaded' }))?.status()
-      else if (command.action === 'forward') status = (await page.goForward({ waitUntil: 'domcontentloaded' }))?.status()
-      else status = (await page.reload({ waitUntil: 'domcontentloaded' }))?.status()
+      try {
+        if (command.action === 'goto') { if (command.url === undefined) throw new BrowserRuntimeError('NAVIGATION_BLOCKED', 'goto requires url.'); await this.#network.assertAllowed(command.url); status = (await page.goto(command.url, { waitUntil: 'domcontentloaded', timeout: 30_000 }))?.status() }
+        else if (command.action === 'back') status = (await page.goBack({ waitUntil: 'domcontentloaded' }))?.status()
+        else if (command.action === 'forward') status = (await page.goForward({ waitUntil: 'domcontentloaded' }))?.status()
+        else status = (await page.reload({ waitUntil: 'domcontentloaded' }))?.status()
+      } catch (error) { throw this.#navigationError(error, page.url()) }
       await this.#assertNoHeadlessAuth(page, status, entry.presentation.mode === 'live')
       return { kind: 'state', tab: await this.#state(tab.providerTabId, page, entry.presentation) }
     }
     if (command.kind === 'inspect') {
       if (command.action === 'snapshot') return this.#snapshot(tab.providerTabId, page, entry.presentation)
       if (command.action === 'screenshot') { const data = await page.screenshot({ type: 'png' }); return { kind: 'screenshot', dataUrl: `data:image/png;base64,${data.toString('base64')}`, tab: await this.#state(tab.providerTabId, page, entry.presentation) } }
+      if (command.action === 'document') {
+        const document = await page.evaluate(`(${DOCUMENT_EXTRACTION_SCRIPT})(${JSON.stringify({ documentId: command.documentId, offset: command.offset, maxChars: command.maxChars })})`) as BrowserDocumentScriptResult
+        if (document.error === 'STALE_DOCUMENT') throw new BrowserRuntimeError('STALE_DOCUMENT', 'The page changed while continuing this document. Start again without documentId.', { documentId: document.documentId, finalUrl: page.url(), suggestedNextStep: 'Call browser_inspect with action=document and no documentId.' })
+        return { kind: 'document', document: { documentId: document.documentId, text: document.text ?? '', offset: document.offset ?? 0, ...(document.nextOffset === undefined ? {} : { nextOffset: document.nextOffset }), truncated: document.truncated ?? false, contentType: document.contentType, ...(document.sourceTruncated === undefined ? {} : { sourceTruncated: document.sourceTruncated }) }, tab: await this.#state(tab.providerTabId, page, entry.presentation) }
+      }
       if (command.action === 'elementInfo') { if (command.locator === undefined) throw new BrowserRuntimeError('STALE_SNAPSHOT', 'elementInfo requires a locator.'); return { kind: 'elementInfo', element: await this.#element(this.#locator(tab.providerTabId, page, command.locator), 'element'), tab: await this.#state(tab.providerTabId, page, entry.presentation) } }
       return { kind: 'state', tab: await this.#state(tab.providerTabId, page, entry.presentation) }
     }
@@ -180,15 +214,16 @@ export class OwnedPlaywrightProvider implements BrowserProvider {
   async #newPage(headed: boolean, isolated: boolean): Promise<{ page: Page; browserContext: BrowserContext; browser?: Browser }> {
     if (this.#executable.path === undefined) throw new BrowserRuntimeError('PROVIDER_UNAVAILABLE', this.#executable.diagnostic ?? `${this.engine} unavailable.`)
     const browserType = TYPES[this.engine]
+    const proxy = resolvePlaywrightProxy()
     if (isolated) {
-      const browser = await browserType.launch({ executablePath: this.#executable.path, headless: !headed })
-      const browserContext = await browser.newContext({ acceptDownloads: true, serviceWorkers: 'block' })
+      const browser = await browserType.launch({ executablePath: this.#executable.path, headless: !headed, ...(proxy === undefined ? {} : { proxy }) })
+      const browserContext = await browser.newContext({ acceptDownloads: true, serviceWorkers: 'block', ...(proxy === undefined ? {} : { proxy }) })
       await this.#route(browserContext); return { page: await browserContext.newPage(), browserContext, browser }
     }
     const key = headed ? 'headed' : 'headless'; let browserContext = this.#persistent.get(key)
     if (browserContext === undefined) {
       await mkdir(profileRoot(this.engine, headed), { recursive: true, mode: 0o700 })
-      try { browserContext = await browserType.launchPersistentContext(profileRoot(this.engine, headed), { executablePath: this.#executable.path, headless: !headed, acceptDownloads: true, downloadsPath: artifactsRoot(), serviceWorkers: 'block' }); await this.#route(browserContext); this.#persistent.set(key, browserContext) }
+      try { browserContext = await browserType.launchPersistentContext(profileRoot(this.engine, headed), { executablePath: this.#executable.path, headless: !headed, acceptDownloads: true, downloadsPath: artifactsRoot(), serviceWorkers: 'block', ...(proxy === undefined ? {} : { proxy }) }); await this.#route(browserContext); this.#persistent.set(key, browserContext) }
       catch (error) { if (/profile|lock|SingletonLock/i.test(String(error))) throw new BrowserRuntimeError('PROFILE_LOCKED', `The managed ${this.engine} profile is already in use.`); throw error }
     }
     return { page: await browserContext.newPage(), browserContext }
@@ -204,7 +239,24 @@ export class OwnedPlaywrightProvider implements BrowserProvider {
   async #snapshot(id: string, page: Page, presentation: PresentationBinding): Promise<BrowserCommandResult> { const snapshotId = `snapshot-${randomUUID()}`; const rows = await page.evaluate(`(${INTERACTIVE_SNAPSHOT_SCRIPT})()`) as BrowserSnapshotScriptRow[]; const selectors = new Map<string, string>(); const nodes: BrowserNodeRef[] = rows.map((row, index) => { const nodeRef = `n${index + 1}`; selectors.set(nodeRef, row.selector); return { nodeRef, role: row.role, name: row.name, ...(row.value === undefined ? {} : { value: row.value }), ...(row.inputType === undefined ? {} : { inputType: row.inputType }), ...(row.autocomplete === undefined ? {} : { autocomplete: row.autocomplete }) } }); this.#refs.set(id, { snapshotId, selectors }); return { kind: 'snapshot', snapshot: { snapshotId, url: page.url(), title: await page.title(), text: nodes.map(node => `${node.nodeRef} ${node.role ?? 'element'} ${JSON.stringify(node.name ?? '')}`).join('\n'), nodes }, tab: await this.#state(id, page, presentation) } }
   #locator(id: string, page: Page, locator: BrowserLocator): Locator { if (locator.kind === 'node') { const refs = this.#refs.get(id); if (refs?.snapshotId !== locator.snapshotId) throw new BrowserRuntimeError('STALE_SNAPSHOT', `Snapshot ${locator.snapshotId} is stale.`); const selector = refs.selectors.get(locator.nodeRef); if (selector === undefined) throw new BrowserRuntimeError('STALE_SNAPSHOT', `Node ${locator.nodeRef} is absent.`); return page.locator(selector).first() } if (locator.kind === 'role') return page.getByRole(locator.role as never, locator.name === undefined ? {} : { name: locator.name }).first(); if (locator.kind === 'text') return page.getByText(locator.text, { exact: locator.exact ?? false }).first(); return page.getByLabel(locator.label).first() }
   async #element(locator: Locator, nodeRef: string): Promise<BrowserNodeRef> { return locator.evaluate((element, ref) => { const input = element as HTMLInputElement; const inputType = input.type || undefined; const autocomplete = input.autocomplete || undefined; return { nodeRef: ref, role: element.getAttribute('role') ?? element.tagName.toLowerCase(), name: element.getAttribute('aria-label') ?? (element as HTMLElement).innerText?.trim() ?? input.placeholder ?? '', ...(inputType === undefined ? {} : { inputType }), ...(autocomplete === undefined ? {} : { autocomplete }) } }, nodeRef) }
-  async #assertNoHeadlessAuth(page: Page, status: number | undefined, headed: boolean): Promise<void> { if (headed) return; if (status === 401 || status === 403) throw new BrowserRuntimeError('AUTH_REQUIRED', 'This page requires a live Browser Provider for manual login.'); if (/(login|log-in|signin|sign-in|auth)/i.test(page.url()) && await page.locator('input[type="password"],input[autocomplete="one-time-code"]').first().isVisible().catch(() => false)) throw new BrowserRuntimeError('AUTH_REQUIRED', 'Authentication requires a live Browser Provider with shielded manual handoff.') }
+  async #assertNoHeadlessAuth(page: Page, status: number | undefined, headed: boolean): Promise<void> {
+    if (headed) return
+    const finalUrl = page.url()
+    if (status === 401) throw classifyHeadlessAccess({ status, finalUrl, challenge: false, authField: false, headed })!
+    const challenge = await page.locator('iframe[src*="challenge"],#challenge-form,.cf-challenge,[data-sitekey],input[name="cf-turnstile-response"],iframe[src*="captcha" i]').first().isVisible().catch(() => false)
+    const authField = await page.locator('input[type="password"],input[autocomplete="one-time-code"]').first().isVisible().catch(() => false)
+    const error = classifyHeadlessAccess({ ...(status === undefined ? {} : { status }), finalUrl, challenge, authField, headed })
+    if (error !== undefined) throw error
+  }
+  #navigationError(error: unknown, finalUrl: string): unknown {
+    if (error instanceof BrowserRuntimeError) return error
+    const message = error instanceof Error ? error.message : String(error)
+    const suggestedNextStep = 'Verify the proxy and endpoint, then retry once or switch to the live IAB for an interactive diagnosis.'
+    if (/(?:ERR_CONTENT_DECODING_FAILED|decompress)/i.test(message)) return new BrowserRuntimeError('TIMEOUT', `Navigation failed while decompressing the response: ${message}`, { finalUrl, timeoutPhase: 'decompress', receivedBytes: 0, suggestedNextStep })
+    if (/(?:ERR_CONNECTION|ECONN|ENOTFOUND|ERR_PROXY|ERR_TUNNEL)/i.test(message)) return new BrowserRuntimeError('PROVIDER_UNAVAILABLE', `Navigation could not establish a connection: ${message}`, { finalUrl, timeoutPhase: 'connect', receivedBytes: 0, suggestedNextStep })
+    if (/timeout/i.test(message)) return new BrowserRuntimeError('TIMEOUT', `Navigation exceeded its total timeout: ${message}`, { finalUrl, timeoutPhase: 'total', receivedBytes: 0, suggestedNextStep })
+    return error
+  }
   #isPage(value: unknown): value is Page { return value !== null && typeof value === 'object' && typeof (value as Page).url === 'function' && typeof (value as Page).context === 'function' && typeof (value as Page).locator === 'function' }
   #isContext(value: unknown): value is BrowserContext { return value !== null && typeof value === 'object' && typeof (value as BrowserContext).pages === 'function' && typeof (value as BrowserContext).route === 'function' }
 }

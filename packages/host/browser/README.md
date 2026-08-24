@@ -16,8 +16,14 @@ Core imports none of Playwright, Electron, Chrome, React, or the current panel i
 
 If a fresh temporary live IAB tab cannot be presented, its resolver closes it immediately. Structured snapshots share one Provider-neutral visibility/redaction script: hidden controls and secret/token fields are excluded, while model-facing URL copies redact sensitive and opaque query values. Exact URLs remain inside Provider/UI state rather than entering tool results and Session logs.
 
+`browser_inspect document` is the default research path. It extracts normalized semantic text across IAB, Chrome, and Managed Playwright, returns 12,000-character pages (20,000 maximum), caps one source at 2 MiB, and protects continuation with `documentId`/`STALE_DOCUMENT`.
+
+Screenshots are committed once to the official Attachment Store. The tool result contains short text metadata plus a durable image content block; `BrowserTabState.snapshotAttachment`, Session replay, Tool UI, and Browser Panel share its `attachmentId`. `snapshotArtifactId` remains a one-release compatibility alias, and new screenshots no longer use a Browser-private artifact directory.
+
 A temporary live IAB tab becomes `deliverable` only after an exact Surface presentation acknowledgement. Provider-owned live Chrome/headed-Playwright tabs are deliverables when shown. Unpresented live tabs and ordinary temporary background tabs close at turn end.
 
 The agent-fenced `browser/closeTab` Remote is the user-interface lifecycle boundary: closing a Browser instance drains its queued command, invokes the owning Provider's `close`, deletes the logical tab, and bumps the Browser state revision. Destruction is idempotent because Workbench dismissal and direct resource close may converge on the same `tabId`; an already-absent tab is the desired state, while attempting to close another session's live tab still fails. Hiding or unmounting a Presenter remains presentation-only and never calls this operation.
 
 Explicit Browser-panel actions use two additional agent-fenced Remotes without weakening the Provider boundary. `browser/newTab` creates a deliverable blank `iab` tab under a client-only synthetic turn; the client must still present its returned logical `tabId` through `@ryanyujazz/dsh-presentation`. `browser/navigateTab` applies the same Host network policy and Provider queue as Agent navigation, but records an input interruption and leaves control with the user. Neither Remote exposes Electron, WebContents, CDP, or Provider handles.
+
+Logical-tab removal retains a bounded tombstone with the last URL and lifecycle reason, so `TAB_NOT_FOUND` can distinguish Provider close, turn cleanup, client close, presentation rollback, Owner restart, and Runtime disposal. Remote errors preserve safe diagnostic details and distinguish authentication, access denial, and headless challenges.

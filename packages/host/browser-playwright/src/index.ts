@@ -20,7 +20,9 @@ export interface Config { engines?: PlaywrightEngine[] }
 
 export function apply(ctx: Context, config: Config = {}): void {
   const runtime = ctx.browserRuntime.providerRuntime()
-  const owner = new PlaywrightOwnerClient(); owner.start(ctx.subprocess)
+  const owner = new PlaywrightOwnerClient(() => {
+    for (const engine of config.engines ?? ['chromium', 'firefox', 'webkit']) runtime.invalidateProvider(`playwright-${engine}`, 'owner-restarted')
+  }); owner.start(ctx.subprocess)
   const providers = (config.engines ?? ['chromium', 'firefox', 'webkit']).map(engine => new ManagedPlaywrightProvider(engine, owner))
   ctx.effect(() => {
     const unregister = providers.map(provider => ctx.browserRuntime.registerBrowserProvider(provider))

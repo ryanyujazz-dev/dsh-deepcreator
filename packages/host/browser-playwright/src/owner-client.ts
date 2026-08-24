@@ -22,9 +22,12 @@ export class PlaywrightOwnerClient {
   #ready: Promise<void> = Promise.resolve()
   #resolveReady: (() => void) | undefined
   #startupError: unknown
+  #disposing = false
+  constructor(private readonly onRestart: () => void = () => undefined) {}
 
   start(subprocess: SubprocessRuntime): void {
     if (this.#handle !== undefined) return
+    this.#disposing = false
     this.#subprocess = subprocess
     const ownerEntry = fileURLToPath(new URL('./owner-entry.js', import.meta.url))
     const handle = subprocess.spawn({
@@ -33,6 +36,12 @@ export class PlaywrightOwnerClient {
       env: {
         ...(process.env.DSH_HOME === undefined ? {} : { DSH_HOME: process.env.DSH_HOME }),
         ...(process.env.DEEP_CREATOR_BROWSER_EXECUTABLE === undefined ? {} : { DEEP_CREATOR_BROWSER_EXECUTABLE: process.env.DEEP_CREATOR_BROWSER_EXECUTABLE }),
+        ...(process.env.HTTP_PROXY === undefined ? {} : { HTTP_PROXY: process.env.HTTP_PROXY }),
+        ...(process.env.HTTPS_PROXY === undefined ? {} : { HTTPS_PROXY: process.env.HTTPS_PROXY }),
+        ...(process.env.NO_PROXY === undefined ? {} : { NO_PROXY: process.env.NO_PROXY }),
+        ...(process.env.http_proxy === undefined ? {} : { http_proxy: process.env.http_proxy }),
+        ...(process.env.https_proxy === undefined ? {} : { https_proxy: process.env.https_proxy }),
+        ...(process.env.no_proxy === undefined ? {} : { no_proxy: process.env.no_proxy }),
       },
     })
     if (handle.stdin === undefined || handle.stdout === undefined) throw new Error('Playwright Owner requires piped stdin/stdout.')
@@ -41,7 +50,10 @@ export class PlaywrightOwnerClient {
     this.#ready = new Promise(resolve => { this.#resolveReady = resolve })
     this.#lines = createInterface({ input: handle.stdout })
     this.#lines.on('line', line => this.#receive(line))
-    void handle.done.then(outcome => this.#failAll(new BrowserRuntimeError('PROVIDER_UNAVAILABLE', `Playwright Owner exited (${String(outcome.exitCode)}, ${String(outcome.signal)}).`)), error => this.#failAll(error))
+    void handle.done.then(
+      outcome => this.#ownerExited(handle, new BrowserRuntimeError('PLAYWRIGHT_ISOLATE_CRASHED', `Playwright Owner exited (${String(outcome.exitCode)}, ${String(outcome.signal)}). It will restart once on the next call.`, { suggestedNextStep: 'Create a new Browser tab; tabs owned by the exited process are invalid.' })),
+      error => this.#ownerExited(handle, error),
+    )
   }
 
   descriptor(engine: PlaywrightEngine): BrowserDescriptor { return managedPlaywrightDescriptor(engine) }
@@ -57,6 +69,7 @@ export class PlaywrightOwnerClient {
     }
   }
   call<T>(method: string, params: Record<string, unknown>, signal: BrowserProviderContext['signal'], policy?: (request: OwnerPolicyRequest) => Promise<void>): Promise<T> {
+    if (this.#handle === undefined && this.#subprocess !== undefined) this.start(this.#subprocess)
     if (this.#handle === undefined) return Promise.reject(new BrowserRuntimeError('PROVIDER_UNAVAILABLE', 'Playwright Owner has not started.'))
     if (signal.aborted) return Promise.reject(new BrowserRuntimeError('CONTROL_INTERRUPTED', 'Playwright Owner call cancelled.'))
     return this.#ready.then(() => {
@@ -70,8 +83,10 @@ export class PlaywrightOwnerClient {
   }
 
   async dispose(): Promise<void> {
+    this.#disposing = true
     this.#lines?.close(); this.#lines = undefined
     this.#handle?.terminate(); await this.#handle?.waitForExit(AbortSignal.timeout(6_000)).catch(() => undefined); this.#handle = undefined
+    this.#subprocess = undefined
     this.#failAll(new BrowserRuntimeError('PROVIDER_UNAVAILABLE', 'Playwright Owner disposed.'))
   }
 
@@ -90,9 +105,15 @@ export class PlaywrightOwnerClient {
     }
     this.#pending.delete(message.id); pending.unsubscribe()
     if (message.ok) pending.resolve(message.result)
-    else pending.reject(new BrowserRuntimeError(message.error?.code ?? 'PLAYWRIGHT_RUNTIME_ERROR', message.error?.message ?? 'Playwright Owner failed.'))
+    else pending.reject(new BrowserRuntimeError(message.error?.code ?? 'PLAYWRIGHT_RUNTIME_ERROR', message.error?.message ?? 'Playwright Owner failed.', message.error?.details))
   }
   #send(message: OwnerInput): void { this.#handle?.stdin?.write(`${JSON.stringify(message)}\n`) }
+  #ownerExited(handle: SubprocessHandle, error: unknown): void {
+    if (this.#handle !== handle) return
+    this.#lines?.close(); this.#lines = undefined; this.#handle = undefined
+    if (!this.#disposing) this.onRestart()
+    this.#failAll(error)
+  }
   #failAll(error: unknown): void { this.#startupError = error; this.#resolveReady?.(); this.#resolveReady = undefined; for (const pending of this.#pending.values()) { pending.unsubscribe(); pending.reject(error) }; this.#pending.clear() }
 }
 

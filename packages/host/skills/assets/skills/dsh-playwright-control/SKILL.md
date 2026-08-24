@@ -51,10 +51,13 @@ Because every handle call crosses the asynchronous wire, `await` every Playwrigh
 
 ## Reliable usage
 
+- Prefer `browser_inspect document` for ordinary research; `playwright_run` is for workflows that genuinely need advanced Playwright APIs.
 - Prefer events and Playwright waits to fixed sleeps.
 - Keep a related sequence in one script when callbacks/routes/events must remain alive; handles do not survive another `playwright_run`.
 - Inspect after side effects. Never auto-replay click, fill, upload, submit, purchase, delete, or download after an ambiguous failure.
 - A new target defaults to isolated headless Context. `headless:false` creates a managed visible window; it is not the user's Chrome profile.
 - If authentication requires human input, stop and select a live shielded IAB or Chrome Provider through the semantic Browser tools.
+- Never mechanically retry the same isolate crash. One simplified retry is the maximum; after a second crash the current Turn is circuit-broken and must fall back to `browser_inspect document`.
+- Keep returned data below the documented budgets: 20,000 characters per string, 100 array items, 10 levels, and 64 KiB total JSON. Extract only the fields needed by the task.
 
-Playwright-specific errors are `PLAYWRIGHT_COMPILE_ERROR`, `PLAYWRIGHT_RUNTIME_ERROR`, and `PLAYWRIGHT_POLICY_BLOCKED`, in addition to the Browser Runtime error vocabulary.
+Playwright-specific errors are `PLAYWRIGHT_COMPILE_ERROR`, `PLAYWRIGHT_RUNTIME_ERROR`, `PLAYWRIGHT_POLICY_BLOCKED`, and `PLAYWRIGHT_ISOLATE_CRASHED`, in addition to the Browser Runtime error vocabulary.

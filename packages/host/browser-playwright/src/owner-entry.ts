@@ -1,20 +1,20 @@
 import { randomUUID } from 'node:crypto'
 import { createInterface } from 'node:readline'
 import { BrowserNetworkPolicy, BrowserRuntimeError, browserSignal, type BrowserProviderContext, type ProviderTab } from '@ryanyujazz/dsh-browser'
-import { OwnedPlaywrightProvider, type PlaywrightEngine } from './managed-provider.ts'
+import { OwnedPlaywrightProvider, resolvePlaywrightProxy, type PlaywrightEngine } from './managed-provider.ts'
 import type { OwnerInput, OwnerOutput, OwnerRequest, OwnerScriptResult } from './owner-protocol.ts'
 import { PlaywrightScriptIsolate, type PlaywrightScriptMode } from './script-isolate.ts'
 
 const network = new BrowserNetworkPolicy()
 const providers = new Map<PlaywrightEngine, OwnedPlaywrightProvider>(['chromium', 'firefox', 'webkit'].map(engine => [engine as PlaywrightEngine, new OwnedPlaywrightProvider(engine as PlaywrightEngine, network)]))
 const controllers = new Map<string, AbortController>()
-const policies = new Map<string, { resolve(): void; reject(error: unknown): void }>()
+const policies = new Map<string, { requestId: string; resolve(): void; reject(error: unknown): void }>()
 function output(message: OwnerOutput): void { process.stdout.write(`${JSON.stringify(message)}\n`) }
 function provider(engine: unknown): OwnedPlaywrightProvider { const value = providers.get(engine as PlaywrightEngine); if (value === undefined) throw new BrowserRuntimeError('PROVIDER_UNAVAILABLE', `Unknown Playwright engine ${String(engine)}.`); return value }
 function urls(value: unknown): string[] { if (typeof value === 'string' && /^(?:https?|wss?):/i.test(value)) return [value]; if (Array.isArray(value)) return value.flatMap(urls); if (value !== null && typeof value === 'object') return Object.values(value as Record<string, unknown>).flatMap(urls); return [] }
 async function approve(requestId: string, type: string, method: string, summary: { urls: string[]; origin?: string }): Promise<void> {
   const id = randomUUID(); output({ kind: 'policy', id, requestId, type, method, summary })
-  return new Promise<void>((resolve, reject) => policies.set(id, { resolve, reject }))
+  return new Promise<void>((resolve, reject) => policies.set(id, { requestId, resolve, reject }))
 }
 function context(params: Record<string, unknown>, signal: AbortSignal): BrowserProviderContext { return { automationSessionId: String(params.automationSessionId ?? ''), workspaceRoot: String(params.workspaceRoot ?? process.cwd()), signal: browserSignal(signal) } }
 
@@ -30,7 +30,8 @@ async function dispatch(request: OwnerRequest, signal: AbortSignal): Promise<unk
   if (request.method === 'refreshEngine') { await owned.dispose(); providers.set(params.engine as PlaywrightEngine, new OwnedPlaywrightProvider(params.engine as PlaywrightEngine, network)); return null }
   if (request.method === 'runScript') {
     const selectedEngine = params.engine as PlaywrightEngine; const target = owned.scriptEnvironment(String(params.providerTabId)); const adopted = new Map<string, { engine: PlaywrightEngine; tab: ProviderTab }>()
-    const isolate = new PlaywrightScriptIsolate({ ...target, engine: selectedEngine, workspaceRoot: ctx.workspaceRoot, observe: async (value, invocation) => { const observedEngine = /\((chromium|firefox|webkit)\)$/.exec(invocation.type)?.[1] as PlaywrightEngine | undefined; const engine = observedEngine ?? selectedEngine; for (const tab of await provider(engine).observeScriptValue(value)) adopted.set(`${engine}:${tab.providerTabId}`, { engine, tab }) } }, {
+    const proxy = resolvePlaywrightProxy()
+    const isolate = new PlaywrightScriptIsolate({ ...target, engine: selectedEngine, workspaceRoot: ctx.workspaceRoot, ...(proxy === undefined ? {} : { proxy }), observe: async (value, invocation) => { const observedEngine = /\((chromium|firefox|webkit)\)$/.exec(invocation.type)?.[1] as PlaywrightEngine | undefined; const engine = observedEngine ?? selectedEngine; for (const tab of await provider(engine).observeScriptValue(value)) adopted.set(`${engine}:${tab.providerTabId}`, { engine, tab }) } }, {
       mode: params.mode as PlaywrightScriptMode,
       beforeCall: async (type, method, args) => {
         const found = urls(args)
@@ -51,11 +52,11 @@ lines.on('line', line => {
   let message: OwnerInput
   try { message = JSON.parse(line) as OwnerInput } catch { return }
   if (message.kind === 'cancel') { controllers.get(message.id)?.abort(); return }
-  if (message.kind === 'policy-response') { const pending = policies.get(message.id); if (pending !== undefined) { policies.delete(message.id); if (message.ok) pending.resolve(); else pending.reject(new BrowserRuntimeError('APPROVAL_DENIED', message.error ?? 'Playwright policy denied.')) }; return }
+  if (message.kind === 'policy-response') { const pending = policies.get(message.id); if (pending !== undefined) { policies.delete(message.id); if (message.ok) pending.resolve(); else { pending.reject(new BrowserRuntimeError('APPROVAL_DENIED', message.error ?? 'Playwright policy denied.')); controllers.get(pending.requestId)?.abort() } }; return }
   const controller = new AbortController(); controllers.set(message.id, controller)
   void dispatch(message, controller.signal).then(
     result => output({ kind: 'response', id: message.id, ok: true, result }),
-    error => output({ kind: 'response', id: message.id, ok: false, error: { code: error instanceof BrowserRuntimeError ? error.code : 'PLAYWRIGHT_RUNTIME_ERROR', message: error instanceof Error ? error.message : String(error) } }),
+    error => output({ kind: 'response', id: message.id, ok: false, error: { code: error instanceof BrowserRuntimeError ? error.code : 'PLAYWRIGHT_RUNTIME_ERROR', message: error instanceof Error ? error.message : String(error), ...(error instanceof BrowserRuntimeError && error.details !== undefined ? { details: error.details } : {}) } }),
   ).finally(() => controllers.delete(message.id))
 })
 lines.on('close', () => { void Promise.all([...providers.values()].map(item => item.dispose())).finally(() => process.exit(0)) })

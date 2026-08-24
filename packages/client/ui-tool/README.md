@@ -21,6 +21,8 @@ Generic rows classify known Tool names into search, read, shell, write, edit, co
 
 In execution-flow render modes, expanded Tool bodies start at the 22px title column and share a 1px guide on the 16px leading glyph's x=8 centerline. A Code Dispatch branch keeps that guide on the parent Code row, while each child leading icon starts at the parent `Code` title's left edge. The Tool tree also adapts the pinned official `ui-skill` keyed row at this boundary because that renderer does not yet consume the owner's `execflow` flag.
 
+The generic fallback also consumes durable image content blocks. It delegates loading, failure state, and click-to-enlarge behavior to the conversation attachment owner instead of displaying attachment JSON as OUT text. Images fill the remaining body column, use `contain`, and cap at 420px; execution-flow images align to the 22px title column beside the existing x=8 guide, while normal mode keeps the native row layout without adding a guide.
+
 ## Atomic Tool views
 
 An owning business package registers its wire Tool name into `tool.call.toolview`:

@@ -152,10 +152,10 @@ describe('tool-call-model', () => {
       .toBe('{\n  "code": ""\n}')
   })
 
-  it('resultText flattens text blocks verbatim, other shapes as JSON, empty error content to name: code', () => {
+  it('resultText keeps text, omits attachment images, and falls back empty errors to name: code', () => {
     expect(resultText(result({ content: [{ type: 'text', text: 'a\nb' }] }))).toBe('a\nb')
-    expect(resultText(result({ content: [{ type: 'text', text: 'a' }, { type: 'image', data: 'x' } as never] })))
-      .toBe(`a\n${JSON.stringify({ type: 'image', data: 'x' }, null, 2)}`)
+    expect(resultText(result({ content: [{ type: 'text', text: 'a' }, { type: 'image', attachment: { attachmentId: 'a1' } } as never] })))
+      .toBe('a')
     expect(resultText(result({ content: [], isError: true, error: { name: 'ToolError', code: 'denied' } })))
       .toBe('ToolError: denied')
     expect(resultText(result({ content: [] }))).toBe('')
@@ -410,7 +410,7 @@ describe('ToolRow', () => {
 
 describe('GenericToolCard', () => {
   const props = (toolName: string, block: RunningToolCall | ToolResultNode): GenericToolCardProps => ({
-    callId: 'c1', toolName, block, openFile: vi.fn(), t,
+    callId: 'c1', toolName, block, openFile: vi.fn(), renderMessageImages: () => null, t,
   })
 
   it('renders the classified variant row from the frozen slice', () => {
@@ -418,6 +418,17 @@ describe('GenericToolCard', () => {
     expect(view.getByText('Bash')).toBeTruthy()
     expect(view.getByText('List files')).toBeTruthy()
     expect(view.container.querySelector('[data-variant="bash"]')).not.toBeNull()
+  })
+
+  it('renders durable result images through the conversation attachment owner', () => {
+    const renderMessageImages = vi.fn(() => <span data-tool-image />)
+    const block = result({ content: [{ type: 'text', text: '{"kind":"screenshot"}' }, { type: 'image', attachment: { attachmentId: 'a1', mediaType: 'image/png', bytes: 12, width: 100, height: 50 } } as never] })
+    const view = render(<GenericToolCard {...props('browser_inspect', block)} renderMessageImages={renderMessageImages} execflow />)
+    fireEvent.click(view.getByRole('button', { name: /Tool call/ }))
+    expect(renderMessageImages).toHaveBeenCalledWith({ images: [{ attachment: (block.content[1] as never as { attachment: unknown }).attachment }], align: 'start' })
+    expect(view.container.querySelector('[data-tool-image]')).not.toBeNull()
+    expect(view.container.querySelector('[class*="media"]')).not.toBeNull()
+    expect(view.container.querySelector('[data-execflow]')).not.toBeNull()
   })
 
   it('unknown tools land on the others variant titled Tool call', () => {

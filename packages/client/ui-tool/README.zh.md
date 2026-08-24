@@ -21,6 +21,8 @@ Client 工具展示插件。`ui-conversation` 通过 `conversation.chat.node` �
 
 在执行流渲染模式中，展开后的工具内容从 22px 标题列开始，并共用一条位于 16px leading glyph 的 x=8 中轴上的 1px 引导线。Code Dispatch 分支始终由父 Code 行持有这条引导线，而每个子调用的 leading 图标从父级「Code」标题左边界开始。由于当前锁定版本的官方 `ui-skill` keyed row 尚未消费 owner 的 `execflow` 标记，Tool 树也会在这一稳定边界补齐相同几何。
 
+通用 fallback 同时消费持久化图片内容块：图片加载、失败态与点击放大统一委托给对话附件 owner，不再把 attachment JSON 显示为 OUT 文本。图片铺满剩余正文列，以 `contain` 保持比例，最大高度 420px；执行流图片对齐 22px 标题列并保留 x=8 引导线，normal 模式沿用原生工具行布局且不新增引导线。
+
 ## 原子工具视图
 
 拥有该视图的业务包将其 wire 工具名称注册进 `tool.call.toolview`：

@@ -10,6 +10,7 @@ class FakeProvider implements BrowserProvider {
     if (command.kind === 'inspect' && command.action === 'snapshot') {
       return { kind: 'snapshot', snapshot: { snapshotId: 'snapshot-1', url: tab.url, title: tab.title, text: 'n1 button "Continue"', nodes: [{ nodeRef: 'n1', role: 'button', name: 'Continue' }] }, tab }
     }
+    if (command.kind === 'inspect' && command.action === 'screenshot') return { kind: 'screenshot', dataUrl: 'data:image/png;base64,iVBORw0KGgo=', tab }
     if (command.kind === 'navigate' && command.action === 'goto') return { kind: 'state', tab: { ...tab, url: command.url! } }
     return { kind: 'state', tab }
   })
@@ -77,8 +78,28 @@ describe('BrowserRuntime', () => {
     await expect(runtime.close('agent-1', created.tab.tabId, signal)).resolves.toBeUndefined()
 
     expect(provider.close).toHaveBeenCalledOnce()
-    expect(() => runtime.tab('agent-1', created.tab.tabId)).toThrowError(expect.objectContaining({ code: 'TAB_NOT_FOUND' }))
+    expect(() => runtime.tab('agent-1', created.tab.tabId)).toThrowError(expect.objectContaining({ code: 'TAB_NOT_FOUND', details: expect.objectContaining({ lifecycleReason: 'client-close' }) }))
     expect(runtime.state('agent-1').tabs).toEqual([])
+  })
+
+  it('publishes screenshots once through the official Attachment Store and reuses the reference', async () => {
+    const attachment = { attachmentId: 'attachment-1', mediaType: 'image/png', bytes: 8, width: 4, height: 2 } as const
+    const saveImage = vi.fn(async () => attachment)
+    const readImage = vi.fn(async () => ({ ref: attachment, data: Buffer.from('png-data') }))
+    const provider = background(); const runtime = new BrowserRuntime({ attachments: { saveImage, readImage } as never }); runtime.registerProvider(provider)
+    const created = await runtime.createTab({ sessionId: 'agent-1', turn: 1, workspaceRoot: process.cwd(), selection: { browserId: 'background' }, signal })
+    await runtime.execute('agent-1', created.tab.tabId, { kind: 'inspect', action: 'screenshot' }, signal)
+    expect(saveImage).toHaveBeenCalledOnce()
+    expect(runtime.tab('agent-1', created.tab.tabId)).toMatchObject({ snapshotAttachment: attachment, snapshotArtifactId: 'attachment-1' })
+    await expect(runtime.screenshotImage('agent-1', created.tab.tabId)).resolves.toMatchObject({ attachment, artifactId: 'attachment-1', dataUrl: 'data:image/png;base64,cG5nLWRhdGE=' })
+    expect(readImage).toHaveBeenCalledWith(attachment)
+  })
+
+  it('invalidates Provider-owned tabs with an owner-restarted tombstone', async () => {
+    const provider = background(); const runtime = new BrowserRuntime(); runtime.registerProvider(provider)
+    const created = await runtime.createTab({ sessionId: 'agent-1', turn: 1, workspaceRoot: process.cwd(), selection: { browserId: 'background' }, signal })
+    runtime.invalidateProvider('background', 'owner-restarted')
+    expect(() => runtime.tab('agent-1', created.tab.tabId)).toThrowError(expect.objectContaining({ code: 'TAB_NOT_FOUND', details: expect.objectContaining({ lifecycleReason: 'owner-restarted' }) }))
   })
 
   it('fences node refs by snapshot and interrupts control by exact surface', async () => {

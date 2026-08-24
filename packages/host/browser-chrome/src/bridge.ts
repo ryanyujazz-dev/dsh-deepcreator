@@ -73,7 +73,7 @@ export class ChromeBridgeServer {
         if ('event' in message) { for (const listener of this.#listeners) listener(message); continue }
         if (!('id' in message)) continue
         const pending = this.#pending.get(message.id); if (pending === undefined) continue; this.#pending.delete(message.id); clearTimeout(pending.timer)
-        if (message.ok) pending.resolve(message.result); else pending.reject(new BrowserRuntimeError(message.error?.code ?? 'BROWSER_UNAVAILABLE', message.error?.message ?? 'Chrome extension command failed.'))
+        if (message.ok) pending.resolve(message.result); else pending.reject(new BrowserRuntimeError(message.error?.code ?? 'BROWSER_UNAVAILABLE', message.error?.message ?? 'Chrome extension command failed.', message.error?.details === undefined ? undefined : { ...message.error.details }))
       }
     })
     socket.on('close', () => { if (this.#socket !== socket) return; this.#socket = undefined; this.#failPending(new BrowserRuntimeError('PROVIDER_UNAVAILABLE', 'Chrome extension disconnected.')); for (const listener of this.#connectionListeners) listener(false) })

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir } from 'node:fs/promises'
 import { basename, join } from 'node:path'
-import { BrowserNetworkPolicy, BrowserRuntimeError, INTERACTIVE_SNAPSHOT_SCRIPT, resolveWorkspaceUpload } from '@ryanyujazz/dsh-browser'
+import { BrowserNetworkPolicy, BrowserRuntimeError, DOCUMENT_EXTRACTION_SCRIPT, INTERACTIVE_SNAPSHOT_SCRIPT, resolveWorkspaceUpload, type BrowserDocumentScriptResult } from '@ryanyujazz/dsh-browser'
 import type { BrowserCommand, BrowserCommandResult, BrowserLocator, BrowserNodeRef, ProviderTab, UserTabCandidate } from '@ryanyujazz/dsh-browser/types'
 import type { IabRpcNotification } from '@ryanyujazz/dsh-browser-iab'
 import { BrowserWindow, WebContentsView, ipcMain, session, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
@@ -112,6 +112,11 @@ export class BrowserSurfaceDriver {
     if (command.kind === 'inspect') {
       if (command.action === 'snapshot') return this.#snapshot(record)
       if (command.action === 'screenshot') { const image = await record.view.webContents.capturePage(); return { kind: 'screenshot', dataUrl: image.toDataURL(), tab: this.#state(record) } }
+      if (command.action === 'document') {
+        const document = await record.view.webContents.executeJavaScript(`(${DOCUMENT_EXTRACTION_SCRIPT})(${JSON.stringify({ documentId: command.documentId, offset: command.offset, maxChars: command.maxChars })})`, true) as BrowserDocumentScriptResult
+        if (document.error === 'STALE_DOCUMENT') throw new BrowserRuntimeError('STALE_DOCUMENT', 'The page changed while continuing this document. Start again without documentId.', { documentId: document.documentId, finalUrl: this.#state(record).url, suggestedNextStep: 'Call browser_inspect with action=document and no documentId.' })
+        return { kind: 'document', document: { documentId: document.documentId, text: document.text ?? '', offset: document.offset ?? 0, ...(document.nextOffset === undefined ? {} : { nextOffset: document.nextOffset }), truncated: document.truncated ?? false, contentType: document.contentType, ...(document.sourceTruncated === undefined ? {} : { sourceTruncated: document.sourceTruncated }) }, tab: this.#state(record) }
+      }
       if (command.action === 'elementInfo') { if (command.locator === undefined) throw new BrowserRuntimeError('STALE_SNAPSHOT', 'elementInfo requires locator.'); return { kind: 'elementInfo', element: await this.#elementInfo(record, command.locator), tab: this.#state(record) } }
       return { kind: 'state', tab: this.#state(record) }
     }

@@ -89,7 +89,8 @@ describe('BrowserPanel', () => {
         tabId: 'tab-1', browserId: 'playwright-chromium', url: 'https://example.test/', title: 'Example', loading: false,
         canGoBack: false, canGoForward: false, lifecycle: 'deliverable' as const, presentation: 'snapshot' as const,
         presentationBinding: { owner: 'deepcreator' as const, mode: 'snapshot' as const, requiredBeforeControl: false },
-        controlState: 'ready' as const, presentationState: 'presented' as const, snapshotArtifactId: 'shot-1',
+        controlState: 'ready' as const, presentationState: 'presented' as const,
+        snapshotAttachment: { attachmentId: 'shot-1', mediaType: 'image/png', bytes: 3, width: 1, height: 1 },
       }],
     } } }))
     const snapshotImage = vi.fn()

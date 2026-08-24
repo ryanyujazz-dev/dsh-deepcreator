@@ -11,7 +11,7 @@ export const inject = ['browserRuntime']
 
 export const BROWSER_RPC_ENV = { endpoint: 'DEEP_CREATOR_BROWSER_RPC_ENDPOINT', token: 'DEEP_CREATOR_BROWSER_RPC_TOKEN' } as const
 export interface IabRpcRequest { id: string; token: string; method: string; params: unknown }
-export interface IabRpcResponse { id: string; ok: boolean; result?: unknown; error?: { code: BrowserErrorCode; message: string } }
+export interface IabRpcResponse { id: string; ok: boolean; result?: unknown; error?: { code: BrowserErrorCode; message: string; details?: Record<string, unknown> } }
 export interface IabRpcNotification { event: 'control-interrupted' | 'state-changed'; params: Record<string, unknown> }
 type Pending = { resolve(value: unknown): void; reject(error: unknown): void }
 
@@ -57,7 +57,7 @@ export class IabRpcClient {
       const pending = this.#pending.get(message.id); if (pending === undefined) continue
       this.#pending.delete(message.id)
       if (message.ok) pending.resolve(message.result)
-      else pending.reject(new BrowserRuntimeError(message.error?.code ?? 'PROVIDER_UNAVAILABLE', message.error?.message ?? 'IAB RPC failed.'))
+      else pending.reject(new BrowserRuntimeError(message.error?.code ?? 'PROVIDER_UNAVAILABLE', message.error?.message ?? 'IAB RPC failed.', message.error?.details))
     }
   }
   #failAll(error: unknown): void { for (const pending of this.#pending.values()) pending.reject(error); this.#pending.clear() }

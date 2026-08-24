@@ -1,7 +1,7 @@
-import type { BrowserCommand, BrowserCommandResult, BrowserErrorCode, ProviderTab, UserTabCandidate } from '@ryanyujazz/dsh-browser'
+import type { BrowserCommand, BrowserCommandResult, BrowserErrorCode, BrowserErrorDetails, ProviderTab, UserTabCandidate } from '@ryanyujazz/dsh-browser'
 
 export interface ChromeBridgeRequest { id: string; method: string; params: unknown }
-export interface ChromeBridgeResponse { id: string; ok: boolean; result?: unknown; error?: { code: BrowserErrorCode; message: string } }
+export interface ChromeBridgeResponse { id: string; ok: boolean; result?: unknown; error?: { code: BrowserErrorCode; message: string; details?: BrowserErrorDetails } }
 export type ChromeBridgeNotification =
   | { event: 'control-interrupted'; providerTabId: string }
   | { event: 'state-changed'; providerTabId: string }

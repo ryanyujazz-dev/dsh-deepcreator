@@ -72,4 +72,26 @@ describe('Browser Agent tool contract', () => {
     expect(request).toHaveBeenCalledOnce()
     expect(reacquire).not.toHaveBeenCalled()
   })
+
+  it('renders screenshot metadata and a durable image block without attachment JSON in OUT text', async () => {
+    const attachment = { attachmentId: 'attachment-1', mediaType: 'image/png', bytes: 12, width: 100, height: 50 }
+    const tools = createBrowserToolDefinitions({
+      runtime: {
+        execute: vi.fn(async () => ({ kind: 'screenshot', dataUrl: 'data:image/png;base64,AA==', tab: { url: 'https://example.test/', title: 'Example' } })),
+        tab: () => ({ snapshotAttachment: attachment }),
+      } as never,
+      approval: {} as never,
+      turnOf: () => 1,
+    })
+    const inspect = tools.find(tool => tool.name === 'browser_inspect')!
+    const value = await inspect.execute({ tabId: 'tab-1', action: 'screenshot' }, {
+      agent: { id: 'agent-1', session: { header: { cwd: '/workspace' } } }, callId: 'call-3', rootCallId: 'call-3', name: 'browser_inspect', arguments: {}, signal: new AbortController().signal,
+    } as never)
+    const content = inspect.output.render({}, value)
+    expect(content).toEqual([
+      expect.objectContaining({ type: 'text', text: expect.stringContaining('"attachmentId":"attachment-1"') }),
+      { type: 'image', attachment },
+    ])
+    expect((content[0] as { text: string }).text).not.toContain('"attachment":')
+  })
 })

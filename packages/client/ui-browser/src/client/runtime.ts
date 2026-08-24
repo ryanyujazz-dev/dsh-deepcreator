@@ -1,4 +1,5 @@
 import type { BrowserNextAction, BrowserRemoteResult, BrowserStateSnapshot, BrowserTabState } from '@ryanyujazz/dsh-browser/types'
+import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 
@@ -16,7 +17,11 @@ export interface BrowserRemoteClient {
   closeTab?(sessionId: SessionId, tabId: string): Promise<RemoteResult<BrowserRemoteResult<{ closed: true; tabId: string }>>>
   clearBrowserData?(browserId: string): Promise<RemoteResult<BrowserRemoteResult<{ cleared: string[]; unavailable: string[] }>>>
   manageProvider?(browserId: string, action: 'install' | 'repair' | 'uninstall'): Promise<RemoteResult<BrowserRemoteResult<{ status: 'ready' | 'unavailable' | 'removed'; diagnostic?: string }>>>
-  snapshotImage?(sessionId: SessionId, tabId: string): Promise<RemoteResult<BrowserRemoteResult<{ artifactId: string; dataUrl: string }>>>
+  snapshotImage?(sessionId: SessionId, tabId: string): Promise<RemoteResult<BrowserRemoteResult<{ attachment: ImageAttachmentRef; artifactId: string; dataUrl: string }>>>
+}
+
+function snapshotKey(tab: BrowserTabState): string | undefined {
+  return tab.snapshotAttachment === undefined ? tab.snapshotArtifactId : String(tab.snapshotAttachment.attachmentId)
 }
 
 const EMPTY_STATE: BrowserStateSnapshot = { sessionId: '', revision: 0, browsers: [], tabs: [] }
@@ -138,13 +143,14 @@ export class BrowserClientRuntime {
   }
   async retrySnapshot(tabId: string): Promise<void> {
     const tab = this.#state.tabs.find(candidate => candidate.tabId === tabId)
-    if (tab?.snapshotArtifactId === undefined) return
-    this.#snapshotImages.delete(tab.snapshotArtifactId)
+    const key = tab === undefined ? undefined : snapshotKey(tab)
+    if (key === undefined) return
+    this.#snapshotImages.delete(key)
     this.#snapshotErrors.delete(tabId)
-    this.#snapshotAttempts.delete(tab.snapshotArtifactId)
-    const timer = this.#snapshotRetryTimers.get(tab.snapshotArtifactId)
+    this.#snapshotAttempts.delete(key)
+    const timer = this.#snapshotRetryTimers.get(key)
     if (timer !== undefined) clearTimeout(timer)
-    this.#snapshotRetryTimers.delete(tab.snapshotArtifactId)
+    this.#snapshotRetryTimers.delete(key)
     this.#publish()
     await this.refresh()
   }
@@ -190,7 +196,7 @@ export class BrowserClientRuntime {
   async #hydrateSnapshots(state: BrowserStateSnapshot): Promise<void> {
     let changed = false
     await Promise.all(state.tabs.map(async tab => {
-      const artifactId = tab.snapshotArtifactId
+      const artifactId = snapshotKey(tab)
       if (artifactId === undefined || this.#snapshotImages.has(artifactId)) return
       const failure = this.#snapshotErrors.get(tab.tabId)
       if ((this.#snapshotAttempts.get(artifactId) ?? 0) >= 3 && failure?.artifactId === artifactId) return
@@ -203,7 +209,9 @@ export class BrowserClientRuntime {
         const image = await this.remote.snapshotImage(sessionId, tab.tabId)
         if (!image.ok) throw new Error(`${image.error.code}: ${image.error.message}`)
         if (!image.value.ok) throw new Error(`${image.value.code}: ${image.value.message}`)
-        if (image.value.value.artifactId !== artifactId) throw new Error(`STALE_SNAPSHOT: Expected ${artifactId}, received ${image.value.value.artifactId}.`)
+        const received = image.value.value as { attachment?: ImageAttachmentRef; artifactId: string; dataUrl: string }
+        const receivedId = received.attachment === undefined ? received.artifactId : String(received.attachment.attachmentId)
+        if (receivedId !== artifactId) throw new Error(`STALE_SNAPSHOT: Expected ${artifactId}, received ${receivedId}.`)
         this.#snapshotImages.set(artifactId, image.value.value.dataUrl)
         this.#snapshotAttempts.delete(artifactId)
         const timer = this.#snapshotRetryTimers.get(artifactId)
@@ -222,9 +230,9 @@ export class BrowserClientRuntime {
     this.#publish()
   }
   #withSnapshotImages(state: BrowserStateSnapshot): BrowserStateSnapshot {
-    return { ...state, tabs: state.tabs.map(tab => tab.snapshotArtifactId === undefined ? tab : {
-      ...tab,
-      ...(this.#snapshotImages.get(tab.snapshotArtifactId) === undefined ? {} : { snapshotImageDataUrl: this.#snapshotImages.get(tab.snapshotArtifactId)! }),
+    return { ...state, tabs: state.tabs.map(tab => {
+      const key = snapshotKey(tab)
+      return key === undefined ? tab : { ...tab, ...(this.#snapshotImages.get(key) === undefined ? {} : { snapshotImageDataUrl: this.#snapshotImages.get(key)! }) }
     }) }
   }
   #setSnapshotError(tabId: string, artifactId: string, message: string): boolean {
@@ -241,7 +249,7 @@ export class BrowserClientRuntime {
     this.#snapshotRetryTimers.set(artifactId, timer)
   }
   #pruneSnapshots(state: BrowserStateSnapshot): void {
-    const current = new Map(state.tabs.flatMap(tab => tab.snapshotArtifactId === undefined ? [] : [[tab.tabId, tab.snapshotArtifactId] as const]))
+    const current = new Map(state.tabs.flatMap(tab => { const key = snapshotKey(tab); return key === undefined ? [] : [[tab.tabId, key] as const] }))
     for (const [tabId, error] of this.#snapshotErrors) if (current.get(tabId) !== error.artifactId) this.#snapshotErrors.delete(tabId)
     const artifacts = new Set(current.values())
     for (const artifactId of this.#snapshotImages.keys()) if (!artifacts.has(artifactId)) this.#snapshotImages.delete(artifactId)
@@ -250,12 +258,13 @@ export class BrowserClientRuntime {
   }
   #dropTabPreview(tabId: string): void {
     const tab = this.#state.tabs.find(candidate => candidate.tabId === tabId)
-    if (tab?.snapshotArtifactId !== undefined) {
-      this.#snapshotImages.delete(tab.snapshotArtifactId)
-      this.#snapshotAttempts.delete(tab.snapshotArtifactId)
-      const timer = this.#snapshotRetryTimers.get(tab.snapshotArtifactId)
+    const key = tab === undefined ? undefined : snapshotKey(tab)
+    if (key !== undefined) {
+      this.#snapshotImages.delete(key)
+      this.#snapshotAttempts.delete(key)
+      const timer = this.#snapshotRetryTimers.get(key)
       if (timer !== undefined) clearTimeout(timer)
-      this.#snapshotRetryTimers.delete(tab.snapshotArtifactId)
+      this.#snapshotRetryTimers.delete(key)
     }
     this.#snapshotErrors.delete(tabId)
   }
@@ -267,7 +276,7 @@ export class BrowserClientRuntime {
     return sessionId
   }
   #publish(): void {
-    const snapshotErrors = Object.fromEntries([...this.#snapshotErrors].flatMap(([tabId, failure]) => this.#state.tabs.some(tab => tab.tabId === tabId && tab.snapshotArtifactId === failure.artifactId) ? [[tabId, failure.message]] : []))
+    const snapshotErrors = Object.fromEntries([...this.#snapshotErrors].flatMap(([tabId, failure]) => this.#state.tabs.some(tab => tab.tabId === tabId && snapshotKey(tab) === failure.artifactId) ? [[tabId, failure.message]] : []))
     this.#snapshot = { state: this.#state, snapshotErrors, ...(this.#error === undefined ? {} : { error: this.#error }) }; this.#emit()
   }
   #emit(): void { for (const listener of this.#listeners) listener() }

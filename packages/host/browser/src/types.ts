@@ -1,3 +1,5 @@
+import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
+
 export type BrowserProviderKind = 'managed' | 'in-app' | 'extension'
 export type BrowserFamily = 'chrome' | 'chromium' | 'firefox' | 'webkit'
 export type BrowserProfileKind = 'isolated' | 'managed-persistent' | 'user'
@@ -25,11 +27,24 @@ export type BrowserCapability = string
 export type BrowserErrorCode =
   | 'BROWSER_UNAVAILABLE' | 'PROVIDER_UNAVAILABLE' | 'CAPABILITY_UNSUPPORTED'
   | 'TAB_NOT_FOUND' | 'TAB_NOT_OWNED' | 'STALE_SNAPSHOT' | 'CONTROL_INTERRUPTED'
-  | 'NAVIGATION_BLOCKED' | 'APPROVAL_DENIED' | 'AUTH_REQUIRED' | 'TIMEOUT'
+  | 'NAVIGATION_BLOCKED' | 'APPROVAL_DENIED' | 'AUTH_REQUIRED' | 'ACCESS_DENIED' | 'HEADLESS_BLOCKED' | 'TIMEOUT'
   | 'PAGE_CRASHED' | 'PRESENTATION_UNAVAILABLE' | 'PROFILE_LOCKED'
   | 'PLAYWRIGHT_COMPILE_ERROR' | 'PLAYWRIGHT_RUNTIME_ERROR' | 'PLAYWRIGHT_POLICY_BLOCKED'
+  | 'STALE_DOCUMENT' | 'PLAYWRIGHT_ISOLATE_CRASHED'
 
-export type BrowserRemoteResult<T> = { ok: true; value: T } | { ok: false; code: BrowserErrorCode; message: string }
+export type BrowserTabRemovalReason = 'provider-close' | 'turn-cleanup' | 'client-close' | 'presentation-rollback' | 'owner-restarted' | 'runtime-dispose'
+export interface BrowserErrorDetails {
+  httpStatus?: number
+  finalUrl?: string
+  lifecycleReason?: BrowserTabRemovalReason
+  suggestedNextStep?: string
+  receivedBytes?: number
+  timeoutPhase?: 'connect' | 'first-byte' | 'download' | 'decompress' | 'total'
+  documentId?: string
+  tabId?: string
+  providerTabId?: string
+}
+export type BrowserRemoteResult<T> = { ok: true; value: T } | { ok: false; code: BrowserErrorCode; message: string; details?: BrowserErrorDetails }
 
 /** Runtime-neutral cancellation face; Provider contracts do not depend on DOM AbortSignal declarations. */
 export interface BrowserSignalInput { readonly aborted: boolean }
@@ -128,8 +143,11 @@ export interface BrowserTabState {
   presentationState: 'not-requested' | 'pending' | 'presented' | 'suppressed' | 'dismissed' | 'unavailable'
   surfaceId?: string
   snapshotId?: string
+  /** Authoritative, durable screenshot reference shared by tools, replay, and Browser Panel. */
+  snapshotAttachment?: ImageAttachmentRef
+  /** @deprecated Compatibility alias for snapshotAttachment.attachmentId; removed after one release. */
   snapshotArtifactId?: string
-  /** Client-only hydrated preview. Host state snapshots carry snapshotArtifactId instead. */
+  /** Client-only hydrated preview. Host state snapshots carry snapshotAttachment instead. */
   snapshotImageDataUrl?: string
   lastAction?: { action: string; at: number; result: 'ok' | BrowserErrorCode }
 }
@@ -143,6 +161,15 @@ export interface BrowserNodeRef {
   autocomplete?: string
 }
 export interface BrowserSnapshot { snapshotId: string; url: string; title: string; text: string; nodes: BrowserNodeRef[] }
+export interface BrowserDocumentPage {
+  documentId: string
+  text: string
+  offset: number
+  nextOffset?: number
+  truncated: boolean
+  contentType: string
+  sourceTruncated?: boolean
+}
 export type BrowserLocator =
   | { kind: 'node'; snapshotId: string; nodeRef: string }
   | { kind: 'role'; role: string; name?: string }
@@ -151,7 +178,7 @@ export type BrowserLocator =
 
 export type BrowserCommand =
   | { kind: 'navigate'; action: 'goto' | 'back' | 'forward' | 'reload'; url?: string }
-  | { kind: 'inspect'; action: 'snapshot' | 'screenshot' | 'url' | 'title' | 'elementInfo'; locator?: BrowserLocator }
+  | { kind: 'inspect'; action: 'snapshot' | 'screenshot' | 'url' | 'title' | 'elementInfo' | 'document'; locator?: BrowserLocator; documentId?: string; offset?: number; maxChars?: number }
   | { kind: 'act'; action: 'click' | 'fill' | 'type' | 'press' | 'select' | 'check' | 'scroll' | 'drag' | 'upload'; locator?: BrowserLocator; destination?: BrowserLocator; value?: string; files?: string[]; expected?: 'none' | 'navigation' | 'download' }
   | { kind: 'wait'; condition: 'url' | 'load' | 'visible' | 'hidden' | 'dialog'; value?: string; locator?: BrowserLocator; timeoutMs?: number }
 
@@ -159,6 +186,7 @@ export type BrowserCommandResult =
   | { kind: 'state'; tab: ProviderTab }
   | { kind: 'snapshot'; snapshot: BrowserSnapshot; tab: ProviderTab }
   | { kind: 'screenshot'; dataUrl: string; tab: ProviderTab }
+  | { kind: 'document'; document: BrowserDocumentPage; tab: ProviderTab }
   | { kind: 'elementInfo'; element: BrowserNodeRef; tab: ProviderTab }
   | { kind: 'download'; artifactId: string; fileName: string; tab: ProviderTab }
 

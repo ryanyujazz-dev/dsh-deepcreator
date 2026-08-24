@@ -29,11 +29,12 @@ Legacy `mode:"visible"|"background"` and `browserId:"headless"` exist for one co
 
 ## Observe, act, and hand off
 
-1. Take a fresh `browser_inspect snapshot`. A node locator is the versioned pair `snapshotId + nodeRef`.
-2. Perform one `browser_act` using the node, role/name, text, or label locator.
-3. Use `browser_wait` for actual state, not fixed sleeps, then inspect again.
-4. Use screenshot artifacts when visual rendering matters.
-5. For manual input call `browser_tabs handoffToUser`; wait until the user explicitly confirms they finished, then call `resumeControl` and approve the one-time control-return prompt before re-inspecting. User input during Agent control produces `CONTROL_INTERRUPTED`; `reacquire` has the same approval boundary, so never continue blindly.
+1. For research and reading, call `browser_inspect document` first. Continue long pages with the returned `documentId` and `nextOffset`; restart without `documentId` after `STALE_DOCUMENT`.
+2. For interaction, take a fresh `browser_inspect snapshot`. A node locator is the versioned pair `snapshotId + nodeRef`.
+3. Perform one `browser_act` using the node, role/name, text, or label locator.
+4. Use `browser_wait` for actual state, not fixed sleeps, then inspect again.
+5. Use `browser_inspect screenshot` when visual rendering matters. Its result already contains a durable model-visible image; do not search the shell or workspace for screenshot files.
+6. For manual input call `browser_tabs handoffToUser`; wait until the user explicitly confirms they finished, then call `resumeControl` and approve the one-time control-return prompt before re-inspecting. User input during Agent control produces `CONTROL_INTERRUPTED`; `reacquire` has the same approval boundary, so never continue blindly.
 
 Side-effecting actions require one-time approval before mutation. Passwords, OTP, payment data, cookies, and tokens must never enter Browser tool arguments or results. They are entered by the user during shielded handoff.
 
@@ -45,4 +46,4 @@ Side-effecting actions require one-time approval before mutation. Passwords, OTP
 - `markHandoff` preserves a tab for exactly the next turn; mark it again if another continuation is required.
 - Do not replay non-idempotent actions after failures.
 
-Stable errors include `BROWSER_UNAVAILABLE`, `PROVIDER_UNAVAILABLE`, `CAPABILITY_UNSUPPORTED`, `TAB_NOT_FOUND`, `TAB_NOT_OWNED`, `STALE_SNAPSHOT`, `CONTROL_INTERRUPTED`, `NAVIGATION_BLOCKED`, `APPROVAL_DENIED`, `AUTH_REQUIRED`, `TIMEOUT`, `PAGE_CRASHED`, `PRESENTATION_UNAVAILABLE`, and `PROFILE_LOCKED`.
+Stable errors include `ACCESS_DENIED`, `HEADLESS_BLOCKED`, and `STALE_DOCUMENT` in addition to the existing Browser vocabulary. Do not reinterpret every 403 as login: use a live IAB for an explicit authentication/challenge surface, otherwise report access denial and the returned diagnostic details.
