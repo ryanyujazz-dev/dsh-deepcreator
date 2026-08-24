@@ -23,6 +23,7 @@
     "@ryanyujazz/dsh-browser-iab": "workspace:^",
     "@ryanyujazz/dsh-browser-chrome": "workspace:^",
     "@ryanyujazz/dsh-image-generation": "workspace:^",
+    "@ryanyujazz/dsh-platform-context": "workspace:^",
     "@ryanyujazz/dsh-presentation": "workspace:^",
     "@ryanyujazz/dsh-client-locale": "workspace:^",
     "@ryanyujazz/dsh-client-presentation": "workspace:^",

@@ -54,6 +54,9 @@
     - id: deepcreator-presentation
       name: '@ryanyujazz/dsh-presentation'
 
+    - id: deepcreator-platform-context
+      name: '@ryanyujazz/dsh-platform-context'
+
     - id: deepcreator-browser
       name: '@ryanyujazz/dsh-browser'
 

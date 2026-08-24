@@ -54,6 +54,7 @@ const OWNED_DEPENDENCIES = new Set([
   '@ryanyujazz/dsh-browser',
   '@ryanyujazz/dsh-image-generation',
   '@ryanyujazz/dsh-presentation',
+  '@ryanyujazz/dsh-platform-context',
   '@ryanyujazz/dsh-browser-mcp',
   '@ryanyujazz/dsh-jobs-admin',
   '@ryanyujazz/dsh-session-admin',
