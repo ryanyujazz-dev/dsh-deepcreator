@@ -274,6 +274,14 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
     count: files.length,
     getScrollElement,
     estimateSize: estimateRow,
+    // Review rows grow asynchronously when patches arrive and again when
+    // long highlighted lines wrap. Keep the sticky-friendly `top` layout,
+    // but let the virtualizer write row positions and canvas height in the
+    // same callback that accepts a new measurement. Waiting for a React
+    // render leaves following absolute rows at their stale estimates long
+    // enough to paint on top of the expanded diff.
+    directDomUpdates: true,
+    directDomUpdatesMode: 'position',
     measureElement: (element, entry) => {
       const measured = entry?.borderBoxSize[0]?.blockSize ?? element.getBoundingClientRect().height
       const index = Number(element.dataset.index)
@@ -639,7 +647,7 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
           : meta.status.files.length === 0
             ? <div className={css.reviewPlaceholder}>{t('review.clean')}</div>
             : <div ref={listRef} className={css.fileList} role="list" aria-label={t('review.files')}>
-              <div className={css.reviewVirtualCanvas} style={{ height: virtualizer.getTotalSize() }}>
+              <div ref={virtualizer.containerRef} className={css.reviewVirtualCanvas}>
                 {virtualItems.map(item => {
                   const file = files[item.index]
                   if (file === undefined) return null
@@ -650,10 +658,9 @@ export function ReviewPanel({ controller, reveal, visible, contributeHeaderActio
                     data-review-virtual-row=""
                     className={css.reviewVirtualRow}
                     // A transformed ancestor changes Chromium's containing
-                    // block for the sticky file header. Positioning the small
-                    // mounted window by `top` keeps the header attached to the
-                    // Review scroller and preserves file/diff association.
-                    style={{ top: item.start }}
+                    // block for the sticky file header. The virtualizer writes
+                    // `top` directly so measurement and placement settle in
+                    // one synchronous DOM update without creating that block.
                   >
                     <ReviewFileRow
                       file={file}

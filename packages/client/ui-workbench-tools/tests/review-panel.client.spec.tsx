@@ -333,8 +333,11 @@ describe('Review Panel file stream', () => {
     // following absolute row overlap an expanded diff body.
     expect(stylesheet).not.toContain('content-visibility')
     expect(stylesheet).not.toContain('contain-intrinsic-size')
-    expect(readFileSync(resolve(process.cwd(), 'packages/client/ui-workbench-tools/src/client/Panels.tsx'), 'utf8'))
-      .not.toContain('transform: `translateY(${item.start}px)`')
+    const source = readFileSync(resolve(process.cwd(), 'packages/client/ui-workbench-tools/src/client/Panels.tsx'), 'utf8')
+    expect(source).not.toContain('transform: `translateY(${item.start}px)`')
+    expect(source).toContain("directDomUpdatesMode: 'position'")
+    expect(source).toContain('ref={virtualizer.containerRef}')
+    expect(source).not.toContain('style={{ top: item.start }}')
     expect(stylesheet).not.toMatch(/\.reviewBody\s*\{[^}]*grid-template-columns:/)
   })
 
