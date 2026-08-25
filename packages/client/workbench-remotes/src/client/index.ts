@@ -5,6 +5,7 @@ import type {} from '@ryanyujazz/dsh-browser/remote'
 import { TYPERT_REMOTE as PRESENTATION_REMOTE } from '@ryanyujazz/dsh-presentation/remote'
 import type {} from '@ryanyujazz/dsh-presentation/remote'
 import { TYPERT_REMOTE as ARTIFACTS_REMOTE } from '@ryanyujazz/dsh-artifacts/remote'
+import { TYPERT_REMOTE as APP_STAGE_REMOTE } from '@ryanyujazz/dsh-app-stage/remote'
 import type {} from '@ryanyujazz/dsh-artifacts/remote'
 import { TYPERT_REMOTE as JOBS_ADMIN_REMOTE } from '@ryanyujazz/dsh-jobs-admin/remote'
 import type {} from '@ryanyujazz/dsh-jobs-admin/remote'
@@ -29,7 +30,7 @@ export const inject = ['remote']
 export async function apply(ctx: Context): Promise<() => Promise<void>> {
   const disposers: TypertDisposer[] = []
   try {
-    for (const contribution of [ARTIFACTS_REMOTE, BROWSER_REMOTE, PRESENTATION_REMOTE, JOBS_ADMIN_REMOTE, REVIEW_REMOTE, REMOTE_ACCESS_REMOTE, SESSION_ADMIN_REMOTE, TERMINAL_REMOTE]) {
+    for (const contribution of [APP_STAGE_REMOTE, ARTIFACTS_REMOTE, BROWSER_REMOTE, PRESENTATION_REMOTE, JOBS_ADMIN_REMOTE, REVIEW_REMOTE, REMOTE_ACCESS_REMOTE, SESSION_ADMIN_REMOTE, TERMINAL_REMOTE]) {
       disposers.push(await ctx.remote.$mount(contribution))
     }
   } catch (error) {

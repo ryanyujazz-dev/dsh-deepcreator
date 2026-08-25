@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 
-export const MANAGED_PROFILE_VERSION = 3
+export const MANAGED_PROFILE_VERSION = 4
 export const RETIRED_PROFILE_DEPENDENCIES = new Set([
   '@ryanyujazz/dsh-browser-mcp',
 ])

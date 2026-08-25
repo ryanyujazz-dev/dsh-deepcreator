@@ -45,7 +45,8 @@
     "@ryanyujazz/dsh-remote-access": "^0.1.0",
     "@ryanyujazz/dsh-session-admin": "^0.1.0",
     "@ryanyujazz/dsh-terminal-workbench": "^0.1.0",
-    "@ryanyujazz/dsh-presentation": "^0.1.0"
+    "@ryanyujazz/dsh-presentation": "^0.1.0",
+    "@ryanyujazz/dsh-app-stage": "^0.1.0"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.1",
@@ -58,7 +59,8 @@
     "@ryanyujazz/dsh-remote-access": "workspace:^",
     "@ryanyujazz/dsh-session-admin": "workspace:^",
     "@ryanyujazz/dsh-terminal-workbench": "workspace:^",
-    "@ryanyujazz/dsh-presentation": "workspace:^"
+    "@ryanyujazz/dsh-presentation": "workspace:^",
+    "@ryanyujazz/dsh-app-stage": "workspace:^"
   },
   "files": [
     "lib/index.js",
