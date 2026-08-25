@@ -23,7 +23,24 @@ Registers the `activity` Workbench type and owns two routes:
   breathes. The child currently opened in the conversation area renders
   dimmed with a "Close from conversation" control in place of the mode·state
   meta (the official breadcrumb path, `sessions.open(parent)`); clicking the
-  card still opens its tab.
+  card still opens its tab. Nested subagents render EXPANDED by default: a
+  card whose official catalog entry carries `hasChildren` shows its children
+  under a left guide line, recursively, with no click. The chevron collapses
+  a branch; which levels are open is derived from the official catalogs
+  minus a presentation-only collapsed set, so a branch that gains its first
+  descendant opens by itself. Each open level calls the official runtime's
+  `sessions.setSubagentCatalogOpen(child, true)` — loading that level's
+  `subagentsByParent` catalog and keeping it live while open — and collapse
+  or hide releases the subscription (collapsing an ancestor releases every
+  deeper level too). The home level itself registers as well while the panel
+  is visible: the runtime refreshes only selected or registered catalogs, and
+  while the conversation is drilled into a child the home session is neither,
+  so this registration keeps top-level rows live through that state. The panel never stores the hierarchy: rows, labels,
+  modes, activity bits, and the "expandable" hint all come from the official
+  per-parent catalogs. Nested cards open Workbench tabs keyed by their own
+  session ids (labels survive collapse because the official catalog stays
+  loaded), and their instance toolbar jumps through the exact direct-parent
+  address found in that catalog.
 - **Instance** — one subagent child or background job per tab (the Workbench's own
   `WorkbenchPanelTabs`; the instance id is the child session id, the label
   rides `contributePanelInfo`; job ids use a `job:` presentation namespace).

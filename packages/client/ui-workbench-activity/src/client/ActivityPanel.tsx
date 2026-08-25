@@ -8,8 +8,12 @@
 // job registry's shared output cursor. The panel anchors to the conversation's
 // home session: while a subagent is opened in the conversation area, Home
 // keeps showing the PARENT's activity instead of re-scoping to the child.
+// Nested subagents render EXPANDED by default: each open branch is a level of
+// the OFFICIAL per-parent catalog (subagentsByParent), kept live while open,
+// so the hierarchy never exists as panel-owned state — only explicit user
+// collapses are stored.
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import type {
   JobView, SessionId, SessionProjectionMap, SubagentAddress, SubagentCatalogSnapshot, SessionSummary,
@@ -19,7 +23,7 @@ import type {} from '@deepseek-ai/dsh-token-meter/client'
 import type { PropsLocale, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: merges the conversation embed slot into the SlotMap.
 import type {} from '@ryanyujazz/dsh-client-ui-conversation/client'
-import { StateDot } from '@ryanyujazz/dsh-client-ui-primitives'
+import { IconChevronRightOutline14, StateDot } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { WorkbenchPanelProps } from '@ryanyujazz/dsh-client-ui-workbench/client'
 import { formatTokens, SubagentTab, tokenTotal, type SubagentTabProps } from './SubagentTab.tsx'
 import type { ActivityInjected } from './injected.ts'
@@ -40,6 +44,7 @@ type T = PropsLocale<'workbench-activity'>['t']
 const EMPTY_JOBS = [] as const
 const EMPTY_ENTRIES = [] as const
 const JOB_INSTANCE_PREFIX = 'job:'
+const EMPTY_COLLAPSED: ReadonlySet<SessionId> = new Set()
 
 /** Namespace a registry job id away from child Session ids in the shared tab set. */
 export function jobInstanceId(jobId: string): string { return `${JOB_INSTANCE_PREFIX}${jobId}` }
@@ -53,13 +58,25 @@ interface SelectedChildState {
   listed: boolean
   mode: 'one-shot' | 'continuable' | undefined
   running: boolean
+  /** Catalog owner the entry was found in — the exact direct-parent address. */
+  parentSessionId: SessionId | undefined
 }
 
 const equalSelectedChild = (left: SelectedChildState, right: SelectedChildState): boolean => (
   left.listed === right.listed && left.mode === right.mode && left.running === right.running
+  && left.parentSessionId === right.parentSessionId
 )
 
 const equalLabels = (left: Readonly<Record<string, string>>, right: Readonly<Record<string, string>>): boolean => {
+  const keys = Object.keys(left)
+  return keys.length === Object.keys(right).length && keys.every(key => left[key] === right[key])
+}
+
+/** Per-catalog reference identity: unrelated owners' loads must not re-render branches. */
+const equalCatalogs = (
+  left: Readonly<Record<string, SubagentCatalogSnapshot>>,
+  right: Readonly<Record<string, SubagentCatalogSnapshot>>,
+): boolean => {
   const keys = Object.keys(left)
   return keys.length === Object.keys(right).length && keys.every(key => left[key] === right[key])
 }
@@ -113,6 +130,8 @@ export interface SubagentRow {
   label: string
   mode: 'one-shot' | 'continuable'
   activity: 'running' | 'inactive'
+  /** Official hint: a durable subagent descendant exists below this child. */
+  hasChildren: boolean
 }
 
 /** Catalog children of one session, in catalog order. */
@@ -129,6 +148,7 @@ export function subagentRows(
       label: entry.label ?? byId[entry.id]?.displayTitle ?? entry.id,
       mode: entry.mode,
       activity: entry.activity,
+      hasChildren: entry.hasChildren,
     })
   }
   return rows
@@ -139,6 +159,34 @@ export interface SubagentCohort {
   turn: SubagentRow[]
   /** Older children; empty `turn` collapses the split into this one list. */
   earlier: SubagentRow[]
+}
+
+/**
+ * Derive the currently open nested levels from the official catalogs: every
+ * row carrying the `hasChildren` hint, reachable from the home session
+ * through open branches only — a collapsed ancestor hides its whole subtree.
+ * Branches are open BY DEFAULT; the collapsed set holds explicit opt-outs,
+ * so a level that gains its first descendant opens by itself.
+ */
+export function deriveOpenLevels(
+  catalogs: Readonly<Record<string, SubagentCatalogSnapshot>>,
+  collapsed: ReadonlySet<SessionId>,
+  homeId: SessionId,
+): ReadonlySet<SessionId> {
+  const open = new Set<SessionId>()
+  const visited = new Set<SessionId>([homeId])
+  const stack: SessionId[] = [homeId]
+  while (stack.length > 0) {
+    const parent = stack.pop()!
+    for (const entry of catalogs[parent]?.entries ?? EMPTY_ENTRIES) {
+      if (entry.kind !== 'child' || !entry.hasChildren) continue
+      if (collapsed.has(entry.id) || visited.has(entry.id)) continue
+      visited.add(entry.id)
+      open.add(entry.id)
+      stack.push(entry.id)
+    }
+  }
+  return open
 }
 
 /** Running first, then most recently active first (a re-invoked continuable child bumps up). */
@@ -187,11 +235,15 @@ export function ActivityPanel(props: Props) {
   const homeId = address?.parentSessionId ?? props.sessionId
   // Subagents and jobs share Workbench's instance-tab set. Labels are pure
   // presentation derived from the current official catalog/snapshot; identity
-  // remains the child Session id or namespaced registry Job id.
+  // remains the child Session id or namespaced registry Job id. Every loaded
+  // catalog level contributes — a nested child's tab label must survive even
+  // when its branch is collapsed again (the official catalog stays loaded).
   const tabLabels = props.useSessions((snapshot: SessionsListState) => {
     const labels: Record<string, string> = {}
-    for (const candidate of snapshot.subagentsByParent[homeId]?.entries ?? EMPTY_ENTRIES) {
-      if (candidate.kind === 'child') labels[candidate.id] = candidate.label ?? candidate.id
+    for (const catalog of Object.values(snapshot.subagentsByParent)) {
+      for (const candidate of catalog.entries) {
+        if (candidate.kind === 'child') labels[candidate.id] = candidate.label ?? candidate.id
+      }
     }
     for (const job of snapshot.jobsBySession[homeId] ?? EMPTY_JOBS) {
       labels[jobInstanceId(job.id)] = job.label
@@ -213,6 +265,13 @@ function ActivityHome(props: Props & { homeId: SessionId; addressedId: SessionId
   const jobs = useSessions((snapshot: SessionsListState) => snapshot.jobsBySession[homeId]) ?? EMPTY_JOBS
   const catalog = useSessions((snapshot: SessionsListState) => snapshot.subagentsByParent[homeId])
   const byId = useSessions((snapshot: SessionsListState) => snapshot.byId)
+  // Every expanded branch level's official catalog, one record. Branch data
+  // itself stays in the official store; this selector only re-renders when a
+  // relevant catalog object is replaced.
+  const catalogs = useSessions(
+    (snapshot: SessionsListState) => snapshot.subagentsByParent,
+    equalCatalogs,
+  )
   const subagents = useMemo(() => subagentRows(catalog, byId), [catalog, byId])
   const [overview, setOverview] = useState<SubagentOverviewOk | undefined>(undefined)
   const cohort = useMemo(() => groupSubagents(subagents, overview), [subagents, overview])
@@ -230,6 +289,51 @@ function ActivityHome(props: Props & { homeId: SessionId; addressedId: SessionId
     }).catch(() => {})
     return () => { cancelled = true }
   }, [homeId, visible, catalog, jobs, subagentOverview])
+
+  // --- Nested-branch disclosure (presentation state only) ---
+  // Branches render EXPANDED by default; this set holds only explicit user
+  // collapses. Which levels are open is DERIVED from the official catalogs
+  // (the `hasChildren` hint) minus this set, so a branch that gains its first
+  // descendant opens by itself and the panel never stores the hierarchy.
+  const [collapsed, setCollapsed] = useState<ReadonlySet<SessionId>>(EMPTY_COLLAPSED)
+  // A new home means a different tree; drop the collapse choices (the
+  // registration effect below closes the old levels' live subscriptions).
+  useEffect(() => { setCollapsed(EMPTY_COLLAPSED) }, [homeId])
+  const toggleExpand = (id: SessionId): void => {
+    setCollapsed(previous => {
+      const next = new Set(previous)
+      if (!next.delete(id)) next.add(id)
+      return next.size === previous.size ? previous : next
+    })
+  }
+  // Levels whose branch is currently open: official expandable hints,
+  // reachable from home through open branches only.
+  const openLevels = useMemo(
+    () => deriveOpenLevels(catalogs, collapsed, homeId),
+    [catalogs, collapsed, homeId],
+  )
+  // Official live-membership registration: while visible, every open level's
+  // catalog is marked consumed (new children push refreshes — and a fresh
+  // `hasChildren` hint re-opens its branch through the derivation above);
+  // hiding the panel or collapsing the branch releases it. The home level
+  // registers too: the runtime only refreshes selected or registered
+  // catalogs, and while the conversation is drilled into a child the home
+  // session is neither — without this, top-level rows would freeze until
+  // navigation returns. Diffed, not swept, so an unrelated toggle does not
+  // churn other levels' subscriptions.
+  const setSubagentCatalogOpen = props.setSubagentCatalogOpen
+  const registeredRef = useRef<ReadonlySet<SessionId>>(new Set<SessionId>())
+  useEffect(() => {
+    const previous = registeredRef.current
+    const next = visible ? new Set([...openLevels, homeId]) : new Set<SessionId>()
+    for (const id of previous) if (!next.has(id)) setSubagentCatalogOpen(id, false)
+    for (const id of next) if (!previous.has(id)) setSubagentCatalogOpen(id, true)
+    registeredRef.current = next
+  }, [visible, openLevels, homeId, setSubagentCatalogOpen])
+  useEffect(() => () => {
+    for (const id of registeredRef.current) setSubagentCatalogOpen(id, false)
+  }, [setSubagentCatalogOpen])
+
   return <TasksPage
     sessionId={homeId}
     jobs={jobs}
@@ -239,19 +343,35 @@ function ActivityHome(props: Props & { homeId: SessionId; addressedId: SessionId
     openInstance={openInstance}
     closeFromConversation={props.closeFromConversation}
     stopJob={props.stopJob}
+    catalogs={catalogs}
+    byId={byId}
+    openLevels={openLevels}
+    onToggleExpand={toggleExpand}
+    refreshSubagents={props.refreshSubagents}
     t={props.t}
   />
 }
 
 function ActivityInstance(props: Props & { homeId: SessionId; childId: SessionId }) {
   const { homeId, childId, useSessions } = props
+  // The tab's child may sit at ANY expanded depth: resolve it against every
+  // loaded official catalog (session ids are unique, one owning parent) — a
+  // nested child keeps its exact direct-parent address for the jump.
   const child = useSessions((snapshot: SessionsListState): SelectedChildState => {
-    const entry = snapshot.subagentsByParent[homeId]?.entries.find(
-      candidate => candidate.kind === 'child' && candidate.id === childId,
-    )
-    return entry?.kind === 'child'
-      ? { listed: true, mode: entry.mode, running: entry.activity === 'running' }
-      : { listed: false, mode: undefined, running: false }
+    for (const [parentKey, catalog] of Object.entries(snapshot.subagentsByParent)) {
+      const entry = catalog.entries.find(
+        candidate => candidate.kind === 'child' && candidate.id === childId,
+      )
+      if (entry?.kind === 'child') {
+        return {
+          listed: true,
+          mode: entry.mode,
+          running: entry.activity === 'running',
+          parentSessionId: parentKey as SessionId,
+        }
+      }
+    }
+    return { listed: false, mode: undefined, running: false, parentSessionId: undefined }
   }, equalSelectedChild)
   const summaryRunning = useSessions((snapshot: SessionsListState) => snapshot.byId[childId]?.running === true)
   const usage = useSessions(
@@ -259,7 +379,7 @@ function ActivityInstance(props: Props & { homeId: SessionId; childId: SessionId
       SessionProjectionMap['tokenUsage'] | undefined,
     equalUsage,
   )
-  const { listed, mode } = child
+  const { listed, mode, parentSessionId } = child
   const running = child.running || summaryRunning
   const visible = props.visible !== false
 
@@ -282,13 +402,17 @@ function ActivityInstance(props: Props & { homeId: SessionId; childId: SessionId
         title={listed ? undefined : t('subagent.gone')}
         onClick={() => {
           showHome()
-          openInConversation({ parentSessionId: homeId, childSessionId: childId, mode: mode ?? 'one-shot' })
+          openInConversation({
+            parentSessionId: parentSessionId ?? homeId,
+            childSessionId: childId,
+            mode: mode ?? 'one-shot',
+          })
         }}
       >
         {t('subagent.open')}
       </button>
     </div>
-  ), [childId, homeId, listed, mode, openInConversation, running, showHome, t, usage])
+  ), [childId, homeId, listed, mode, openInConversation, parentSessionId, running, showHome, t, usage])
 
   const renderSlot = props.renderSlot
   const renderEmbed = useMemo<SubagentTabProps['renderEmbed']>(
@@ -384,11 +508,17 @@ interface TasksPageProps {
   openInstance(instanceId: string): void
   closeFromConversation: ActivityInjected['closeFromConversation']
   stopJob: ActivityInjected['stopJob']
+  catalogs: Readonly<Record<string, SubagentCatalogSnapshot>>
+  byId: Record<SessionId, SessionSummary>
+  openLevels: ReadonlySet<SessionId>
+  onToggleExpand(id: SessionId): void
+  refreshSubagents: ActivityInjected['refreshSubagents']
   t: T
 }
 
 function TasksPage({
-  sessionId, jobs, cohort, subagentCount, addressedId, openInstance, closeFromConversation, stopJob, t,
+  sessionId, jobs, cohort, subagentCount, addressedId, openInstance, closeFromConversation, stopJob,
+  catalogs, byId, openLevels, onToggleExpand, refreshSubagents, t,
 }: TasksPageProps) {
   const rows = useMemo(() => ordered(jobs), [jobs])
   const live = rows.filter(isLive)
@@ -426,6 +556,12 @@ function TasksPage({
     })
   }
 
+  /** Shared per-row props: every home-level row renders as a collapsible branch. */
+  const branchProps = {
+    parentSessionId: sessionId,
+    catalogs, byId, openLevels, onToggleExpand, refreshSubagents,
+    openInstance, closeFromConversation, t,
+  }
   const empty = rows.length === 0 && subagentCount === 0
   const splitGroups = cohort.turn.length > 0
   return (
@@ -439,29 +575,13 @@ function TasksPage({
           : <div className={css.list}>
               {splitGroups && <h4 className={css.groupTitle}>{t('subagent.turn')}<span>{cohort.turn.length}</span></h4>}
               {(splitGroups ? cohort.turn : cohort.earlier).map(row => (
-                <SubagentCard
-                  key={row.id}
-                  row={row}
-                  parentSessionId={sessionId}
-                  addressed={addressedId === row.id}
-                  openInstance={openInstance}
-                  closeFromConversation={closeFromConversation}
-                  t={t}
-                />
+                <SubagentBranch key={row.id} row={row} addressed={addressedId === row.id} {...branchProps} />
               ))}
               {splitGroups && cohort.earlier.length > 0 && (
                 <>
                   <h4 className={css.groupTitle}>{t('subagent.earlier')}<span>{cohort.earlier.length}</span></h4>
                   {cohort.earlier.map(row => (
-                    <SubagentCard
-                      key={row.id}
-                      row={row}
-                      parentSessionId={sessionId}
-                      addressed={addressedId === row.id}
-                      openInstance={openInstance}
-                      closeFromConversation={closeFromConversation}
-                      t={t}
-                    />
+                    <SubagentBranch key={row.id} row={row} addressed={addressedId === row.id} {...branchProps} />
                   ))}
                 </>
               )}
@@ -511,6 +631,10 @@ interface SubagentCardProps {
   row: SubagentRow
   parentSessionId: SessionId
   addressed: boolean
+  /** Official `hasChildren` hint: the row can disclose nested subagents. */
+  expandable: boolean
+  expanded: boolean
+  onToggleExpand(): void
   openInstance(instanceId: string): void
   closeFromConversation: ActivityInjected['closeFromConversation']
   t: T
@@ -520,9 +644,13 @@ interface SubagentCardProps {
  * One subagent row: opens its tab; the addressed child's meta becomes the
  * return control. Open tabs are NOT highlighted here — a subagent tab stays
  * open for the child's whole lifetime, so an open-tab fill would read as a
- * stuck highlight; the tab strip already shows what is open.
+ * stuck highlight; the tab strip already shows what is open. A fixed-width
+ * leading seat keeps labels aligned whether or not the row can expand; its
+ * chevron only toggles the nested branch and never opens the tab.
  */
-function SubagentCard({ row, parentSessionId, addressed, openInstance, closeFromConversation, t }: SubagentCardProps) {
+function SubagentCard({
+  row, parentSessionId, addressed, expandable, expanded, onToggleExpand, openInstance, closeFromConversation, t,
+}: SubagentCardProps) {
   const onOpen = (): void => { openInstance(row.id) }
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
     if (event.target !== event.currentTarget) return
@@ -540,6 +668,20 @@ function SubagentCard({ row, parentSessionId, addressed, openInstance, closeFrom
       onClick={onOpen}
       onKeyDown={onKeyDown}
     >
+      {expandable
+        ? (
+          <button
+            type="button"
+            className={css.expandChevron}
+            data-open={expanded || undefined}
+            aria-expanded={expanded}
+            aria-label={expanded ? t('subagent.collapse') : t('subagent.expand')}
+            onClick={event => { event.stopPropagation(); onToggleExpand() }}
+          >
+            <IconChevronRightOutline14 />
+          </button>
+        )
+        : <span className={css.expandSeat} aria-hidden="true" />}
       <StateDot className={css.stateDot} state={row.activity === 'running' ? 'ongoing' : 'done'} />
       <span className={css.subagentLabel} title={row.label}>{row.label}</span>
       {addressed
@@ -559,6 +701,117 @@ function SubagentCard({ row, parentSessionId, addressed, openInstance, closeFrom
             {row.activity === 'running' ? t('subagent.running') : t('subagent.idle')}
           </span>
         )}
+    </div>
+  )
+}
+
+interface SubagentBranchProps {
+  row: SubagentRow
+  parentSessionId: SessionId
+  addressed: boolean
+  catalogs: Readonly<Record<string, SubagentCatalogSnapshot>>
+  byId: Record<SessionId, SessionSummary>
+  openLevels: ReadonlySet<SessionId>
+  onToggleExpand(id: SessionId): void
+  refreshSubagents: ActivityInjected['refreshSubagents']
+  openInstance(instanceId: string): void
+  closeFromConversation: ActivityInjected['closeFromConversation']
+  t: T
+}
+
+/**
+ * One row plus, when open, its nested children: the next level of the
+ * OFFICIAL per-parent catalog rendered under a guide line, recursively. The
+ * branch holds no hierarchy state of its own — the open-level set is derived
+ * from the official catalogs (open by default) in the Home route.
+ */
+function SubagentBranch(props: SubagentBranchProps) {
+  const { row, openLevels, onToggleExpand } = props
+  const isOpen = row.hasChildren && openLevels.has(row.id)
+  return (
+    <>
+      <SubagentCard
+        row={row}
+        parentSessionId={props.parentSessionId}
+        addressed={props.addressed}
+        expandable={row.hasChildren}
+        expanded={isOpen}
+        onToggleExpand={() => { if (row.hasChildren) onToggleExpand(row.id) }}
+        openInstance={props.openInstance}
+        closeFromConversation={props.closeFromConversation}
+        t={props.t}
+      />
+      {isOpen && (
+        <NestedSubagents
+          parentId={row.id}
+          catalogs={props.catalogs}
+          byId={props.byId}
+          openLevels={openLevels}
+          onToggleExpand={onToggleExpand}
+          refreshSubagents={props.refreshSubagents}
+          openInstance={props.openInstance}
+          closeFromConversation={props.closeFromConversation}
+          t={props.t}
+        />
+      )}
+    </>
+  )
+}
+
+interface NestedSubagentsProps {
+  /** The open row whose official catalog holds this level's children. */
+  parentId: SessionId
+  catalogs: Readonly<Record<string, SubagentCatalogSnapshot>>
+  byId: Record<SessionId, SessionSummary>
+  openLevels: ReadonlySet<SessionId>
+  onToggleExpand(id: SessionId): void
+  refreshSubagents: ActivityInjected['refreshSubagents']
+  openInstance(instanceId: string): void
+  closeFromConversation: ActivityInjected['closeFromConversation']
+  t: T
+}
+
+/** One open level's body: loading, error, empty, or the child branches. */
+function NestedSubagents({ parentId, catalogs, byId, openLevels, onToggleExpand, refreshSubagents, openInstance, closeFromConversation, t }: NestedSubagentsProps) {
+  const catalog = catalogs[parentId]
+  if (catalog === undefined || catalog.state === 'loading') {
+    return <div className={css.nested}><div className={css.nestedStatus}>{t('subagent.children.loading')}</div></div>
+  }
+  if (catalog.state === 'error') {
+    const code = catalog.error?.code ?? 'unknown'
+    return (
+      <div className={css.nested}>
+        <div className={css.nestedStatus}>
+          {t('subagent.children.error', { code })}
+          <button type="button" className={css.nestedRetry} onClick={() => { void refreshSubagents(parentId) }}>
+            {t('subagent.children.retry')}
+          </button>
+        </div>
+      </div>
+    )
+  }
+  const rows = subagentRows(catalog, byId)
+  if (rows.length === 0) {
+    return <div className={css.nested}><div className={css.nestedStatus}>{t('subagent.children.empty')}</div></div>
+  }
+  return (
+    <div className={css.nested}>
+      {rows.map(child => (
+        <SubagentBranch
+          key={child.id}
+          row={child}
+          parentSessionId={parentId}
+          addressed={false}
+          catalogs={catalogs}
+          byId={byId}
+          openLevels={openLevels}
+          onToggleExpand={onToggleExpand}
+          refreshSubagents={refreshSubagents}
+          openInstance={openInstance}
+          closeFromConversation={closeFromConversation}
+          t={t}
+        />
+      ))}
     </div>
   )
 }
