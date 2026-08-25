@@ -58,9 +58,11 @@
 .expandChevron[data-open] svg { transform: rotate(90deg); }
 
 /* One expanded level: a left guide line marks the nested cohort; each level
-   compounds the indent. Cards stay borderless content cards — the line is
-   structural guidance, not card chrome. */
-.nested { display: flex; flex-direction: column; gap: 6px; margin: 2px 0 0 8px; padding-left: 12px; border-left: 1px solid var(--dsw-alias-border-l2); }
+   compounds the indent. The 16px margin centers the 1px line on the parent
+   row's chevron (row padding 8px + half the 16px seat), so the line reads as
+   growing out of the fold icon. Cards stay borderless content cards — the
+   line is structural guidance, not card chrome. */
+.nested { display: flex; flex-direction: column; gap: 6px; margin: 2px 0 0 16px; padding-left: 12px; border-left: 1px solid var(--dsw-alias-border-l2); }
 .nestedStatus { display: flex; align-items: center; gap: 6px; padding: 2px 8px; color: var(--dsw-alias-label-caption); font-size: 11px; line-height: 16px; }
 .nestedRetry { min-height: 20px; padding: 2px 8px; border: none; border-radius: 6px; background: transparent; color: var(--dsw-alias-label-secondary); font-size: 11px; line-height: 16px; cursor: pointer; }
 .nestedRetry:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
