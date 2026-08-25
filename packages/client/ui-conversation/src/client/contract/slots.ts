@@ -81,6 +81,15 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      */
     'conversation.session.header': { kind: 'single'; scope: 'session' }
     /**
+     * Per-session activity chips directly under the session header — the
+     * visibility outlet for background agent work on installed apps (the
+     * App Stage's invoke-activity signal lives here in conversation mode).
+     * Entries render by ascending `order`; the owner passes nothing because
+     * every chip is self-sufficient through the framework session kit and its
+     * own inject face. An empty seat is invisible.
+     */
+    'conversation.activity.chip': { kind: 'list'; scope: 'session' }
+    /**
      * One button in the session header's action row — the additive way to put
      * a per-session control beside the title without replacing the header.
      * Entries render by ascending `order`; negative values are reserved for
@@ -699,6 +708,7 @@ export interface ComposerChainProps {
 export type ConversationSlotProps =
   PropsRuntime<'conversation'> & PropsRenderSlots<
     | 'conversation.session' | 'conversation.session.header'
+    | 'conversation.activity.chip'
     | 'conversation.composer' | 'conversation.composer.bar'
     | 'conversation.input.overlay'
     | 'conversation.input.dock' | 'conversation.composer.dock'

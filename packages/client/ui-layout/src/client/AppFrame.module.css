@@ -243,6 +243,107 @@
   pointer-events: auto;
 }
 
+/* ── App Stage takeover (apps mode) ───────────────────────────────────── */
+
+/* The apps seat is mounted permanently and hidden while conversation mode
+ * owns the Stage — the same "keep the subtree mounted" invariant as the
+ * details column at zero width. Hidden is visibility (not display) so any
+ * live content inside keeps its layout and the layer can animate in place. */
+.appsLayer {
+  position: absolute;
+  grid-column: 1 / -1;
+  inset: 0 0 0 var(--dsh-stage-left);
+  z-index: 18;
+  visibility: hidden;
+  pointer-events: none;
+  background: var(--dsw-alias-bg-base);
+  transition: inset var(--ds-transition-duration-slow) var(--ds-ease-in-out);
+}
+
+.frame[data-stage-mode='apps'] .appsLayer {
+  visibility: visible;
+  pointer-events: auto;
+  /* Dock closed: the stage is FULLY covered — the conversation keeps its
+   * mounted-but-inert grid seat underneath and nothing of it may bleed
+   * through (B9 substate 3; the collapsed restore strip is apps-layer UI,
+   * not a frame concern). */
+  inset: 0 0 0 var(--dsh-stage-left);
+}
+
+/* Dock open: the stage's right band yields to the docked conversation
+ * (--dsh-dock-width is the frame-supplied dock preference). */
+.frame[data-stage-mode='apps'][data-dock-open] .appsLayer {
+  inset: 0 var(--dsh-dock-width, 400px) 0 var(--dsh-stage-left);
+}
+
+/* The docked conversation: the SAME conversation subtree, re-projected onto
+ * the Stage's right band (the phone's full-stage details projection applied
+ * to a band instead of the whole Stage). It rides above the apps layer and
+ * keeps its own background so the two surfaces read as adjacent panes. */
+.frame[data-stage-mode='apps'][data-dock-open] .centerCol {
+  position: absolute;
+  grid-column: 1 / -1;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: var(--dsh-dock-width, 400px);
+  z-index: 19;
+  background: var(--dsw-alias-bg-base);
+  border-left: 1px solid var(--dsw-alias-border-l1);
+  box-shadow: var(--dsw-shadow-lv3);
+}
+
+/* The dock-band details projection: with the dock open, an open Workbench
+ * projects into the band over the docked conversation (later DOM sibling
+ * wins the equal z-index). It keeps the Workbench's own open/close state;
+ * nothing here unmounts the Mosaic. */
+.frame[data-dock-details] .detailsCol {
+  position: absolute;
+  grid-column: 1 / -1;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: var(--dsh-dock-width, 400px);
+  z-index: 19;
+  background: var(--dsw-alias-bg-base);
+}
+
+/* Phone: the apps layer covers the whole Stage (Sidebar becomes a drawer
+ * above it) and the dock is an overlay drawer with its own mask. */
+.frame[data-phone][data-stage-mode='apps'] .appsLayer {
+  inset: 0;
+}
+
+.frame[data-phone][data-stage-mode='apps'][data-dock-open] .centerCol {
+  width: min(86vw, 320px);
+  box-shadow: var(--dsw-shadow-lv3);
+}
+
+.frame[data-phone][data-dock-details] .detailsCol {
+  width: min(86vw, 320px);
+}
+
+.dockMask {
+  display: none;
+}
+
+.frame[data-phone][data-stage-mode='apps'][data-dock-open] .dockMask {
+  position: absolute;
+  inset: 0;
+  z-index: 31;
+  display: block;
+  padding: 0;
+  border: 0;
+  background: var(--dsw-alias-bg-mask-1);
+  backdrop-filter: var(--dsw-mask-blur);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .appsLayer {
+    transition: none;
+  }
+}
+
 .mobileSidebarMask {
   display: none;
 }

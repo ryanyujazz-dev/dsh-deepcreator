@@ -6,7 +6,7 @@
  * real engine instance (same create path as production).
  */
 import { beforeEach, describe, expect, it } from 'vitest'
-import { createLayoutStore } from '@ryanyujazz/dsh-client-ui-layout/src/client/stores.ts'
+import { createLayoutStore, DOCK_WIDTH_MAX, DOCK_WIDTH_MIN } from '@ryanyujazz/dsh-client-ui-layout/src/client/stores.ts'
 import {
   DETAILS_DEFAULT, DETAILS_MAX, DETAILS_MIN,
   SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN,
@@ -19,7 +19,10 @@ beforeEach(() => { localStorage.clear() })
 describe('createLayoutStore', () => {
   it('initializes the sidebar at its default width, details closed, wide viewport assumed', () => {
     const { store } = createLayoutStore().create()
-    expect(store.getSnapshot()).toEqual({ sidebar: SIDEBAR_DEFAULT, details: 0, narrow: false, narrowExpanded: false, detailsFocused: false })
+    expect(store.getSnapshot()).toEqual({
+      sidebar: SIDEBAR_DEFAULT, details: 0, narrow: false, narrowExpanded: false, detailsFocused: false,
+      stageMode: 'conversation', dockOpen: false, dockWidth: 400,
+    })
   })
 
   it('each create() is an independent instance (factory is not a singleton)', () => {
@@ -55,7 +58,7 @@ describe('createLayoutStore', () => {
     actions.setSidebar(400)
     actions.setNarrow(true)
     actions.toggleSidebar()
-    expect(store.getSnapshot()).toEqual({ sidebar: 400, details: 0, narrow: true, narrowExpanded: true, detailsFocused: false })
+    expect(store.getSnapshot()).toEqual({ sidebar: 400, details: 0, narrow: true, narrowExpanded: true, detailsFocused: false, stageMode: 'conversation', dockOpen: false, dockWidth: 400 })
     actions.toggleSidebar()
     expect(store.getSnapshot().narrowExpanded).toBe(false)
     expect(store.getSnapshot().sidebar).toBe(400)
@@ -96,6 +99,37 @@ describe('createLayoutStore', () => {
       narrow: false,
       narrowExpanded: false,
       detailsFocused: false,
+      stageMode: 'conversation',
+      dockOpen: false,
+      dockWidth: 400,
     })
+  })
+
+  it('entering apps mode retires details focus; leaving keeps dock preferences', () => {
+    const { store, actions } = createLayoutStore().create()
+    actions.setDetails(500)
+    actions.setDetailsFocused(true)
+    actions.setDockOpen(true)
+    actions.setDockWidth(480)
+    actions.setStageMode('apps')
+    expect(store.getSnapshot()).toMatchObject({ stageMode: 'apps', detailsFocused: false, dockOpen: true, dockWidth: 480 })
+    actions.setStageMode('conversation')
+    // Root-scope transient: re-entering restores the left-off dock state.
+    expect(store.getSnapshot()).toMatchObject({ stageMode: 'conversation', dockOpen: true, dockWidth: 480 })
+  })
+
+  it('setDockWidth clamps into the dock steps', () => {
+    const { store, actions } = createLayoutStore().create()
+    actions.setDockWidth(1)
+    expect(store.getSnapshot().dockWidth).toBe(DOCK_WIDTH_MIN)
+    actions.setDockWidth(9999)
+    expect(store.getSnapshot().dockWidth).toBe(DOCK_WIDTH_MAX)
+  })
+
+  it('crossing the narrow breakpoint never touches stage mode', () => {
+    const { store, actions } = createLayoutStore().create()
+    actions.setStageMode('apps')
+    actions.setNarrow(true)
+    expect(store.getSnapshot().stageMode).toBe('apps')
   })
 })

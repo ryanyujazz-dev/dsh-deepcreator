@@ -71,6 +71,11 @@ async function bench(isLoopback = false) {
 
   const feature = await runtime.mount({ inject: [...inject], apply })
 
+  // The resident shell declared the per-session activity-chip seat (an empty
+  // seat renders nothing — the App Stage fills it in M4).
+  expect(runtime.slots.spec('conversation.activity.chip')).toEqual({ kind: 'list', scope: 'session' })
+  expect(runtime.slots.entries('conversation.activity.chip')).toHaveLength(0)
+
   // The host face (store resolution) exists only inside the installed
   // renderer, so materialize it the way the shell does.
   runtime.renderRoot()

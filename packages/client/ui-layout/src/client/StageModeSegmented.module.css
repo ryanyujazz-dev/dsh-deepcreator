@@ -1,0 +1,53 @@
+/* Stage-mode segmented control — the viewSwitcher family (conversation
+ * header's 对话 tab strip): same 24px segments, 6px radius chips, sidebar
+ * fill track. Sits between the Brand row and the primary action list, so it
+ * uses the sidebar surface tokens rather than the header's elevated ones. */
+
+.stageModeSwitcher {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0;
+  /* Section rhythm: the same 10px top beat the sidebar's independent content
+     sections use, plus the column's 8px inline padding. No bottom margin —
+     the primary list below keeps its own 0-margin list rhythm. */
+  margin: var(--dsh-sidebar-section-margin-top, 10px) 8px 0;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--dsw-specific-sidebar-fill);
+}
+
+.segment {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-width: 52px;
+  height: 24px;
+  padding: 0 9px;
+  border: none;
+  border-radius: 6px;
+  color: var(--dsw-alias-label-tertiary);
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--dsw-font-family);
+  font-size: var(--dsw-font-sidebar-font-size, 12px);
+  line-height: var(--dsw-font-sidebar-line-height, 18px);
+  font-weight: var(--dsw-font-weight-regular, 400);
+}
+
+.segment:hover:not([aria-selected='true']) {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.segment[aria-selected='true'] {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-button-elevated-fill);
+  box-shadow: var(--dsw-shadow-lv1);
+}
+
+.segment:focus-visible {
+  outline: 2px solid var(--dsw-alias-focus-ring);
+  outline-offset: 1px;
+}

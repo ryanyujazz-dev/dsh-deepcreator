@@ -16,6 +16,14 @@ import type { WorkspaceId } from '@deepseek-ai/dsh-client-runtime/client'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
+    /**
+     * The stage-mode switch (对话｜应用) directly under the Brand row and
+     * outside the primary action list. Declared by this package's 'sidebar'
+     * entry; the layout plugin contributes the control (the mode is layout
+     * state). The occupant renders nothing while the sidebar is collapsed
+     * (wide=false) — the mode survives independently of the column.
+     */
+    'sidebar.stage-mode': { kind: 'single'; scope: 'root'; owner: SidebarStageModeOwnerProps }
     /** Feature-owned rows immediately after the shell-owned New Session row. */
     'sidebar.primary.action': { kind: 'list'; scope: 'root'; owner: SidebarPrimaryActionOwnerProps }
     /**
@@ -65,6 +73,15 @@ export interface SidebarPrimaryActionOwnerProps {
   wide: boolean
 }
 
+/**
+ * Owner share of the stage-mode switch seat: only the column display state.
+ * The mode itself lives in the layout store of the contributing registrant.
+ */
+export interface SidebarStageModeOwnerProps {
+  /** Whether expanded sidebar content is visible. */
+  wide: boolean
+}
+
 /** Owner share of an action rendered beside Settings at the sidebar foot. */
 export interface SidebarFooterActionOwnerProps {
   /** Whether expanded sidebar content is visible. */
@@ -106,5 +123,5 @@ export type SidebarClosedToggleComponentProps =
  */
 export type SidebarRootComponentProps =
   PropsRuntime<'sidebar'>
-  & PropsRenderSlots<'sidebar.primary.action' | 'sidebar.workspaces' | 'sidebar.settings' | 'sidebar.footer.action'>
+  & PropsRenderSlots<'sidebar.stage-mode' | 'sidebar.primary.action' | 'sidebar.workspaces' | 'sidebar.settings' | 'sidebar.footer.action'>
   & SidebarRootInjected & PropsLocale<'sidebar'>

@@ -240,6 +240,9 @@ export function ConversationRoot({
   return (
     <div className={css.root} data-phase={phase}>
       {renderSlot('conversation.session.header', {})}
+      {/* Per-session activity chips (background agent work visibility) sit
+          directly under the header; an empty seat renders nothing at all. */}
+      {renderSlot('conversation.activity.chip', {})}
       <div ref={scrollRef} className={css.scrollBody} data-conversation-scroll="">
         {phase === 'active' && scrollEdges.top && (
           <div

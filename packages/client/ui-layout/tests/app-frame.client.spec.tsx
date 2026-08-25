@@ -61,6 +61,7 @@ function mountFrame() {
     if (key === 'sidebar') return <div data-testid="sidebar-content" />
     if (key === 'conversation') return <div data-testid="center-content" />
     if (key === 'details') return <div data-testid="details-content" />
+    if (key === 'deepcreator.stage.apps') return <div data-testid="apps-content" />
     if (key === 'deepcreator.shell.sidebar-toggle') return <button data-testid="sidebar-toggle">open</button>
     if (key === 'conversation.empty') return <div data-testid="empty-content" />
     return <div data-testid="other-content" />
@@ -295,6 +296,117 @@ describe('AppFrame', () => {
     expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(1)
     act(() => { instance.actions.toggleSidebar() })
     expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(0)
+  })
+})
+
+describe('AppFrame — apps stage mode', () => {
+  it('keeps the apps seat mounted and invisible while conversation mode owns the Stage', () => {
+    const { frame, getByTestId } = mountFrame()
+    expect(frame.getAttribute('data-stage-mode')).toBe('conversation')
+    expect(frame.hasAttribute('data-dock-open')).toBe(false)
+    // The seat layer exists with its occupant mounted (state continuity), but
+    // the frame claims no apps mode and no dock geometry.
+    const layer = frame.querySelector('[data-stage-apps]') as HTMLElement
+    expect(layer).not.toBeNull()
+    expect(getByTestId('apps-content')).toBeTruthy()
+  })
+
+  it('entering apps mode marks the frame, pushes one history entry, and suspends the covered columns', () => {
+    const push = vi.spyOn(window.history, 'pushState')
+    const back = vi.spyOn(window.history, 'back')
+    const { frame, instance } = mountFrame()
+    act(() => { instance.actions.setStageMode('apps') })
+    expect(frame.getAttribute('data-stage-mode')).toBe('apps')
+    expect(push).toHaveBeenCalledTimes(1)
+    expect(back).not.toHaveBeenCalled()
+    // The covered conversation is inert (mounted, out of tab order).
+    const center = frame.querySelector('[class*="centerCol"]') as HTMLElement
+    expect(center.hasAttribute('inert')).toBe(true)
+  })
+
+  it('an open dock restores conversation reachability and docks its geometry', () => {
+    const { frame, instance } = mountFrame()
+    act(() => { instance.actions.setStageMode('apps'); instance.actions.setDockOpen(true) })
+    expect(frame.hasAttribute('data-dock-open')).toBe(true)
+    expect(frame.style.getPropertyValue('--dsh-dock-width')).toBe('400px')
+    const center = frame.querySelector('[class*="centerCol"]') as HTMLElement
+    expect(center.hasAttribute('inert')).toBe(false)
+  })
+
+  it('an open details track inside the docked stage projects into the dock band', () => {
+    const { frame, instance } = mountFrame()
+    act(() => { instance.actions.setStageMode('apps'); instance.actions.setDockOpen(true); instance.actions.setDetails(520) })
+    expect(frame.hasAttribute('data-dock-details')).toBe(true)
+    const details = frame.querySelector('[class*="detailsCol"]') as HTMLElement
+    expect(details.hasAttribute('inert')).toBe(false)
+  })
+
+  it('entering apps mode retires details focus (the takeovers are exclusive)', () => {
+    const { instance } = mountFrame()
+    act(() => { instance.actions.setDetails(520); instance.actions.setDetailsFocused(true) })
+    act(() => { instance.actions.setStageMode('apps') })
+    expect(instance.store.getSnapshot().detailsFocused).toBe(false)
+    expect(instance.store.getSnapshot().details).toBe(520)
+  })
+
+  it('the back gesture (popstate to a foreign entry) leaves apps mode', () => {
+    const { frame, instance } = mountFrame()
+    act(() => { instance.actions.setStageMode('apps') })
+    act(() => { window.dispatchEvent(new PopStateEvent('popstate')) })
+    expect(frame.getAttribute('data-stage-mode')).toBe('conversation')
+  })
+
+  it('a popstate that lands ON the apps entry keeps apps mode', () => {
+    const { frame, instance } = mountFrame()
+    act(() => { instance.actions.setStageMode('apps') })
+    act(() => { window.dispatchEvent(new PopStateEvent('popstate', { state: { deepcreatorStageApps: true } })) })
+    expect(frame.getAttribute('data-stage-mode')).toBe('apps')
+  })
+
+  it('a programmatic exit consumes its own top history entry exactly once', () => {
+    const back = vi.spyOn(window.history, 'back')
+    const { frame, instance } = mountFrame()
+    act(() => { instance.actions.setStageMode('apps') })
+    act(() => { instance.actions.setStageMode('conversation') })
+    expect(back).toHaveBeenCalledTimes(1)
+    expect(frame.getAttribute('data-stage-mode')).toBe('conversation')
+    // The async popstate from that back() must not re-trigger anything.
+    act(() => { window.dispatchEvent(new PopStateEvent('popstate')) })
+    expect(frame.getAttribute('data-stage-mode')).toBe('conversation')
+    expect(back).toHaveBeenCalledTimes(1)
+  })
+
+  it('a programmatic exit under a foreign top entry leaves the buried entry alone', () => {
+    const back = vi.spyOn(window.history, 'back')
+    const { instance } = mountFrame()
+    act(() => { instance.actions.setStageMode('apps') })
+    // Someone else pushed above the apps entry (e.g. an in-app modal).
+    act(() => { window.history.pushState({ foreign: true }, '') })
+    act(() => { instance.actions.setStageMode('conversation') })
+    expect(back).not.toHaveBeenCalled()
+  })
+
+  it('phone viewport: apps mode claims the full stage and the dock is a drawer', () => {
+    frameWidth = 390
+    const { frame, instance } = mountFrame()
+    act(() => { instance.actions.setStageMode('apps') })
+    expect(frame.getAttribute('data-stage-mode')).toBe('apps')
+    expect(frame.hasAttribute('data-mobile-details-open')).toBe(false)
+    act(() => { instance.actions.setDockOpen(true) })
+    expect(frame.hasAttribute('data-dock-open')).toBe(true)
+    expect(frame.querySelector('[class*="dockMask"]')).not.toBeNull()
+  })
+
+  it('phone viewport: apps mode suspends the full-stage details projection', () => {
+    frameWidth = 390
+    const { frame, instance } = mountFrame()
+    act(() => { instance.actions.setDetails(520) })
+    expect(frame.hasAttribute('data-mobile-details-open')).toBe(true)
+    act(() => { instance.actions.setStageMode('apps') })
+    expect(frame.hasAttribute('data-mobile-details-open')).toBe(false)
+    // The preference survives; conversation mode brings the projection back.
+    act(() => { instance.actions.setStageMode('conversation') })
+    expect(frame.hasAttribute('data-mobile-details-open')).toBe(true)
   })
 })
 

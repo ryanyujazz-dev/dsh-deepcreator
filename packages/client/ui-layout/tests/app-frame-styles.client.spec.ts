@@ -47,4 +47,23 @@ describe('AppFrame native title-bar drag region', () => {
     expect(css).toContain(".handle[data-side='details']:hover::after")
     expect(css).toContain(".handle[data-side='details'][data-dragging]::after")
   })
+
+  it('covers the Stage completely while apps mode holds it with the dock closed', () => {
+    // Regression: the closed-dock rule must NOT yield the right edge — the
+    // dock-width variable is always set on the frame, so an unconditional
+    // right inset would leave a band where the inert conversation underneath
+    // bleeds through (the composer's model pill sits exactly there).
+    expect(css).toMatch(
+      /\.frame\[data-stage-mode='apps'\] \.appsLayer\s*\{[\s\S]*?inset: 0 0 0 var\(--dsh-stage-left\);[\s\S]*?\}/,
+    )
+    expect(css).not.toMatch(
+      /\.frame\[data-stage-mode='apps'\] \.appsLayer\s*\{[^}]*--dsh-dock-width/,
+    )
+  })
+
+  it('yields the apps layer right band only while the dock is open', () => {
+    expect(css).toMatch(
+      /\.frame\[data-stage-mode='apps'\]\[data-dock-open\] \.appsLayer\s*\{[\s\S]*?inset: 0 var\(--dsh-dock-width, 400px\) 0 var\(--dsh-stage-left\);/,
+    )
+  })
 })

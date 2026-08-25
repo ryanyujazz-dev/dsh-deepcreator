@@ -13,12 +13,22 @@ import {
   SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN,
 } from './columns.ts'
 
+/** Central-stage mode: the conversation Stage or the App Stage takeover. */
+export type StageMode = 'conversation' | 'apps'
+
+/** Conversation-dock width steps (px) the drag action snaps between. */
+export const DOCK_WIDTH_MIN = 320
+export const DOCK_WIDTH_MAX = 560
+
 /**
  * Layout store state: panel width preferences in px (0 = closed), plus the
  * narrow-viewport pair — `narrow` mirrors AppFrame's breakpoint reading
  * (viewport < SIDEBAR_AUTO_COLLAPSE) so toggleSidebar can pick semantics, and
  * `narrowExpanded` is the manual override that re-expands the auto-collapsed
  * sidebar over the squeezed center without rewriting the width preference.
+ * The stage-mode triple (`stageMode`/`dockOpen`/`dockWidth`) is root-scope
+ * transient presentation state: the App Stage is a person-scoped desktop, so
+ * the mode survives session/workspace switches and never persists.
  */
 type LayoutState = {
   sidebar: number
@@ -26,6 +36,9 @@ type LayoutState = {
   narrow: boolean
   narrowExpanded: boolean
   detailsFocused: boolean
+  stageMode: StageMode
+  dockOpen: boolean
+  dockWidth: number
 }
 
 /**
@@ -39,6 +52,9 @@ type LayoutActions = {
   setNarrow: (draft: LayoutState, narrow: boolean) => void
   setDetailsFocused: (draft: LayoutState, focused: boolean) => void
   closeDetails: (draft: LayoutState) => void
+  setStageMode: (draft: LayoutState, mode: StageMode) => void
+  setDockOpen: (draft: LayoutState, open: boolean) => void
+  setDockWidth: (draft: LayoutState, px: number) => void
 }
 
 /**
@@ -59,6 +75,9 @@ export function createLayoutStore(): EngineStoreHandle<LayoutState, LayoutAction
       narrow: false,
       narrowExpanded: false,
       detailsFocused: false,
+      stageMode: 'conversation',
+      dockOpen: false,
+      dockWidth: 400,
     }),
     actions: {
       setSidebar: (d, px: number) => { d.sidebar = clampWidth(px, SIDEBAR_MIN, SIDEBAR_MAX) },
@@ -78,6 +97,16 @@ export function createLayoutStore(): EngineStoreHandle<LayoutState, LayoutAction
         d.narrowExpanded = false
       },
       setDetailsFocused: (d, focused: boolean) => { d.detailsFocused = focused },
+      // Entering apps mode takes the Stage with the same geometry family as
+      // details Focus, so the two takeovers are mutually exclusive: the last
+      // mode wins and the previous one's flag drops. Leaving apps mode keeps
+      // the dock preferences (root transient: re-entering restores them).
+      setStageMode: (d, mode: StageMode) => {
+        d.stageMode = mode
+        if (mode === 'apps') d.detailsFocused = false
+      },
+      setDockOpen: (d, open: boolean) => { d.dockOpen = open },
+      setDockWidth: (d, px: number) => { d.dockWidth = clampWidth(px, DOCK_WIDTH_MIN, DOCK_WIDTH_MAX) },
     },
   })
   return handle

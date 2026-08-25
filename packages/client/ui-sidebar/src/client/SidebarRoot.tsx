@@ -161,6 +161,12 @@ export function SidebarRoot({
         </Tooltip>
       </div>
 
+      {/* Stage-mode switch seat (对话｜应用): rendered by its owner (the
+          layout plugin contributes the control bound to the layout store),
+          placed under the Brand row and outside the primary action list —
+          a mode toggle is shell chrome, not a feature action. */}
+      {renderSlot('sidebar.stage-mode', { wide })}
+
       {/* Shell-owned New Session and Scheduled Tasks rows frame a list of
           independently disposable feature actions. */}
       <ul className={css.primaryList} aria-label={t('primary.aria')}>

@@ -9,16 +9,17 @@
  * declared action set, delivered as the registration's bound actions.
  */
 import type { BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
+import type { StageMode } from './stores.ts'
 import type { createLayoutStore } from './stores.ts'
 
 /** The layout store's bound action set (framework-baked, draft params peeled). */
 export type PanelActions = BoundActions<ReturnType<typeof createLayoutStore>>
 
 /**
- * The outward layout face (`ctx.layout`): the panel transitions other
- * plugins may trigger — and exactly what a test fake must supply. The
- * attachPanels wiring hook stays on the concrete class (root-entry assembly
- * only).
+ * The outward layout face (`ctx.layout`): the panel and stage-mode
+ * transitions other plugins may trigger — and exactly what a test fake must
+ * supply. The attachPanels wiring hook stays on the concrete class
+ * (root-entry assembly only).
  */
 export interface ILayout {
   /** Toggle the sidebar panel (closed ⟷ contract default width). */
@@ -29,6 +30,12 @@ export interface ILayout {
   setWorkbenchWidth(px: number): void
   /** Let the details occupant cover the full Stage without covering Sidebar. */
   setWorkbenchFocused(focused: boolean): void
+  /** Switch the central Stage between the conversation and the App Stage takeover. */
+  setStageMode(mode: StageMode): void
+  /** Open or collapse the conversation dock inside apps mode. */
+  setDockOpen(open: boolean): void
+  /** Set the conversation dock width preference (px, clamped to its steps). */
+  setDockWidth(px: number): void
 }
 
 /** Cross-plugin panel-action face (ctx.layout). */
@@ -62,6 +69,18 @@ export class LayoutController implements ILayout {
 
   setWorkbenchFocused(focused: boolean): void {
     this.#require().setDetailsFocused(focused)
+  }
+
+  setStageMode(mode: StageMode): void {
+    this.#require().setStageMode(mode)
+  }
+
+  setDockOpen(open: boolean): void {
+    this.#require().setDockOpen(open)
+  }
+
+  setDockWidth(px: number): void {
+    this.#require().setDockWidth(px)
   }
 
   #require(): PanelActions {
