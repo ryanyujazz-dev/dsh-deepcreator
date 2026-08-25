@@ -46,6 +46,26 @@
 .subagentClose:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
 .subagentClose:focus-visible { outline: 1px solid var(--dsw-alias-state-business-primary); outline-offset: -1px; }
 
+/* --- Nested subagent disclosure --- */
+
+/* Fixed-width leading seat keeps card labels aligned whether or not the row
+   can expand; the chevron occupies it only for expandable rows. */
+.expandSeat { flex: none; width: 16px; }
+.expandChevron { display: inline-flex; flex: none; width: 16px; height: 16px; align-items: center; justify-content: center; padding: 0; border: none; border-radius: 4px; background: transparent; color: var(--dsw-alias-label-tertiary); cursor: pointer; }
+.expandChevron:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-secondary); }
+.expandChevron:focus-visible { outline: 1px solid var(--dsw-alias-state-business-primary); outline-offset: -1px; }
+.expandChevron[data-open] { color: var(--dsw-alias-label-secondary); }
+.expandChevron[data-open] svg { transform: rotate(90deg); }
+
+/* One expanded level: a left guide line marks the nested cohort; each level
+   compounds the indent. Cards stay borderless content cards — the line is
+   structural guidance, not card chrome. */
+.nested { display: flex; flex-direction: column; gap: 6px; margin: 2px 0 0 8px; padding-left: 12px; border-left: 1px solid var(--dsw-alias-border-l2); }
+.nestedStatus { display: flex; align-items: center; gap: 6px; padding: 2px 8px; color: var(--dsw-alias-label-caption); font-size: 11px; line-height: 16px; }
+.nestedRetry { min-height: 20px; padding: 2px 8px; border: none; border-radius: 6px; background: transparent; color: var(--dsw-alias-label-secondary); font-size: 11px; line-height: 16px; cursor: pointer; }
+.nestedRetry:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.nestedRetry:focus-visible { outline: 1px solid var(--dsw-alias-state-business-primary); outline-offset: -1px; }
+
 .notice { padding: 6px 8px; border-radius: 8px; background: color-mix(in srgb, var(--dsw-alias-label-warning, #d97706) 10%, var(--dsw-alias-fill-l1)); color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 18px; }
 
 .empty { min-height: 100%; display: grid; place-content: center; gap: 4px; padding: 24px; text-align: center; color: var(--dsw-alias-label-tertiary); font-size: 12px; }

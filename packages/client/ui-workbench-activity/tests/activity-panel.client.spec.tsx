@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { JobView, SessionId, SessionSummary, SubagentAddress, SubagentCatalogSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
 import {
-  ActivityPanel, formatDuration, groupSubagents, isLive, jobIdFromInstance, jobInstanceId,
+  ActivityPanel, deriveOpenLevels, formatDuration, groupSubagents, isLive, jobIdFromInstance, jobInstanceId,
   subagentRows, type SubagentRow,
 } from '../src/client/ActivityPanel.tsx'
 import type { ActivityInjected } from '../src/client/injected.ts'
@@ -52,6 +52,8 @@ function panelProps(state: ListState, injected: Partial<ActivityInjected> = {}, 
     visible: true,
     stopJob: vi.fn(async () => ({ ok: true as const })),
     subagentOverview: vi.fn(async () => ({ ok: true as const, children: [] })),
+    refreshSubagents: vi.fn(async () => undefined),
+    setSubagentCatalogOpen: vi.fn(),
     renderSlot: Object.assign((key: string, owner: unknown) => ({ key, owner }), { subscribe: () => () => {}, version: () => 0 }),
     openInConversation: vi.fn(),
     closeFromConversation: vi.fn(),
@@ -106,10 +108,10 @@ describe('activity helpers', () => {
 
 describe('groupSubagents cohort split', () => {
   const rows: SubagentRow[] = [
-    { id: 'session-old' as SessionId, label: '旧代理', mode: 'continuable', activity: 'inactive' },
-    { id: 'session-now' as SessionId, label: '本轮代理', mode: 'one-shot', activity: 'inactive' },
-    { id: 'session-revived' as SessionId, label: '复用代理', mode: 'continuable', activity: 'inactive' },
-    { id: 'session-live' as SessionId, label: '运行代理', mode: 'one-shot', activity: 'running' },
+    { id: 'session-old' as SessionId, label: '旧代理', mode: 'continuable', activity: 'inactive', hasChildren: false },
+    { id: 'session-now' as SessionId, label: '本轮代理', mode: 'one-shot', activity: 'inactive', hasChildren: false },
+    { id: 'session-revived' as SessionId, label: '复用代理', mode: 'continuable', activity: 'inactive', hasChildren: false },
+    { id: 'session-live' as SessionId, label: '运行代理', mode: 'one-shot', activity: 'running', hasChildren: false },
   ]
 
   it('keeps this-turn children on top, most recently active first', () => {
@@ -274,6 +276,182 @@ describe('ActivityPanel home route', () => {
     const state: ListState = { byId: {}, currentAddress: undefined, jobsBySession: { [SESSION]: [] }, subagentsByParent: { [SESSION]: catalog([]) } }
     const view = render(<ActivityPanel {...panelProps(state)} />)
     expect(view.container.textContent).toContain('empty.title')
+  })
+})
+
+describe('ActivityPanel nested subagent disclosure', () => {
+  beforeEach(() => { vi.useFakeTimers() })
+  afterEach(() => { cleanup(); vi.useRealTimers() })
+
+  const MIDDLE = 'session-mid-1' as SessionId
+  const GRAND = 'session-grand-1' as SessionId
+
+  /** Home catalog with one expandable continuable child. */
+  const nestedState = (middleCatalog: SubagentCatalogSnapshot, byId: ListState['byId'] = {}): ListState => ({
+    byId,
+    currentAddress: undefined,
+    jobsBySession: { [SESSION]: [] },
+    subagentsByParent: {
+      [SESSION]: catalog([
+        { kind: 'child', id: MIDDLE, activity: 'running', hasChildren: true, mode: 'continuable', label: '中层代理' },
+      ]),
+      [MIDDLE]: middleCatalog,
+    },
+  })
+
+  const grandCatalog = catalog([
+    { kind: 'child', id: GRAND, activity: 'running', hasChildren: false, mode: 'one-shot', label: '孙代理' },
+  ])
+
+  it('derives open levels from official hints, skipping collapsed subtrees', () => {
+    const catalogs = {
+      [SESSION]: catalog([
+        { kind: 'child', id: MIDDLE, activity: 'inactive', hasChildren: true, mode: 'continuable', label: '中层代理' },
+      ]),
+      [MIDDLE]: catalog([
+        { kind: 'child', id: GRAND, activity: 'inactive', hasChildren: true, mode: 'continuable', label: '孙代理' },
+      ]),
+      [GRAND]: catalog([]),
+    }
+    expect([...deriveOpenLevels(catalogs, new Set(), SESSION)].sort()).toEqual([GRAND, MIDDLE].sort())
+    // A collapsed ancestor hides its whole subtree, not just itself.
+    expect(deriveOpenLevels(catalogs, new Set([MIDDLE]), SESSION).size).toBe(0)
+    // Collapsing only the deeper level keeps the middle branch open.
+    expect([...deriveOpenLevels(catalogs, new Set([GRAND]), SESSION)]).toEqual([MIDDLE])
+  })
+
+  it('renders the collapse control only for rows the catalog marks expandable', () => {
+    const state: ListState = {
+      byId: {},
+      currentAddress: undefined,
+      jobsBySession: { [SESSION]: [] },
+      subagentsByParent: { [SESSION]: catalog([
+        { kind: 'child', id: MIDDLE, activity: 'inactive', hasChildren: true, mode: 'continuable', label: '中层代理' },
+        { kind: 'child', id: GRAND, activity: 'inactive', hasChildren: false, mode: 'one-shot', label: '叶代理' },
+      ]) },
+    }
+    const props = panelProps(state)
+    const view = render(<ActivityPanel {...props} />)
+    const chevron = screen.getByRole('button', { name: 'subagent.collapse' })
+    expect(chevron.getAttribute('aria-expanded')).toBe('true')
+    // The leaf row keeps its aligned leading seat without a toggle.
+    const seats = view.container.querySelectorAll('[class*="expandSeat"]')
+    expect(seats.length).toBe(1)
+  })
+
+  it('discloses nested children and registers the official catalog without a click', () => {
+    const props = panelProps(nestedState(grandCatalog))
+    render(<ActivityPanel {...props} />)
+    // Default-open: the middle level is registered as consumed on mount.
+    expect(props.setSubagentCatalogOpen).toHaveBeenCalledExactlyOnceWith(MIDDLE, true)
+    expect(props.openInstance).not.toHaveBeenCalled()
+    // The grandchild row appears under the open branch and opens its own tab.
+    fireEvent.click(screen.getByRole('button', { name: /孙代理/ }))
+    expect(props.openInstance).toHaveBeenCalledExactlyOnceWith(GRAND)
+  })
+
+  it('re-opens a manually collapsed branch', () => {
+    const props = panelProps(nestedState(grandCatalog))
+    render(<ActivityPanel {...props} />)
+    fireEvent.click(screen.getByRole('button', { name: 'subagent.collapse' }))
+    expect(props.setSubagentCatalogOpen).toHaveBeenLastCalledWith(MIDDLE, false)
+    expect(screen.queryByText('孙代理')).toBeNull()
+    const chevron = screen.getByRole('button', { name: 'subagent.expand' })
+    expect(chevron.getAttribute('aria-expanded')).toBe('false')
+    fireEvent.click(chevron)
+    expect(props.setSubagentCatalogOpen).toHaveBeenLastCalledWith(MIDDLE, true)
+    expect(screen.getByText('孙代理')).toBeTruthy()
+  })
+
+  it('opens every hasChildren level by default and collapsing an ancestor releases them all', () => {
+    const deepCatalog = catalog([
+      { kind: 'child', id: GRAND, activity: 'inactive', hasChildren: true, mode: 'continuable', label: '孙代理' },
+    ])
+    const leafCatalog = catalog([
+      { kind: 'child', id: 'session-leaf-1' as SessionId, activity: 'inactive', hasChildren: false, mode: 'one-shot', label: '曾孙代理' },
+    ])
+    const state: ListState = {
+      ...nestedState(deepCatalog),
+      subagentsByParent: {
+        ...nestedState(deepCatalog).subagentsByParent,
+        [GRAND]: leafCatalog,
+      },
+    }
+    const props = panelProps(state)
+    render(<ActivityPanel {...props} />)
+    // Both nested levels registered themselves as consumed on mount.
+    const opened = props.setSubagentCatalogOpen.mock.calls.filter(([, open]) => open).map(([id]) => id)
+    expect(opened).toEqual(expect.arrayContaining([MIDDLE, GRAND]))
+    expect(screen.getByText('曾孙代理')).toBeTruthy()
+    props.setSubagentCatalogOpen.mockClear()
+    // Collapse the TOP branch (its chevron sits outside any nested container).
+    const middleChevron = screen.getAllByRole('button', { name: 'subagent.collapse' })
+      .find(button => button.closest('[class*="nested"]') === null)
+    expect(middleChevron).toBeDefined()
+    fireEvent.click(middleChevron!)
+    const calls = props.setSubagentCatalogOpen.mock.calls.map(([id, open]) => `${id}:${open}`)
+    expect(calls).toContain(`${MIDDLE}:false`)
+    expect(calls).toContain(`${GRAND}:false`)
+    expect(screen.queryByText('曾孙代理')).toBeNull()
+  })
+
+  it('closes every open catalog subscription on unmount', () => {
+    const props = panelProps(nestedState(grandCatalog))
+    render(<ActivityPanel {...props} />)
+    // Default-open registered the middle level on mount.
+    props.setSubagentCatalogOpen.mockClear()
+    cleanup()
+    expect(props.setSubagentCatalogOpen).toHaveBeenCalledExactlyOnceWith(MIDDLE, false)
+  })
+
+  it('shows loading, error with retry, and empty states for a nested level', () => {
+    const loading: ListState = nestedState({ entries: [], state: 'loading', error: null, parentAvailable: false })
+    const first = render(<ActivityPanel {...panelProps(loading)} />)
+    expect(first.container.textContent).toContain('subagent.children.loading')
+    cleanup()
+
+    const errored: ListState = nestedState({
+      entries: [], state: 'error', error: { code: 'internal', message: 'boom' } as never, parentAvailable: false,
+    })
+    const retryProps = panelProps(errored)
+    const second = render(<ActivityPanel {...retryProps} />)
+    expect(second.container.textContent).toContain('subagent.children.error:code=internal')
+    fireEvent.click(screen.getByRole('button', { name: 'subagent.children.retry' }))
+    expect(retryProps.refreshSubagents).toHaveBeenCalledExactlyOnceWith(MIDDLE)
+    cleanup()
+
+    const emptied = panelProps(nestedState(catalog([])))
+    const third = render(<ActivityPanel {...emptied} />)
+    expect(third.container.textContent).toContain('subagent.children.empty')
+  })
+
+  it('contributes nested labels for open tabs and keeps them after collapse', () => {
+    const contributions: Array<{ tabLabels?: Record<string, string> }> = []
+    const props = panelProps(nestedState(grandCatalog))
+    props.contributePanelInfo = contribution => { contributions.push(contribution); return () => undefined }
+    render(<ActivityPanel {...props} />)
+    const expanded = contributions.at(-1)?.tabLabels
+    expect(expanded).toMatchObject({ [MIDDLE]: '中层代理', [GRAND]: '孙代理' })
+    fireEvent.click(screen.getByRole('button', { name: 'subagent.collapse' }))
+    // The official catalog stays loaded, so a nested tab keeps its label.
+    expect(contributions.at(-1)?.tabLabels).toMatchObject({ [GRAND]: '孙代理' })
+  })
+
+  it('resolves a nested child tab against its own parent catalog for the conversation jump', () => {
+    let embedOwner: unknown
+    const props = panelProps(nestedState(grandCatalog), {}, { route: 'instance', activeInstanceId: GRAND })
+    props.renderSlot = Object.assign(
+      (key: string, owner: unknown) => { embedOwner = owner; return null },
+      { subscribe: () => () => {}, version: () => 0 },
+    ) as never
+    const view = render(<ActivityPanel {...props} />)
+    expect(view.container.textContent).not.toContain('subagent.gone')
+    expect(embedOwner).toEqual({ childSessionId: GRAND })
+    fireEvent.click(view.getByRole('button', { name: 'subagent.open' }))
+    expect(props.openInConversation).toHaveBeenCalledExactlyOnceWith({
+      parentSessionId: MIDDLE, childSessionId: GRAND, mode: 'one-shot',
+    })
+    expect(props.showHome).toHaveBeenCalledOnce()
   })
 })
 

@@ -51,6 +51,10 @@ export function apply(ctx: ClientContext): void {
           const wire = await jobsAdmin.subagentOverview(parentSessionId)
           return wire.ok ? wire.value : { ok: false, code: 'READ_FAILED', message: wire.error.message }
         },
+        // Nested subagent disclosure rides the official per-parent catalog:
+        // expansion loads one more level of the same authoritative store.
+        refreshSubagents: parentSessionId => ctx.sessions.refreshSubagents(parentSessionId),
+        setSubagentCatalogOpen: (parentSessionId, open) => { ctx.sessions.setSubagentCatalogOpen(parentSessionId, open) },
         openInConversation: address => { ctx.sessions.openSubagent(address) },
         closeFromConversation: parentSessionId => { ctx.sessions.open(parentSessionId) },
       })
