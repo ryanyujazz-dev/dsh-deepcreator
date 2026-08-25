@@ -32,7 +32,10 @@ Registers the `activity` Workbench type and owns two routes:
   `sessions.setSubagentCatalogOpen(child, true)` — loading that level's
   `subagentsByParent` catalog and keeping it live while open — and collapse
   or hide releases the subscription (collapsing an ancestor releases every
-  deeper level too). The panel never stores the hierarchy: rows, labels,
+  deeper level too). The home level itself registers as well while the panel
+  is visible: the runtime refreshes only selected or registered catalogs, and
+  while the conversation is drilled into a child the home session is neither,
+  so this registration keeps top-level rows live through that state. The panel never stores the hierarchy: rows, labels,
   modes, activity bits, and the "expandable" hint all come from the official
   per-parent catalogs. Nested cards open Workbench tabs keyed by their own
   session ids (labels survive collapse because the official catalog stays

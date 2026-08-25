@@ -315,17 +315,21 @@ function ActivityHome(props: Props & { homeId: SessionId; addressedId: SessionId
   // Official live-membership registration: while visible, every open level's
   // catalog is marked consumed (new children push refreshes — and a fresh
   // `hasChildren` hint re-opens its branch through the derivation above);
-  // hiding the panel or collapsing the branch releases it. Diffed, not
-  // swept, so an unrelated toggle does not churn other levels' subscriptions.
+  // hiding the panel or collapsing the branch releases it. The home level
+  // registers too: the runtime only refreshes selected or registered
+  // catalogs, and while the conversation is drilled into a child the home
+  // session is neither — without this, top-level rows would freeze until
+  // navigation returns. Diffed, not swept, so an unrelated toggle does not
+  // churn other levels' subscriptions.
   const setSubagentCatalogOpen = props.setSubagentCatalogOpen
   const registeredRef = useRef<ReadonlySet<SessionId>>(new Set<SessionId>())
   useEffect(() => {
     const previous = registeredRef.current
-    const next = visible ? openLevels : new Set<SessionId>()
+    const next = visible ? new Set([...openLevels, homeId]) : new Set<SessionId>()
     for (const id of previous) if (!next.has(id)) setSubagentCatalogOpen(id, false)
     for (const id of next) if (!previous.has(id)) setSubagentCatalogOpen(id, true)
     registeredRef.current = next
-  }, [visible, openLevels, setSubagentCatalogOpen])
+  }, [visible, openLevels, homeId, setSubagentCatalogOpen])
   useEffect(() => () => {
     for (const id of registeredRef.current) setSubagentCatalogOpen(id, false)
   }, [setSubagentCatalogOpen])

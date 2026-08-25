@@ -342,8 +342,10 @@ describe('ActivityPanel nested subagent disclosure', () => {
   it('discloses nested children and registers the official catalog without a click', () => {
     const props = panelProps(nestedState(grandCatalog))
     render(<ActivityPanel {...props} />)
-    // Default-open: the middle level is registered as consumed on mount.
-    expect(props.setSubagentCatalogOpen).toHaveBeenCalledExactlyOnceWith(MIDDLE, true)
+    // Default-open: the middle level AND the home level (whose rows render
+    // while the conversation may be drilled into a child) register on mount.
+    expect(props.setSubagentCatalogOpen).toHaveBeenCalledWith(MIDDLE, true)
+    expect(props.setSubagentCatalogOpen).toHaveBeenCalledWith(SESSION, true)
     expect(props.openInstance).not.toHaveBeenCalled()
     // The grandchild row appears under the open branch and opens its own tab.
     fireEvent.click(screen.getByRole('button', { name: /孙代理/ }))
@@ -379,9 +381,9 @@ describe('ActivityPanel nested subagent disclosure', () => {
     }
     const props = panelProps(state)
     render(<ActivityPanel {...props} />)
-    // Both nested levels registered themselves as consumed on mount.
+    // Both nested levels plus the home level registered themselves on mount.
     const opened = props.setSubagentCatalogOpen.mock.calls.filter(([, open]) => open).map(([id]) => id)
-    expect(opened).toEqual(expect.arrayContaining([MIDDLE, GRAND]))
+    expect(opened).toEqual(expect.arrayContaining([SESSION, MIDDLE, GRAND]))
     expect(screen.getByText('曾孙代理')).toBeTruthy()
     props.setSubagentCatalogOpen.mockClear()
     // Collapse the TOP branch (its chevron sits outside any nested container).
@@ -398,10 +400,71 @@ describe('ActivityPanel nested subagent disclosure', () => {
   it('closes every open catalog subscription on unmount', () => {
     const props = panelProps(nestedState(grandCatalog))
     render(<ActivityPanel {...props} />)
-    // Default-open registered the middle level on mount.
+    // Default-open registered the middle and home levels on mount.
     props.setSubagentCatalogOpen.mockClear()
     cleanup()
-    expect(props.setSubagentCatalogOpen).toHaveBeenCalledExactlyOnceWith(MIDDLE, false)
+    const released = props.setSubagentCatalogOpen.mock.calls.filter(([, open]) => !open).map(([id]) => id)
+    expect(released).toEqual(expect.arrayContaining([SESSION, MIDDLE]))
+    expect(props.setSubagentCatalogOpen).toHaveBeenCalledTimes(2)
+  })
+
+  it('releases every open level while the panel is hidden and reopens on return', () => {
+    const deepCatalog = catalog([
+      { kind: 'child', id: GRAND, activity: 'inactive', hasChildren: true, mode: 'continuable', label: '孙代理' },
+    ])
+    const state: ListState = {
+      ...nestedState(deepCatalog),
+      subagentsByParent: { ...nestedState(deepCatalog).subagentsByParent, [GRAND]: catalog([]) },
+    }
+    const props = panelProps(state)
+    const view = render(<ActivityPanel {...props} />)
+    props.setSubagentCatalogOpen.mockClear()
+    view.rerender(<ActivityPanel {...props} visible={false} />)
+    // Hiding the panel releases the home level and every open nested level.
+    const released = props.setSubagentCatalogOpen.mock.calls.filter(([, open]) => !open).map(([id]) => id)
+    expect(released).toEqual(expect.arrayContaining([SESSION, MIDDLE, GRAND]))
+    expect(props.setSubagentCatalogOpen.mock.calls.filter(([, open]) => open)).toEqual([])
+    // Returning visibility re-registers the same set.
+    props.setSubagentCatalogOpen.mockClear()
+    view.rerender(<ActivityPanel {...props} />)
+    const reopened = props.setSubagentCatalogOpen.mock.calls.filter(([, open]) => open).map(([id]) => id)
+    expect(reopened).toEqual(expect.arrayContaining([SESSION, MIDDLE, GRAND]))
+  })
+
+  it('releases old levels and resets collapses when the home session changes', () => {
+    const OTHER = 'session-home-2' as SessionId
+    const MIDDLE2 = 'session-mid-2' as SessionId
+    const otherState: ListState = {
+      byId: {}, currentAddress: undefined,
+      jobsBySession: { [OTHER]: [] },
+      subagentsByParent: {
+        [OTHER]: catalog([
+          { kind: 'child', id: MIDDLE2, activity: 'inactive', hasChildren: true, mode: 'continuable', label: '另一层代理' },
+        ]),
+        [MIDDLE2]: catalog([]),
+      },
+    }
+    const first = panelProps(nestedState(grandCatalog))
+    const view = render(<ActivityPanel {...first} />)
+    // Manually collapse the middle branch, then move to a different home.
+    fireEvent.click(screen.getByRole('button', { name: 'subagent.collapse' }))
+    first.setSubagentCatalogOpen.mockClear()
+    const second = panelProps(otherState)
+    second.sessionId = OTHER
+    second.setSubagentCatalogOpen = first.setSubagentCatalogOpen
+    view.rerender(<ActivityPanel {...second} />)
+    // The old home level is released; the new home and its expandable level open.
+    const calls = second.setSubagentCatalogOpen.mock.calls.map(([id, open]) => `${id}:${open}`)
+    expect(calls).toContain(`${SESSION}:false`)
+    expect(calls).toContain(`${OTHER}:true`)
+    expect(calls).toContain(`${MIDDLE2}:true`)
+    expect(view.container.textContent).toContain('subagent.children.empty')
+    // Returning to the first home re-opens its middle branch: the manual
+    // collapse was a presentation choice of that tree and has been reset.
+    second.setSubagentCatalogOpen.mockClear()
+    view.rerender(<ActivityPanel {...first} />)
+    expect(second.setSubagentCatalogOpen).toHaveBeenCalledWith(MIDDLE, true)
+    expect(view.getByText('孙代理')).toBeTruthy()
   })
 
   it('shows loading, error with retry, and empty states for a nested level', () => {
