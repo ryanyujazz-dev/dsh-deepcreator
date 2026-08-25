@@ -1,0 +1,293 @@
+/* App Stage shell. Same material family as the conversation shell: base
+ * surface, l1 borders, the shared toolbar button metric, and the 12px card
+ * radius family. The desktop's density inversion (open field, centered
+ * grid) comes from spacing, not from new chrome. */
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  background: var(--dsw-alias-bg-base);
+}
+
+.topBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 48px;
+  flex: none;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+}
+
+.titleCluster {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--dsw-font-body-s-font-size, 14px);
+  line-height: var(--dsw-font-body-s-line-height, 22px);
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The toolbar family: 28px icon/text buttons on the shared metric. */
+.toolButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-size: var(--dsw-font-body-s-font-size, 14px);
+  line-height: var(--dsw-font-body-s-line-height, 22px);
+  cursor: pointer;
+}
+
+.toolButton:hover { background: var(--dsw-alias-bg-hover); color: var(--dsw-alias-label-primary); }
+.toolButton[aria-pressed='true'] {
+  /* Pressed = the Workbench type-entry precedent: brand ink, transparent fill. */
+  background: transparent;
+  color: var(--dsw-alias-accent, var(--dsw-alias-label-primary));
+}
+
+.dockGlyph, .menuCaret { font-size: 12px; line-height: 1; }
+
+.menuAnchor { position: relative; }
+
+.menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 1100;
+  display: flex;
+  flex-direction: column;
+  min-width: 260px;
+  max-width: min(360px, 90vw);
+  max-height: 420px;
+  overflow: auto;
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-raised);
+  border: 1px solid var(--dsw-alias-border-l1);
+  box-shadow: var(--dsw-shadow-lv3);
+}
+
+.menuHint {
+  padding: 10px 12px;
+  font-size: var(--dsw-font-body-s-font-size, 14px);
+  line-height: var(--dsw-font-body-s-line-height, 22px);
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.menuRow, .menuRowDim {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  font-size: var(--dsw-font-body-s-font-size, 14px);
+  line-height: var(--dsw-font-body-s-line-height, 22px);
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+}
+
+.menuRowDim { color: var(--dsw-alias-label-tertiary); cursor: default; }
+.menuRow:hover:enabled { background: var(--dsw-alias-bg-hover); }
+.menuRow:disabled { opacity: 0.7; }
+
+.menuRowName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.menuRowMeta { flex: none; color: var(--dsw-alias-label-tertiary); font-size: 12px; }
+
+.menuRowReason {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-hover);
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.body { flex: 1; min-height: 0; display: flex; }
+
+/* The desktop: an open field with a centered, auto-filling icon wall. */
+.launcher {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 16px;
+  align-content: start;
+  padding: 48px clamp(16px, 8%, 96px);
+  overflow: auto;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 8px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.card:hover { background: var(--dsw-alias-bg-hover); }
+
+.cardIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-hover);
+  color: var(--dsw-alias-label-primary);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.cardName {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--dsw-font-body-s-font-size, 14px);
+  line-height: var(--dsw-font-body-s-line-height, 22px);
+  color: var(--dsw-alias-label-primary);
+}
+
+.cardMeta { font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-tertiary); }
+
+/* Launcher M3: card cluster with source annotation, blue dot, removal arm. */
+.cardShell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.cardSource {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.cardDot {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dsw-alias-accent, #0071e3);
+}
+
+.cardRemove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 14px;
+  line-height: 22px;
+  text-align: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.cardShell:hover .cardRemove,
+.cardRemove[aria-pressed='true'] { opacity: 1; }
+
+.cardRemove[aria-pressed='true'] {
+  background: var(--dsw-alias-bg-raised);
+  border: 1px solid var(--dsw-alias-border-l1);
+  color: var(--dsw-alias-label-warning, #b10000);
+}
+
+.launcherNotice {
+  grid-column: 1 / -1;
+  padding: 0 0 4px;
+  font-size: var(--dsw-font-body-s-font-size, 14px);
+  line-height: var(--dsw-font-body-s-line-height, 22px);
+  color: var(--dsw-alias-label-secondary);
+}
+
+.empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  font-size: var(--dsw-font-body-s-font-size, 14px);
+  line-height: var(--dsw-font-body-s-line-height, 22px);
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* The sandbox container: the iframe fills the stage under the merged strip. */
+.containerArea {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: var(--dsw-alias-bg-base);
+}
+
+.devBadge {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  z-index: 2;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-raised);
+  border: 1px solid var(--dsw-alias-border-l1);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  line-height: 16px;
+  pointer-events: none;
+}

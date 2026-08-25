@@ -1,0 +1,73 @@
+{
+  "name": "@ryanyujazz/dsh-client-ui-app-stage",
+  "description": "DeepCreator App Stage shell: launcher, dev menu, and sandboxed app containers",
+  "version": "0.1.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ryanyujazz-dev/dsh-deepcreator.git",
+    "directory": "packages/client/ui-app-stage"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@ryanyujazz/dsh-client-locale",
+        "@ryanyujazz/dsh-client-ui-layout",
+        "@ryanyujazz/dsh-client-ui-primitives"
+      ],
+      "platform": "web"
+    }
+  },
+  "scripts": {
+    "bundle": "tsc -p tsconfig.json && tsdown",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --root ../../.. packages/client/ui-app-stage/tests"
+  },
+  "license": "MIT",
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "4.0.1",
+    "@deepseek-ai/dsh-client-runtime": "^0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-slots": "^0.1.1-rc.2",
+    "@deepseek-ai/dsh-typert-protocol": "^0.1.1-rc.2",
+    "@ryanyujazz/dsh-app-stage": "^0.1.0",
+    "@ryanyujazz/dsh-client-locale": "^0.1.0",
+    "@ryanyujazz/dsh-client-ui-layout": "^0.1.0",
+    "@ryanyujazz/dsh-client-ui-primitives": "^0.1.0",
+    "react": "^18.2.0"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.1",
+    "@deepseek-ai/dsh-client-runtime": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-slots": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-typert-protocol": "0.1.1-rc.2",
+    "@ryanyujazz/dsh-app-stage": "workspace:^",
+    "@ryanyujazz/dsh-client-locale": "workspace:^",
+    "@ryanyujazz/dsh-client-ui-layout": "workspace:^",
+    "@ryanyujazz/dsh-client-ui-primitives": "workspace:^",
+    "@testing-library/react": "^16.1.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "jsdom": "^25.0.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "vitest": "^3.2.7"
+  }
+}
