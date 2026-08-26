@@ -344,6 +344,7 @@ export const INVOKE_CIRCUIT_THRESHOLD = 5
  * failures on one app open the session's circuit. */
 export function createAppInvokeTool(env: AppOperationEnvironment): ToolDefinition {
   const failures = new Map<string, number>()
+  let calls = 0
   return defineTool({
     name: 'app_invoke',
     description: 'Drive one declared action of an installed app through the structured command channel; the user\'s view is not switched (see app_open for presentation). Use this instead of DOM automation whenever the app declares a matching action. appId addresses only the installed copy; action must exist in the installed manifest; params must match declared names and types — extras or mistyped keys are rejected before execution. The return carries {appId, version} for skill-pack drift awareness.',
@@ -356,6 +357,10 @@ export function createAppInvokeTool(env: AppOperationEnvironment): ToolDefinitio
     async execute(args, exec) {
       const session = owner(exec).session
       const { appId, action } = args as { appId: string; action: string }
+      calls += 1
+      if (calls > 384) {
+        return json(toolError('INVOKE_LIMIT', 'This session exceeded the invoke budget (384 = the 48-per-turn cap with long-session headroom); per-app circuits already force diagnosis — finish the work or start a new session.', { appId }))
+      }
       if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(appId) || appId.length > 64) {
         return json(toolError('APP_ID_INVALID', `appId "${appId}" is not a legal app id (kebab-case segments of [a-z0-9], ≤64 chars).`, { appId }))
       }
@@ -409,8 +414,8 @@ export function createAppOpenTool(env: AppOperationEnvironment): ToolDefinition 
         return json(toolError('APP_ID_INVALID', `appId "${appId}" is not a legal app id (kebab-case segments of [a-z0-9], ≤64 chars).`, { appId }))
       }
       opens += 1
-      if (opens > 64) {
-        return json(toolError('OPEN_LIMIT', 'This session exceeded the open budget (64); the container set is already as open as it can be.', { appId }))
+      if (opens > 128) {
+        return json(toolError('OPEN_LIMIT', 'This session exceeded the open budget (128 = the 16-per-turn cap with long-session headroom); the container set is already as open as it can be.', { appId }))
       }
       const result = await env.appStage.open(session, appId, focus)
       if (!result.ok) return json(toolError(result.code, result.message, { appId }))
@@ -484,8 +489,8 @@ export function createAppDataWriteTool(env: AppOperationEnvironment): ToolDefini
         return json(toolError('PATH_INVALID', `path "${path}" is not a legal dot-separated key path (≤256 chars).`, { appId, path }))
       }
       writes += 1
-      if (writes > 128) {
-        return json(toolError('WRITE_LIMIT', 'This session exceeded the write budget (128); batch remaining work into fewer, larger values.', { appId }))
+      if (writes > 256) {
+        return json(toolError('WRITE_LIMIT', 'This session exceeded the write budget (256 = the 32-per-turn cap with long-session headroom); batch remaining work into fewer, larger values.', { appId }))
       }
       if (consecutiveFailures >= 3) {
         return json(toolError('WRITE_CIRCUIT', 'Three consecutive write failures; read the document structure with app_data_read before the next attempt.', { appId }))
@@ -536,8 +541,8 @@ export function createAppAssetWriteTool(env: AppOperationEnvironment): ToolDefin
       if (!ASSET_NAME_PATTERN.test(name) || name.length > 128) {
         return json(toolError('NAME_INVALID', 'asset name must match ^[A-Za-z0-9][A-Za-z0-9._-]*$ (≤128 chars) with a whitelisted extension.', { name }))
       }
-      if (writes >= 256) {
-        return json(toolError('WRITE_CIRCUIT', 'asset write budget for this conversation is exhausted (256); finish or start a new session.', { limit: '256' }))
+      if (writes >= 128) {
+        return json(toolError('WRITE_CIRCUIT', 'asset write budget for this conversation is exhausted (128 = the 16-per-turn cap with long-session headroom; quota guards the disk surface); finish or start a new session.', { limit: '128' }))
       }
       writes += 1
       const result = await env.appStage.assetWrite(session, appId, name, sourcePath)

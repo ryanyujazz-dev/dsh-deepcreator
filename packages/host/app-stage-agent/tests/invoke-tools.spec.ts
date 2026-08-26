@@ -96,6 +96,16 @@ describe('app_invoke circuit (E1: five consecutive failures → CIRCUIT_OPEN)', 
     expect(env.appStage.invoke).not.toHaveBeenCalled()
   })
 
+  it('enforces the session invoke hard cap with diagnostic guidance', async () => {
+    const env = envWith(success)
+    const tool = createAppInvokeTool(env)
+    let last: { error?: { code: string } } = {}
+    for (let i = 0; i < 385; i += 1) {
+      last = envelope(await tool.execute({ appId: 'kanban-demo', action: 'createTask', params: {} }, execWith())) as { error?: { code: string } }
+    }
+    expect(last.error?.code).toBe('INVOKE_LIMIT')
+  })
+
   it('returns the version and persistedKeys for skill-pack drift awareness', async () => {
     const env = envWith(success)
     const tool = createAppInvokeTool(env)
