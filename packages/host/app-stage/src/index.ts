@@ -406,7 +406,7 @@ export class AppStageService extends TypertRemoteService {
     if (!checked.ok) return { ok: false, code: 'PARAMS_MISMATCH', message: checked.message }
     const revBefore = await this.installedRev(appId)
     const settlement = await this.router.push(
-      { kind: 'invoke', appId, version: resolved.version, action, params },
+      { kind: 'invoke', appId, version: resolved.version, name: resolved.manifest.name, action, params },
       INVOKE_TIMEOUT_MS,
     )
     const applied = (await this.installedRev(appId)) !== revBefore
@@ -444,7 +444,7 @@ export class AppStageService extends TypertRemoteService {
     void session
     const resolved = await this.resolveInstalled(appId)
     if (!resolved.ok) return resolved
-    const settlement = await this.router.push({ kind: 'open', appId, version: resolved.version, focus }, OPEN_TIMEOUT_MS)
+    const settlement = await this.router.push({ kind: 'open', appId, version: resolved.version, name: resolved.manifest.name, focus }, OPEN_TIMEOUT_MS)
     if (settlement.kind === 'reported') {
       if (settlement.outcome.error !== undefined) {
         return { ok: false, code: 'CONTAINER_UNAVAILABLE', message: `the Stage router could not present the app: ${settlement.outcome.error.message}` }

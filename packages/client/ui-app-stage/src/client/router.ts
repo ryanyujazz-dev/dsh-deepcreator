@@ -156,7 +156,7 @@ export function createStageRouter(env: RouterEnv, bridge: (frame: HTMLIFrameElem
     if (session === undefined) return
     let outcome: AppRouterOutcome
     if (request.kind === 'invoke') {
-      env.onActivity({ appId: request.appId, name: request.appId })
+      env.onActivity({ appId: request.appId, name: request.name ?? request.appId })
       try {
         outcome = await handleInvoke(request)
       } finally {

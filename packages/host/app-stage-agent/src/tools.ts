@@ -31,6 +31,20 @@ export function toolError(code: string, message: string, context: Record<string,
 const outputSchema = { type: 'json' } as const
 const render = (_args: unknown, value: unknown): { type: 'text'; text: string }[] => [{ type: 'text' as const, text: JSON.stringify(value) }]
 
+/**
+ * Models routinely deliver a `json`-typed parameter as a JSON-encoded
+ * string (double serialization). Unwrap once before use; a parse failure
+ * falls through so validation rejects with a clear message.
+ */
+function coerceJsonArg(raw: unknown): unknown {
+  if (typeof raw !== 'string') return raw
+  try {
+    return JSON.parse(raw) as unknown
+  } catch {
+    return raw
+  }
+}
+
 /** JSON-safe projection of one journal/tool value. */
 function json(value: unknown): JsonValue {
   return JSON.parse(JSON.stringify(value ?? null)) as JsonValue
@@ -371,7 +385,7 @@ export function createAppInvokeTool(env: AppOperationEnvironment): ToolDefinitio
       if (circuit >= INVOKE_CIRCUIT_THRESHOLD) {
         return json(toolError('CIRCUIT_OPEN', `App "${appId}" failed ${circuit} consecutive invokes in this session; the circuit is open. Diagnose with app_list / app_manifest before any further attempt.`, { appId, failures: String(circuit) }))
       }
-      const params = ((args as { params?: unknown }).params ?? {}) as import('@ryanyujazz/dsh-app-stage/types').AppJsonValue
+      const params = coerceJsonArg((args as { params?: unknown }).params ?? {}) as import('@ryanyujazz/dsh-app-stage/types').AppJsonValue
       const result = await env.appStage.invoke(session, appId, action, params)
       if (!result.ok) {
         if (CIRCUIT_CODES.has(result.code)) failures.set(appId, circuit + 1)
@@ -481,7 +495,7 @@ export function createAppDataWriteTool(env: AppOperationEnvironment): ToolDefini
     async execute(args, exec) {
       const session = owner(exec).session
       const { appId, path } = args as { appId: string; path: string }
-      const value = (args as { value?: unknown }).value ?? null
+      const value = coerceJsonArg((args as { value?: unknown }).value) ?? null
       if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(appId) || appId.length > 64) {
         return json(toolError('APP_ID_INVALID', `appId "${appId}" is not a legal app id (kebab-case segments of [a-z0-9], ≤64 chars).`, { appId }))
       }

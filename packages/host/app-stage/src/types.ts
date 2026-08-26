@@ -235,6 +235,8 @@ export interface AppRouterRequest {
   readonly requestId: string
   readonly appId: string
   readonly version: string
+  /** The manifest's human-facing name (activity-chip copy falls back to appId). */
+  readonly name?: string
   /** invoke only: the declared action name. */
   readonly action?: string
   /** invoke only: the validated params object. */

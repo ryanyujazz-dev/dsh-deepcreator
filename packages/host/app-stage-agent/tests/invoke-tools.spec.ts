@@ -80,6 +80,14 @@ describe('app_invoke circuit (E1: five consecutive failures → CIRCUIT_OPEN)', 
     expect(env.appStage.invoke).toHaveBeenCalledTimes(9)
   })
 
+  it('unwraps a JSON-encoded string params (model double serialization)', async () => {
+    const env = envWith(success)
+    const tool = createAppInvokeTool(env)
+    const result = envelope(await tool.execute({ appId: 'kanban-demo', action: 'createTask', params: '{\"title\": \"M4 验收卡\"}' }, execWith()))
+    expect(result.error).toBeUndefined()
+    expect(env.appStage.invoke).toHaveBeenCalledWith(expect.anything(), 'kanban-demo', 'createTask', { title: 'M4 验收卡' })
+  })
+
   it('surfaces actionApplied on timeout with the read-first fix guidance', async () => {
     const env = envWith(async () => ({ ok: false, code: 'INVOKE_TIMEOUT', message: 'the router did not complete within 30000 ms; the command may already have run', actionApplied: true }))
     const tool = createAppInvokeTool(env)
