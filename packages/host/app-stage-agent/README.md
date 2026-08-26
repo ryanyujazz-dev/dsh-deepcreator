@@ -2,7 +2,7 @@
 
 App Stage 的 agent 会话行（preset 行，**绝不进 bundle**）：`app_*` 工具面只在这一行内注册，普通会话永远看不到它（工具可得性即权限）。app-stage preset 的 composition 以 file: URL 指向本包构建产物，loader 与包名行走同一动态 import 路径（S5 已验证）。
 
-## 工具面（M2/M3 已实装）
+## 工具面（M2/M3/M4 已实装）
 
 `inject: ['appStage', 'userQuestions', 'tools']`；preset 行的 `apply` 直接运行在会话 fiber 里，因此**直接 `ctx.tools.register`**（tool-bash 模式——注册随 fiber 生灭，天然可逆；不要用 `agent/session-start` 事件，那是 browser-playwright 等宿主行的模式，preset 会话里不会触发到本行）。
 
@@ -11,8 +11,15 @@ App Stage 的 agent 会话行（preset 行，**绝不进 bundle**）：`app_*` �
 
 - `app_publish`（M3）— 参 appId。链路：`preparePublish`（定位+闸+版本策略+staging 快照+零外联扫描+浏览器探针；任一失败返回对应失败码，探针失败 = PROBE_FAILED 且 detail 说明未达通道）→ 审批策略：first 与 update-cross-source 挂官方 `ctx.userQuestions.ask`（无超时；显式取消 reject `ASK_CANCELLED` → USER_DECLINED + 拒绝计数；会话终 abort signal → 静默丢弃 staging 草稿后 rethrow）；update-same-source 免确认直装。拒绝计数达 2（PUBLISH_DECLINE_BAN）本会话封禁。审批卡正文含名称/版本/来源工作区/文件数与大小/digest 前缀/扫描摘要/订阅键/截图说明/可逆性声明。成功返回 plan/digest/subscribedKeys/scanViolations/screenshotTaken。
 
+- `app_invoke`（M4）— 参 appId + action + params。宿主端先过 manifest 声明与 `validateInvokeParams`（ACTION_NOT_DECLARED / PARAMS_MISMATCH），再经路由中枢等 Stage 容器结算（30s）。回执带 version、handler result 与 persistedKeys（journal diff 证据）；`INVOKE_TIMEOUT` 且 `actionApplied: 'true'` 时附 fix：命令可能已执行，必须先 `app_data_read` 验证再重试。连续 5 次执行失败（CIRCUIT_CODES 计数，`INVOKE_CIRCUIT_THRESHOLD = 5`）本会话熔断回 `CIRCUIT_OPEN`——先 app_list / app_manifest 诊断再尝试；成功即清零。
+- `app_open`（M4）— 参 appId + focus：focus=true 让 GUI 切到 apps 模式并前置容器（用户在对话模式即可看见被驱动的应用）；15s 为容器冷启动预算，无路由器在线回 CONTAINER_UNAVAILABLE。
+- `app_data_read`（M4）— 键路径读，回 `found` 位：`found:false` 区分键路径缺失与存 null（AppData 是唯一事实源，DOM 只是投影）。省略 path 读整树（逼近 4MiB 上限，先窄读）。
+- `app_data_write`（M4）— 键路径写，走 journal；连续 3 次失败熔断回 `WRITE_CIRCUIT`（fix：先 app_data_read 读文档结构再写）。
+- `app_asset_write`（M4）— 同源被动媒体资产通道：写 `$DSH_HOME/deepcreator/apps/assets/<appId>/`，白名单+魔数+配额三闸；同名写幂等 upsert，`STORE_WRITE_FAILED` 的 fix 明示重试安全、`ASSET_QUOTA_EXCEEDED` 的 fix 引导 app_asset_list 清点后同名覆盖。
+- `app_asset_list`（M4）— 单应用资产清点（名称/大小/时间）与配额占用。
+
 工具 schema 用 dsh-tools DSL：不支持 `pattern`/`maxLength`（`unsupported JSON schema` 拒载），约束写进 description 并在 execute 内手动校验。
 
 `userQuestions` 服务是**宿主平面行**（组合第 36 行），preset 会话运行在宿主组合内故天然可得——preset composition 里**不要**再注册该行（服务名碰撞会让整行挂载失败）。
 
-后续里程碑在此行追加 `app_invoke`/`app_data_read`/`app_data_write` 等（M4）。
+后续里程碑在此行追加 `app_takeover`（Px-β）等。

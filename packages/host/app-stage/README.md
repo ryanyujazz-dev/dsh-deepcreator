@@ -12,6 +12,9 @@ App Stage 的 host 常驻行：应用发现登记处（记录全集 + 完整性�
 - `src/publish.ts` — 发布闸机械半程（M3）：版本策略三分支（first / update-same-source 免确认 / update-cross-source 轻确认；同版本 VERSION_NOT_BUMPED、降级 VERSION_DOWNGRADED 拒绝）、目录快照进私有 staging（16MiB 上限 PACKAGE_TOO_LARGE）、零外联扫描（absolute-url 与 navigation-api 两模式，文本扩展名集内扫描）、快照 sha256 digest 链、`commitSnapshot` rename 落 installed（跨设备 cp 回退）、`uninstallApp` 三目录净卸（installed/assets/data）、`gateForPublish` 复用 dev 闸。
 - `src/probe.ts` — staging 浏览器探针（M3）：直依 playwright-core 私起 headless chromium（可执行文件解析 env → bundled → 系统候选），验证 entry fetch（status 200 + MIME 前缀）与 `data.subscribe` ≥1 键（通道二机器验证），首屏截图存 `apps/staging-shots/`（best-effort 降级为 icon+名称）。订阅未达即 PROBE_FAILED。
 - `src/builtin.ts` — 出厂预装（M3）：`notes-sample` 便签示例随常驻行首启装入 installed 域（`publishedVia: 'builtin'`、真实快照 digest、UI 标注「来自 DeepCreator」、可卸载；卸载后不回装，同 id 真实发布不受影响）。
+- `src/control.ts` — 路由中枢 `AppRouterHub`（M4）：宿主侧操作请求队列 + parked 长轮询。`waitRouterRequests(afterCursor)` 无新请求时挂起（`ROUTER_POLL_MS` 25s 节奏空返回），`routerResult(requestId, outcome)` 结算对应 pending 请求；一条队列、一个单调 cursor、presence 宽限 3s / seen 窗口 40s，路由器掉线由超时兜底（INVOKE 30s / OPEN 15s）。
+- `src/params.ts` — `validateInvokeParams`（M4）：invoke 入队前按 manifest action 的 params 声明校验入参（类型与必选），失败返回 PARAMS_MISMATCH 的完整消息。
+- `src/assets.ts` — 资产通道存储面（M4）：`$DSH_HOME/deepcreator/apps/assets/<appId>/` 下被动媒体文件。白名单扩展名 png/jpg/jpeg/webp/gif/mp4/webm 且魔数嗅探一致（永不含 SVG），content-type 取自白名单；单资产 ≤64MiB（ASSET_TOO_LARGE）、单应用 ≤256MiB 配额（ASSET_QUOTA_EXCEEDED）；同名写 = 幂等 upsert，回收靠同名覆盖或卸载。供给走 serve 的 `/deepcreator-app-stage/assets/<appId>/<name>`（同源，CSP 'self' 内成立）；卸载清空整个资产目录，资产不进发布快照。
 - `src/index.ts` 服务端点（M3 增）：`preparePublish`（闸+staging+探针，草稿以 draftToken 存宿主内存）→ 审批（agent 侧走 `ctx.userQuestions` 缝）→ `commitPublish` / `abortPublish`；`uninstall`；`list` 带 `updatedSinceOpen` 蓝点（`opened.json` 水位：`ensure` 已安装分支记录打开版本）。
 - `src/watcher.ts` — 会话绑定 watcher 集：`bind/unbind` 引用计数（首个 bind 起 watcher、归零拆除），首个 bind 起 60ms 去抖聚合发 `app-stage/dev-changed(cwd)`。平台策略：构造 recursive `fs.watch` 前先 probe handle（Linux 构造不抛错、首个 callback 才报错）；目标目录缺失时 fallback 定时签名扫描（目录名+mtime 递归深度 3），目录出现后 tick 内升级 recursive 并对比新旧 signature 补发漏掉的事件。
 - `src/preset.ts` — app-stage agent preset 物化器（generator 3）：`$DSH_HOME/.agent-presets/app-stage/` 下生成 `agent.cordis.yml`（`- id: app-stage-agent` / `name: '<agent 包 file: URL>'` + 完整工具/skills 组合）、`preset.yml`、`skills/`（app-dev 与 workstage-use 全文）与 stamp（generator + agent entry + 三 digest）。三态返回 materialized/verified/healed。
@@ -27,6 +30,13 @@ tsdown 的 typert 生成 `./typert`（host 面）与 `./remote`（client 投影�
 - `dataGet(session, {scope?, path?})` — 读整树或键路径，返回 `{ok, value, rev}`；ref 形如 `dev:<appId>`（本会话工作区）或裸 installed id。
 - `dataSet(session, {ref, path, value, causeId?})` — 键路径写：校验 → structuredClone 树 → 原子写 doc.json → 追加 journal，返回 `{ok, rev}`；错误带机器码（`PATH_INVALID`/`VALUE_TOO_LARGE`/`DOC_TOO_LARGE`/`APP_NOT_INSTALLED`/`RUNTIME_BROKEN`）。
 - `dataChanges(session, {ref, sinceRev})` — journal 增量 `{ok, changes: [{rev, path, value, causeId, ts}], rev}`，client 桥的订阅轮询数据源。
+
+## 操作面端点（M4）
+
+- `invoke(session, {appId, action, params})` — 只寻址 installed 应用：resolveInstalled（dev 对 invoke 不可寻址）→ manifest 声明核对（`ACTION_NOT_DECLARED`）→ `validateInvokeParams`（`PARAMS_MISMATCH`）→ 请求入 AppRouterHub 队列，等 Stage 路由器结算（30s）。成功返回带 version + handler result + `persistedKeys`（以 revBefore 为基线的 journal diff 去重键集——本次 action 实际落盘的证据）；handler 失败回 `HANDLER_FAILED`（app 文本不可信）；无路由器在线回 `CONTAINER_UNAVAILABLE`。超时回 `INVOKE_TIMEOUT` 且 `actionApplied: true` 表示文档 rev 已前进——命令可能已执行，重试前必须先读验证。
+- `open(session, {appId, focus})` — 展示意途：`focus=true` 让路由器把 GUI 切到 apps 模式并前置容器；15s 为容器冷启动预算；返回 opened（本次是否新挂载）/focused。
+- `dataProbe(session, {ref, path?})` — found 位读取：`found:false` 精确区分键路径缺失与存 null（`dataGet` 按边界纪律把缺失读作 null，二义）。
+- `assetWrite` / `assetList` — 资产通道端点：写走 `assets.ts` 的白名单+魔数+配额三闸，读返回单应用资产清点与配额占用。
 
 ## 刷新语义（M2 起）
 

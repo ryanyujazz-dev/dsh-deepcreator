@@ -39,7 +39,7 @@ interface PresetStamp {
 }
 
 /** Bump when the generated files' shape changes (drifted stamps re-materialize). */
-const GENERATOR_VERSION = 6
+const GENERATOR_VERSION = 7
 
 const digest = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex')
 const nodeRequire = createRequire(import.meta.url)
@@ -69,6 +69,7 @@ const PERSONA = [
   '- 数据进出走 `app_data_read` / `app_data_write`（键路径级，写即广播到所有打开实例；AppData 是唯一事实源，DOM 只是投影——验证效果先读数据）。',
   '- 呈现走 `app_open`（focus:true 是你切用户视图的唯一合法触发点，仅在用户要求看或成品就绪时用；focus:false 只开容器亮活动信号）。你在对话模式驱动应用时，侧边栏「应用」亮活动点并出现活动 chip——用户看得见你在操作什么。',
   '- 超时纪律（E1）：`app_invoke` 超时的命令可能已执行——先 `app_data_read` 验证效果再决定重试，非幂等 action 禁盲目重发；同一应用连续 5 次失败会熔断（CIRCUIT_OPEN），先 `app_list`/`app_manifest` 诊断根因，不要硬闯。',
+  '- 二进制产物（生成图/视频）永不进 AppData 与 invoke params：`app_asset_write` 把 workspace 文件送进应用自己的同源资产目录（被动媒体白名单+内容校验+配额，同名覆盖即回收），AppData 只存返回的 url 引用；放置前 `app_asset_list` 清点去重。',
   '',
   '纪律：错误显式可行动；改完源码立即重新过闸复测；文档与 AGENT.md 随应用走。',
 ].join('\n')

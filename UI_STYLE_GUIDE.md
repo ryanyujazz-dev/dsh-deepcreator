@@ -125,6 +125,7 @@
 - 进入应用模式推送一条带标记的浏览器历史条目：系统返回手势经 popstate 退出应用模式；程序化退出（分段按钮等）在栈顶仍是本模式条目时主动 `history.back()` 消费，被外来条目压顶时不消费（条目留待后续对账自然穿过）。两个投影系列（手机全 Stage Workbench 与应用模式）共用一套 popstate 账本，各自只认领自己的标记。
 - 对话坞＝对话子树的停靠投影，不是新面板容器：应用模式内右上开关打开后，apps 层右缘让出坞宽、对话列以绝对定位停靠于 Stage 右带（`--dsh-dock-width`，320–560px 档位），左侧 1px 分隔与投影同 details 投影家族；坞内若打开 Workbench 面板，details 子树投影为坞带内覆盖（同一子树的两种投影几何，不复制组件、不新开滚动容器）。坞收起时 apps 层全覆盖 Stage（`inset` 右缘为 0），底下的对话列保持挂载但 inert 且不得有任何视觉渗漏；右缘的坍缩恢复条属 apps 层自身 UI（席位占用者），不由 frame 提供。手机端坞为覆盖式抽屉（`min(86vw, 320px)`）＋遮罩点击关闭，几何与 sidebar 抽屉同族。坞开合与宽度为 root 级瞬态：退出应用模式再进入恢复离开前状态，不持久化。
 - 对话内活动 chip 席位（`conversation.activity.chip`）位于会话标题栏正下方、滚动区之前：list 席位、按 `order` 排序、空席位零渲染零变化；chip 点击跳转 apps 模式容器，不得在 apps 顶栏放第二套对话入口（对话往返一律走坞开关／Sidebar 分段按钮）。
+- 会话模式根级活动 chip（M4，AppFrame：`packages/client/ui-layout/src/client/AppFrame.tsx` + `AppFrame.module.css`）：`stageMode === 'conversation'` 且 `stageActivity` 有值时，在 Stage 右下角渲染 `.activityChip` 按钮——右 20px / 下 20px 锚定、z-index 40、28px 高、12px 水平内边距、浮层表面底 + 1px l1 边框 + 8px 圆角 + `0 4px 12px` 阴影、13px/20px 一级文字、hover 浮起底色；前置 `.activityChipDot`（8px 业务蓝圆点 #0071e3），文案为 `stage-mode.activity`（「AI 正在操作 {应用名}」），点击 `setStageMode('apps')` 直达应用桌面。该 chip 由根框架渲染，与对话列内的 `conversation.activity.chip` 席位分属两个渲染点，不共用实现。
 
 ## App Stage 桌面（席位占用者）
 
@@ -138,7 +139,8 @@
 ## 侧边栏
 
 - 品牌名之外的所有侧边栏文字使用 `--dsw-font-sidebar-font-size` 与 `--dsw-font-sidebar-line-height`，共享行使用 `--dsw-sidebar-row-height`；不得在 Workspace、Session、新会话、搜索或设置行内另设字号。
-- 「对话｜应用」舞台模式分段按钮位于品牌行之下、主要操作列表之外的独立席位（`sidebar.stage-mode`）：容器为 `viewSwitcher` 同族分段形态——3px 内边距、8px 外圆角、侧边栏表面底色、24px 段高、6px 段圆角，10px 顶部节奏（`--dsh-sidebar-section-margin-top`）与 8px 两侧内边距、无底部外边距；以 `role="tablist"`／`role="tab"` 表达互斥单选，选中段使用浮层表面与一级文字，不绘制边框。分段按钮属舞台模式 chrome，不进入 `sidebar.primary.action` 列表；侧边栏折叠时随宽内容一起消失（模式本身不随折叠改变）。「应用」段内的活动状态点使用 8px 业务蓝点内嵌于段右上，规格与产物蓝点一致，不在容器外新增标记。
+- 「对话｜应用」舞台模式分段按钮位于品牌行之下、主要操作列表之外的独立席位（`sidebar.stage-mode`）：容器为 `viewSwitcher` 同族分段形态——3px 内边距、8px 外圆角、侧边栏表面底色、24px 段高、6px 段圆角，10px 顶部节奏（`--dsh-sidebar-section-margin-top`）与 8px 两侧内边距、无底部外边距；以 `role="tablist"`／`role="tab"` 表达互斥单选，选中段使用浮层表面与一级文字，不绘制边框。分段按钮属舞台模式 chrome，不进入 `sidebar.primary.action` 列表；侧边栏折叠时随宽内容一起消失（模式本身不随折叠改变）。
+- Stage 模式分段器「应用」段的活动点（M4，`StageModeSegmented.tsx` + `StageModeSegmented.module.css`）：仅当共享 layout store 的 `stageActivity` 有值（AI 正在驱动某应用）时渲染 `.segmentDot`——8px 业务蓝圆点（#0071e3 回退）、`position: absolute` 内嵌于段右上（top 2px / right 4px）、`pointer-events: none` 不抢段点击，`title` 携带「AI 正在操作 {应用名}」人话；无活动时零渲染零占位，不在容器外新增标记。
 - 「工作区」分区标题的左边界与上下行的首图标严格共线，统一使用 8px 行内左侧内边距。
 - 侧边栏顶部主要操作必须放在无上下外边距、无内边距的列表容器中，并与项目／任务标题复用 `SidebarRow` 行几何；单行不得各自持有上下 margin，行间 2px 节奏统一由列表容器提供。当前顺序为「新会话」、功能插件通过 `sidebar.primary.action` 贡献的「技能」、「定时任务」占位；点击「技能」通过设置导航服务直接打开「设置 → 技能」，「定时任务」仍禁用。
 - `sidebar.footer.action` 的贡献者必须使用 `SidebarRow` 网格：共享行高与字体 token、左右 8px 内边距、6px 内容间距、8px 圆角、14px 图标，贡献根不得保留独立上下 margin，同一 action stack 内延续 2px 行间节奏。侧边栏 Slot owner 可通过稳定语义标记为保留的官方贡献提供同规格兼容桥；当前只适配 Cordis 的 `data-cordis-badge` 触发行，不依赖生成类名，也不得把样式扩散到 Cordis 弹层内部控件。功能插件继续持有触发行的文案、状态、行为与弹层内容。
