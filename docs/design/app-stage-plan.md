@@ -1,6 +1,6 @@
 # App Stage 开发计划
 
-Status: **执行中 — M4 完成（代码 + GUI 验收），M5/M6 未启动**（M4：桥 v2 路由 + 九工具 + 资产通道 + 通道一注册闸 + 活动信号；GUI 真实验收全通——preset 会话四步：createTask 落盘（created + persistedKeys + 版本回执）/ data_read 验证 / dev: 拒收 / app_open；验收揪出三个真缺陷并修复：桥双绑 f444a28、宿主侧路由扇出双投递 22b8589（routerId 认领制，hub 三测）、demo 协议卫生 v0.2.1；245 文件 / 2610 测试全绿。遗留小项：加载 22b8589 的宿主重启后补一次单 invoke 冒烟 + 活动 chip 截图）。本文把 `docs/design/app-stage.md` v0.0.6 的阶段划分展开为可执行的开发计划：里程碑、包结构与行序、每步的产出与验收、验证纪律。设计依据四份文档：主提案（决策）、`app-stage-agent-surface.md` v1.0（工具/技能）、`app-stage-ui.md` v1.0（前端）、`app-stage-presence.md` v0.0.3（在场层）。计划执行中以实现事实为准回填，与设计冲突时先回设计文档裁决再改代码。
+Status: **执行中 — M4 全部完成（代码 + GUI 验收 + 用户目击 chip），下一步 M5**（M4：桥 v2 路由 + 九工具 + 资产通道 + 通道一注册闸 + 活动信号；GUI 真实验收全通——preset 会话四步：createTask 落盘（created + persistedKeys + 版本回执）/ data_read 验证 / dev: 拒收 / app_open；活动 chip 由用户在自己的 GUI 面上亲眼确认（多面认领归最新 poller 的实测副产品：用户面常胜，chip 亮起即三层验证）；验收揪出三个真缺陷并修复：桥双绑 f444a28、宿主侧路由扇出双投递 22b8589（routerId 认领制，hub 四测含 poll-gap 边界）、demo 协议卫生 v0.2.1（已发布安装）；245 文件 / 2611 测试全绿；新宿主冒烟 rev11→12 恰好一写、多轮 8 连发全单写）。本文把 `docs/design/app-stage.md` v0.0.6 的阶段划分展开为可执行的开发计划：里程碑、包结构与行序、每步的产出与验收、验证纪律。设计依据四份文档：主提案（决策）、`app-stage-agent-surface.md` v1.0（工具/技能）、`app-stage-ui.md` v1.0（前端）、`app-stage-presence.md` v0.0.3（在场层）。计划执行中以实现事实为准回填，与设计冲突时先回设计文档裁决再改代码。
 
 ## 0. 总原则（继承自设计终审）
 
@@ -80,6 +80,8 @@ M4 GUI 验收揪出并修复的三个缺陷（均以回归测试钉死）：
 3. demo 应用协议卫生（v0.2.1）：invoke 回执错误形状对齐桥期望（`error: {message}` 而非裸 string，否则错误文本丢失成 "replied without an error message"）；同 id 重复派发幂等护栏（deduped 回执）。
 
 M4 GUI 验收操作事实（复验时照抄）：GUI 页面刷新会重置 preset 选择器，新建会话前必须重选"App Stage 开发会话"（chip 文本核验）；`workbench-remotes` 是 client 侧 remote 方法表面的装配点——host 端点变更后它也要重建，否则 GUI remote 面缺新方法且无任何报错。
+
+活动 chip 验收（✅ 用户目击，M4 最后一项闭环）：多 GUI 面并存时投递归最新 poller（实测用户浏览器常胜）——chip 在用户自己的面上亮起即同时验证活动信号、认领路由与"人看得见 AI 操作"三层。位置=窗口最右下角浮层胶囊（`.frame` 全窗锚定 right/bottom 20px；对话模式 + stageActivity 非空时渲染；点击切 apps 模式），亮约 1–2 秒（命令执行窗口）。单 invoke 冒烟在加载 22b8589 的新宿主复验：基线 rev11/10 卡 → 投递后 rev12/11 卡，恰好一写、createdAt 与回执逐毫秒一致；此后多轮冒烟（含 8 连发）全部单写。
 
 ### M5 — 在场层补全 + Desktop 投射（Phase 2.5 并行）
 
