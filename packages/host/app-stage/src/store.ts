@@ -98,6 +98,23 @@ export async function recordOpenedVersion(appId: string, version: string, home: 
   await writeFile(join(storeRoot(home), 'apps', 'opened.json'), `${JSON.stringify(current, null, 2)}\n`)
 }
 
+/** The global timeline watermark (`activity-seen.json`): the last activity
+ * seq the user has seen. One single watermark across all installed apps —
+ * the timeline is a global feed, never per-workspace (presence §3.6). */
+export async function readActivitySeen(home: string = dshHome()): Promise<number> {
+  try {
+    const raw = JSON.parse(await readFile(join(storeRoot(home), 'apps', 'activity-seen.json'), 'utf8')) as { seq?: unknown }
+    return typeof raw.seq === 'number' && Number.isFinite(raw.seq) ? raw.seq : 0
+  } catch {
+    return 0
+  }
+}
+
+/** Advance the watermark (clears the activity blue dot). */
+export async function writeActivitySeen(seq: number, home: string = dshHome()): Promise<void> {
+  await writeFile(join(storeRoot(home), 'apps', 'activity-seen.json'), `${JSON.stringify({ seq }, null, 2)}\n`)
+}
+
 /**
  * Materialize one installed entry: pointer + snapshot manifest read with the
  * same completeness gate as dev copies (digest verification lands with the

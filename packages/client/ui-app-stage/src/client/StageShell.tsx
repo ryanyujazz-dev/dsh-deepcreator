@@ -17,7 +17,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { AppDevEntry, AppInstalledEntry, AppStageEnsureResult, AppStageListResult } from '@ryanyujazz/dsh-app-stage/types'
-import type { DevMenuRow, LauncherCard, StageShellProps } from './contract.ts'
+import type { ActivityRow, DevMenuRow, LauncherCard, StageShellProps } from './contract.ts'
+import type { AppStagePresenceTimelineResult } from '@ryanyujazz/dsh-app-stage/types'
 import { PresenceBanner } from './PresenceBanner.tsx'
 import css from './StageShell.module.css'
 
@@ -56,10 +57,14 @@ export function StageShell({ phone, stageWidth, dockOpen, t, layout, sessions, r
   const [rows, setRows] = useState<readonly DevMenuRow[]>([])
   const [cards, setCards] = useState<readonly LauncherCard[]>([])
   const [menuOpen, setMenuOpen] = useState(false)
+  const [activityOpen, setActivityOpen] = useState(false)
+  const [activityRows, setActivityRows] = useState<readonly ActivityRow[]>([])
+  const [activityUnread, setActivityUnread] = useState(0)
   const container = useSyncExternalStore(router.subscribe, router.getSnapshot)
   const [opening, setOpening] = useState<string | undefined>(undefined)
   const [error, setError] = useState<string | undefined>(undefined)
   const menuRef = useRef<HTMLDivElement | null>(null)
+  const activityRef = useRef<HTMLDivElement | null>(null)
 
   // Probe-at-open: rescan whenever the menu opens, the session changes, or
   // the shell is asked to refresh (scanTick). No DeepCreator refresh is ever
@@ -81,15 +86,34 @@ export function StageShell({ phone, stageWidth, dockOpen, t, layout, sessions, r
     return () => { cancelled = true }
   }, [remote, sessionId, scanTick, menuOpen])
 
+  // Activity timeline (M5e): the unread count rides scanTick (blue dot);
+  // opening the panel fetches the global installed-origin feed and advances
+  // the watermark to its head — one panel, one global feed (presence §3.6).
+  useEffect(() => {
+    if (sessionId === undefined) { setActivityUnread(0); setActivityRows([]); return }
+    let cancelled = false
+    void remote.presenceSeen(sessionId).then((wire: RemoteResult<{ ok: true; seen: number; latest: number }>) => {
+      if (cancelled || !wire.ok || !wire.value.ok) return
+      setActivityUnread(Math.max(0, wire.value.latest - wire.value.seen))
+      if (activityOpen) void remote.presenceTimeline(sessionId, 0).then((rowsWire: RemoteResult<AppStagePresenceTimelineResult>) => {
+        if (cancelled || !rowsWire.ok || !rowsWire.value.ok) return
+        setActivityRows([...rowsWire.value.rows].reverse())
+        if (rowsWire.value.latest > wire.value.seen) void remote.presenceMarkSeen(sessionId, rowsWire.value.latest)
+      }).catch(() => { /* silent: next open retries */ })
+    }).catch(() => { /* silent: next scan retries */ })
+    return () => { cancelled = true }
+  }, [remote, sessionId, scanTick, activityOpen])
+
   // Outside-click closes the dev menu (standard dropdown dismissal).
   useEffect(() => {
     if (!menuOpen) return
     const onDown = (event: MouseEvent): void => {
       if (menuRef.current !== null && event.target instanceof Node && !menuRef.current.contains(event.target)) setMenuOpen(false)
+      if (activityRef.current !== null && event.target instanceof Node && !activityRef.current.contains(event.target)) setActivityOpen(false)
     }
     document.addEventListener('mousedown', onDown)
     return () => { document.removeEventListener('mousedown', onDown) }
-  }, [menuOpen])
+  }, [menuOpen, activityOpen])
 
   const readyCount = useMemo(() => rows.filter(row => row.ready).length, [rows])
 
@@ -219,6 +243,36 @@ export function StageShell({ phone, stageWidth, dockOpen, t, layout, sessions, r
                     )}
                   </button>
                 ))}
+              </div>
+            )}
+          </div>
+          <div className={css.menuAnchor} ref={activityRef}>
+            <button
+              type="button"
+              className={css.toolButton}
+              aria-haspopup="menu"
+              aria-expanded={activityOpen}
+              onClick={() => { setActivityOpen(!activityOpen) }}
+            >
+              {t('activity.menu')}
+              {activityUnread > 0 && <span className={css.activityDot} aria-label={String(activityUnread)} />}
+            </button>
+            {activityOpen && (
+              <div className={css.menu} role="menu" aria-label={t('activity.menu')}>
+                {sessionId === undefined && <div className={css.menuHint}>{t('dev.no-session')}</div>}
+                {sessionId !== undefined && activityRows.length === 0 && <div className={css.menuHint}>{t('activity.empty')}</div>}
+                {activityRows.map(row => {
+                  const kindKey = `activity.kind.${row.kind}` as Parameters<typeof t>[0]
+                  const outcomeKey = `activity.outcome.${row.outcome}` as Parameters<typeof t>[0]
+                  return (
+                    <div key={row.seq} className={css.activityRow} role="menuitem">
+                      <span className={css.activityTime}>{new Date(row.ts).toLocaleTimeString()}</span>
+                      <span className={css.activityApp}>{row.appName}</span>
+                      <span className={css.activityAction}>{row.action ?? t(kindKey)}</span>
+                      <span className={row.outcome === 'ok' ? css.activityOk : css.activityFail}>{t(outcomeKey)}</span>
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>

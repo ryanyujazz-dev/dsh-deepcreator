@@ -36,6 +36,9 @@ function remoteWith(dev: readonly AppDevEntry[], installed: readonly AppInstalle
   const remote: AppStageRemote = {
     list: vi.fn(async () => ({ ok: true, value: listResult }) as RemoteResult<AppStageListResult>),
     ensure: ensureMock.mockImplementation(async () => ({ ok: true, value: ensureResult }) as RemoteResult<AppStageEnsureResult>),
+    presenceTimeline: vi.fn(async () => ({ ok: true, value: { ok: true, rows: [], latest: 0 } }) as never),
+    presenceSeen: vi.fn(async () => ({ ok: true, value: { ok: true, seen: 0, latest: 0 } }) as never),
+    presenceMarkSeen: vi.fn(async () => ({ ok: true, value: { ok: true, seen: 0 } }) as never),
   }
   return { ...remote, ensureMock }
 }
@@ -280,5 +283,53 @@ describe('presence banner (Px-β shell chrome)', () => {
     expect(screen.queryByText('暂停 AI')).toBeNull()
     screen.getByText('继续').click()
     await waitFor(() => { expect(control).toHaveBeenCalledWith('s-1', 'resume') })
+  })
+})
+
+describe('activity timeline (M5e: global feed + watermark dot)', () => {
+  const tZh = (key: string, vars?: Record<string, string>): string => {
+    const map: Record<string, string> = { 'activity.menu': '活动', 'activity.empty': '还没有 AI 活动。对已安装应用的操作会出现在这里。', 'activity.outcome.ok': '完成', 'activity.outcome.error': '失败', 'activity.kind.invoke': '调用' }
+    let text = map[key] ?? key
+    for (const [k, v] of Object.entries(vars ?? {})) text = text.replace(`{${k}}`, v)
+    return text
+  }
+
+  function remoteWithActivity(rows: import('../src/client/contract.ts').ActivityRow[], seen: number, latest: number): AppStageRemote {
+    const base = remoteWith([])
+    return {
+      ...base,
+      presenceSeen: vi.fn(async () => ({ ok: true, value: { ok: true, seen, latest } })),
+      presenceTimeline: vi.fn(async () => ({ ok: true, value: { ok: true, rows, latest } })),
+      presenceMarkSeen: vi.fn(async (session: never, seq: number) => ({ ok: true, value: { ok: true, seen: seq } })),
+    }
+  }
+
+  it('shows the blue dot when the feed head is past the watermark', async () => {
+    const remote = remoteWithActivity([], 3, 7)
+    render(<StageShell {...props({ remote, sessions: session('s-1'), t: tZh as never })} />)
+    await waitFor(() => { expect(screen.getByLabelText('4')).toBeTruthy() })
+  })
+
+  it('opens the panel with rows newest-first and advances the watermark', async () => {
+    const rows: import('../src/client/contract.ts').ActivityRow[] = [
+      { ts: Date.now() - 60_000, seq: 4, appId: 'kanban-demo', appName: '看板演示', kind: 'invoke', action: 'createTask', outcome: 'ok', durationMs: 120 },
+      { ts: Date.now() - 30_000, seq: 5, appId: 'kanban-demo', appName: '看板演示', kind: 'data.write', outcome: 'error', durationMs: 40 },
+    ]
+    const remote = remoteWithActivity(rows, 3, 5)
+    render(<StageShell {...props({ remote, sessions: session('s-1'), t: tZh as never })} />)
+    const trigger = screen.getByRole('button', { name: /活动/ })
+    trigger.click()
+    expect(await screen.findAllByText('看板演示')).toHaveLength(2)
+    // newest first: the data.write error row's outcome appears
+    expect(await screen.findByText('失败')).toBeTruthy()
+    await waitFor(() => { expect(remote.presenceMarkSeen).toHaveBeenCalledWith('s-1', 5) })
+  })
+
+  it('renders the empty state with no activity', async () => {
+    const remote = remoteWithActivity([], 0, 0)
+    render(<StageShell {...props({ remote, sessions: session('s-1'), t: tZh as never })} />)
+    screen.getByRole('button', { name: /活动/ }).click()
+    expect(await screen.findByText('还没有 AI 活动。对已安装应用的操作会出现在这里。')).toBeTruthy()
+    expect(screen.queryByLabelText(/[1-9]/)).toBeNull()
   })
 })

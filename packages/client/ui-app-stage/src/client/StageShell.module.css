@@ -292,3 +292,30 @@
   line-height: 16px;
   pointer-events: none;
 }
+
+/* Activity timeline (M5e): Launcher-cluster entry + global feed panel. */
+.activityDot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--dsw-alias-accent, #0071e3);
+  vertical-align: middle;
+}
+
+.activityRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 2px 8px;
+  font-size: var(--dsw-font-body-s-font-size, 14px);
+  line-height: var(--dsw-font-body-s-line-height, 22px);
+}
+
+.activityTime { color: var(--dsw-alias-label-tertiary); font-variant-numeric: tabular-nums; }
+.activityApp { color: var(--dsw-alias-label-primary); }
+.activityAction { color: var(--dsw-alias-label-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activityOk { margin-left: auto; color: var(--dsw-alias-label-tertiary); }
+.activityFail { margin-left: auto; color: var(--dsw-alias-status-error, #d33); }

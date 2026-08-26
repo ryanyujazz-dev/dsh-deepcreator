@@ -21,7 +21,7 @@ import type {} from '@deepseek-ai/dsh-workspace'
 import type { AppDataChange, AppDevEntry, AppInstalledEntry, AppJsonValue, AppManifest, AppPublishPlan, AppRouterOutcome, AppStageAssetListResult, AppStageAssetWriteResult, AppStageDataChangesResult, AppStageDataGetResult, AppStageDataSetResult, AppStageEnsureResult, AppStageInvokeResult, AppStageListResult, AppStageOpenResult, AppStagePresenceControlResult, AppStagePresenceSnapshotResult, AppStagePresenceSummaryResult, AppStagePresenceTimelineResult, AppStagePublishCommitResult, AppStagePublishPrepareResult, AppStageRouterResultAck, AppStageUninstallResult, AppStageWaitRequestsResult } from './types.ts'
 import { AppStageStaticServer } from './serve.ts'
 import { listInstalled, gateDevEntry, scanDevRoot } from './registry.ts'
-import { dshHome, readInstallPointer, readOpenedVersions, recordOpenedVersion, storeRoot } from './store.ts'
+import { dshHome, readActivitySeen, readInstallPointer, readOpenedVersions, recordOpenedVersion, storeRoot, writeActivitySeen } from './store.ts'
 import { ensurePreset } from './preset.ts'
 import { AppStageWatcherSet } from './watcher.ts'
 import { appDataChanges, appDataGet, appDataSet } from './appdata.ts'
@@ -565,6 +565,27 @@ export class AppStageService extends TypertRemoteService {
     void session
     const feed = this.presence.timelineSince(sinceSeq)
     return { ok: true, rows: feed.rows, latest: feed.latest }
+  }
+
+  /**
+   * The global timeline watermark: `{ seen, latest }` in one read so the
+   * shell computes unread (blue dot) without a second round trip. The
+   * watermark outlives host restarts (`activity-seen.json`).
+   */
+  @Remote('presenceSeen')
+  async presenceSeen(session: Session): Promise<{ ok: true; seen: number; latest: number }> {
+    void session
+    return { ok: true, seen: await readActivitySeen(dshHome()), latest: this.presence.timelineSince(0).latest }
+  }
+
+  /** Advance the watermark to the feed's current head (clears the dot). */
+  @Remote('presenceMarkSeen')
+  async presenceMarkSeen(session: Session, seq: number): Promise<{ ok: true; seen: number }> {
+    void session
+    const { latest } = this.presence.timelineSince(0)
+    const next = Math.max(0, Math.min(seq, latest))
+    await writeActivitySeen(next, dshHome())
+    return { ok: true, seen: next }
   }
 
   /** A lease summary by id (the card material, fetched on release). */

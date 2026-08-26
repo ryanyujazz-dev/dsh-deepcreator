@@ -9,7 +9,7 @@ import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@ryanyujazz/dsh-client-ui-layout/client'
-import type { AppRouterOutcome, AppStageDataChangesResult, AppStageDataGetResult, AppStageDataSetResult, AppStageEnsureResult, AppStagePresenceControlResult, AppStagePresenceSnapshotResult, AppStagePresenceSummaryResult, AppJsonValue, AppStageListResult, AppStageRouterResultAck, AppStageWaitRequestsResult } from '@ryanyujazz/dsh-app-stage/types'
+import type { AppRouterOutcome, AppStageDataChangesResult, AppStageDataGetResult, AppStageDataSetResult, AppStageEnsureResult, AppStagePresenceControlResult, AppStagePresenceSnapshotResult, AppStagePresenceSummaryResult, AppStagePresenceTimelineResult, AppJsonValue, AppStageListResult, AppStageRouterResultAck, AppStageWaitRequestsResult } from '@ryanyujazz/dsh-app-stage/types'
 
 /** The remote namespace face the shell captures once in apply. */
 export interface AppStageRemote {
@@ -31,6 +31,25 @@ export interface AppStageRemote {
   presenceControl: (sessionId: SessionId, op: 'interrupt' | 'resume' | 'handback') => Promise<RemoteResult<AppStagePresenceControlResult>>
   /** M5: one emitted lease summary (the handing-back card material). */
   presenceSummary: (sessionId: SessionId, leaseId: string) => Promise<RemoteResult<AppStagePresenceSummaryResult>>
+  /** M5e: the global installed-origin activity feed after a cursor. */
+  presenceTimeline: (sessionId: SessionId, sinceSeq: number) => Promise<RemoteResult<AppStagePresenceTimelineResult>>
+  /** M5d: the global timeline watermark (seen + head in one read). */
+  presenceSeen: (sessionId: SessionId) => Promise<RemoteResult<{ ok: true; seen: number; latest: number }>>
+  /** M5d: advance the watermark (clears the activity blue dot). */
+  presenceMarkSeen: (sessionId: SessionId, seq: number) => Promise<RemoteResult<{ ok: true; seen: number }>>
+}
+
+/** One timeline row in the activity view (the shell renders these). */
+export interface ActivityRow {
+  readonly ts: number
+  readonly seq: number
+  readonly appId: string
+  readonly appName: string
+  readonly version?: string
+  readonly kind: string
+  readonly action?: string
+  readonly outcome: string
+  readonly durationMs: number
 }
 
 /** One dev-menu row after the host's gate (view-model form). */
