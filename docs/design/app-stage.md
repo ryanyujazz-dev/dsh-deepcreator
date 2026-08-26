@@ -1,6 +1,6 @@
 # App Stage 设计提案
 
-Status: **提案 v0.0.6 — 未实现**。本文定义 DeepCreator 的 App Stage（应用舞台）：一个内嵌于中央舞台、由 Cordis 插件承载的"AI 操作系统"——AI 在 preset 会话中开发应用、打包上线到全局桌面，并把已安装应用当作自己的技能包；人类与 AI 共用同一批应用作为工作界面。版本沿革：v0.0.2 经三轮红蓝对抗评审（`output/app-stage-debate/90-verdicts.md`）；v0.0.3 增补 Presence 子系统（`docs/design/app-stage-presence.md`）；v0.0.4 完成工作方式修订（preset 隔离/全局桌面/打包上线/数据域分离，`output/app-stage-v4/93-v4-verdicts.md`）；v0.0.5 吸收五视角外部独立评审（设计盲区/实现/安全/用户/生态，32 项裁决见 `output/app-stage-critique/02-chair-verdicts.md`）：发布信任链加来源判定与富审批、AppData 升级单文档+事件日志、平台协议版本化、卸载进 Phase 1、砍隐藏 runner 与资源池体系、修正 workspace 发现源的机制事实（官方无 open/close 生命周期）；**v0.0.6 场景压测（无限画布生图应用）**：定案运行时资产目录（`app_asset_write/list`，关闭开放问题 16）、agentGuide 应用自带技能、对话坞与"对话｜应用"分段入口（用户拍板）。工具/技能完整规格见 `docs/design/app-stage-agent-surface.md`（v1.0），UI 方案见 `docs/design/app-stage-ui.md`（v1.0），过程裁决记录见 `output/app-stage-*/`（各目录留存的 verdicts 文件）。各阶段实现时同步更新 `docs/architecture/deepcreator.md` 与所属包 README（英文），本文随之收敛为对已实现行为的引用。
+Status: **v0.0.7 — Phase 0-3 主体已实现（M0–M6e），遗留按决策备忘录处置**。本文定义 DeepCreator 的 App Stage（应用舞台）：一个内嵌于中央舞台、由 Cordis 插件承载的"AI 操作系统"——AI 在 preset 会话中开发应用、打包上线到全局桌面，并把已安装应用当作自己的技能包；人类与 AI 共用同一批应用作为工作界面。版本沿革：v0.0.2 经三轮红蓝对抗评审（`output/app-stage-debate/90-verdicts.md`）；v0.0.3 增补 Presence 子系统（`docs/design/app-stage-presence.md`）；v0.0.4 完成工作方式修订（preset 隔离/全局桌面/打包上线/数据域分离，`output/app-stage-v4/93-v4-verdicts.md`）；v0.0.5 吸收五视角外部独立评审（设计盲区/实现/安全/用户/生态，32 项裁决见 `output/app-stage-critique/02-chair-verdicts.md`）：发布信任链加来源判定与富审批、AppData 升级单文档+事件日志、平台协议版本化、卸载进 Phase 1、砍隐藏 runner 与资源池体系、修正 workspace 发现源的机制事实（官方无 open/close 生命周期）；**v0.0.6 场景压测（无限画布生图应用）**：定案运行时资产目录（`app_asset_write/list`，关闭开放问题 16）、agentGuide 应用自带技能、对话坞与"对话｜应用"分段入口（用户拍板）。工具/技能完整规格见 `docs/design/app-stage-agent-surface.md`（v1.0），UI 方案见 `docs/design/app-stage-ui.md`（v1.0），过程裁决记录见 `output/app-stage-*/`（各目录留存的 verdicts 文件）。各阶段实现时同步更新 `docs/architecture/deepcreator.md` 与所属包 README（英文），本文随之收敛为对已实现行为的引用。**v0.0.7（M6，Phase 3 主体落地）**：发布链加固（白名单快照——符号链接永不跟随、`.git`/隐藏/`node_modules` 永不进包、边拷边限）、发布历史 `history.jsonl`（cap 50）与独立水位 `maxversion.json`（回退不下调、卸载随域清除、重装=全新基线）、四档发布判定（`update-below-watermark` 硬审批档：水位以下重发或同号异码须明确批准——防回滚重发与同号换码）、回退（digest 对账 + per-app 串行化 + 数据不动 + 用户专属动作，agent 经 `app_history` 只读可见）、导入第二入口（目录/加固 git——https-only、拒私网/回环/元数据解析、argv 传参、禁凭据提示、60s 超时、浅克隆；分档审批同发布链）、数据迁移勾选（整域原子拷、rev 连续、仅空目标域）、`app_asset_delete`（D16）、孤儿资产 advisory（30 天 mtime 窗口，绝不自动删）、发布节流 advisory（24h 滑窗非阻断提示）；受控能力权限模型出 non-normative 提案（`docs/design/app-stage-capabilities.md`，红队裁决「需修订后再评」）；无人值守与 Px-δ 出决策备忘录（`docs/design/app-stage-decision-unattended.md`、`docs/design/app-stage-decision-px-delta.md`——均不进实现，重开条件写死）。
 
 命名说明：舞台/特性名暂定 **App Stage**，与既有 **Workbench**（会话右侧工具面板系统）区分并存；agent preset 暂名 **app-stage**；技能名沿用提出者词汇 **workstage use** 与 **app-dev**。下文出现的包名、行 id、Slot 名、目录约定均为暂定，实现时以 `deepcreator-web` patch 与 one-owner 规则为准。
 
@@ -226,7 +226,7 @@ Status: **提案 v0.0.6 — 未实现**。本文定义 DeepCreator 的 App Stage
 - **Phase 1b — 发布链**：`app_publish`（快照+零外联扫描+订阅验证+首发审批富卡+来源判定+十一失败码）、安装存储、卸载/隐藏、**出厂预装示例应用**、"暂停自动更新"开关、Launcher 完整态（蓝点/来源标注/人话名片骨架）。验收：发布 → 审批一次（富卡含截图）→ 桌面出现 → 任意工作区打开数据落全局域；同源更新免确认+蓝点亮；异源更新轻确认；降级拒绝；卸载干净；预装示例可移除。
 - **Phase 2 — 操作面与发布闸补全**：AppControl invoke（**只路由 Stage 容器，返回带版本**）+ conversation 活动 chip + agent 数据工具 + workstage use 技能；发布闸 +通道一 handler 注册验证。验收：agent 经 `app_invoke` 可靠驱动已安装应用（用户在对话模式也有活动信号）；发布闸拒绝无双通道应用并给可行动原因；dev 对 `app_invoke` 不可寻址。Px-β 挂本阶段。
 - **Phase 2.5 — Desktop 投射**：Px-γ（B1 投射 + B2 进程级 overlay + 跟随视图替换形态），随 IAB 分支落地（桥协议层完全共享）。
-- **Phase 3 — 生态**：导入（本地包/目录/git）、回退/发布历史消费、受控能力权限模型（含大对象逃生通道评估）、无人值守自动化（隐藏 runner 届时重议）、声明式渲染器扩展位。Px-δ 挂本阶段。
+- **Phase 3 — 生态（M6 已落地主体，2026-02）**：导入（目录/git 第二入口，M6c）、回退/发布历史消费（M6a/b，`app_history` 重纳）、数据迁移与孤儿资产 advisory（M6e）、`app_asset_delete`（M6e）。**缓裁项（决策备忘录）**：受控能力权限模型（提案 v0.0.1，红队「需修订后再评」——`app-stage-capabilities.md`）、无人值守自动化（维持无隐藏 runner，重开条件=权限模型定案/真实场景/官方调度原语——`app-stage-decision-unattended.md`）、声明式渲染器扩展位（`ui` hints 并入权限模型修订轮的 manifest v2 schema；回放与字段级协作挂归因可靠性——`app-stage-decision-px-delta.md`）。Px-δ 挂本阶段。
 
 ## 风险与对策
 
@@ -254,16 +254,16 @@ Status: **提案 v0.0.6 — 未实现**。本文定义 DeepCreator 的 App Stage
 5. postMessage 桥协议细节（Phase 1 最小子集 + 版本握手；Phase 2 invoke/handler 注册协议与并发仲裁）。
 6. 用户级存储子路径（锚点已定，候选 `app-stage/`）。
 7. （已裁：开发态 = manifest `dev:true`，发布剥离——待实现核对后移除。）
-8. 发布历史/回退（Phase 3 生命周期）。
+8. ~~发布历史/回退~~（M6a/b 已关闭：history.jsonl cap 50 + maxversion.json 水位 + 回退 digest 对账；agent 侧 `app_history` 只读工具重纳——agent-surface v1.0 原否决理由即阶段错位）。
 9. 已安装应用与工作区源码后续分叉的长期表现。
 10. 包体上限 20 MiB / history 50 条 / journal 压实策略的实证校准。
 11. （已裁 v0.0.5：agent 行默认绝对 `file:` URL，bare 名降级优化项——待实现核对后移除。）
-12. 安装第二入口（导入）的来源与校验（Phase 3）。
-13. 版本更新高频节流提示（生态期评估）。
+12. ~~安装第二入口（导入）的来源与校验~~（M6c 已关闭：目录/git 两来源；git 加固 = https-only + 拒私网/回环/元数据解析 + argv 传参 + 禁凭据提示 + 60s 超时 + 浅克隆；包校验复用发布链白名单快照与 manifest 验证；已装 id 走版本更新分档流）。
+13. ~~版本更新高频节流提示~~（M6e 已关闭：per-app 24h 滑窗计数，第 4 次起审批卡细节非阻断提示；不设门槛不惩罚——频次是需要用户看见的事实，不是需要系统拦截的行为）。
 14. （已裁 v0.0.5：dev 发现源 = workspace 记录全集枚举 + 活跃会话绑定 watcher——待实现核对后移除。）
 15. 跨设备数据同步边界（单机现状声明；DeepCreator 产品层整体课题）。
 16. （已裁 v0.0.6：二进制资产走运行时资产目录（`app_asset_write`/`app_asset_list`）——待实现核对后移除；结构性大文档需求的边界仍留 Phase 3 权限模型评估。）
-17. 发布时可选数据迁移（dev→installed 勾选导入）与 dev 孤儿数据 GC（Phase 3）。
+17. ~~发布时可选数据迁移与 dev 孤儿数据 GC~~（M6e 已关闭迁移半边：整域原子拷 doc+journal 保 rev 连续、仅空目标域、覆盖须显式接受；dev 孤儿数据 GC 缓裁——与资产 GC 同属保守窗口+用户触发族，真实需求出现前不建自动清扫）。
 18. ~~"插件工具挂起-应答"的官方可复用面~~（v0.0.6 已核：apiproxy pending 表 + `/api/respond` 全链先例存在——ask_user_question 同款；剩余决策仅为"复用官方 pending 表 vs webServer 自建 respond 路由"，实现期 spike 定）。
 
 ## 验证计划（按阶段）

@@ -96,6 +96,8 @@ Status: 主席执笔，v0.0.6。晋升时作为 `docs/design/app-stage-agent-sur
 | app_manifest | 2 | 〔知〕读发布态 manifest 全文 + agentGuide 内联（D4/v0.0.6） | preset 行 | 安装存储 current.json + 版本目录 |
 | app_asset_write | 2 | 〔入·二进制〕workspace 文件复制进应用运行时资产目录（缺口 1，D15） | preset 行 | 安装存储资产目录 + per-app origin 保留路径供给 |
 | app_asset_list | 2 | 〔知/入前置〕枚举应用运行时资产与配额占用（缺口 1，D15） | preset 行 | 同上 |
+| app_history | 3 | 〔知〕读已安装应用发布历史（版本/digest 前缀/来源/via）+ 水位基线（M6b 重纳，只读） | preset 行 | 安装存储 history.jsonl + maxversion.json |
+| app_asset_delete | 3 | 〔动〕删除单个命名运行时资产（M6e，D16：app_asset_write 的对称纪律——agent 写入的字节 agent 可删） | preset 行 | 安装存储资产目录（basename 围栏，ASSET_NOT_FOUND/ASSET_NAME_INVALID 两码） |
 
 **候选评估**（极简主义：高频 × 不可组合 × 失败模式清晰）：
 
@@ -104,15 +106,16 @@ Status: 主席执笔，v0.0.6。晋升时作为 `docs/design/app-stage-agent-sur
 | app_manifest | **采纳（D4）** | 高频（invoke 前需 params 详情）；不可组合（installed 与源工作区生死解耦，STORE_ROOT 不在 agent 文件面）；失败模式清晰（三码）；列表携全文上下文膨胀（64 应用×4KB 级） |
 | app_asset_write | **采纳（D15，全过验证）** | 高频（生成类画布/看板/画廊场景每次放置）；不可组合（**四重锁死**：AppData 单值 256KiB×文档 4MiB×CSP 'self' 读不了 workspace×冻结快照——现有工具无任何组合能搬字节进应用 origin）；失败模式清晰（确定性八码） |
 | app_asset_list | **采纳（D15）** | 高频（放置前清点/去重、引用悬垂恢复诊断）；不可组合（资产目录不在 agent 文件面）；失败模式清晰（单码）——与 app_manifest 同款读侧配套论证 |
+| app_asset_delete | **采纳（D16，M6e）** | 高频（放置错文件的回收、配额回收）；不可组合（同 D15 四重锁死）；失败模式清晰（两码）；悬垂引用风险以工具描述显式告知（先清 AppData 引用再删）——无引用图可查是接受的显式权衡 |
 | app_screenshot | 否决 | invoke 后验证主路是 app_data_read（"AppData 唯一事实源，DOM 只是投影"）；视觉验证可组合：originURL 自开实例截图；Phase 2 无高频需求 |
-| app_history | 否决（阶段错位） | 发布历史/回退是 Phase 3（开放问题 8） |
+| app_history | **Phase 3 重纳（M6b）** | 原否决理由即"阶段错位"——Phase 3 落地时失效；只读（历史 + 水位），回退/卸载保持用户生命周期动作（agent 有可见性无执行权） |
 | app_uninstall | 否决 | 用户面破坏性动作（条目详情 UI+确认对话）；agent 主动删用户桌面应用无高频正当场景 |
 | app_data_subscribe | 否决 | agent 是请求-响应模型，无长连接消费面；变更感知=再次 read |
 | app_dev_* | 否决 | 违反锁定项：工具只寻址 installed；dev 唯一入口=browser 自开实例 |
 | 每应用动态工具 | 否决（记录性留档） | 工具注册需插件组合加载（重建/重启），违反热上架不变量；invoke+actions 声明已是动态工具面等价物（agentGuide 补操作知识）——随 v0.0.6 agentGuide 落定给未来读者留档 |
 
 **反向检查**（齐全性双向，同极简主义标准）：v0.2 已定 8 工具逐个复核全留——app_list（诊断+发现+originURL 三合一，三消费者共用）/ app_publish（零泄漏原则执行机构，文件工具组合不出"上桌"路径）/ app_invoke（apps-as-skill-pack 主路）/ app_open（D3 定稿；invoke 不切模式后 agent 面唯一呈现载体，8 个中唯一非能力工具，砍则"输出面"叙事呈现末端断裂）/ data_read+write（喂数据叙事核心，读写失败模式不同不可合并）/ takeover（宏租约唯一入口）/ manifest（D4）；本轮新增两资产工具论证见候选表。
-**操作位索引**（第一性模型 §2 七操作 ↔ 工具映射）：知 = `app_list`/`app_manifest`（含 agentGuide）· 读 = `app_data_read`/`app_asset_list` · 动 = `app_invoke`/`app_data_write`/`app_takeover`；呈现 = `app_open` · 入 = `app_data_write`（结构化）/`app_asset_write`（二进制）/invoke params · 出 = invoke result（不可信文本）/自开实例组合路径 · 证 = persistedKeys 回执/`app_data_read` 回读/自开实例 · 组 = agent 会话推理（无工具，架构位）。上桌 = `app_publish`（生产线操作，非七操作成员）。
+**操作位索引**（第一性模型 §2 七操作 ↔ 工具映射）：知 = `app_list`/`app_manifest`（含 agentGuide）/`app_history`（历史与水位）· 读 = `app_data_read`/`app_asset_list` · 动 = `app_invoke`/`app_data_write`/`app_takeover` · 资产生命周期 = `app_asset_write`/`app_asset_delete`（对称对）；呈现 = `app_open` · 入 = `app_data_write`（结构化）/`app_asset_write`（二进制）/invoke params · 出 = invoke result（不可信文本）/自开实例组合路径 · 证 = persistedKeys 回执/`app_data_read` 回读/自开实例 · 组 = agent 会话推理（无工具，架构位）。上桌 = `app_publish`（生产线操作，非七操作成员）。
 
 **官方工具互操作地图**：文件工具=写 `.deepcreator/apps/<id>/` 源码（只进开发中菜单，上桌唯一路径 app_publish）；browser 工具=dev 自测（app_list originURL 自开实例）与 installed 视觉验证（看不见 Stage 容器与用户实例态，可靠操控以 app_invoke 为准）；**create_image=生成应用 icon（目录资源过闸）与生图产物（workspace 文件）——产物经 app_asset_write 进资产通道、app_invoke 放置，AppData 只存引用**（缺口 3 三步编排）；ask_user_question=发布前需求澄清（审批/轻确认由发布闸挂起承载）；subagent 经 composeFrom 继承 app_*（D6 裁决：合意，见 B0⑤）。
 ## B 每工具规格
