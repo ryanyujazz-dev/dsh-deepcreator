@@ -60,6 +60,9 @@ export function StageShell({ phone, stageWidth, dockOpen, t, layout, sessions, r
   const [historyFor, setHistoryFor] = useState<string | undefined>(undefined)
   const [historyRows, setHistoryRows] = useState<readonly HistoryRow[]>([])
   const [historyNote, setHistoryNote] = useState<string | undefined>(undefined)
+  // Two-step rollback (same arm pattern as uninstall): first click shows the
+  // confirm copy (data untouched, watermark not lowered), second executes.
+  const [armedRollback, setArmedRollback] = useState<string | undefined>(undefined)
   // Import (M6c): form → facts card → confirm. State machine in one object.
   const [importOpen, setImportOpen] = useState(false)
   const [importMode, setImportMode] = useState<'dir' | 'git'>('dir')
@@ -483,7 +486,7 @@ export function StageShell({ phone, stageWidth, dockOpen, t, layout, sessions, r
                   className={css.cardRemove}
                   aria-label={t('history.button')}
                   aria-expanded={historyFor === card.appId}
-                  onClick={() => { setHistoryFor(historyFor === card.appId ? undefined : card.appId); setHistoryNote(undefined) }}
+                  onClick={() => { setHistoryFor(historyFor === card.appId ? undefined : card.appId); setHistoryNote(undefined); setArmedRollback(undefined) }}
                 >
                   {'⌛'}
                 </button>
@@ -513,8 +516,18 @@ export function StageShell({ phone, stageWidth, dockOpen, t, layout, sessions, r
                       {row.version === card.version
                         ? <span className={css.historyCurrent}>{t('history.current')}</span>
                         : (
-                          <button type="button" className={css.control} onClick={() => { rollback(card.appId, row.version) }}>
-                            {t('history.rollback')}
+                          <button
+                            type="button"
+                            className={css.control}
+                            aria-pressed={armedRollback === `${card.appId}@${row.version}`}
+                            title={armedRollback === `${card.appId}@${row.version}` ? t('history.rollback.confirm').replace('{version}', row.version) : undefined}
+                            onClick={() => {
+                              const key = `${card.appId}@${row.version}`
+                              if (armedRollback === key) { rollback(card.appId, row.version); setArmedRollback(undefined) }
+                              else { setArmedRollback(key); setHistoryNote(t('history.rollback.confirm').replace('{version}', row.version)) }
+                            }}
+                          >
+                            {armedRollback === `${card.appId}@${row.version}` ? '!' : t('history.rollback')}
                           </button>
                         )}
                     </div>
