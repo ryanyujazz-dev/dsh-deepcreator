@@ -16,7 +16,7 @@ import { join } from 'node:path'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { defineTool, type JsonValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { AppStageService } from '@ryanyujazz/dsh-app-stage'
-import { dshHome, installedVersionDir, listInstalled, scanDevRoot } from '@ryanyujazz/dsh-app-stage'
+import { ASSET_NAME_PATTERN, dshHome, installedVersionDir, listInstalled, scanDevRoot } from '@ryanyujazz/dsh-app-stage'
 
 /** The unified failure envelope (B0): machine code, model-facing message, context keys. */
 export interface ToolErrorEnvelope {
@@ -73,7 +73,7 @@ export interface AppToolEnvironment {
 /**
 /** The environment the M4 operation tools read (service faces + home override). */
 export interface AppOperationEnvironment {
-  readonly appStage: Pick<AppStageService, 'devOriginURL' | 'installedOriginURL' | 'invoke' | 'open' | 'dataGet' | 'dataSet' | 'dataProbe'>
+  readonly appStage: Pick<AppStageService, 'devOriginURL' | 'installedOriginURL' | 'invoke' | 'open' | 'dataGet' | 'dataSet' | 'dataProbe' | 'assetWrite' | 'assetList'>
   /** DSH home override (tests); default is the real resolved home. */
   readonly home?: string
 }
@@ -504,6 +504,81 @@ export function createAppDataWriteTool(env: AppOperationEnvironment): ToolDefini
         dataVersion: String(result.rev),
         bytes: String(JSON.stringify(value ?? null).length),
       })
+    },
+  })
+}
+
+
+/**
+ * `app_asset_write` (B9): copy one workspace file into an installed app's
+ * runtime asset directory — the binary sibling of AppData, the only way
+ * bytes reach an app origin (CSP 'self' reads no workspace). Passive media
+ * only, extension and magic-byte verified; same name overwrites
+ * (idempotent upsert — STORE_WRITE_FAILED retries safely).
+ */
+export function createAppAssetWriteTool(env: AppOperationEnvironment): ToolDefinition {
+  let writes = 0
+  return defineTool({
+    name: 'app_asset_write',
+    description: 'Copy one workspace file into an installed app\'s runtime asset directory, served same-origin from that app\'s own origin. Use it to deliver generated images and videos into apps (after create_image, before an invoke that places the asset); store the returned url reference in AppData, never the bytes. Writing an existing name overwrites it. Passive media only: png/jpg/webp/gif/mp4/webm (extension and content verified); per-asset 64 MiB, per-app 256 MiB.',
+    parameters: {
+      appId: { type: 'string', required: true, description: 'The installed app id from app_list (dev copies have no asset channel; publish first).' },
+      name: { type: 'string', required: true, description: 'Asset key with a whitelisted extension, e.g. sunset.png — served at /deepcreator-app-stage/assets/<appId>/<name>.' },
+      sourcePath: { type: 'string', required: true, description: 'Workspace-relative path of the source file (absolute paths and escapes are rejected).' },
+    },
+    output: { schema: outputSchema, render },
+    async execute(args, exec) {
+      const session = owner(exec).session
+      const { appId, name, sourcePath } = args as { appId: string; name: string; sourcePath: string }
+      if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(appId) || appId.length > 64) {
+        return json(toolError('APP_ID_INVALID', 'appId must be kebab-case segments of [a-z0-9], ≤64 chars.', { appId }))
+      }
+      if (!ASSET_NAME_PATTERN.test(name) || name.length > 128) {
+        return json(toolError('NAME_INVALID', 'asset name must match ^[A-Za-z0-9][A-Za-z0-9._-]*$ (≤128 chars) with a whitelisted extension.', { name }))
+      }
+      if (writes >= 256) {
+        return json(toolError('WRITE_CIRCUIT', 'asset write budget for this conversation is exhausted (256); finish or start a new session.', { limit: '256' }))
+      }
+      writes += 1
+      const result = await env.appStage.assetWrite(session, appId, name, sourcePath)
+      if (!result.ok) {
+        const fixes: Record<string, string> = {
+          SOURCE_PATH_INVALID: 'pass a workspace-relative path; absolute paths and escapes are rejected.',
+          SOURCE_NOT_FOUND: 'check the file exists in the workspace (create_image outputs land under output/).',
+          MIME_UNSUPPORTED: 'use one of png/jpg/webp/gif/mp4/webm — and do not rename files from other formats.',
+          ASSET_TOO_LARGE: 'compress or convert the asset; the per-asset cap is 64 MiB.',
+          ASSET_QUOTA_EXCEEDED: 'run app_asset_list and overwrite large assets by name, or suggest the user reinstall the app.',
+          STORE_WRITE_FAILED: 'the same-name upsert is idempotent — retrying this call is safe.',
+        }
+        const fix = fixes[result.code] === undefined ? '' : ` Fix: ${fixes[result.code]!}`
+        return json(toolError(result.code, `${result.message}${fix}`, { appId, name }))
+      }
+      return json({ ...result })
+    },
+  })
+}
+
+/**
+ * `app_asset_list` (B10): one installed app's runtime assets with quota
+ * usage — the read side of the channel (inventory before placements,
+ * reference recovery, headroom checks).
+ */
+export function createAppAssetListTool(env: AppOperationEnvironment): ToolDefinition {
+  return defineTool({
+    name: 'app_asset_list',
+    description: 'List the runtime assets of an installed app with per-app quota usage. Use it before placements to reuse existing assets instead of duplicating writes, to recover url references when AppData mentions an asset you have not seen, and to check quota headroom before large writes.',
+    parameters: {
+      appId: { type: 'string', required: true, description: 'The installed app id from app_list.' },
+    },
+    output: { schema: outputSchema, render },
+    async execute(args, exec) {
+      const appId = (args as { appId: string }).appId
+      if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(appId) || appId.length > 64) {
+        return json(toolError('APP_ID_INVALID', 'appId must be kebab-case segments of [a-z0-9], ≤64 chars.', { appId }))
+      }
+      const result = await env.appStage.assetList(owner(exec).session, appId)
+      if (!result.ok) return json(toolError(result.code, result.message, { appId }))
+      return json({ ...result })
     },
   })
 }

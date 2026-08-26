@@ -1,10 +1,13 @@
 /**
- * Browser-backed staging probe (M3 / S2): loads a staged snapshot in a
- * private headless Chromium and machine-verifies the two gate facts that need
- * a real runtime — the entry actually serves and renders (fetch + MIME +
- * first paint), and the app's own code subscribes to ≥1 AppData key over the
- * bridge protocol (channel 2: the interception is on `window.postMessage`,
- * which is exactly the wire the production bridge speaks).
+ * Browser-backed staging probe (M3 / S2 + M4 channel 1): loads a staged
+ * snapshot in a private headless Chromium and machine-verifies the gate
+ * facts that need a real runtime — the entry actually serves and renders
+ * (fetch + MIME + first paint), and dual-channel admission over the bridge
+ * protocol (interception is on `window.postMessage`, exactly the wire the
+ * production bridge speaks): channel 1, every action the manifest declares
+ * has a registered handler (action.register, never invoked — the probe
+ * drives nothing); channel 2, the app's own code subscribes to ≥1 AppData
+ * key. Either channel admits; neither rejects.
  *
  * The probe browser is private to the publish gate: launched, measured,
  * disposed. Screenshot capture is best-effort — failure degrades to
@@ -39,7 +42,8 @@ function chromiumExecutable(): string | undefined {
   ].find(candidate => existsSync(candidate))
 }
 
-/** Init script: record bridge ops issued by the app itself (channel-2 source). */
+/** Init script: record bridge ops the app itself issues (both admission
+ * channels' evidence: data.subscribe paths and action.register names). */
 const PROBE_INIT = `(() => {
   const ops = []
   const orig = window.postMessage ? window.postMessage.bind(window) : null
@@ -47,7 +51,7 @@ const PROBE_INIT = `(() => {
     window.postMessage = (message, ...rest) => {
       try {
         if (message && typeof message === 'object' && message.__appStage === 1 && typeof message.op === 'string') {
-          ops.push({ op: message.op, path: typeof message.path === 'string' ? message.path : null })
+          ops.push({ op: message.op, path: typeof message.path === 'string' ? message.path : null, action: typeof message.action === 'string' ? message.action : null })
         }
       } catch {}
       return orig(message, ...rest)
@@ -64,6 +68,9 @@ export interface ProbeInput {
   /** App id + version (screenshot naming). */
   appId: string
   version: string
+  /** Action names the manifest declares (channel-1 expectations: each must
+   * be registered by the staging instance's own code). */
+  declaredActions?: readonly string[]
   /** DSH home for the screenshot output directory. */
   home?: string
 }
@@ -75,7 +82,7 @@ export interface ProbeInput {
 export async function probeStaging(input: ProbeInput): Promise<AppProbeReport & { screenshotPath?: string }> {
   const executable = chromiumExecutable()
   if (executable === undefined) {
-    return { ok: false, entryLoaded: false, subscribedKeys: [], consoleErrors: [], screenshotTaken: false, detail: 'no Chromium executable found for the staging probe (set DEEP_CREATOR_BROWSER_CHROMIUM_EXECUTABLE)' }
+    return { ok: false, entryLoaded: false, subscribedKeys: [], registeredActions: [], consoleErrors: [], screenshotTaken: false, detail: 'no Chromium executable found for the staging probe (set DEEP_CREATOR_BROWSER_CHROMIUM_EXECUTABLE)' }
   }
   let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined
   try {
@@ -94,15 +101,16 @@ export async function probeStaging(input: ProbeInput): Promise<AppProbeReport & 
     const mime = (response?.headers()['content-type'] ?? '').split(';')[0]!.trim()
     const entryLoaded = status === 200 && mime === input.entryMIME
     if (!entryLoaded) {
-      return { ok: false, entryLoaded: false, subscribedKeys: [], consoleErrors, screenshotTaken: false, detail: `entry fetch failed: status ${status}, content-type "${mime}" (expected ${input.entryMIME})` }
+      return { ok: false, entryLoaded: false, subscribedKeys: [], registeredActions: [], consoleErrors, screenshotTaken: false, detail: `entry fetch failed: status ${status}, content-type "${mime}" (expected ${input.entryMIME})` }
     }
 
     await page.waitForTimeout(PROBE_SUBSCRIBE_WAIT_MS)
     const ops = await page.evaluate(() => {
-      const probe = (globalThis as { __stageProbe?: { op: string; path: string | null }[] }).__stageProbe
+      const probe = (globalThis as { __stageProbe?: { op: string; path: string | null; action: string | null }[] }).__stageProbe
       return probe ?? []
     })
     const subscribedKeys = [...new Set(ops.filter(op => op.op === 'data.subscribe').map(op => op.path).filter((path): path is string => path !== null))]
+    const registeredActions = [...new Set(ops.filter(op => op.op === 'action.register').map(op => op.action).filter((action): action is string => action !== null))]
 
     let screenshotTaken = false
     let screenshotPath: string | undefined
@@ -115,12 +123,22 @@ export async function probeStaging(input: ProbeInput): Promise<AppProbeReport & 
       screenshotTaken = true
     } catch { /* screenshot degrades to icon + name */ }
 
-    if (subscribedKeys.length === 0) {
-      return { ok: false, entryLoaded: true, subscribedKeys: [], consoleErrors, screenshotTaken, ...(screenshotPath === undefined ? {} : { screenshotPath }), detail: 'channel 2 unmet: the staging instance issued no data.subscribe over the bridge (declare and subscribe ≥1 AppData key)' }
+    // Channel 1: every declared action must have a registered handler —
+    // a declared-but-unregistered action is a broken tool API, a hard fail
+    // even when channel 2 is met. The probe never invokes handlers.
+    const declared = input.declaredActions ?? []
+    const missingHandlers = declared.filter(action => !registeredActions.includes(action))
+    if (missingHandlers.length > 0) {
+      return { ok: false, entryLoaded: true, subscribedKeys, registeredActions, consoleErrors, screenshotTaken, ...(screenshotPath === undefined ? {} : { screenshotPath }), detail: `channel 1 unmet: declared actions without registered handlers: ${missingHandlers.join(', ')} (register every declared action over the bridge, or remove the declaration)` }
     }
-    return { ok: true, entryLoaded: true, subscribedKeys, consoleErrors: consoleErrors.slice(0, 8), screenshotTaken, ...(screenshotPath === undefined ? {} : { screenshotPath }) }
+    const channelOne = declared.length > 0
+    const channelTwo = subscribedKeys.length > 0
+    if (!channelOne && !channelTwo) {
+      return { ok: false, entryLoaded: true, subscribedKeys, registeredActions, consoleErrors, screenshotTaken, ...(screenshotPath === undefined ? {} : { screenshotPath }), detail: 'dual-channel admission unmet: register ≥1 declared action handler, or subscribe to ≥1 AppData key over the bridge' }
+    }
+    return { ok: true, entryLoaded: true, subscribedKeys, registeredActions, consoleErrors: consoleErrors.slice(0, 8), screenshotTaken, ...(screenshotPath === undefined ? {} : { screenshotPath }) }
   } catch (error) {
-    return { ok: false, entryLoaded: false, subscribedKeys: [], consoleErrors: [], screenshotTaken: false, detail: `probe failed: ${error instanceof Error ? error.message : String(error)}` }
+    return { ok: false, entryLoaded: false, subscribedKeys: [], registeredActions: [], consoleErrors: [], screenshotTaken: false, detail: `probe failed: ${error instanceof Error ? error.message : String(error)}` }
   } finally {
     try { await browser?.close() } catch { /* already gone */ }
   }

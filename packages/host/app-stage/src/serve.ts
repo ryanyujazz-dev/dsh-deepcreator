@@ -1,12 +1,14 @@
 /**
  * Dual-source sandboxed static origins for App Stage applications.
  *
- * One loopback webServer prefix serves both supply sources: installed
- * snapshots (`/installed/<appId>/<version>/...`, stable public ids) and
+ * One loopback webServer prefix serves three surfaces: installed
+ * snapshots (`/installed/<appId>/<version>/...`, stable public ids),
  * workspace dev copies (`/dev/<token>/...`, an opaque capability token per
- * app directory so workspace paths never appear in a URL). Every response
- * carries the sandbox CSP, resolves symlinks before fencing, and refuses
- * anything that escapes its source root.
+ * app directory so workspace paths never appear in a URL), and runtime
+ * assets (`/assets/<appId>/<name>`, the agent-written passive-media
+ * channel — version-independent, uninstall-wiped, never inside a publish).
+ * Every response carries the sandbox CSP, resolves symlinks before
+ * fencing, and refuses anything that escapes its source root.
  * @module @ryanyujazz/dsh-app-stage/serve
  */
 import { createHash } from 'node:crypto'
@@ -14,7 +16,8 @@ import { readFile, realpath, stat } from 'node:fs/promises'
 import { extname, relative, resolve, sep } from 'node:path'
 import type { ServerResponse } from 'node:http'
 import type { WebServer } from '@deepseek-ai/dsh-host-webserver'
-import { installedVersionDir } from './store.ts'
+import { dshHome, installedVersionDir } from './store.ts'
+import { assetsDir } from './assets.ts'
 
 export const APP_STAGE_PREFIX = '/deepcreator-app-stage'
 
@@ -58,7 +61,7 @@ export class AppStageStaticServer {
   private readonly devByDir = new Map<string, string>()
   private readonly disposeRoute: () => void
 
-  constructor(webServer: WebServer, private readonly origin: string = '') {
+  constructor(webServer: WebServer, private readonly origin: string = '', private readonly home: string = dshHome()) {
     this.disposeRoute = webServer.register({
       kind: 'prefix',
       path: APP_STAGE_PREFIX,
@@ -96,7 +99,21 @@ export class AppStageStaticServer {
     const rest = path.slice(APP_STAGE_PREFIX.length)
     if (rest.startsWith('/dev/')) return this.serveDev(rest.slice('/dev/'.length), response)
     if (rest.startsWith('/installed/')) return this.serveInstalled(rest.slice('/installed/'.length), response)
+    if (rest.startsWith('/assets/')) return this.serveAssets(rest.slice('/assets/'.length), response)
     return fail(response, 404, 'not found')
+  }
+
+  /** `/assets/<appId>/<name>` — one passive-media file from the runtime
+   * asset directory (same origin as the app, CSP 'self' unbroken). */
+  private async serveAssets(segment: string, response: ServerResponse): Promise<void> {
+    const parts = segment.split('/')
+    if (parts.length !== 2 || parts[0] === '' || parts[1] === '') return fail(response, 404, 'not found')
+    const appId = decodeURIComponent(parts[0]!)
+    const name = decodeURIComponent(parts[1]!)
+    if (appId.includes('/') || appId.includes('..') || name.includes('/') || name.includes('..')) {
+      return fail(response, 404, 'not found')
+    }
+    await this.serveFile(assetsDir(this.home, appId), name, response)
   }
 
   private async serveDev(segment: string, response: ServerResponse): Promise<void> {

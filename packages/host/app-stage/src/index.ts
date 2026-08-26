@@ -18,7 +18,7 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-workspace'
-import type { AppDataChange, AppDevEntry, AppInstalledEntry, AppJsonValue, AppManifest, AppPublishPlan, AppRouterOutcome, AppStageDataChangesResult, AppStageDataGetResult, AppStageDataSetResult, AppStageEnsureResult, AppStageInvokeResult, AppStageListResult, AppStageOpenResult, AppStagePublishCommitResult, AppStagePublishPrepareResult, AppStageRouterResultAck, AppStageUninstallResult, AppStageWaitRequestsResult } from './types.ts'
+import type { AppDataChange, AppDevEntry, AppInstalledEntry, AppJsonValue, AppManifest, AppPublishPlan, AppRouterOutcome, AppStageAssetListResult, AppStageAssetWriteResult, AppStageDataChangesResult, AppStageDataGetResult, AppStageDataSetResult, AppStageEnsureResult, AppStageInvokeResult, AppStageListResult, AppStageOpenResult, AppStagePublishCommitResult, AppStagePublishPrepareResult, AppStageRouterResultAck, AppStageUninstallResult, AppStageWaitRequestsResult } from './types.ts'
 import { AppStageStaticServer } from './serve.ts'
 import { listInstalled, gateDevEntry, scanDevRoot } from './registry.ts'
 import { dshHome, readInstallPointer, readOpenedVersions, recordOpenedVersion, storeRoot } from './store.ts'
@@ -28,6 +28,7 @@ import { appDataChanges, appDataGet, appDataSet } from './appdata.ts'
 import { buildReport, commitSnapshot, gateForPublish, PACKAGE_MAX_BYTES, publishFingerprint, readStagedManifest, resolvePlan, stageSnapshot, uninstallApp, writeInstallPointer } from './publish.ts'
 import { probeStaging } from './probe.ts'
 import { AppRouterHub, INVOKE_TIMEOUT_MS, OPEN_TIMEOUT_MS } from './control.ts'
+import { listAssets, removeAssets, writeAsset } from './assets.ts'
 import { validateInvokeParams } from './params.ts'
 import { preinstallBuiltin } from './builtin.ts'
 
@@ -51,6 +52,9 @@ export { probeStaging, PROBE_SUBSCRIBE_WAIT_MS, PROBE_LOAD_TIMEOUT_MS } from './
 export { AppRouterHub, ROUTER_POLL_MS, INVOKE_TIMEOUT_MS, OPEN_TIMEOUT_MS, ROUTER_PRESENCE_GRACE_MS, ROUTER_SEEN_WINDOW_MS } from './control.ts'
 export type { RoutedSettlement } from './control.ts'
 export { validateInvokeParams } from './params.ts'
+export {
+  ASSET_MEDIA_TYPES, ASSET_NAME_PATTERN, ASSET_QUOTA_BYTES, ASSET_MAX_BYTES, ASSETS_ROUTE, assetUrl, assetsDir, listAssets, removeAssets, writeAsset,
+} from './assets.ts'
 export { readOpenedVersions, recordOpenedVersion } from './store.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -304,7 +308,7 @@ export class AppStageService extends TypertRemoteService {
     const staged = await stageSnapshot(gated.dir, stagingDir)
     if ('code' in staged) return { ok: false, code: 'PACKAGE_TOO_LARGE', message: `Snapshot is ${staged.bytes} bytes; the cap is ${PACKAGE_MAX_BYTES}.` }
     const entryURL = `http://${this.ctx.webServer.host}:${this.ctx.webServer.port}${this.statics.urlForDev(stagingDir, manifest.entry)}`
-    const probe = await probeStaging({ entryURL, entryMIME: 'text/html', appId, version: manifest.version, home })
+    const probe = await probeStaging({ entryURL, entryMIME: 'text/html', appId, version: manifest.version, declaredActions: manifest.actions.map(action => action.name), home })
     if (!probe.ok) {
       await rm(stagingDir, { recursive: true, force: true })
       return { ok: false, code: 'PROBE_FAILED', message: probe.detail ?? 'staging probe failed' }
@@ -361,7 +365,10 @@ export class AppStageService extends TypertRemoteService {
   async uninstall(session: Session, appId: string): Promise<AppStageUninstallResult> {
     void session
     const result = await uninstallApp(appId, dshHome())
-    if ('removed' in result) return { ok: true, appId, removed: true }
+    if ('removed' in result) {
+      await removeAssets(dshHome(), appId)
+      return { ok: true, appId, removed: true }
+    }
     return { ok: false, code: result.code, message: result.message }
   }
 
@@ -465,6 +472,32 @@ export class AppStageService extends TypertRemoteService {
     const known = this.router.reportResult(requestId, outcome)
     if (!known) return { ok: false, code: 'UNKNOWN_REQUEST', message: `no pending router request "${requestId}" (already settled or timed out).` }
     return { ok: true, requestId }
+  }
+
+  /**
+   * `app_asset_write` (B9): copy one workspace file into the installed
+   * app's runtime asset directory. Addresses installed copies only — the
+   * dev domain has no asset channel (fixtures in source serve self-tests).
+   */
+  @Remote('assetWrite')
+  async assetWrite(session: Session, appId: string, name: string, sourcePath: string): Promise<AppStageAssetWriteResult> {
+    const resolved = await this.resolveInstalled(appId)
+    if (!resolved.ok) return { ok: false, code: 'APP_NOT_INSTALLED', message: resolved.message }
+    const cwd = session.header.cwd
+    if (cwd === undefined) return { ok: false, code: 'SOURCE_PATH_INVALID', message: 'This session has no workspace to read the source from.' }
+    const written = await writeAsset(dshHome(), appId, name, sourcePath, cwd)
+    if (!written.ok) return { ok: false, code: written.code, message: written.message }
+    return { ...written.result }
+  }
+
+  /** `app_asset_list` (B10): the app's assets with quota usage. */
+  @Remote('assetList')
+  async assetList(session: Session, appId: string): Promise<AppStageAssetListResult> {
+    void session
+    const resolved = await this.resolveInstalled(appId)
+    if (!resolved.ok) return { ok: false, code: 'APP_NOT_INSTALLED', message: resolved.message }
+    const listed = await listAssets(dshHome(), appId)
+    return { ok: true, appId, ...listed }
   }
 
   /** Current journal rev of an installed app's AppData document (0 when absent). */

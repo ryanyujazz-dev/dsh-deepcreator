@@ -177,6 +177,8 @@ export interface AppProbeReport {
   readonly entryLoaded: boolean
   /** AppData keys the staging instance subscribed to over the bridge (channel 2). */
   readonly subscribedKeys: readonly string[]
+  /** Action names the staging instance registered over the bridge (channel 1). */
+  readonly registeredActions: readonly string[]
   /** Page console errors captured during the probe. */
   readonly consoleErrors: readonly string[]
   /** Whether the first-paint screenshot was captured (degrades to icon+name). */
@@ -286,6 +288,25 @@ export type AppStageOpenResult =
   | { readonly ok: false; readonly code: 'APP_NOT_INSTALLED' | 'CONTAINER_UNAVAILABLE' | 'RUNTIME_BROKEN'; readonly message: string }
 
 /** The long-poll face the GUI router drives (`waitRouterRequests`). */
+/** One listed runtime asset (B10). */
+export interface AppStageAssetEntry {
+  readonly name: string
+  readonly url: string
+  readonly mediaType: string
+  readonly bytes: number
+  readonly updatedAt: string
+}
+
+/** `app_asset_write` outcome (B9): the upsert receipt or a deterministic failure. */
+export type AppStageAssetWriteResult =
+  | { ok: true; appId: string; name: string; url: string; mediaType: string; bytes: number; overwritten: boolean; quotaUsedBytes: number }
+  | { ok: false; code: 'APP_NOT_INSTALLED' | 'SOURCE_PATH_INVALID' | 'SOURCE_NOT_FOUND' | 'NAME_INVALID' | 'MIME_UNSUPPORTED' | 'ASSET_TOO_LARGE' | 'ASSET_QUOTA_EXCEEDED' | 'STORE_WRITE_FAILED'; message: string }
+
+/** `app_asset_list` outcome (B10): the app's assets and quota usage. */
+export type AppStageAssetListResult =
+  | { ok: true; appId: string; assets: AppStageAssetEntry[]; quotaUsedBytes: number; quotaLimitBytes: number }
+  | { ok: false; code: 'APP_NOT_INSTALLED'; message: string }
+
 export type AppStageWaitRequestsResult =
   | { readonly ok: true; readonly requests: readonly AppRouterRequest[]; readonly cursor: number }
   | { readonly ok: false; readonly code: 'NO_WORKSPACE'; readonly message: string }

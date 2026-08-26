@@ -23,7 +23,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 // Type-only: pulls the userQuestions Context merge (S1 approval seam).
 import type {} from '@deepseek-ai/dsh-user-questions'
-import { createAppDataReadTool, createAppDataWriteTool, createAppInvokeTool, createAppListTool, createAppManifestTool, createAppOpenTool, createAppPublishTool, type AppOperationEnvironment, type AppToolEnvironment } from './tools.ts'
+import { createAppAssetListTool, createAppAssetWriteTool, createAppDataReadTool, createAppDataWriteTool, createAppInvokeTool, createAppListTool, createAppManifestTool, createAppOpenTool, createAppPublishTool, type AppOperationEnvironment, type AppToolEnvironment } from './tools.ts'
 
 /** Cordis plugin id inside the preset composition. */
 export const name = 'app-stage-agent'
@@ -43,4 +43,6 @@ export function apply(ctx: Context): void {
   ctx.tools.register(createAppOpenTool(env))
   ctx.tools.register(createAppDataReadTool(env))
   ctx.tools.register(createAppDataWriteTool(env))
+  ctx.tools.register(createAppAssetWriteTool(env))
+  ctx.tools.register(createAppAssetListTool(env))
 }

@@ -7,7 +7,7 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
-import { createAppDataReadTool, createAppDataWriteTool, createAppInvokeTool, createAppOpenTool, type AppOperationEnvironment } from '../src/tools.ts'
+import { createAppAssetListTool, createAppAssetWriteTool, createAppDataReadTool, createAppDataWriteTool, createAppInvokeTool, createAppOpenTool, type AppOperationEnvironment } from '../src/tools.ts'
 
 function execWith(): ToolRunContext {
   return {
@@ -29,6 +29,8 @@ function envWith(invokeReply: () => Promise<InvokeReply>, dataGet?: unknown, dat
       dataGet: vi.fn(async () => ({ ok: true, value: null, rev: 3 })),
       dataProbe: vi.fn(dataGet ?? (async () => ({ ok: true, found: true, value: { board: { items: [] } }, rev: 3 }))),
       dataSet: vi.fn(dataSet ?? (async () => ({ ok: true, rev: 4 }))),
+      assetWrite: vi.fn(async () => ({ ok: true, appId: 'canvas', name: 'sunset.png', url: '/deepcreator-app-stage/assets/canvas/sunset.png', mediaType: 'image/png', bytes: 1843200, overwritten: false, quotaUsedBytes: 1843200 })),
+      assetList: vi.fn(async () => ({ ok: true, appId: 'canvas', assets: [], quotaUsedBytes: 0, quotaLimitBytes: 268435456 })),
     },
   } as unknown as AppOperationEnvironment
 }
@@ -145,5 +147,46 @@ describe('app_data_read / app_data_write', () => {
     const tool = envelope ? createAppDataReadTool(env) : undefined
     const result = envelope(await tool!.execute({ appId: 'ghost-app', path: 'a' }, execWith()))
     expect(result.error?.code).toBe('APP_NOT_INSTALLED')
+  })
+})
+
+describe('app_asset_write / app_asset_list', () => {
+  it('writes through the service and echoes the receipt', async () => {
+    const env = envWith(success)
+    const tool = createAppAssetWriteTool(env)
+    const result = envelope(await tool.execute({ appId: 'canvas', name: 'sunset.png', sourcePath: 'output/images/sunset.png' }, execWith()))
+    expect(result.error).toBeUndefined()
+    expect(result.url).toBe('/deepcreator-app-stage/assets/canvas/sunset.png')
+    expect(env.appStage.assetWrite).toHaveBeenCalledWith(expect.anything(), 'canvas', 'sunset.png', 'output/images/sunset.png')
+  })
+
+  it('maps service failures with fix guidance', async () => {
+    const env = envWith(success)
+    ;(env.appStage as unknown as { assetWrite: ReturnType<typeof vi.fn> }).assetWrite = vi.fn(async () => ({ ok: false, code: 'ASSET_QUOTA_EXCEEDED', message: 'quota' }))
+    const tool = createAppAssetWriteTool(env)
+    const result = envelope(await tool.execute({ appId: 'canvas', name: 'big.png', sourcePath: 'x.png' }, execWith()))
+    expect(result.error?.code).toBe('ASSET_QUOTA_EXCEEDED')
+    expect(result.error?.message).toContain('app_asset_list')
+  })
+
+  it('validates name and appId locally before the service', async () => {
+    const env = envWith(success)
+    const tool = createAppAssetWriteTool(env)
+    expect(envelope(await tool.execute({ appId: 'canvas', name: 'a b.png', sourcePath: 'x' }, execWith())).error?.code).toBe('NAME_INVALID')
+    expect(envelope(await tool.execute({ appId: 'X', name: 'a.png', sourcePath: 'x' }, execWith())).error?.code).toBe('APP_ID_INVALID')
+    expect(env.appStage.assetWrite).not.toHaveBeenCalled()
+  })
+
+  it('lists assets with quota usage', async () => {
+    const env = envWith(success)
+    ;(env.appStage as unknown as { assetList: ReturnType<typeof vi.fn> }).assetList = vi.fn(async () => ({
+      ok: true, appId: 'canvas',
+      assets: [{ name: 'sunset.png', url: '/deepcreator-app-stage/assets/canvas/sunset.png', mediaType: 'image/png', bytes: 1843200, updatedAt: '2025-01-01T09:00:00.000Z' }],
+      quotaUsedBytes: 1843200, quotaLimitBytes: 268435456,
+    }))
+    const tool = createAppAssetListTool(env)
+    const result = envelope(await tool.execute({ appId: 'canvas' }, execWith()))
+    expect(result.assets).toHaveLength(1)
+    expect(result.quotaLimitBytes).toBe(268435456)
   })
 })
