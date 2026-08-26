@@ -64,7 +64,7 @@ source.onmessage = function (message) {
   try { event = JSON.parse(message.data) } catch (error) { return }
   if (!event || typeof event.seq !== 'number' || event.seq <= seen) return
   seen = event.seq
-  if (event.kind !== 'command' || event.phase !== 'start') return
+  if (event.kind !== 'command' || event.payload === undefined || event.payload.phase !== 'start') return
   if (!app || event.appId !== app) return
   ripple()
 }
