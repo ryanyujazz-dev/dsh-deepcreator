@@ -159,6 +159,20 @@ describe('injected runtime source', () => {
     // Reduced motion is an explicit degrade, not a silent fail.
     expect(PRESENCE_RUNTIME_JS).toContain('prefers-reduced-motion')
   })
+
+  it('ghost: host-gated param replay with typing pace and settle lifecycle (M5g)', () => {
+    // The ghost renders ONLY what the host marked co-visible (payload.params
+    // exists solely for apps holding a live subscription) — no local gating
+    // decision, so an app cannot force the theatre.
+    expect(PRESENCE_RUNTIME_JS).toContain('ghostStart(event.payload)')
+    // Typing is pace-limited presentation (30–60 ms/char), never a mirror
+    // of token burst speed; settle fast-forwards to the authoritative text.
+    expect(PRESENCE_RUNTIME_JS).toContain('Math.max(30, Math.min(60')
+    expect(PRESENCE_RUNTIME_JS).toContain('dsh-commit')
+    expect(PRESENCE_RUNTIME_JS).toContain('dsh-fail')
+    // typed without confirmation degrades to an explicit dotted wait state.
+    expect(PRESENCE_RUNTIME_JS).toContain('dsh-wait')
+  })
 })
 
 describe('coordinator event stream (M5d host side)', () => {

@@ -311,6 +311,9 @@ export class AppStageService extends TypertRemoteService {
   async dataChanges(session: Session, ref: string, sinceRev: number): Promise<AppStageDataChangesResult> {
     const resolved = await this.resolveDataRef(session, ref)
     if (!resolved.ok) return resolved
+    // X7: the bridge polls on cadence exactly while the app holds a
+    // data.subscribe — this call IS the live subscription fact.
+    this.presence.noteAppSubscription(resolved.appId)
     const changes = await appDataChanges(resolved.scope, resolved.appId, sinceRev, resolved.cwd)
     const rev = changes.length > 0 ? changes[changes.length - 1]!.rev : sinceRev
     return { ok: true, changes: changes as readonly AppDataChange[], rev }

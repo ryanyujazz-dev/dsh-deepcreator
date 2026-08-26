@@ -8,6 +8,7 @@
 import { afterAll, describe, expect, it, vi } from 'vitest'
 import {
   PresenceCoordinator,
+  PRESENCE_COVISIBLE_FRESHNESS_MS,
   PRESENCE_IDLE_SUSPEND_MS,
   PRESENCE_MACRO_AI_BUDGET_MS,
   summarizeParams,
@@ -286,5 +287,31 @@ describe('param digest (M5f: non-co-visible param replay)', () => {
     expect(presence.snapshot('s1')[0]?.activeCommand?.paramsSummary).toEqual([{ name: 'title', value: 'M5f验收卡' }])
     presence.commandStarted('s1', { kind: 'data.write', appId: 'kanban-demo', appName: '看板演示', origin: 'installed' })
     expect(presence.snapshot('s1')[0]?.activeCommand?.paramsSummary).toBeUndefined()
+  })
+})
+
+describe('X7 co-visibility (M5g)', () => {
+  const start = { kind: 'invoke' as const, appId: 'kanban-demo', appName: '看板演示', action: 'createTask', origin: 'installed' as const, paramsSummary: [{ name: 'title', value: '共见验收卡' }] }
+
+  it('keeps params off the channel until the app holds a live subscription', () => {
+    const presence = new PresenceCoordinator()
+    const events: PresenceEvent[] = []
+    presence.subscribeEvents('kanban-demo', event => { events.push(event) })
+    presence.commandStarted('s1', start)
+    expect(JSON.stringify(events.at(-1))).not.toContain('共见验收卡')
+    presence.noteAppSubscription('kanban-demo')
+    presence.commandStarted('s1', start)
+    expect(events.at(-1)?.payload.params).toEqual([{ name: 'title', value: '共见验收卡' }])
+  })
+
+  it('a stale subscription is not co-visible (freshness window)', () => {
+    const presence = new PresenceCoordinator()
+    const events: PresenceEvent[] = []
+    presence.subscribeEvents('kanban-demo', event => { events.push(event) })
+    const t0 = Date.now()
+    presence.noteAppSubscription('kanban-demo', t0 - PRESENCE_COVISIBLE_FRESHNESS_MS - 1)
+    expect(presence.isCoVisible('kanban-demo', t0)).toBe(false)
+    presence.commandStarted('s1', { ...start, paramsSummary: [{ name: 'title', value: '过期订阅' }] })
+    expect(events.at(-1)?.payload.params).toBeUndefined()
   })
 })

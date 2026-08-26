@@ -57,12 +57,17 @@ export const PRESENCE_EVENTS_CAP = 100
  * applied to the wire). The stream is strictly one-way: the runtime has no
  * callable API, and nothing a page does can produce or alter these events.
  */
+/** A channel payload scalar: structured facts only — the co-visible param
+ * digest (§4.2 downstream row) is the sole composite, and it rides the
+ * app-scoped stream destined for that very viewport. */
+export type PresenceEventPayload = Readonly<Record<string, string | number | boolean | readonly PresenceParamSummary[]>>
+
 export interface PresenceEvent {
   readonly seq: number
   readonly appId: string
   readonly kind: 'lease' | 'command'
   readonly ts: number
-  readonly payload: Readonly<Record<string, string | number | boolean>>
+  readonly payload: PresenceEventPayload
 }
 
 /** The authoritative lease state (§2.2); host stores no render state. */
@@ -164,6 +169,13 @@ export interface PresenceParamSummary {
   readonly value: string
 }
 
+/**
+ * X7 co-visibility freshness: an app's bridge subscription is a live fact
+ * only while its polling cadence continues (the shell polls every ~2 s, so
+ * 15 s covers transient gaps without surviving a closed container).
+ */
+export const PRESENCE_COVISIBLE_FRESHNESS_MS = 15_000
+
 /** Host-side param digest caps: per-value length and pair count. */
 const PRESENCE_PARAM_VALUE_MAX = 120
 const PRESENCE_PARAM_PAIRS_MAX = 4
@@ -250,6 +262,32 @@ export class PresenceCoordinator {
     return this.events.filter(event => appId === undefined || event.appId === appId)
   }
 
+  /**
+   * X7 co-visibility detection: the fact that an app's bridge is actively
+   * subscribed to its AppData. The shell's bridge polls `dataChanges` on
+   * cadence exactly while the app holds a `data.subscribe`, so the host
+   * observes the subscription in its own call stream — the same fact the
+   * presence doc routes through a runtime upstream report, with zero new
+   * wire surface (the upstream POST stays reserved for facts only the
+   * runtime can observe: rects, focusin, visibility).
+   */
+  private readonly subscriptions = new Map<string, { at: number }>()
+
+  /** Record a live bridge subscription poll for an app (freshness clock). */
+  noteAppSubscription(appId: string, at: number = Date.now()): void {
+    if (this.disposed) return
+    this.subscriptions.set(appId, { at })
+  }
+
+  /**
+   * Co-visible (X7): a fresh subscription fact. A ghost painted in this
+   * app's viewport will meet its own AppData broadcast — no theatre.
+   */
+  isCoVisible(appId: string, at: number = Date.now()): boolean {
+    const fact = this.subscriptions.get(appId)
+    return fact !== undefined && at - fact.at <= PRESENCE_COVISIBLE_FRESHNESS_MS
+  }
+
   /** Command start: open/renew the lease and refocus — the fast light. */
   commandStarted(sessionId: string, start: PresenceCommandStart): string | undefined {
     if (this.disposed) return undefined
@@ -259,9 +297,19 @@ export class PresenceCoordinator {
     lease.lastCommandAt = Date.now()
     lease.focus = { appId: start.appId, name: start.appName, ...(start.version !== undefined ? { version: start.version } : {}) }
     lease.activeCommand = { kind: start.kind, ...(start.action !== undefined ? { action: start.action } : {}), ...(start.paramsSummary !== undefined && start.paramsSummary.length > 0 ? { paramsSummary: start.paramsSummary } : {}) }
-    // SSE keeps its no-free-text discipline: the param digest rides the
-    // shell's snapshot remote only, never the app-layer channel.
-    this.emit(start.appId, 'command', { phase: 'start', commandKind: start.kind, ...(start.action !== undefined ? { action: start.action } : {}) })
+    // SSE param discipline (§4.2 downstream row): action metadata may carry
+    // param values, but only for the app the command targets AND only when
+    // that app is co-visible — the values' destination is that very
+    // viewport, and its subscription guarantees the ghost's commit will be
+    // a real broadcast landing there. Non-co-visible apps get the banner
+    // digest via the shell snapshot instead (M5f), never the channel.
+    const coVisible = this.isCoVisible(start.appId)
+    this.emit(start.appId, 'command', {
+      phase: 'start',
+      commandKind: start.kind,
+      ...(start.action !== undefined ? { action: start.action } : {}),
+      ...(coVisible && start.paramsSummary !== undefined && start.paramsSummary.length > 0 ? { params: start.paramsSummary } : {}),
+    })
     this.roster(lease, start)
     if (lease.kind === 'macro') {
       // Renewal requires a new command and re-arms the budget (§2.1).
@@ -418,12 +466,13 @@ export class PresenceCoordinator {
     this.leases.clear()
     this.events.length = 0
     this.eventListeners.clear()
+    this.subscriptions.clear()
   }
 
   // -----------------------------------------------------------------------
 
   /** Publish one app-layer event (ring-buffered + fan-out; structured only). */
-  private emit(appId: string, kind: PresenceEvent['kind'], payload: Readonly<Record<string, string | number | boolean>>): void {
+  private emit(appId: string, kind: PresenceEvent['kind'], payload: PresenceEventPayload): void {
     if (this.disposed) return
     this.eventSeq += 1
     const event: PresenceEvent = { seq: this.eventSeq, appId, kind, ts: Date.now(), payload }
