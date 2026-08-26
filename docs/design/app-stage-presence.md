@@ -1,6 +1,6 @@
 # App Stage Presence（AI 在场层）设计提案
 
-Status: **提案 v0.0.3 — 未实现**。本文定义 App Stage 的 Presence 子系统：把 AI 在 App Stage 内的一切操作**实时可视化、事后可追溯**——接管粒子边框、合成 AI 光标、逐字键入 ghost、接管摘要与时间线。来源：三镜头头脑风暴（UX/架构/信任，42 点子）+ 交叉授粉 + 主席终审裁决（11 项冲突全部裁定，裁决记录见 `output/app-stage-presence/91-presence-verdicts.md`）。v0.0.2 联动 app-stage.md v0.0.4 工作方式修订（微租约动作集含 `app_publish`、waiting-approve 呈现态、摘要计数含 publish、时间线全局水位且仅聚合 installed origin 动作）；v0.0.3 联动 app-stage.md v0.0.5 五视角评审修订：conversation 模式后台活动信号（§3.5 扩）、invoke 返回携版本进摘要素材。与 `docs/design/app-stage.md`（v0.0.5）配套；实现时同步架构文档与包 README。
+Status: **提案 v0.0.3 — 未实现**。本文定义 App Stage 的 Presence 子系统：把 AI 在 App Stage 内的一切操作**实时可视化、事后可追溯**——接管粒子边框、合成 AI 光标、逐字键入 ghost、接管摘要与时间线。来源：三镜头头脑风暴（UX/架构/信任，42 点子）+ 交叉授粉 + 主席终审裁决（11 项冲突全部裁定，裁决记录见 `output/app-stage-presence/91-presence-verdicts.md`）。v0.0.2 联动 app-stage.md v0.0.4 工作方式修订（微租约动作集含 `app_publish`、waiting-approve 呈现态、摘要计数含 publish、时间线全局水位且仅聚合 installed origin 动作）；v0.0.3 联动 app-stage.md v0.0.5 五视角评审修订：conversation 模式后台活动信号（§3.5 扩）、invoke 返回携版本进摘要素材；v0.0.4 实现修订（M5f/M5g）：①X7 共见检测源落地为宿主侧观察——应用桥持 `data.subscribe` 期间壳桥按节拍轮询 `dataChanges`，宿主在自己的调用流里即见订阅事实（15s 新鲜窗），与设计的 runtime 上行报告是同一事实、零新增线面；上行 POST 通道保留给只有 runtime 能观察到的事实（rect/focusin/可见性）。②§3.3 ghost 逐字呈现被权威 settle 快进（实测 invoke 端到端 ~100ms，限速呈现若不快进则 commit 永远晚于事实）。③参数摘要（非共见型）settled 后在租约上保留至下条命令替换——同因百毫秒命令对 2s 快照轮询不可见，in-flight-only 摘要事实上永不可见。与 `docs/design/app-stage.md`（v0.0.5）配套；实现时同步架构文档与包 README。
 
 ## 1. 定位与原则
 
