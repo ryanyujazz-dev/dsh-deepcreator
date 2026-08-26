@@ -87,7 +87,7 @@ export interface AppToolEnvironment {
 /**
 /** The environment the M4 operation tools read (service faces + home override). */
 export interface AppOperationEnvironment {
-  readonly appStage: Pick<AppStageService, 'devOriginURL' | 'installedOriginURL' | 'invoke' | 'open' | 'dataGet' | 'dataSet' | 'dataProbe' | 'assetWrite' | 'assetList'>
+  readonly appStage: Pick<AppStageService, 'devOriginURL' | 'installedOriginURL' | 'invoke' | 'open' | 'dataGet' | 'dataSet' | 'dataProbe' | 'assetWrite' | 'assetList' | 'takeover'>
   /** DSH home override (tests); default is the real resolved home. */
   readonly home?: string
 }
@@ -434,6 +434,44 @@ export function createAppOpenTool(env: AppOperationEnvironment): ToolDefinition 
       const result = await env.appStage.open(session, appId, focus)
       if (!result.ok) return json(toolError(result.code, result.message, { appId }))
       return json({ appId: result.appId, version: result.version, opened: result.opened, focused: result.focused })
+    },
+  })
+}
+
+/** `app_takeover` (B7, Px-β): an explicit presence macro lease — the full
+ * particle frame and timed banner for sustained operation. Durations are
+ * platform constants (never parameterized: an agent must not grant itself a
+ * long lease); new commands inside the lease re-arm the timer, user input
+ * interrupts at lease level, and the AI never auto-reclaims. */
+export function createAppTakeoverTool(env: AppOperationEnvironment): ToolDefinition {
+  let takeovers = 0
+  return defineTool({
+    name: 'app_takeover',
+    description: 'Enter an explicit presence macro-lease on an installed app: full particle frame and timed banner for sustained operation. Use before long multi-step driving (bulk task creation, board restructuring) or when the user delegates ("let the AI do it"). Durations are platform constants (autonomous 5 min, delegated 15 min) and not parameterized; new commands inside the lease re-arm the timer; user input interrupts at lease level and the AI never auto-reclaims.',
+    parameters: {
+      appId: { type: 'string', required: true, description: 'The installed app id: kebab-case segments of [a-z0-9], ≤64 chars.' },
+    },
+    output: { schema: outputSchema, render },
+    async execute(args, exec) {
+      const session = owner(exec).session
+      const { appId } = args as { appId: string }
+      if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(appId) || appId.length > 64) {
+        return json(toolError('APP_ID_INVALID', `appId "${appId}" is not a legal app id (kebab-case segments of [a-z0-9], ≤64 chars).`, { appId }))
+      }
+      takeovers += 1
+      if (takeovers > 16) {
+        return json(toolError('TAKEOVER_LIMIT', 'This session exceeded the takeover budget (16); the lease is already lit — drive it with commands instead of re-taking over.', { appId }))
+      }
+      const result = await env.appStage.takeover(session, appId, false)
+      if (!result.ok) return json(toolError(result.code, result.message, { appId }))
+      return json({
+        appId,
+        leaseId: result.lease.leaseId,
+        mode: 'autonomous',
+        budgetMs: result.budgetMs,
+        expiresAt: new Date(result.lease.expiresAt ?? Date.now() + result.budgetMs).toISOString(),
+        renewal: 'new commands inside the lease re-arm the timer; silence never extends it',
+      })
     },
   })
 }

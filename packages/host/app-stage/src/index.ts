@@ -18,7 +18,7 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-workspace'
-import type { AppDataChange, AppDevEntry, AppInstalledEntry, AppJsonValue, AppManifest, AppPublishPlan, AppRouterOutcome, AppStageAssetListResult, AppStageAssetWriteResult, AppStageDataChangesResult, AppStageDataGetResult, AppStageDataSetResult, AppStageEnsureResult, AppStageInvokeResult, AppStageListResult, AppStageOpenResult, AppStagePublishCommitResult, AppStagePublishPrepareResult, AppStageRouterResultAck, AppStageUninstallResult, AppStageWaitRequestsResult } from './types.ts'
+import type { AppDataChange, AppDevEntry, AppInstalledEntry, AppJsonValue, AppManifest, AppPublishPlan, AppRouterOutcome, AppStageAssetListResult, AppStageAssetWriteResult, AppStageDataChangesResult, AppStageDataGetResult, AppStageDataSetResult, AppStageEnsureResult, AppStageInvokeResult, AppStageListResult, AppStageOpenResult, AppStagePresenceControlResult, AppStagePresenceSnapshotResult, AppStagePresenceSummaryResult, AppStagePresenceTimelineResult, AppStagePublishCommitResult, AppStagePublishPrepareResult, AppStageRouterResultAck, AppStageUninstallResult, AppStageWaitRequestsResult } from './types.ts'
 import { AppStageStaticServer } from './serve.ts'
 import { listInstalled, gateDevEntry, scanDevRoot } from './registry.ts'
 import { dshHome, readInstallPointer, readOpenedVersions, recordOpenedVersion, storeRoot } from './store.ts'
@@ -28,6 +28,7 @@ import { appDataChanges, appDataGet, appDataSet } from './appdata.ts'
 import { buildReport, commitSnapshot, gateForPublish, PACKAGE_MAX_BYTES, publishFingerprint, readStagedManifest, resolvePlan, stageSnapshot, uninstallApp, writeInstallPointer } from './publish.ts'
 import { probeStaging } from './probe.ts'
 import { AppRouterHub, INVOKE_TIMEOUT_MS, OPEN_TIMEOUT_MS } from './control.ts'
+import { PresenceCoordinator, PRESENCE_MACRO_AI_BUDGET_MS, PRESENCE_MACRO_DELEGATED_BUDGET_MS } from './presence.ts'
 import { listAssets, removeAssets, writeAsset } from './assets.ts'
 import { validateInvokeParams } from './params.ts'
 import { preinstallBuiltin } from './builtin.ts'
@@ -51,6 +52,8 @@ export {
 export { probeStaging, PROBE_SUBSCRIBE_WAIT_MS, PROBE_LOAD_TIMEOUT_MS } from './probe.ts'
 export { AppRouterHub, ROUTER_POLL_MS, INVOKE_TIMEOUT_MS, OPEN_TIMEOUT_MS, ROUTER_PRESENCE_GRACE_MS, ROUTER_SEEN_WINDOW_MS } from './control.ts'
 export type { RoutedSettlement } from './control.ts'
+export { PresenceCoordinator, PRESENCE_IDLE_SUSPEND_MS, PRESENCE_MACRO_AI_BUDGET_MS, PRESENCE_MACRO_DELEGATED_BUDGET_MS, PRESENCE_BANNER_HYSTERESIS_MS } from './presence.ts'
+export type { PresenceLeaseState, PresenceLeaseSnapshot, PresenceSummary, PresenceTimelineRow, PresenceActionRecord, PresenceCommandKind } from './presence.ts'
 export { validateInvokeParams } from './params.ts'
 export {
   ASSET_MEDIA_TYPES, ASSET_NAME_PATTERN, ASSET_QUOTA_BYTES, ASSET_MAX_BYTES, ASSETS_ROUTE, assetUrl, assetsDir, listAssets, removeAssets, writeAsset,
@@ -90,6 +93,8 @@ export class AppStageService extends TypertRemoteService {
   private readonly publishDrafts = new Map<string, PublishDraft>()
   /** The M4 operation face's routing hub (long-polled by the GUI router). */
   private readonly router = new AppRouterHub()
+  /** The M5 presence coordinator (Px-β): authoritative lease state. */
+  private readonly presence = new PresenceCoordinator()
 
   constructor(ctx: Context) {
     super(ctx, 'appStage')
@@ -111,10 +116,15 @@ export class AppStageService extends TypertRemoteService {
         const cwd = session.header.cwd
         if (cwd !== undefined) this.watchers.unbind(cwd)
       })
+      const presenceUnbind = ctx.on('session/disposed', session => {
+        this.presence.sessionDisposed(String(session.id))
+      })
       return () => {
         created()
         disposed()
+        presenceUnbind()
         this.watchers.dispose()
+        this.presence.dispose()
       }
     }, 'app-stage: session-bound dev watchers')
     // Generated property, not state: materialize + verify on boot; no
@@ -259,15 +269,36 @@ export class AppStageService extends TypertRemoteService {
     }
   }
 
-  /** Bridge `data.set`: one validated key-path write, journaled. */
+  /**
+   * Bridge `data.set` and the agent's `app_data_write` share this choke
+   * point. Presence splits them by causeId prefix: `agent-` writes are
+   * command-stream actions (ledger row + lease renewal), `ui-` writes are
+   * app effects of a routed command (anti-cover key change list only).
+   */
   @Remote('dataSet')
   async dataSet(session: Session, ref: string, path: string, value: AppJsonValue, causeId: string): Promise<AppStageDataSetResult> {
     const resolved = await this.resolveDataRef(session, ref)
     if (!resolved.ok) return resolved
+    const startedAt = Date.now()
+    const sessionId = String(session.id)
+    const agentCommand = causeId.startsWith('agent-')
+    if (agentCommand) {
+      const name = resolved.scope === 'installed' ? (await this.installedName(resolved.appId)) ?? resolved.appId : resolved.appId
+      this.presence.commandStarted(sessionId, { kind: 'data.write', appId: resolved.appId, appName: name, origin: resolved.scope === 'installed' ? 'installed' : 'dev' })
+    }
     try {
       const { rev } = await appDataSet(resolved.scope, resolved.appId, path, value, causeId, resolved.cwd, resolved.schemaVersion)
+      this.presence.noteKeyChange(sessionId, resolved.appId, path, rev)
+      if (agentCommand) {
+        const name = resolved.scope === 'installed' ? (await this.installedName(resolved.appId)) ?? resolved.appId : resolved.appId
+        this.presence.commandSettled(sessionId, { ts: startedAt, kind: 'data.write', appId: resolved.appId, appName: name, outcome: 'ok', durationMs: Date.now() - startedAt, keys: [path], causeId, origin: resolved.scope === 'installed' ? 'installed' : 'dev' })
+      }
       return { ok: true, rev }
     } catch (error) {
+      if (agentCommand) {
+        const name = resolved.scope === 'installed' ? (await this.installedName(resolved.appId)) ?? resolved.appId : resolved.appId
+        this.presence.commandSettled(sessionId, { ts: startedAt, kind: 'data.write', appId: resolved.appId, appName: name, outcome: 'error', durationMs: Date.now() - startedAt, origin: resolved.scope === 'installed' ? 'installed' : 'dev' })
+      }
       const message = error instanceof Error ? error.message : String(error)
       const code = message.startsWith('PATH_INVALID') ? 'PATH_INVALID' : message.startsWith('VALUE_TOO_LARGE') ? 'VALUE_TOO_LARGE' : 'DOC_TOO_LARGE'
       return { ok: false, code, message }
@@ -316,6 +347,11 @@ export class AppStageService extends TypertRemoteService {
     const report = await buildReport(stagingDir, manifest, probe)
     const draftToken = randomUUID()
     this.publishDrafts.set(draftToken, { appId, stagingDir, manifest, fingerprint, plan, sourceWorkspace: basename(cwd), sourceSession: String(session.id), digest: report.digest })
+    if (plan !== 'update-same-source') {
+      // First publish and cross-source updates wait for the user: the lease
+      // projects waiting-approve until approve/decline resolves it.
+      this.presence.waitingApprove(String(session.id), appId, manifest.version)
+    }
     return {
       ok: true, draftToken, plan,
       ...(pointer === undefined ? {} : { previous: { version: pointer.version, sourceWorkspace: pointer.sourceWorkspace } }),
@@ -346,16 +382,18 @@ export class AppStageService extends TypertRemoteService {
     } catch (error) {
       return { ok: false, code: 'STORE_WRITE_FAILED', message: `install store write failed: ${error instanceof Error ? error.message : String(error)}` }
     }
+    this.presence.approveResolved(String(session.id), false)
+    this.presence.commandSettled(String(session.id), { ts: Date.now(), kind: 'publish', appId: draft.appId, appName: draft.manifest.name, version: draft.manifest.version, outcome: 'ok', durationMs: 0, origin: 'installed' })
     return { ok: true, appId: draft.appId, version: draft.manifest.version, plan: draft.plan }
   }
 
   /** Drop a staged draft without installing (declined or abandoned approval). */
   @Remote('abortPublish')
   abortPublish(session: Session, draftToken: string): { ok: boolean } {
-    void session
     const draft = this.publishDrafts.get(draftToken)
     if (draft === undefined) return { ok: false }
     this.publishDrafts.delete(draftToken)
+    this.presence.approveResolved(String(session.id), true)
     void rm(draft.stagingDir, { recursive: true, force: true })
     return { ok: true }
   }
@@ -388,6 +426,12 @@ export class AppStageService extends TypertRemoteService {
     return { ok: true, appId, version: match.pointer.version, manifest: match.manifest }
   }
 
+  /** Installed manifest name for presence copy (appId fallback). */
+  private async installedName(appId: string): Promise<string | undefined> {
+    const installed = await listInstalled(dshHome())
+    return installed.find(item => item.appId === appId)?.manifest?.name
+  }
+
   /**
    * `app_invoke` (B3): route one declared, param-checked action into the
    * Stage container the GUI router owns. The journal rev before dispatch
@@ -405,6 +449,9 @@ export class AppStageService extends TypertRemoteService {
     const checked = validateInvokeParams(params, decl.params)
     if (!checked.ok) return { ok: false, code: 'PARAMS_MISMATCH', message: checked.message }
     const revBefore = await this.installedRev(appId)
+    const startedAt = Date.now()
+    const sessionId = String(session.id)
+    this.presence.commandStarted(sessionId, { kind: 'invoke', appId, appName: resolved.manifest.name, version: resolved.version, action, origin: 'installed' })
     const settlement = await this.router.push(
       { kind: 'invoke', appId, version: resolved.version, name: resolved.manifest.name, action, params },
       INVOKE_TIMEOUT_MS,
@@ -413,6 +460,7 @@ export class AppStageService extends TypertRemoteService {
     if (settlement.kind === 'reported') {
       const failure = settlement.outcome.error
       if (failure !== undefined) {
+        this.presence.commandSettled(sessionId, { ts: startedAt, kind: 'invoke', appId, appName: resolved.manifest.name, version: resolved.version, action, outcome: 'error', durationMs: Date.now() - startedAt, origin: 'installed' })
         if (failure.code === 'ACTION_NOT_REGISTERED') {
           return { ok: false, code: 'ACTION_NOT_REGISTERED', message: `the app never registered a handler for "${action}" — an app defect; check app_manifest and whether a newer version declares it.` }
         }
@@ -423,6 +471,7 @@ export class AppStageService extends TypertRemoteService {
       }
       const changes = await appDataChanges('installed', appId, revBefore, undefined)
       const persistedKeys = [...new Set(changes.map(change => change.path))]
+      this.presence.commandSettled(sessionId, { ts: startedAt, kind: 'invoke', appId, appName: resolved.manifest.name, version: resolved.version, action, outcome: 'ok', durationMs: Date.now() - startedAt, keys: persistedKeys, origin: 'installed' })
       return {
         ok: true,
         appId,
@@ -433,22 +482,28 @@ export class AppStageService extends TypertRemoteService {
       }
     }
     if (settlement.kind === 'timeout') {
+      this.presence.commandSettled(sessionId, { ts: startedAt, kind: 'invoke', appId, appName: resolved.manifest.name, version: resolved.version, action, outcome: 'timeout', durationMs: Date.now() - startedAt, origin: 'installed' })
       return { ok: false, code: 'INVOKE_TIMEOUT', message: `the router did not complete within ${INVOKE_TIMEOUT_MS} ms; the command may already have run — verify with app_data_read before any retry (E1.1).`, ...(applied ? { actionApplied: true } : {}) }
     }
+    this.presence.commandSettled(sessionId, { ts: startedAt, kind: 'invoke', appId, appName: resolved.manifest.name, version: resolved.version, action, outcome: 'error', durationMs: Date.now() - startedAt, origin: 'installed' })
     return { ok: false, code: 'CONTAINER_UNAVAILABLE', message: 'no Stage router is connected; the app needs a Stage container to run (open the desktop once, or app_open from a GUI-connected session).' }
   }
 
   /** `app_open` (B4): presentation intent — ensure the container, maybe focus. */
   @Remote('open')
   async open(session: Session, appId: string, focus: boolean): Promise<AppStageOpenResult> {
-    void session
     const resolved = await this.resolveInstalled(appId)
     if (!resolved.ok) return resolved
+    const startedAt = Date.now()
+    const sessionId = String(session.id)
+    this.presence.commandStarted(sessionId, { kind: 'open', appId, appName: resolved.manifest.name, version: resolved.version, origin: 'installed' })
     const settlement = await this.router.push({ kind: 'open', appId, version: resolved.version, name: resolved.manifest.name, focus }, OPEN_TIMEOUT_MS)
     if (settlement.kind === 'reported') {
       if (settlement.outcome.error !== undefined) {
+        this.presence.commandSettled(sessionId, { ts: startedAt, kind: 'open', appId, appName: resolved.manifest.name, version: resolved.version, outcome: 'error', durationMs: Date.now() - startedAt, origin: 'installed' })
         return { ok: false, code: 'CONTAINER_UNAVAILABLE', message: `the Stage router could not present the app: ${settlement.outcome.error.message}` }
       }
+      this.presence.commandSettled(sessionId, { ts: startedAt, kind: 'open', appId, appName: resolved.manifest.name, version: resolved.version, outcome: 'ok', durationMs: Date.now() - startedAt, origin: 'installed' })
       return { ok: true, appId, version: resolved.version, opened: settlement.outcome.opened ?? true, focused: settlement.outcome.focused ?? focus }
     }
     if (settlement.kind === 'timeout') {
@@ -478,6 +533,58 @@ export class AppStageService extends TypertRemoteService {
     return { ok: true, requestId }
   }
 
+  // -------------------------------------------------------------------------
+  // M5 — presence (Px-β): the authoritative lease face.
+
+  /**
+   * `app_takeover`: an explicit macro lease lighting the full particle
+   * state. AI-self by default; user delegation (15 min budget) arrives with
+   * the M5c shell controls. Renewal requires new commands — silence never
+   * extends a lease.
+   */
+  async takeover(session: Session, appId: string, delegated: boolean): Promise<{ ok: true; lease: import('./presence.ts').PresenceLeaseSnapshot; budgetMs: number } | { ok: false; code: 'APP_NOT_INSTALLED' | 'RUNTIME_BROKEN' | 'CONTAINER_UNAVAILABLE'; message: string }> {
+    const resolved = await this.resolveInstalled(appId)
+    if (!resolved.ok) return resolved
+    if (!this.router.routerConnected) {
+      return { ok: false, code: 'CONTAINER_UNAVAILABLE', message: 'no Stage container is connected; a takeover lights the particle frame the user sees, so it needs a GUI surface (open the desktop once, or app_open from a GUI-connected session).' }
+    }
+    const lease = this.presence.takeover(String(session.id), { appId, name: resolved.manifest.name, version: resolved.version }, delegated)
+    return { ok: true, lease, budgetMs: delegated ? PRESENCE_MACRO_DELEGATED_BUDGET_MS : PRESENCE_MACRO_AI_BUDGET_MS }
+  }
+
+  /** The shell's projection feed: live leases for this session. */
+  @Remote('presenceSnapshot')
+  presenceSnapshot(session: Session): AppStagePresenceSnapshotResult {
+    return { ok: true, leases: this.presence.snapshot(String(session.id)) }
+  }
+
+  /** The activity view's feed: installed-origin rows after a cursor. */
+  @Remote('presenceTimeline')
+  presenceTimeline(session: Session, sinceSeq: number): AppStagePresenceTimelineResult {
+    void session
+    const feed = this.presence.timelineSince(sinceSeq)
+    return { ok: true, rows: feed.rows, latest: feed.latest }
+  }
+
+  /** A lease summary by id (the card material, fetched on release). */
+  @Remote('presenceSummary')
+  presenceSummary(session: Session, leaseId: string): AppStagePresenceSummaryResult {
+    void session
+    const summary = this.presence.summary(leaseId)
+    if (summary === undefined) return { ok: false, code: 'UNKNOWN_LEASE', message: `no summary for lease "${leaseId}" (unknown or evicted).` }
+    return { ok: true, summary }
+  }
+
+  /** User-side lease controls: interrupt / resume / handback (X1). */
+  @Remote('presenceControl')
+  presenceControl(session: Session, op: 'interrupt' | 'resume' | 'handback'): AppStagePresenceControlResult {
+    const sessionId = String(session.id)
+    if (op === 'interrupt') return { ok: true, applied: this.presence.interrupt(sessionId) }
+    if (op === 'resume') return { ok: true, applied: this.presence.resume(sessionId) }
+    if (op === 'handback') return { ok: true, applied: this.presence.handback(sessionId) }
+    return { ok: false, code: 'OP_INVALID', message: `unknown presence op "${op}"` }
+  }
+
   /**
    * `app_asset_write` (B9): copy one workspace file into the installed
    * app's runtime asset directory. Addresses installed copies only — the
@@ -489,7 +596,11 @@ export class AppStageService extends TypertRemoteService {
     if (!resolved.ok) return { ok: false, code: 'APP_NOT_INSTALLED', message: resolved.message }
     const cwd = session.header.cwd
     if (cwd === undefined) return { ok: false, code: 'SOURCE_PATH_INVALID', message: 'This session has no workspace to read the source from.' }
+    const startedAt = Date.now()
+    const sessionId = String(session.id)
+    this.presence.commandStarted(sessionId, { kind: 'asset.write', appId, appName: resolved.manifest.name, version: resolved.version, origin: 'installed' })
     const written = await writeAsset(dshHome(), appId, name, sourcePath, cwd)
+    this.presence.commandSettled(sessionId, { ts: startedAt, kind: 'asset.write', appId, appName: resolved.manifest.name, version: resolved.version, outcome: written.ok ? 'ok' : 'error', durationMs: Date.now() - startedAt, origin: 'installed' })
     if (!written.ok) return { ok: false, code: written.code, message: written.message }
     return { ...written.result }
   }

@@ -7,7 +7,7 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
-import { createAppAssetListTool, createAppAssetWriteTool, createAppDataReadTool, createAppDataWriteTool, createAppInvokeTool, createAppOpenTool, type AppOperationEnvironment } from '../src/tools.ts'
+import { createAppAssetListTool, createAppAssetWriteTool, createAppDataReadTool, createAppDataWriteTool, createAppInvokeTool, createAppOpenTool, createAppTakeoverTool, type AppOperationEnvironment } from '../src/tools.ts'
 
 function execWith(): ToolRunContext {
   return {
@@ -206,5 +206,43 @@ describe('app_asset_write / app_asset_list', () => {
     const result = envelope(await tool.execute({ appId: 'canvas' }, execWith()))
     expect(result.assets).toHaveLength(1)
     expect(result.quotaLimitBytes).toBe(268435456)
+  })
+})
+
+describe('app_takeover (B7: explicit macro lease, platform-constant budgets)', () => {
+  const takeoverOk = (): ReturnType<typeof vi.fn> => vi.fn(async () => ({
+    ok: true,
+    lease: { leaseId: 'pl-1', kind: 'macro', state: 'active', delegated: false, startedAt: Date.now(), lastCommandAt: Date.now(), expiresAt: Date.now() + 300_000, apps: [{ appId: 'kanban-demo', name: '看板演示' }], focus: { appId: 'kanban-demo', name: '看板演示' } },
+    budgetMs: 300_000,
+  }))
+
+  it('returns the lease receipt with autonomous mode and an ISO deadline', async () => {
+    const env = envWith(success)
+    ;(env.appStage as { takeover: unknown }).takeover = takeoverOk()
+    const tool = createAppTakeoverTool(env)
+    const value = await tool.execute({ appId: 'kanban-demo' }, execWith()) as Record<string, unknown>
+    expect(value.error).toBeUndefined()
+    expect(value.appId).toBe('kanban-demo')
+    expect(value.mode).toBe('autonomous')
+    expect(typeof value.expiresAt).toBe('string')
+    expect((value.expiresAt as string)).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+    expect(value.renewal).toContain('re-arm')
+  })
+
+  it('rejects illegal app ids before touching the service', async () => {
+    const env = envWith(success)
+    ;(env.appStage as { takeover: unknown }).takeover = takeoverOk()
+    const tool = createAppTakeoverTool(env)
+    const value = await tool.execute({ appId: 'Bad_Id!' }, execWith()) as Record<string, unknown>
+    expect((value.error as { code: string }).code).toBe('APP_ID_INVALID')
+    expect((env.appStage as { takeover: ReturnType<typeof vi.fn> }).takeover).not.toHaveBeenCalled()
+  })
+
+  it('surfaces CONTAINER_UNAVAILABLE as an actionable error (no GUI surface)', async () => {
+    const env = envWith(success)
+    ;(env.appStage as { takeover: unknown }).takeover = vi.fn(async () => ({ ok: false, code: 'CONTAINER_UNAVAILABLE', message: 'no Stage container is connected' }))
+    const tool = createAppTakeoverTool(env)
+    const value = await tool.execute({ appId: 'kanban-demo' }, execWith()) as Record<string, unknown>
+    expect((value.error as { code: string }).code).toBe('CONTAINER_UNAVAILABLE')
   })
 })

@@ -317,3 +317,26 @@ export type AppStageWaitRequestsResult =
 export type AppStageRouterResultAck =
   | { readonly ok: true; readonly requestId: string }
   | { readonly ok: false; readonly code: 'UNKNOWN_REQUEST'; readonly message: string }
+
+// ---------------------------------------------------------------------------
+// M5 — presence remotes (Px-β): lease snapshots, timeline feed, user controls.
+
+/** `presenceSnapshot`: live leases for the caller's session (render states derive). */
+export type AppStagePresenceSnapshotResult =
+  | { readonly ok: true; readonly leases: readonly import('./presence.ts').PresenceLeaseSnapshot[] }
+  | { readonly ok: false; readonly code: 'NO_WORKSPACE'; readonly message: string }
+
+/** `presenceTimeline`: installed-origin activity rows after a cursor. */
+export type AppStagePresenceTimelineResult =
+  | { readonly ok: true; readonly rows: readonly import('./presence.ts').PresenceTimelineRow[]; readonly latest: number }
+  | { readonly ok: false; readonly code: 'NO_WORKSPACE'; readonly message: string }
+
+/** `presenceSummary`: one emitted lease summary (late fetch by lease id). */
+export type AppStagePresenceSummaryResult =
+  | { readonly ok: true; readonly summary: import('./presence.ts').PresenceSummary }
+  | { readonly ok: false; readonly code: 'UNKNOWN_LEASE'; readonly message: string }
+
+/** `presenceControl`: user-side lease controls (interrupt / resume / handback). */
+export type AppStagePresenceControlResult =
+  | { readonly ok: true; readonly applied: boolean }
+  | { readonly ok: false; readonly code: 'NO_WORKSPACE' | 'OP_INVALID'; readonly message: string }
