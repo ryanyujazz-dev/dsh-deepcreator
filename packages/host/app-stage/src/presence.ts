@@ -372,10 +372,14 @@ export class PresenceCoordinator {
       if (lease.kind === 'micro') {
         // Micro leases release on idle (the summary is the release artifact).
         this.release(lease)
-      } else if (lease.expiresAt !== undefined) {
-        const remaining = lease.expiresAt - Date.now()
-        if (remaining <= 0) this.release(lease)
-        else lease.expiryTimer = setTimeout(() => { this.release(lease) }, remaining)
+      }
+      // Macro: the expiry timer (armExpiry) solely owns the deadline —
+      // arming another here would orphan the previous one (it fires at the
+      // pre-renewal deadline and releases a renewed lease: seen on the real
+      // GUI as an 8-second macro "expiry"). Past-due is the only release
+      // this path takes.
+      else if (lease.expiresAt !== undefined && lease.expiresAt - Date.now() <= 0) {
+        this.release(lease)
       }
     }, PRESENCE_IDLE_SUSPEND_MS)
   }

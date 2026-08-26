@@ -153,6 +153,31 @@ describe('macro lease (explicit takeover)', () => {
   })
 })
 
+describe('renewal vs orphaned timers (real-GUI regression: 8-second macro)', () => {
+  it('a takeover renewal after idle survives the pre-renewal deadline', () => {
+    vi.useFakeTimers()
+    try {
+      const presence = hub()
+      presence.takeover('s1', { appId: 'kanban-demo', name: '看板演示' }, false)
+      settle(presence)
+      // Idle fires first (visual degrade only); the expiry timer owns the deadline.
+      vi.advanceTimersByTime(PRESENCE_IDLE_SUSPEND_MS + 5)
+      expect(presence.snapshot('s1')[0]?.state).toBe('suspended-idle')
+      // A renewal inside the old budget: the old deadline must not release it.
+      presence.takeover('s1', { appId: 'kanban-demo', name: '看板演示' }, false)
+      vi.advanceTimersByTime(PRESENCE_MACRO_AI_BUDGET_MS - 1_000)
+      const lease = presence.snapshot('s1')[0]
+      expect(lease?.state === undefined || lease.state === 'active' || lease.state === 'suspended-idle').toBe(true)
+      expect(lease).toBeDefined()
+      // Release happens at the renewed deadline, not before.
+      vi.advanceTimersByTime(2_000)
+      expect(presence.snapshot('s1')).toEqual([])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
 describe('user interrupt (X1: no clawback)', () => {
   it('suspends on interrupt and records the fact; commands do not reactivate', () => {
     const presence = hub()

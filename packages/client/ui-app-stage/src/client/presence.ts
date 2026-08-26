@@ -2,10 +2,11 @@
  * The presence projection feed (Px-β client half): polls authoritative
  * lease snapshots and derives every render state locally.
  *
- * Poll discipline (host calls are never free): no polling while no lease
- * exists — the router's activity signal pokes the feed when a command
- * flows, and a 2 s keepalive runs only while at least one lease is live or
- * the exit hysteresis window is open. Everything the banner renders between
+ * Poll discipline (host calls are never free): a 10 s discovery poll runs
+ * while the shell is mounted (a lease may open from any surface claiming
+ * the command routing — router activity here is not a precondition); once
+ * a lease is known, a 2 s keepalive takes over and the router's activity
+ * signal still pokes for instant transitions. Everything the banner renders between
  * polls (idle countdown, budget expiry, banner exit hysteresis) is derived
  * from the last snapshot fields against a local 1 s tick, so wire traffic
  * stays proportional to actual agent activity.
@@ -28,6 +29,15 @@ export const BANNER_HYSTERESIS_MS = 2_000
 
 /** Keepalive poll while any lease is live (authoritative transitions). */
 const KEEPALIVE_MS = 2_000
+
+/**
+ * Lease discovery poll. A surface that did not claim the routed invokes
+ * gets no router activity of its own, so poke-driven polling alone would
+ * never discover a lease opened elsewhere (verified on the real GUI: one
+ * surface claims, the others stay blind). One cheap poll every 10 s closes
+ * the discovery gap without proportional wire cost.
+ */
+const DISCOVERY_MS = 10_000
 
 /** Local tick for countdowns and derived-state refresh. */
 const TICK_MS = 1_000
@@ -122,6 +132,7 @@ export function createPresenceFeed(env: PresenceFeedEnv): PresenceFeedApi {
   let disposed = false
   let keepalive: ReturnType<typeof setInterval> | undefined
   let tick: ReturnType<typeof setInterval> | undefined
+  let discovery: ReturnType<typeof setInterval> | undefined
 
   const emit = (): void => { for (const listener of listeners) listener() }
 
@@ -176,7 +187,12 @@ export function createPresenceFeed(env: PresenceFeedEnv): PresenceFeedApi {
   return {
     subscribe(listener) {
       listeners.add(listener)
-      if (listeners.size === 1) void poll()
+      if (listeners.size === 1) {
+        void poll()
+        // Discovery runs while anything renders: leases may open on this
+        // session from surfaces that claim the command routing, not here.
+        if (discovery === undefined) discovery = setInterval(() => { void poll() }, DISCOVERY_MS)
+      }
       return () => { listeners.delete(listener) }
     },
     getSnapshot: () => projection,
@@ -196,6 +212,7 @@ export function createPresenceFeed(env: PresenceFeedEnv): PresenceFeedApi {
       disposed = true
       if (keepalive !== undefined) clearInterval(keepalive)
       if (tick !== undefined) clearInterval(tick)
+      if (discovery !== undefined) clearInterval(discovery)
       listeners.clear()
     },
   }
