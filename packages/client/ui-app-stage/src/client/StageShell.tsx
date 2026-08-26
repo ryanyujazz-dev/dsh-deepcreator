@@ -52,7 +52,7 @@ function cardsFrom(entries: readonly AppInstalledEntry[]): LauncherCard[] {
  * @param props - composed occupant props (owner share + locale + faces).
  * @returns the stage shell, or nothing before the seat has geometry.
  */
-export function StageShell({ phone, stageWidth, dockOpen, t, layout, sessions, remote, scanTick, router, presence }: StageShellProps) {
+export function StageShell({ phone, stageWidth, dockOpen, t, layout, sessions, remote, scanTick, activityTick = 0, router, presence }: StageShellProps) {
   const sessionId = useSyncExternalStore(sessions.subscribe, sessions.getSnapshot)
   const [rows, setRows] = useState<readonly DevMenuRow[]>([])
   const [cards, setCards] = useState<readonly LauncherCard[]>([])
@@ -98,11 +98,19 @@ export function StageShell({ phone, stageWidth, dockOpen, t, layout, sessions, r
       if (activityOpen) void remote.presenceTimeline(sessionId, 0).then((rowsWire: RemoteResult<AppStagePresenceTimelineResult>) => {
         if (cancelled || !rowsWire.ok || !rowsWire.value.ok) return
         setActivityRows([...rowsWire.value.rows].reverse())
-        if (rowsWire.value.latest > wire.value.seen) void remote.presenceMarkSeen(sessionId, rowsWire.value.latest)
+        const head = rowsWire.value.latest
+        // Opening the panel is reading the feed: advance the watermark to its
+        // head and extinguish the dot immediately (open = seen).
+        if (head > wire.value.seen) {
+          void remote.presenceMarkSeen(sessionId, head).then((markWire: RemoteResult<{ ok: true; seen: number }>) => {
+            if (cancelled || !markWire.ok || !markWire.value.ok) return
+            setActivityUnread(Math.max(0, head - markWire.value.seen))
+          }).catch(() => { /* silent: next open retries */ })
+        } else setActivityUnread(Math.max(0, wire.value.latest - wire.value.seen))
       }).catch(() => { /* silent: next open retries */ })
     }).catch(() => { /* silent: next scan retries */ })
     return () => { cancelled = true }
-  }, [remote, sessionId, scanTick, activityOpen])
+  }, [remote, sessionId, scanTick, activityTick, activityOpen])
 
   // Outside-click closes the dev menu (standard dropdown dismissal).
   useEffect(() => {

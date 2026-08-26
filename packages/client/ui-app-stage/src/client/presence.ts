@@ -108,6 +108,13 @@ export interface PresenceFeedApi {
   control: (op: 'interrupt' | 'resume' | 'handback') => Promise<void>
   /** Dismiss the summary card. */
   dismissSummary: () => void
+  /**
+   * Command-settled notifications (timeline unread): every settled command
+   * may have advanced the global activity head, so the shell re-reads the
+   * watermark. Fires regardless of lease visibility — the timeline is a
+   * global feed, not this surface's lease projection.
+   */
+  subscribeActivity: (listener: () => void) => () => void
   dispose: () => void
 }
 
@@ -127,7 +134,9 @@ export function createPresenceFeed(env: PresenceFeedEnv): PresenceFeedApi {
   const now = env.now ?? ((): number => Date.now())
   let projection: PresenceProjection = HIDDEN
   let lastSeenLeaseId: string | undefined
+  let lastSettledSeen = 0
   const listeners = new Set<() => void>()
+  const activityListeners = new Set<() => void>()
   let polling = false
   let disposed = false
   let keepalive: ReturnType<typeof setInterval> | undefined
@@ -135,6 +144,8 @@ export function createPresenceFeed(env: PresenceFeedEnv): PresenceFeedApi {
   let discovery: ReturnType<typeof setInterval> | undefined
 
   const emit = (): void => { for (const listener of listeners) listener() }
+
+  const emitActivity = (): void => { for (const listener of activityListeners) listener() }
 
   const ensureTimers = (): void => {
     if (keepalive === undefined) keepalive = setInterval(() => { void poll() }, KEEPALIVE_MS)
@@ -163,8 +174,13 @@ export function createPresenceFeed(env: PresenceFeedEnv): PresenceFeedApi {
       if (wire.ok && wire.value.ok) {
         const lease = wire.value.leases[0]
         const idBefore = lastSeenLeaseId
+        const commandBefore = lastSettledSeen
         projection = deriveProjection(lease, now(), projection)
         lastSeenLeaseId = lease?.leaseId
+        if (lease !== undefined && lease.lastCommandAt !== commandBefore) {
+          lastSettledSeen = lease.lastCommandAt
+          emitActivity()
+        }
         // Handing-back terminal: a previously seen lease vanished — fetch
         // its summary card exactly once (the host keeps emitted summaries).
         if (idBefore !== undefined && lease === undefined && projection.summary?.leaseId !== idBefore) {
@@ -207,6 +223,10 @@ export function createPresenceFeed(env: PresenceFeedEnv): PresenceFeedApi {
       projection = { ...projection, summary: undefined }
       idleTimers()
       emit()
+    },
+    subscribeActivity(listener) {
+      activityListeners.add(listener)
+      return () => { activityListeners.delete(listener) }
     },
     dispose: () => {
       disposed = true

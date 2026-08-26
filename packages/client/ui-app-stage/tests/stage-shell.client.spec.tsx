@@ -323,6 +323,9 @@ describe('activity timeline (M5e: global feed + watermark dot)', () => {
     // newest first: the data.write error row's outcome appears
     expect(await screen.findByText('失败')).toBeTruthy()
     await waitFor(() => { expect(remote.presenceMarkSeen).toHaveBeenCalledWith('s-1', 5) })
+    // Open means read: once the watermark advances, the dot extinguishes even
+    // while the panel stays open.
+    await waitFor(() => { expect(screen.queryByLabelText(/[1-9]/)).toBeNull() })
   })
 
   it('renders the empty state with no activity', async () => {

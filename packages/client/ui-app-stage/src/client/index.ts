@@ -82,6 +82,13 @@ export function apply(ctx: ClientContext): void {
   const presence = createPresenceFeed({ remote: appStage, session: sessions.getSnapshot })
   ctx.effect(() => () => presence.dispose(), 'ui-app-stage: presence feed')
 
+  // Activity unread (M5e): the watermark poll rides the presence feed's own
+  // keepalive cadence — every settled command the feed learns about is
+  // exactly when the timeline head may have moved (the dot must not depend
+  // on scanTick, which only advances on publish-driven rescans).
+  const activityTick = { n: 0 }
+  ctx.effect(() => presence.subscribeActivity(() => { activityTick.n += 1 }), 'ui-app-stage: activity unread tick')
+
   ctx.effect(
     () => ctx.slots.inject('deepcreator.stage.apps', () => ctx.slots.register(
       {
@@ -98,6 +105,7 @@ export function apply(ctx: ClientContext): void {
           scanTick: 0,
           router,
           presence,
+          get activityTick(): number { return activityTick.n },
         }),
       },
       StageShell,

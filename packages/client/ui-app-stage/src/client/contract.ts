@@ -109,6 +109,8 @@ export interface StageShellInjected {
   readonly router: import('./router.ts').StageRouterApi
   /** M5: the presence projection feed (banner/frame/summary render from it). */
   readonly presence: import('./presence.ts').PresenceFeedApi
+  /** M5e: activity-unread tick (bumps when a command settles anywhere). */
+  readonly activityTick: number
 }
 
 /** Full composed props of the Stage Shell occupant. */
