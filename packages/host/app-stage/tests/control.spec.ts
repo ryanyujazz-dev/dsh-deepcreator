@@ -113,6 +113,31 @@ describe('AppRouterHub', () => {
     await expect(pushed).resolves.toEqual({ kind: 'reported', outcome: { opened: true } })
   })
 
+  it('delivers to the active router when the push lands between its polls', async () => {
+    const hub = new AppRouterHub()
+    // Router a completes one empty cadence poll (it is now the active router,
+    // parked for nothing — the macrotask gap between poll rounds).
+    vi.useFakeTimers()
+    let first: { requests: unknown[]; cursor: number } | undefined
+    try {
+      const parked = hub.waitRequests(0, 'router-a')
+      await vi.advanceTimersByTimeAsync(0)
+      void parked.then(reply => { first = reply })
+      await vi.advanceTimersByTimeAsync(25_100)
+    } finally {
+      vi.useRealTimers()
+    }
+    expect(first).toEqual({ requests: [], cursor: 0 })
+    // The push claims r1 for router a while a has nothing parked.
+    const pushed = hub.push({ kind: 'invoke', appId: 'a', version: '0.1.0', action: 'x', params: {} }, 5_000)
+    // a's next poll still resumes from its last cursor (0) and must receive r1:
+    // the claim names a, and a's cursor has not advanced past r1.
+    const next = await hub.waitRequests(0, 'router-a')
+    expect(next.requests.map(request => request.requestId)).toEqual(['r1'])
+    expect(hub.reportResult('r1', { result: true })).toBe(true)
+    await expect(pushed).resolves.toEqual({ kind: 'reported', outcome: { result: true } })
+  })
+
   it('reports outcome error codes through unchanged', async () => {
     const hub = new AppRouterHub()
     const poll = hub.waitRequests(0, 'router-a')
