@@ -48,7 +48,7 @@ const remoteFace = (): AppStageRemote & {
     dataSet: vi.fn(async () => ({ ok: true, value: { ok: true, rev: 1 } })),
     dataChanges: vi.fn(async () => ({ ok: true, value: { ok: true, changes: [], rev: 0 } })),
     uninstall: vi.fn(async () => ({ ok: true, value: { ok: true, appId: 'x', removed: true } })),
-    waitRouterRequests: vi.fn(async () => ({ ok: true, value: { ok: true, requests: [], cursor: 0 } })),
+    waitRouterRequests: vi.fn(async (_session: unknown, _cursor: number, _routerId: string) => ({ ok: true, value: { ok: true, requests: [], cursor: 0 } })),
     routerResult: vi.fn(async () => ({ ok: true, value: { ok: true, requestId: 'r1' } })),
   }
   return remote as AppStageRemote & { waitMock: ReturnType<typeof vi.fn>; resultMock: ReturnType<typeof vi.fn>; ensureMock: ReturnType<typeof vi.fn> }

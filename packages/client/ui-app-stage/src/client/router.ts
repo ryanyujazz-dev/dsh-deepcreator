@@ -71,6 +71,8 @@ export function createStageRouter(env: RouterEnv, bridge: (frame: HTMLIFrameElem
   const frames = new Map<string, FrameSlot>()
   const mountWaiters = new Set<(slot: FrameSlot | undefined) => void>()
   let disposed = false
+  /** This surface's identity at the hub: claims make delivery single-consumer. */
+  const routerId = crypto.randomUUID()
   let polling = false
   let cursor = 0
 
@@ -175,7 +177,7 @@ export function createStageRouter(env: RouterEnv, bridge: (frame: HTMLIFrameElem
     if (session === undefined) return
     polling = true
     try {
-      const wire = await env.remote.waitRouterRequests(session, cursor)
+      const wire = await env.remote.waitRouterRequests(session, cursor, routerId)
       if (!wire.ok || !wire.value.ok) return
       cursor = wire.value.cursor
       for (const request of wire.value.requests) await handleOne(request)

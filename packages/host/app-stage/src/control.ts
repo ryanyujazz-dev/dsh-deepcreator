@@ -12,6 +12,16 @@
  * `routerResult`. One queue, one monotonic cursor, zero official-package
  * surface.
  *
+ * Delivery is single-consumer: every router poll carries a router id (one
+ * per GUI surface) and each queued request is claimed by exactly one
+ * router. The queue is a cursor-addressable log, so without the claim two
+ * concurrently connected surfaces (the user's browser plus an automation
+ * browser, say) would each read — and each execute — the same request:
+ * one `createTask` became two cards 81 ms apart. A claim belongs to the
+ * freshest router (the last surface to poll); a dead claim is recovered by
+ * the request's own timeout, which E1 already tells callers to verify
+ * before retrying.
+ *
  * Router presence is observable from poll arrivals, which turns "no GUI is
  * connected" into the actionable CONTAINER_UNAVAILABLE instead of a silent
  * 30 s timeout (the headless-session contract).
@@ -45,12 +55,16 @@ interface QueueEntry {
   readonly request: AppRouterRequest
   readonly resolve: (settlement: RoutedSettlement) => void
   readonly timers: Array<ReturnType<typeof setTimeout>>
+  /** The router this request was already delivered to; undefined until claimed. */
+  claimedBy?: string
 }
 
 /** One parked router long-poll. */
 interface ParkedPoll {
   readonly resolve: (reply: { requests: AppRouterRequest[]; cursor: number }) => void
   readonly timer: ReturnType<typeof setTimeout>
+  /** The router (GUI surface) that parked this poll. */
+  readonly routerId: string
 }
 
 /**
@@ -63,6 +77,8 @@ export class AppRouterHub {
   private readonly queue: QueueEntry[] = []
   private readonly parked: ParkedPoll[] = []
   private routerLastSeen = 0
+  /** The freshest router id — the surface the last poll arrived from. */
+  private lastRouterId: string | undefined
 
   /** A router is connected when a poll arrived inside the seen-window. */
   get routerConnected(): boolean {
@@ -74,11 +90,23 @@ export class AppRouterHub {
     return this.seq
   }
 
-  /** `waitRouterRequests` body: deliver what is queued after `after`, or park. */
-  waitRequests(after: number): Promise<{ requests: AppRouterRequest[]; cursor: number }> {
+  /**
+   * `waitRouterRequests` body: deliver what is queued after `after` for this
+   * router, or park. Requests already claimed by a different router are
+   * skipped — the cursor still advances past them, so a surface that lost a
+   * claim does not rescan history.
+   */
+  waitRequests(after: number, routerId: string): Promise<{ requests: AppRouterRequest[]; cursor: number }> {
     this.routerLastSeen = Date.now()
-    const queued = this.queue.filter(entry => this.seqOf(entry) > after).map(entry => entry.request)
-    if (queued.length > 0) return Promise.resolve({ requests: queued, cursor: this.seq })
+    this.lastRouterId = routerId
+    const mine: QueueEntry[] = []
+    for (const entry of this.queue) {
+      if (this.seqOf(entry) <= after) continue
+      if (entry.claimedBy !== undefined && entry.claimedBy !== routerId) continue
+      entry.claimedBy = routerId
+      mine.push(entry)
+    }
+    if (mine.length > 0) return Promise.resolve({ requests: mine.map(entry => entry.request), cursor: this.seq })
     return new Promise(resolve => {
       const poll: ParkedPoll = {
         resolve,
@@ -87,6 +115,7 @@ export class AppRouterHub {
           this.routerLastSeen = Date.now()
           resolve({ requests: [], cursor: this.seq })
         }, ROUTER_POLL_MS),
+        routerId,
       }
       this.parked.push(poll)
     })
@@ -132,7 +161,13 @@ export class AppRouterHub {
         }, ROUTER_PRESENCE_GRACE_MS))
       }
       this.queue.push(entry)
+      // Wake only the freshest router's parked polls: waking every surface
+      // would hand one request to N executors. Other surfaces' parked polls
+      // time out on their own cadence; the claim they never got is the point.
+      const active = this.lastRouterId
+      if (active !== undefined) entry.claimedBy = active
       for (const poll of [...this.parked]) {
+        if (poll.routerId !== active) continue
         clearTimeout(poll.timer)
         this.unpark(poll)
         poll.resolve({ requests: [full], cursor: this.seq })

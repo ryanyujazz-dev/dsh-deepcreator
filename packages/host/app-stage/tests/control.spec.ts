@@ -19,7 +19,7 @@ afterAll(() => { for (const timer of timers) clearTimeout(timer) })
 describe('AppRouterHub', () => {
   it('delivers pushed requests to a parked poll and resolves on report', async () => {
     const hub = new AppRouterHub()
-    const poll = hub.waitRequests(0)
+    const poll = hub.waitRequests(0, 'router-a')
     const pushed = hub.push({ kind: 'invoke', appId: 'a', version: '0.1.0', action: 'createTask', params: {} }, 5_000)
     const reply = await poll
     expect(reply.requests).toHaveLength(1)
@@ -33,7 +33,7 @@ describe('AppRouterHub', () => {
     const hub = new AppRouterHub()
     const pushed = hub.push({ kind: 'open', appId: 'a', version: '0.1.0', focus: true }, 5_000)
     // No poller was parked; a later poll resumes from cursor 0.
-    const reply = await hub.waitRequests(0)
+    const reply = await hub.waitRequests(0, 'router-a')
     expect(reply.requests.map(request => request.requestId)).toEqual(['r1'])
     expect(hub.reportResult('r-nope', {})).toBe(false)
     expect(hub.reportResult('r1', { opened: true, focused: true })).toBe(true)
@@ -47,7 +47,7 @@ describe('AppRouterHub', () => {
     try {
       const hub = new AppRouterHub()
       // Connect a router so the presence grace does not fire.
-      void hub.waitRequests(0).then(() => {})
+      void hub.waitRequests(0, 'router-a').then(() => {})
       const pushed = hub.push({ kind: 'invoke', appId: 'a', version: '0.1.0', action: 'x', params: {} }, 30)
       const settled = pushed
       setTimeout(() => {}, 0)
@@ -70,9 +70,52 @@ describe('AppRouterHub', () => {
     }
   })
 
+
+  it('delivers a pushed request to exactly one of two parked routers', async () => {
+    const hub = new AppRouterHub()
+    // Two surfaces park: the user's browser first, the automation browser last.
+    const browserA = hub.waitRequests(0, 'router-a')
+    const browserB = hub.waitRequests(0, 'router-b')
+    const pushed = hub.push({ kind: 'invoke', appId: 'a', version: '0.1.0', action: 'createTask', params: {} }, 5_000)
+    // The freshest router (b) receives it; the other poll stays parked.
+    const replyB = await browserB
+    expect(replyB.requests).toHaveLength(1)
+    const loser = Symbol('loser')
+    const replyA = await Promise.race([browserA.then(() => Symbol('resolved')), new Promise(resolve => setTimeout(() => resolve(loser), 20))])
+    expect(replyA).toBe(loser)
+    expect(hub.reportResult('r1', { result: true })).toBe(true)
+    await expect(pushed).resolves.toEqual({ kind: 'reported', outcome: { result: true } })
+  })
+
+  it('never re-delivers a claim owned by another router, even from an old cursor', async () => {
+    const hub = new AppRouterHub()
+    const pushed = hub.push({ kind: 'invoke', appId: 'a', version: '0.1.0', action: 'x', params: {} }, 5_000)
+    const mine = await hub.waitRequests(0, 'router-a')
+    expect(mine.requests).toHaveLength(1)
+    // Router b resumes from cursor 0: r1 is already claimed by a, so b's poll
+    // finds nothing to deliver and parks (nothing arrives for 20 ms).
+    const parked = hub.waitRequests(0, 'router-b')
+    const loser = Symbol('loser')
+    const theirs = await Promise.race([parked.then(reply => reply), new Promise(resolve => setTimeout(() => resolve(loser), 20))])
+    expect(theirs).toBe(loser)
+    expect(hub.reportResult('r1', {})).toBe(true)
+    await expect(pushed).resolves.toEqual({ kind: 'reported', outcome: {} })
+  })
+
+  it('re-delivers to the same router after its own cursor reset', async () => {
+    const hub = new AppRouterHub()
+    const pushed = hub.push({ kind: 'open', appId: 'a', version: '0.1.0', focus: false }, 5_000)
+    await hub.waitRequests(0, 'router-a')
+    // The same surface crashed mid-handling and re-polls from 0: it may retry its own claim.
+    const again = await hub.waitRequests(0, 'router-a')
+    expect(again.requests.map(request => request.requestId)).toEqual(['r1'])
+    expect(hub.reportResult('r1', { opened: true })).toBe(true)
+    await expect(pushed).resolves.toEqual({ kind: 'reported', outcome: { opened: true } })
+  })
+
   it('reports outcome error codes through unchanged', async () => {
     const hub = new AppRouterHub()
-    const poll = hub.waitRequests(0)
+    const poll = hub.waitRequests(0, 'router-a')
     const pushed = hub.push({ kind: 'invoke', appId: 'a', version: '0.1.0', action: 'x', params: {} }, 5_000)
     await poll
     hub.reportResult('r1', { error: { code: 'ACTION_NOT_REGISTERED', message: 'never registered' } })

@@ -19,7 +19,11 @@ export interface AppStageRemote {
   dataSet: (sessionId: SessionId, ref: string, path: string, value: AppJsonValue, causeId: string) => Promise<RemoteResult<AppStageDataSetResult>>
   dataChanges: (sessionId: SessionId, ref: string, sinceRev: number) => Promise<RemoteResult<AppStageDataChangesResult>>
   uninstall: (sessionId: SessionId, appId: string) => Promise<RemoteResult<{ ok: true; appId: string; removed: true } | { ok: false; code: string; message: string }>>
-  waitRouterRequests: (sessionId: SessionId, afterCursor: number) => Promise<RemoteResult<AppStageWaitRequestsResult>>
+  /**
+   * Park until requests land after `afterCursor`. `routerId` names this
+   * surface; the hub delivers each request to exactly one connected router.
+   */
+  waitRouterRequests: (sessionId: SessionId, afterCursor: number, routerId: string) => Promise<RemoteResult<AppStageWaitRequestsResult>>
   routerResult: (sessionId: SessionId, requestId: string, outcome: AppRouterOutcome) => Promise<RemoteResult<AppStageRouterResultAck>>
 }
 

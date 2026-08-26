@@ -457,11 +457,15 @@ export class AppStageService extends TypertRemoteService {
     return { ok: false, code: 'CONTAINER_UNAVAILABLE', message: 'no Stage router is connected; the app needs a Stage container to run.' }
   }
 
-  /** The GUI router's long-poll face: queued requests after a cursor. */
+  /**
+   * The GUI router's long-poll face: queued requests after a cursor. The
+   * `routerId` names the polling surface; delivery is single-consumer, so
+   * two connected surfaces never both execute one request.
+   */
   @Remote('waitRouterRequests')
-  async waitRouterRequests(session: Session, afterCursor: number): Promise<AppStageWaitRequestsResult> {
+  async waitRouterRequests(session: Session, afterCursor: number, routerId: string): Promise<AppStageWaitRequestsResult> {
     void session
-    const reply = await this.router.waitRequests(afterCursor)
+    const reply = await this.router.waitRequests(afterCursor, routerId)
     return { ok: true, requests: reply.requests, cursor: reply.cursor }
   }
 
