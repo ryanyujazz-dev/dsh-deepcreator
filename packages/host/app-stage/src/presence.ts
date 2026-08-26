@@ -280,7 +280,11 @@ export class PresenceCoordinator {
     this.emit(record.appId, 'command', { phase: 'settled', commandKind: record.kind, outcome: record.outcome, ...(record.action !== undefined ? { action: record.action } : {}) })
     const lease = this.leases.get(sessionId)
     if (lease !== undefined) {
-      lease.activeCommand = undefined
+      // The digest persists after settle (replaced by the next command, gone
+      // with the lease): a ~100 ms invoke is invisible to the shell's 2 s
+      // snapshot polls if the digest only exists in flight — the param
+      // summary would never be seen. It is the LAST command's digest, a
+      // fact, not a claim about what is running now.
       if (lease.actions.length < PRESENCE_ACTIONS_CAP) lease.actions.push(record)
       this.roster(lease, record)
       if (record.action !== undefined && (record.keys === undefined || record.keys.length === 0) && record.kind === 'invoke' && record.outcome === 'ok') {

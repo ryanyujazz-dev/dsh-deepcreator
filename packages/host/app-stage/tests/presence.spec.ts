@@ -281,6 +281,10 @@ describe('param digest (M5f: non-co-visible param replay)', () => {
     expect(JSON.stringify(start)).not.toContain('M5f验收卡')
     expect(JSON.stringify(start)).not.toContain('paramsSummary')
     presence.commandSettled('s1', { ts: Date.now(), kind: 'invoke', appId: 'kanban-demo', appName: '看板演示', action: 'createTask', outcome: 'ok', durationMs: 4, origin: 'installed' })
-    expect(presence.snapshot('s1')[0]?.activeCommand).toBeUndefined()
+    // The digest persists after settle (a ~100 ms invoke is invisible to 2 s
+    // snapshot polls otherwise) until the next command replaces it.
+    expect(presence.snapshot('s1')[0]?.activeCommand?.paramsSummary).toEqual([{ name: 'title', value: 'M5f验收卡' }])
+    presence.commandStarted('s1', { kind: 'data.write', appId: 'kanban-demo', appName: '看板演示', origin: 'installed' })
+    expect(presence.snapshot('s1')[0]?.activeCommand?.paramsSummary).toBeUndefined()
   })
 })

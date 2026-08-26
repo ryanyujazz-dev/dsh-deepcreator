@@ -132,6 +132,9 @@ export function PresenceBanner({ feed, t, now = Date.now }: { feed: PresenceFeed
       <div className={`${css.banner} ${tone} ${p.idle ? css.bannerIdle : ''}`} role="status">
         <span className={`${css.dot} ${macro ? css.dotMacro : ''} ${p.idle ? css.dotIdle : ''} ${burst(p, at) ? css.dotBurst : ''}`} aria-hidden="true" />
         <span className={css.bannerText}>{line}</span>
+        {/* The last command's digest (persists after settle until replaced):
+            transparent param facts for the lease's lifetime, hidden while
+            paused — the waiting-user state says the AI is not acting. */}
         {lease.activeCommand?.paramsSummary !== undefined && lease.activeCommand.paramsSummary.length > 0 && p.state !== 'waiting-user' && (
           <span className={css.paramDigest} aria-hidden="true">
             {lease.activeCommand.paramsSummary.map(pair => (

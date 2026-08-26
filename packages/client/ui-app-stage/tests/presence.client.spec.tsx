@@ -171,6 +171,8 @@ describe('param digest row (M5f: non-co-visible param replay)', () => {
     first.unmount()
     const settled: PresenceProjection = { ...ACTING, lease: lease({ activeCommand: { kind: 'invoke', action: 'createTask' } }) }
     const second = render(<PresenceBanner feed={feedOf(settled)} t={t as never} now={() => T0 + 1_000} />)
+    // No params on the record → no digest (the settled-persistence case with
+    // params IS visible; covered by the first test's lease shape).
     expect(screen.queryByText('title')).toBeNull()
     second.unmount()
     const paused: PresenceProjection = { state: 'waiting-user', lease: lease({ state: 'suspended-user', activeCommand: { kind: 'invoke', action: 'createTask', paramsSummary: digest } }), idle: false, expiring: false, elapsedMs: 1_000, remainingMs: undefined, summary: undefined, tick: 0 }
