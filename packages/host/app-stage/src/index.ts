@@ -18,14 +18,14 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-workspace'
-import type { AppDataChange, AppDevEntry, AppInstalledEntry, AppJsonValue, AppManifest, AppPublishPlan, AppRouterOutcome, AppStageAssetListResult, AppStageAssetWriteResult, AppStageDataChangesResult, AppStageDataGetResult, AppStageDataSetResult, AppStageEnsureResult, AppStageInvokeResult, AppStageListResult, AppStageOpenResult, AppStagePresenceControlResult, AppStagePresenceSnapshotResult, AppStagePresenceSummaryResult, AppStagePresenceTimelineResult, AppStagePublishCommitResult, AppStagePublishPrepareResult, AppStageRouterResultAck, AppStageUninstallResult, AppStageWaitRequestsResult } from './types.ts'
+import type { AppDataChange, AppDevEntry, AppInstalledEntry, AppJsonValue, AppManifest, AppPublishPlan, AppRouterOutcome, AppStageAssetListResult, AppStageAssetWriteResult, AppStageDataChangesResult, AppStageDataGetResult, AppStageDataSetResult, AppStageEnsureResult, AppStageHistoryResult, AppStageInvokeResult, AppStageListResult, AppStageOpenResult, AppStagePresenceControlResult, AppStagePresenceSnapshotResult, AppStagePresenceSummaryResult, AppStagePresenceTimelineResult, AppStagePublishCommitResult, AppStagePublishPrepareResult, AppStageRouterResultAck, AppStageUninstallResult, AppStageWaitRequestsResult } from './types.ts'
 import { AppStageStaticServer } from './serve.ts'
 import { listInstalled, gateDevEntry, scanDevRoot } from './registry.ts'
 import { dshHome, readActivitySeen, readInstallPointer, readOpenedVersions, recordOpenedVersion, storeRoot, writeActivitySeen } from './store.ts'
 import { ensurePreset } from './preset.ts'
 import { AppStageWatcherSet } from './watcher.ts'
 import { appDataChanges, appDataGet, appDataSet } from './appdata.ts'
-import { buildReport, commitSnapshot, gateForPublish, PACKAGE_MAX_BYTES, publishFingerprint, readStagedManifest, resolvePlan, stageSnapshot, uninstallApp, writeInstallPointer } from './publish.ts'
+import { buildReport, commitSnapshot, gateForPublish, hashSnapshot, PACKAGE_MAX_BYTES, publishFingerprint, readHistory, readStagedManifest, readWatermark, resolvePlan, stageSnapshot, uninstallApp, writeInstallPointer } from './publish.ts'
 import { probeStaging } from './probe.ts'
 import { AppRouterHub, INVOKE_TIMEOUT_MS, OPEN_TIMEOUT_MS } from './control.ts'
 import { PresenceCoordinator, PRESENCE_MACRO_AI_BUDGET_MS, PRESENCE_MACRO_DELEGATED_BUDGET_MS, summarizeParams } from './presence.ts'
@@ -306,6 +306,20 @@ export class AppStageService extends TypertRemoteService {
     }
   }
 
+  /**
+   * The install history + rollback baseline (M6a): version list with digests
+   * and the watermark — the activity/history view and the rollback guard's
+   * read side. Read-only; mutations only happen through the publish chain.
+   */
+  @Remote('installedHistory')
+  async installedHistory(session: Session, appId: string): Promise<AppStageHistoryResult> {
+    void session
+    const home = dshHome()
+    const records = await readHistory(appId, home)
+    const watermark = await readWatermark(appId, home)
+    return { ok: true, records, ...(watermark !== undefined ? { watermark } : {}) }
+  }
+
   /** Bridge `data.subscribe` delivery face: journal entries after a rev. */
   @Remote('dataChanges')
   async dataChanges(session: Session, ref: string, sinceRev: number): Promise<AppStageDataChangesResult> {
@@ -337,11 +351,21 @@ export class AppStageService extends TypertRemoteService {
     const manifest = gated.manifest
     const pointer = await readInstallPointer(appId, home)
     const fingerprint = publishFingerprint(cwd)
-    const plan = resolvePlan(manifest.version, pointer === undefined ? undefined : { version: pointer.version, sourceFingerprint: pointer.sourceFingerprint }, fingerprint)
-    if (typeof plan !== 'string') return { ok: false, code: plan.code, message: plan.code === 'VERSION_NOT_BUMPED' ? `Version ${manifest.version} is already installed; bump the version to publish an update.` : `Version ${manifest.version} is lower than the installed ${pointer!.version}; downgrades are rejected.` }
     const stagingDir = join(storeRoot(home), 'apps', 'staging', `${appId}-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`)
     const staged = await stageSnapshot(gated.dir, stagingDir)
     if ('code' in staged) return { ok: false, code: 'PACKAGE_TOO_LARGE', message: `Snapshot is ${staged.bytes} bytes; the cap is ${PACKAGE_MAX_BYTES}.` }
+    // The plan needs the staged digest (same-number-new-digest guard), so it
+    // resolves after staging; the watermark + history close the rollback
+    // republish hole (M6a).
+    const { digest: planDigest } = await hashSnapshot(stagingDir)
+    const watermark = await readWatermark(appId, home)
+    const historyMap = new Map((await readHistory(appId, home)).map(record => [record.version, record.digest]))
+    const plan = resolvePlan(
+      manifest.version,
+      pointer === undefined ? undefined : { version: pointer.version, sourceFingerprint: pointer.sourceFingerprint },
+      fingerprint, watermark, planDigest, historyMap,
+    )
+    if (typeof plan !== 'string') return { ok: false, code: plan.code, message: plan.code === 'VERSION_NOT_BUMPED' ? `Version ${manifest.version} is already installed; bump the version to publish an update.` : `Version ${manifest.version} is lower than the installed ${pointer!.version}; downgrades are rejected.` }
     const entryURL = `http://${this.ctx.webServer.host}:${this.ctx.webServer.port}${this.statics.urlForDev(stagingDir, manifest.entry)}`
     const probe = await probeStaging({ entryURL, entryMIME: 'text/html', appId, version: manifest.version, declaredActions: manifest.actions.map(action => action.name), home })
     if (!probe.ok) {

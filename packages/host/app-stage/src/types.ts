@@ -204,6 +204,8 @@ export type AppPublishPlan =
   | 'first'
   | 'update-same-source'
   | 'update-cross-source'
+  /** At/below the watermark with a digest not in history: explicit approval. */
+  | 'update-below-watermark'
 
 export type AppStagePublishPrepareResult =
   | {
@@ -324,6 +326,13 @@ export type AppStageRouterResultAck =
 /** `presenceSnapshot`: live leases for the caller's session (render states derive). */
 export type AppStagePresenceSnapshotResult =
   | { readonly ok: true; readonly leases: readonly import('./presence.ts').PresenceLeaseSnapshot[] }
+  | { readonly ok: false; readonly code: 'NO_WORKSPACE'; readonly message: string }
+
+/** `installedHistory`: the install history + rollback baseline (M6a).
+ * The watermark rides as an optional field (typert remote boundaries carry
+ * no `| undefined` unions — M5f/M6 wire discipline). */
+export type AppStageHistoryResult =
+  | { readonly ok: true; readonly records: readonly import('./publish.ts').AppHistoryRecord[]; readonly watermark?: import('./publish.ts').AppWatermark }
   | { readonly ok: false; readonly code: 'NO_WORKSPACE'; readonly message: string }
 
 /** `presenceTimeline`: installed-origin activity rows after a cursor. */

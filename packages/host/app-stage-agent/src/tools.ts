@@ -255,7 +255,9 @@ function approvalDetail(report: import('@ryanyujazz/dsh-app-stage/types').AppPub
   lines.push(`机器扫描（零外联）：${report.scan.violations.length === 0 ? '通过，无绝对 URL 与导航 API' : `发现 ${report.scan.violations.length} 处（首条：${report.scan.violations[0]!.file} ${report.scan.violations[0]!.kind}）`}`)
   lines.push(`桥订阅验证：${report.probe.ok ? `通过（订阅键 ${report.probe.subscribedKeys.join(', ')}）` : `失败：${report.probe.detail ?? '未知原因'}`}`)
   lines.push(`首屏截图：${report.probe.screenshotTaken ? '已生成' : '降级为 icon+名称'}`)
-  lines.push(plan === 'first' ? '首次发布将安装到你的全局桌面。' : '此更新将替换你桌面上的现有版本。')
+  if (plan === 'first') lines.push('首次发布将安装到你的全局桌面。')
+  else if (plan === 'update-below-watermark') lines.push('此版本号不高于历史最高版本，或与历史记录的内容指纹不一致——需你明确批准后才会安装（防回滚重发与同号换码）。')
+  else lines.push('此更新将替换你桌面上的现有版本。')
   lines.push('可随时移除：卸载即净（快照、资产、数据域）。')
   return lines.join('\n')
 }
@@ -271,7 +273,7 @@ export function createAppPublishTool(env: AppPublishEnvironment): ToolDefinition
   let declines = 0
   return defineTool({
     name: 'app_publish',
-    description: 'Publish a dev app from this workspace to the global desktop. Machine-verifies first (snapshot, zero-external scan, staging probe with bridge-subscription check), then follows the approval policy: first publish and cross-workspace updates wait for user approval (the question card hangs without timeout; two declines ban this session); same-source version updates install directly. Bump the version before republishing — same and lower versions are rejected.',
+    description: 'Publish a dev app from this workspace to the global desktop. Machine-verifies first (snapshot, zero-external scan, staging probe with bridge-subscription check), then follows the approval policy: first publish and cross-workspace updates wait for user approval (the question card hangs without timeout; two declines ban this session); same-source version updates install directly. Bump the version before republishing — same and lower versions are rejected; republishing a number at or below the historical high-water mark (or with a different content digest than history) requires explicit approval.',
     parameters: {
       appId: { type: 'string', required: true, description: 'The dev app id to publish: kebab-case segments of [a-z0-9], ≤64 chars. Must be status:ready in app_list scope:\'dev\'.' },
     },
