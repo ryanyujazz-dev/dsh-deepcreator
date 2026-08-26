@@ -10,7 +10,7 @@ import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@ryanyujazz/dsh-client-ui-layout/client'
 import type { AppRouterOutcome, AppStageDataChangesResult, AppStageDataGetResult, AppStageDataSetResult, AppStageEnsureResult, AppStagePresenceControlResult, AppStagePresenceSnapshotResult, AppStagePresenceSummaryResult, AppStagePresenceTimelineResult, AppStageRollbackResult, AppJsonValue, AppStageListResult, AppStageRouterResultAck, AppStageWaitRequestsResult } from '@ryanyujazz/dsh-app-stage/types'
-import type { AppHistoryRecord, AppWatermark } from '@ryanyujazz/dsh-app-stage/types'
+import type { AppHistoryRecord, AppImportSource, AppStageImportCommitResult, AppStageImportPrepareResult, AppWatermark } from '@ryanyujazz/dsh-app-stage/types'
 
 /** The remote namespace face the shell captures once in apply. */
 export interface AppStageRemote {
@@ -38,10 +38,31 @@ export interface AppStageRemote {
   installedHistory: (sessionId: SessionId, appId: string) => Promise<RemoteResult<{ ok: true; records: readonly AppHistoryRecord[]; watermark?: AppWatermark } | { ok: false; code: 'NO_WORKSPACE'; message: string }>>
   /** M6b: roll the current pointer back to a history version (user action). */
   rollbackInstalled: (sessionId: SessionId, appId: string, version: string) => Promise<RemoteResult<AppStageRollbackResult>>
+  /** M6c: stage + probe + plan an import; the facts card confirms before commit. */
+  importPrepare: (sessionId: SessionId, source: AppImportSource) => Promise<RemoteResult<AppStageImportPrepareResult>>
+  /** M6c: install a confirmed import draft. */
+  importCommit: (sessionId: SessionId, draftToken: string) => Promise<RemoteResult<AppStageImportCommitResult>>
+  /** M6c: drop a staged import draft. */
+  importAbort: (sessionId: SessionId, draftToken: string) => Promise<RemoteResult<{ ok: true; dropped: boolean }>>
   /** M5d: the global timeline watermark (seen + head in one read). */
   presenceSeen: (sessionId: SessionId) => Promise<RemoteResult<{ ok: true; seen: number; latest: number }>>
   /** M5d: advance the watermark (clears the activity blue dot). */
   presenceMarkSeen: (sessionId: SessionId, seq: number) => Promise<RemoteResult<{ ok: true; seen: number }>>
+}
+
+/** The facts card an import shows before its confirm (M6c). */
+export interface ImportFacts {
+  readonly draftToken: string
+  readonly plan: string
+  readonly appId: string
+  readonly name: string
+  readonly version: string
+  readonly via: 'import' | 'import:git'
+  readonly label: string
+  readonly installedVersion?: string
+  readonly fileCount: number
+  readonly totalBytes: number
+  readonly digest: string
 }
 
 /** One install-history row in the detail view (M6b). */

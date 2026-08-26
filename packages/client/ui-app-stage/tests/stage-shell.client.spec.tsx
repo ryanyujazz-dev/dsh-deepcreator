@@ -41,6 +41,9 @@ function remoteWith(dev: readonly AppDevEntry[], installed: readonly AppInstalle
     presenceMarkSeen: vi.fn(async () => ({ ok: true, value: { ok: true, seen: 0 } }) as never),
     installedHistory: vi.fn(async () => ({ ok: true, value: { ok: true, records: [] } }) as never),
     rollbackInstalled: vi.fn(async () => ({ ok: true, value: { ok: true, appId: 'a', version: '0.1.0' } }) as never),
+    importPrepare: vi.fn(async () => ({ ok: true, value: { ok: false, code: 'IMPORT_PATH_INVALID', message: 'x' } }) as never),
+    importCommit: vi.fn(async () => ({ ok: true, value: { ok: true, appId: 'a', version: '0.1.0', plan: 'first' } }) as never),
+    importAbort: vi.fn(async () => ({ ok: true, value: { ok: true, dropped: false } }) as never),
   }
   return { ...remote, ensureMock }
 }

@@ -328,6 +328,36 @@ export type AppStagePresenceSnapshotResult =
   | { readonly ok: true; readonly leases: readonly import('./presence.ts').PresenceLeaseSnapshot[] }
   | { readonly ok: false; readonly code: 'NO_WORKSPACE'; readonly message: string }
 
+/** Import source for `importPrepare` (M6c): a directory or a git URL. */
+export type AppImportSource =
+  | { readonly kind: 'dir'; readonly path: string }
+  | { readonly kind: 'git'; readonly url: string; readonly ref?: string }
+
+/** `importPrepare`: stage + probe + plan, no mutation yet. */
+export type AppStageImportPrepareResult =
+  | {
+      readonly ok: true
+      readonly draftToken: string
+      /** `first` (approval card) · `update-cross-source` (light confirm) · `update-below-watermark` (hard approval) · `already-installed` (no-op). */
+      readonly plan: import('./import.ts').AppImportPlan
+      readonly appId: string
+      readonly name: string
+      readonly version: string
+      readonly via: 'import' | 'import:git'
+      readonly label: string
+      readonly installedVersion?: string
+      readonly report: AppPublishReport
+    }
+  | { readonly ok: false; readonly code: 'IMPORT_PATH_INVALID' | 'IMPORT_URL_FORBIDDEN' | 'IMPORT_UNSUPPORTED' | 'GIT_CLONE_FAILED' | 'MANIFEST_INVALID' | 'PACKAGE_TOO_LARGE' | 'PROBE_FAILED'; readonly message: string }
+
+/** `importCommit`: install a confirmed draft. */
+export type AppStageImportCommitResult =
+  | { readonly ok: true; readonly appId: string; readonly version: string; readonly plan: import('./import.ts').AppImportPlan }
+  | { readonly ok: false; readonly code: 'SOURCE_MISSING' | 'STORE_WRITE_FAILED'; readonly message: string }
+
+/** `importAbort`: drop a staged draft. */
+export type AppStageImportAbortResult = { readonly ok: true; readonly dropped: boolean }
+
 /** `rollbackInstalled`: switch the pointer to a history version (M6b). */
 export type AppStageRollbackResult =
   | { readonly ok: true; readonly appId: string; readonly version: string }
@@ -358,3 +388,4 @@ export type AppStagePresenceControlResult =
 // Presence projection types (Px-β) — the client shell renders these.
 export type { PresenceLeaseState, PresenceLeaseSnapshot, PresenceSummary, PresenceTimelineRow, PresenceActionRecord, PresenceCommandKind } from './presence.ts'
 export type { AppHistoryRecord, AppWatermark } from './publish.ts'
+export type { AppImportPlan } from './import.ts'

@@ -346,3 +346,40 @@
 .historyVia { color: var(--dsw-alias-label-tertiary); }
 .historyDigest { color: var(--dsw-alias-label-tertiary); font-variant-numeric: tabular-nums; }
 .historyCurrent { margin-left: auto; color: var(--dsw-alias-accent, #0071e3); }
+
+/* Import panel (M6c): source form + digest-first facts card. */
+.importForm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 0;
+  min-width: 260px;
+}
+
+.importTabs { display: flex; gap: 4px; }
+.importTab, .importTabOn {
+  flex: 1;
+  min-height: 26px;
+  border-radius: 6px;
+  font-size: var(--dsw-font-body-s-font-size, 14px);
+  line-height: var(--dsw-font-body-s-line-height, 22px);
+  cursor: pointer;
+}
+.importTab { color: var(--dsw-alias-label-secondary); background: transparent; border: 1px solid var(--dsw-alias-l1); }
+.importTabOn { color: var(--dsw-alias-label-primary); font-weight: 500; border: 1px solid var(--dsw-alias-accent, #0071e3); }
+
+.importInput {
+  min-height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--dsw-alias-l1);
+  padding: 2px 8px;
+  font-size: var(--dsw-font-body-s-font-size, 14px);
+  line-height: var(--dsw-font-body-s-line-height, 22px);
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-fill-secondary, transparent);
+}
+
+.importFactName { color: var(--dsw-alias-label-primary); font-weight: 500; }
+.importFactMeta { color: var(--dsw-alias-label-tertiary); font-variant-numeric: tabular-nums; word-break: break-all; }
+.importPlan { color: var(--dsw-alias-label-secondary); }
+.importActions { display: flex; gap: 8px; }

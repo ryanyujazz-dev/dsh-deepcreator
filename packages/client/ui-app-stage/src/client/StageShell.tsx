@@ -17,7 +17,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { AppDevEntry, AppInstalledEntry, AppStageEnsureResult, AppStageListResult } from '@ryanyujazz/dsh-app-stage/types'
-import type { ActivityRow, DevMenuRow, HistoryRow, LauncherCard, StageShellProps } from './contract.ts'
+import type { ActivityRow, DevMenuRow, HistoryRow, ImportFacts, LauncherCard, StageShellProps } from './contract.ts'
+import type { AppImportSource } from '@ryanyujazz/dsh-app-stage/types'
 import type { AppStagePresenceTimelineResult, AppStageRollbackResult } from '@ryanyujazz/dsh-app-stage/types'
 import { PresenceBanner } from './PresenceBanner.tsx'
 import css from './StageShell.module.css'
@@ -59,6 +60,15 @@ export function StageShell({ phone, stageWidth, dockOpen, t, layout, sessions, r
   const [historyFor, setHistoryFor] = useState<string | undefined>(undefined)
   const [historyRows, setHistoryRows] = useState<readonly HistoryRow[]>([])
   const [historyNote, setHistoryNote] = useState<string | undefined>(undefined)
+  // Import (M6c): form → facts card → confirm. State machine in one object.
+  const [importOpen, setImportOpen] = useState(false)
+  const [importMode, setImportMode] = useState<'dir' | 'git'>('dir')
+  const [importPath, setImportPath] = useState('')
+  const [importUrl, setImportUrl] = useState('')
+  const [importRef, setImportRef] = useState('')
+  const [importBusy, setImportBusy] = useState(false)
+  const [importDraft, setImportDraft] = useState<ImportFacts | undefined>(undefined)
+  const [importNote, setImportNote] = useState<string | undefined>(undefined)
   const [menuOpen, setMenuOpen] = useState(false)
   const [activityOpen, setActivityOpen] = useState(false)
   const [activityRows, setActivityRows] = useState<readonly ActivityRow[]>([])
@@ -67,6 +77,7 @@ export function StageShell({ phone, stageWidth, dockOpen, t, layout, sessions, r
   const [opening, setOpening] = useState<string | undefined>(undefined)
   const [error, setError] = useState<string | undefined>(undefined)
   const menuRef = useRef<HTMLDivElement | null>(null)
+  const importPanelRef = useRef<HTMLDivElement | null>(null)
   const activityRef = useRef<HTMLDivElement | null>(null)
 
   // Probe-at-open: rescan whenever the menu opens, the session changes, or
@@ -143,16 +154,75 @@ export function StageShell({ phone, stageWidth, dockOpen, t, layout, sessions, r
     }).catch(() => { setHistoryNote(t('history.rollback.failed').replace('{message}', 'network')) })
   }, [remote, sessionId, t])
 
+  // Import (M6c): inspect → facts card (digest-first, anti-phishing: the
+  // appId and digest prefix are always shown, never just name/icon) →
+  // confirm installs; plan tiers change only the copy, the confirm is
+  // always explicit.
+  const inspectImport = useCallback(() => {
+    if (sessionId === undefined) return
+    setImportNote(undefined)
+    setImportDraft(undefined)
+    const source: AppImportSource = importMode === 'dir'
+      ? { kind: 'dir', path: importPath.trim() }
+      : { kind: 'git', url: importUrl.trim(), ...(importRef.trim() === '' ? {} : { ref: importRef.trim() }) }
+    if ((source.kind === 'dir' && source.path === '') || (source.kind === 'git' && source.url === '')) {
+      setImportNote(t('import.failed').replace('{message}', source.kind === 'dir' ? t('import.dirLabel') : t('import.gitLabel')))
+      return
+    }
+    setImportBusy(true)
+    void remote.importPrepare(sessionId, source).then((wire) => {
+      if (!wire.ok) { setImportNote(t('import.failed').replace('{message}', wire.error.message)); return }
+      if (!wire.value.ok) { setImportNote(t('import.failed').replace('{message}', wire.value.message)); return }
+      setImportDraft({
+        draftToken: wire.value.draftToken, plan: wire.value.plan, appId: wire.value.appId,
+        name: wire.value.name, version: wire.value.version, via: wire.value.via, label: wire.value.label,
+        ...(wire.value.installedVersion === undefined ? {} : { installedVersion: wire.value.installedVersion }),
+        fileCount: wire.value.report.fileCount, totalBytes: wire.value.report.totalBytes, digest: wire.value.report.digest,
+      })
+    }).catch(reason => { setImportNote(t('import.failed').replace('{message}', String(reason))) })
+      .finally(() => { setImportBusy(false) })
+  }, [remote, sessionId, t, importMode, importPath, importUrl, importRef])
+
+  /** Confirm the staged import and rescan the launcher. */
+  const confirmImport = useCallback(() => {
+    if (sessionId === undefined || importDraft === undefined) return
+    const draft = importDraft
+    setImportBusy(true)
+    void remote.importCommit(sessionId, draft.draftToken).then((wire) => {
+      if (!wire.ok) { setImportNote(t('import.failed').replace('{message}', wire.error.message)); return }
+      if (!wire.value.ok) { setImportNote(t('import.failed').replace('{message}', wire.value.message)); return }
+      setImportNote(t('import.done').replace('{name}', draft.name).replace('{version}', draft.version))
+      setImportDraft(undefined)
+      return remote.list(sessionId)
+    }).then(rescan => {
+      if (rescan === undefined || !rescan.ok || !rescan.value.ok) return
+      setCards(cardsFrom(rescan.value.list.installed))
+    }).catch(reason => { setImportNote(t('import.failed').replace('{message}', String(reason))) })
+      .finally(() => { setImportBusy(false) })
+  }, [remote, sessionId, t, importDraft])
+
+  /** Drop a staged draft (cancel or panel close). */
+  const cancelImport = useCallback(() => {
+    if (sessionId === undefined || importDraft === undefined) { setImportDraft(undefined); return }
+    const token = importDraft.draftToken
+    setImportDraft(undefined)
+    void remote.importAbort(sessionId, token).catch(() => { /* the host GCs staging on its own cadence */ })
+  }, [remote, sessionId, importDraft])
+
   // Outside-click closes the dev menu (standard dropdown dismissal).
   useEffect(() => {
     if (!menuOpen) return
     const onDown = (event: MouseEvent): void => {
       if (menuRef.current !== null && event.target instanceof Node && !menuRef.current.contains(event.target)) setMenuOpen(false)
       if (activityRef.current !== null && event.target instanceof Node && !activityRef.current.contains(event.target)) setActivityOpen(false)
+      if (importPanelRef.current !== null && event.target instanceof Node && !importPanelRef.current.contains(event.target)) {
+        if (importOpen) cancelImport()
+        setImportOpen(false)
+      }
     }
     document.addEventListener('mousedown', onDown)
     return () => { document.removeEventListener('mousedown', onDown) }
-  }, [menuOpen, activityOpen])
+  }, [menuOpen, activityOpen, importOpen, cancelImport])
 
   const readyCount = useMemo(() => rows.filter(row => row.ready).length, [rows])
 
@@ -250,6 +320,56 @@ export function StageShell({ phone, stageWidth, dockOpen, t, layout, sessions, r
           >
             <span className={css.dockGlyph} aria-hidden="true">▤</span>
           </button>
+          <div className={css.menuAnchor} ref={importPanelRef}>
+            <button
+              type="button"
+              className={css.toolButton}
+              aria-haspopup="menu"
+              aria-expanded={importOpen}
+              onClick={() => { if (importOpen) cancelImport(); setImportOpen(!importOpen); setImportNote(undefined) }}
+            >
+              {t('import.button')}
+              <span className={css.menuCaret} aria-hidden="true">▾</span>
+            </button>
+            {importOpen && (
+              <div className={css.menu} role="menu" aria-label={t('import.title')}>
+                {sessionId === undefined && <div className={css.menuHint}>{t('dev.no-session')}</div>}
+                {sessionId !== undefined && importDraft === undefined && (
+                  <div className={css.importForm} role="group">
+                    <div className={css.importTabs} role="tablist">
+                      <button type="button" role="tab" aria-selected={importMode === 'dir'} className={importMode === 'dir' ? css.importTabOn : css.importTab} onClick={() => { setImportMode('dir') }}>{t('import.dirLabel')}</button>
+                      <button type="button" role="tab" aria-selected={importMode === 'git'} className={importMode === 'git' ? css.importTabOn : css.importTab} onClick={() => { setImportMode('git') }}>{t('import.gitLabel')}</button>
+                    </div>
+                    {importMode === 'dir'
+                      ? <input className={css.importInput} value={importPath} placeholder="/absolute/path/to/package" onChange={event => { setImportPath(event.target.value) }} />
+                      : (
+                        <>
+                          <input className={css.importInput} value={importUrl} placeholder="https://host/owner/repo" onChange={event => { setImportUrl(event.target.value) }} />
+                          <input className={css.importInput} value={importRef} placeholder={t('import.gitRef')} onChange={event => { setImportRef(event.target.value) }} />
+                        </>
+                      )}
+                    <button type="button" className={css.control} disabled={importBusy} onClick={() => { inspectImport() }}>
+                      {importBusy ? t('import.checking') : t('import.submit')}
+                    </button>
+                  </div>
+                )}
+                {sessionId !== undefined && importDraft !== undefined && (
+                  <div className={css.importForm} role="group">
+                    <div className={css.importFactName}>{importDraft.name} · {importDraft.appId}</div>
+                    <div className={css.importFactMeta}>v{importDraft.version} · {t(`import.via.${importDraft.via === 'import' ? 'dir' : 'git'}` as Parameters<typeof t>[0]).replace('{label}', importDraft.label)}</div>
+                    {importDraft.installedVersion !== undefined && <div className={css.importFactMeta}>{t('import.installedAt').replace('{version}', importDraft.installedVersion)}</div>}
+                    <div className={css.importFactMeta}>{t('import.facts').replace('{files}', String(importDraft.fileCount)).replace('{kib}', (importDraft.totalBytes / 1024).toFixed(1)).replace('{digest}', importDraft.digest.slice(0, 12))}</div>
+                    <div className={css.importPlan}>{t(`import.plan.${importDraft.plan}` as Parameters<typeof t>[0])}</div>
+                    <div className={css.importActions}>
+                      <button type="button" className={css.control} disabled={importBusy} onClick={() => { confirmImport() }}>{t('import.confirm')}</button>
+                      <button type="button" className={css.control} disabled={importBusy} onClick={() => { cancelImport() }}>{t('import.cancel')}</button>
+                    </div>
+                  </div>
+                )}
+                {importNote !== undefined && <div className={css.menuHint} role="status">{importNote}</div>}
+              </div>
+            )}
+          </div>
           <div className={css.menuAnchor} ref={menuRef}>
             <button
               type="button"

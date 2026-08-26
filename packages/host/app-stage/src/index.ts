@@ -11,14 +11,14 @@
  * @module @ryanyujazz/dsh-app-stage
  */
 import { randomUUID } from 'node:crypto'
-import { rm } from 'node:fs/promises'
+import { readFile, rm, stat } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session } from '@deepseek-ai/dsh-session'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-workspace'
-import type { AppDataChange, AppDevEntry, AppInstalledEntry, AppJsonValue, AppManifest, AppPublishPlan, AppRouterOutcome, AppStageAssetListResult, AppStageAssetWriteResult, AppStageDataChangesResult, AppStageDataGetResult, AppStageDataSetResult, AppStageEnsureResult, AppStageHistoryResult, AppStageInvokeResult, AppStageRollbackResult, AppStageListResult, AppStageOpenResult, AppStagePresenceControlResult, AppStagePresenceSnapshotResult, AppStagePresenceSummaryResult, AppStagePresenceTimelineResult, AppStagePublishCommitResult, AppStagePublishPrepareResult, AppStageRouterResultAck, AppStageUninstallResult, AppStageWaitRequestsResult } from './types.ts'
+import type { AppDataChange, AppDevEntry, AppInstalledEntry, AppJsonValue, AppManifest, AppPublishPlan, AppRouterOutcome, AppStageAssetListResult, AppStageAssetWriteResult, AppStageDataChangesResult, AppStageDataGetResult, AppStageDataSetResult, AppStageEnsureResult, AppStageHistoryResult, AppStageInvokeResult, AppStageRollbackResult, AppStageListResult, AppStageOpenResult, AppStagePresenceControlResult, AppStagePresenceSnapshotResult, AppStagePresenceSummaryResult, AppStagePresenceTimelineResult, AppStagePublishCommitResult, AppStagePublishPrepareResult, AppStageRouterResultAck, AppStageUninstallResult, AppStageWaitRequestsResult, AppStageImportAbortResult, AppStageImportCommitResult, AppStageImportPrepareResult } from './types.ts'
 import { AppStageStaticServer } from './serve.ts'
 import { listInstalled, gateDevEntry, scanDevRoot } from './registry.ts'
 import { dshHome, readActivitySeen, readInstallPointer, readOpenedVersions, recordOpenedVersion, storeRoot, writeActivitySeen } from './store.ts'
@@ -26,6 +26,8 @@ import { ensurePreset } from './preset.ts'
 import { AppStageWatcherSet } from './watcher.ts'
 import { appDataChanges, appDataGet, appDataSet } from './appdata.ts'
 import { buildReport, commitSnapshot, gateForPublish, hashSnapshot, PACKAGE_MAX_BYTES, publishFingerprint, readHistory, readStagedManifest, readWatermark, resolvePlan, rollbackInstalled, stageSnapshot, uninstallApp, withInstallLock, writeInstallPointer } from './publish.ts'
+import { hardenedClone, resolveImportPlan } from './import.ts'
+import { validateManifestBytes } from './manifest.ts'
 import { probeStaging } from './probe.ts'
 import { AppRouterHub, INVOKE_TIMEOUT_MS, OPEN_TIMEOUT_MS } from './control.ts'
 import { PresenceCoordinator, PRESENCE_MACRO_AI_BUDGET_MS, PRESENCE_MACRO_DELEGATED_BUDGET_MS, summarizeParams } from './presence.ts'
@@ -66,6 +68,19 @@ declare module '@deepseek-ai/cordis' {
 
 export const inject = ['webServer', 'workspaceRegistry', 'sessions']
 
+/** One staged import draft held between `importPrepare` and its commit (M6c). */
+interface ImportDraft {
+  readonly appId: string
+  readonly stagingDir: string
+  readonly manifest: AppManifest
+  readonly digest: string
+  readonly plan: ReturnType<typeof resolveImportPlan>
+  readonly via: 'import' | 'import:git'
+  readonly label: string
+  readonly fingerprint: string
+  readonly sourceSession: string
+}
+
 /** One staged publish draft held between `preparePublish` and the commit. */
 interface PublishDraft {
   readonly appId: string
@@ -91,6 +106,7 @@ export class AppStageService extends TypertRemoteService {
   readonly watchers: AppStageWatcherSet
   /** Staged publish drafts by token (approval window state; host-lifetime). */
   private readonly publishDrafts = new Map<string, PublishDraft>()
+  private readonly importDrafts = new Map<string, ImportDraft>()
   /** The M4 operation face's routing hub (long-polled by the GUI router). */
   private readonly router = new AppRouterHub()
   /** The M5 presence coordinator (Px-β): authoritative lease state. */
@@ -442,6 +458,117 @@ export class AppStageService extends TypertRemoteService {
   async rollbackInstalledRemote(session: Session, appId: string, version: string): Promise<AppStageRollbackResult> {
     const result = await rollbackInstalled(appId, version, dshHome(), { workspace: basename(session.header.cwd ?? ''), session: String(session.id) })
     return 'record' in result ? { ok: true, appId, version } : { ok: false, code: result.code, message: result.message }
+  }
+
+  /**
+   * Prepare an import (M6c): resolve the source (directory or hardened git
+   * clone), stage it through the same whitelist walk as publishing, probe
+   * the sandbox, and resolve the watermark-tiered plan. No mutation yet —
+   * the client shows the facts card and the user confirms `importCommit`.
+   */
+  @Remote('importPrepare')
+  async importPrepare(
+    session: Session, source: { kind: 'dir'; path: string } | { kind: 'git'; url: string; ref?: string },
+  ): Promise<AppStageImportPrepareResult> {
+    const home = dshHome()
+    let srcDir: string | undefined
+    let via: 'import' | 'import:git' = 'import'
+    let label = ''
+    if (source.kind === 'dir') {
+      if (!source.path.startsWith('/') || source.path.includes('..')) {
+        return { ok: false, code: 'IMPORT_PATH_INVALID', message: 'Import needs an absolute directory path.' }
+      }
+      const info = await stat(source.path).catch(() => undefined)
+      if (info === undefined || !info.isDirectory()) {
+        return { ok: false, code: 'IMPORT_PATH_INVALID', message: `"${source.path}" is not a directory.` }
+      }
+      srcDir = source.path
+      label = basename(source.path)
+    } else {
+      via = 'import:git'
+      const cloned = await hardenedClone(source.url, source.ref, '')
+      if (!cloned.ok) return { ok: false, code: cloned.code, message: cloned.message }
+      srcDir = cloned.dir
+      label = new URL(source.url).hostname
+    }
+    // Manifest first (appId comes from the package, not the caller).
+    let manifest: AppManifest
+    try {
+      const bytes = await readFile(join(srcDir, 'app.json'))
+      const parsed = JSON.parse(new TextDecoder().decode(bytes)) as { id?: unknown }
+      if (typeof parsed.id !== 'string') throw new Error('app.json has no "id"')
+      const validated = validateManifestBytes(parsed.id, bytes)
+      if (!validated.ok) throw new Error(validated.reason.detail)
+      manifest = validated.manifest
+    } catch (error) {
+      if (source.kind === 'git') await rm(srcDir, { recursive: true, force: true })
+      return { ok: false, code: 'MANIFEST_INVALID', message: `The package's app.json is not valid: ${error instanceof Error ? error.message : String(error)}` }
+    }
+    const stagingDir = join(storeRoot(home), 'apps', 'staging', `import-${manifest.id}-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`)
+    const staged = await stageSnapshot(srcDir, stagingDir)
+    if (source.kind === 'git') await rm(srcDir, { recursive: true, force: true })
+    if ('code' in staged) {
+      await rm(stagingDir, { recursive: true, force: true })
+      return { ok: false, code: 'PACKAGE_TOO_LARGE', message: `Snapshot is ${staged.bytes} bytes; the cap is ${PACKAGE_MAX_BYTES}.` }
+    }
+    const entryURL = `http://${this.ctx.webServer.host}:${this.ctx.webServer.port}${this.statics.urlForDev(stagingDir, manifest.entry)}`
+    const probe = await probeStaging({ entryURL, entryMIME: 'text/html', appId: manifest.id, version: manifest.version, declaredActions: manifest.actions.map(action => action.name), home })
+    if (!probe.ok) {
+      await rm(stagingDir, { recursive: true, force: true })
+      return { ok: false, code: 'PROBE_FAILED', message: probe.detail ?? 'staging probe failed' }
+    }
+    const report = await buildReport(stagingDir, manifest, probe)
+    const pointer = await readInstallPointer(manifest.id, home)
+    const watermark = await readWatermark(manifest.id, home)
+    const plan = resolveImportPlan(manifest.version, report.digest, pointer === undefined ? undefined : { version: pointer.version, digest: pointer.digest }, watermark)
+    const fingerprint = via === 'import' ? `import:dir:${label}` : `import:git:${label}`
+    const draftToken = randomUUID()
+    this.importDrafts.set(draftToken, { appId: manifest.id, stagingDir, manifest, digest: report.digest, plan, via, label, fingerprint, sourceSession: String(session.id) })
+    return {
+      ok: true, draftToken, plan,
+      appId: manifest.id, name: manifest.name, version: manifest.version, via, label,
+      ...(pointer === undefined ? {} : { installedVersion: pointer.version }),
+      report,
+    }
+  }
+
+  /** Commit a confirmed import draft: install under the same chain as publish. */
+  @Remote('importCommit')
+  async importCommit(session: Session, draftToken: string): Promise<AppStageImportCommitResult> {
+    void session
+    const draft = this.importDrafts.get(draftToken)
+    if (draft === undefined) return { ok: false, code: 'SOURCE_MISSING', message: 'No staged import for this token (it may have been consumed or the host restarted).' }
+    this.importDrafts.delete(draftToken)
+    const home = dshHome()
+    const still = await readStagedManifest(draft.stagingDir, draft.appId)
+    if (still === undefined || still.version !== draft.manifest.version) {
+      await rm(draft.stagingDir, { recursive: true, force: true })
+      return { ok: false, code: 'SOURCE_MISSING', message: 'The staged import changed during approval; re-import the package.' }
+    }
+    try {
+      await withInstallLock(draft.appId, async () => {
+        await commitSnapshot(draft.stagingDir, draft.appId, draft.manifest.version, home)
+        await writeInstallPointer(draft.appId, {
+          version: draft.manifest.version, digest: draft.digest, installedAt: new Date().toISOString(),
+          sourceWorkspace: draft.label, sourceFingerprint: draft.fingerprint,
+          sourceSession: draft.sourceSession, publishedVia: draft.via,
+        }, home)
+      })
+    } catch (error) {
+      return { ok: false, code: 'STORE_WRITE_FAILED', message: `install store write failed: ${error instanceof Error ? error.message : String(error)}` }
+    }
+    return { ok: true, appId: draft.appId, version: draft.manifest.version, plan: draft.plan }
+  }
+
+  /** Drop a staged import without installing (cancelled or abandoned facts card). */
+  @Remote('importAbort')
+  async importAbort(session: Session, draftToken: string): Promise<AppStageImportAbortResult> {
+    void session
+    const draft = this.importDrafts.get(draftToken)
+    if (draft === undefined) return { ok: true, dropped: false }
+    this.importDrafts.delete(draftToken)
+    await rm(draft.stagingDir, { recursive: true, force: true })
+    return { ok: true, dropped: true }
   }
 
   @Remote('uninstall')
