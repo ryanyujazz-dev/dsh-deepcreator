@@ -151,3 +151,34 @@
   .frame { box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--dsh-app-stage-presence, var(--dsw-alias-accent, #0071e3)) 55%, transparent); }
   .frameIdle { box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--dsh-app-stage-presence, var(--dsw-alias-accent, #0071e3)) 25%, transparent); }
 }
+
+/* Param digest (M5f): the non-co-visible param replay form — structured
+   name/value pairs straight in the banner, no cursor, no typing theatre. */
+.paramDigest {
+  display: inline-flex;
+  gap: 10px;
+  align-items: baseline;
+  margin-left: 10px;
+  padding-left: 10px;
+  border-left: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  max-width: min(46ch, 40vw);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.paramPair {
+  display: inline-flex;
+  gap: 4px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.paramName { color: var(--dsw-alias-label-tertiary); font-size: var(--dsw-font-body-s-font-size, 14px); flex: none; }
+.paramValue {
+  color: var(--dsw-alias-label-secondary);
+  font-size: var(--dsw-font-body-s-font-size, 14px);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 24ch;
+}

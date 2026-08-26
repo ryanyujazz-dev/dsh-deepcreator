@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * Client presence tests (Px-β): render-state derivation from authoritative
  * snapshots (acting / taking-over / waiting-approve / waiting-user, idle
@@ -6,9 +7,11 @@
  * handing-back terminal, user controls re-polling).
  * @module @ryanyujazz/dsh-client-ui-app-stage/tests/presence.client.spec
  */
-import { describe, expect, it, vi } from 'vitest'
-import { BANNER_HYSTERESIS_MS, createPresenceFeed, deriveProjection, type PresenceProjection } from '../src/client/presence.ts'
+import { cleanup, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { BANNER_HYSTERESIS_MS, createPresenceFeed, deriveProjection, type PresenceFeedApi, type PresenceProjection } from '../src/client/presence.ts'
 import type { PresenceLeaseSnapshot } from '@ryanyujazz/dsh-app-stage/types'
+import { PresenceBanner } from '../src/client/PresenceBanner.tsx'
 
 const T0 = 1_700_000_000_000
 
@@ -137,3 +140,41 @@ describe('createPresenceFeed (poll discipline)', () => {
   })
 })
 
+
+afterEach(cleanup)
+
+const ACTING: PresenceProjection = { state: 'acting', lease: undefined, idle: false, expiring: false, elapsedMs: 1_000, remainingMs: undefined, summary: undefined, tick: 0 }
+
+describe('param digest row (M5f: non-co-visible param replay)', () => {
+  const feedOf = (p: PresenceProjection): PresenceFeedApi => ({
+    subscribe: () => () => {},
+    getSnapshot: () => p,
+    poke: () => {},
+    control: async () => {},
+    dismissSummary: () => {},
+    subscribeActivity: () => () => {},
+    dispose: () => {},
+  })
+  const t = (key: string): string => ({ 'presence.acting': 'AI 正在操作 {name}', 'presence.paused': 'AI 已暂停，等待你的指示' })[key] ?? key
+  const digest = [{ name: 'title', value: 'M5f验收卡' }]
+
+  it('renders structured pairs while the command is in flight', () => {
+    const p: PresenceProjection = { ...ACTING, lease: lease({ activeCommand: { kind: 'invoke', action: 'createTask', paramsSummary: digest } }) }
+    render(<PresenceBanner feed={feedOf(p)} t={t as never} now={() => T0 + 1_000} />)
+    expect(screen.getByText('title')).toBeTruthy()
+    expect(screen.getByText('M5f验收卡')).toBeTruthy()
+  })
+
+  it('shows no digest without params, after settle, or while waiting for the user', () => {
+    const first = render(<PresenceBanner feed={feedOf(ACTING)} t={t as never} now={() => T0 + 1_000} />)
+    expect(screen.queryByText('title')).toBeNull()
+    first.unmount()
+    const settled: PresenceProjection = { ...ACTING, lease: lease({ activeCommand: { kind: 'invoke', action: 'createTask' } }) }
+    const second = render(<PresenceBanner feed={feedOf(settled)} t={t as never} now={() => T0 + 1_000} />)
+    expect(screen.queryByText('title')).toBeNull()
+    second.unmount()
+    const paused: PresenceProjection = { state: 'waiting-user', lease: lease({ state: 'suspended-user', activeCommand: { kind: 'invoke', action: 'createTask', paramsSummary: digest } }), idle: false, expiring: false, elapsedMs: 1_000, remainingMs: undefined, summary: undefined, tick: 0 }
+    render(<PresenceBanner feed={feedOf(paused)} t={t as never} now={() => T0 + 1_000} />)
+    expect(screen.queryByText('M5f验收卡')).toBeNull()
+  })
+})

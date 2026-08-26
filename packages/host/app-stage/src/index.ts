@@ -28,7 +28,7 @@ import { appDataChanges, appDataGet, appDataSet } from './appdata.ts'
 import { buildReport, commitSnapshot, gateForPublish, PACKAGE_MAX_BYTES, publishFingerprint, readStagedManifest, resolvePlan, stageSnapshot, uninstallApp, writeInstallPointer } from './publish.ts'
 import { probeStaging } from './probe.ts'
 import { AppRouterHub, INVOKE_TIMEOUT_MS, OPEN_TIMEOUT_MS } from './control.ts'
-import { PresenceCoordinator, PRESENCE_MACRO_AI_BUDGET_MS, PRESENCE_MACRO_DELEGATED_BUDGET_MS } from './presence.ts'
+import { PresenceCoordinator, PRESENCE_MACRO_AI_BUDGET_MS, PRESENCE_MACRO_DELEGATED_BUDGET_MS, summarizeParams } from './presence.ts'
 import { listAssets, removeAssets, writeAsset } from './assets.ts'
 import { validateInvokeParams } from './params.ts'
 import { preinstallBuiltin } from './builtin.ts'
@@ -452,7 +452,7 @@ export class AppStageService extends TypertRemoteService {
     const revBefore = await this.installedRev(appId)
     const startedAt = Date.now()
     const sessionId = String(session.id)
-    this.presence.commandStarted(sessionId, { kind: 'invoke', appId, appName: resolved.manifest.name, version: resolved.version, action, origin: 'installed' })
+    this.presence.commandStarted(sessionId, { kind: 'invoke', appId, appName: resolved.manifest.name, version: resolved.version, action, origin: 'installed', paramsSummary: summarizeParams(typeof params === 'object' && params !== null && !Array.isArray(params) ? params as Readonly<Record<string, unknown>> : {}) })
     const settlement = await this.router.push(
       { kind: 'invoke', appId, version: resolved.version, name: resolved.manifest.name, action, params },
       INVOKE_TIMEOUT_MS,

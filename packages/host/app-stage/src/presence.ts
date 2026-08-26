@@ -105,6 +105,8 @@ export interface PresenceLeaseSnapshot {
   readonly apps: readonly { readonly appId: string; readonly name: string; readonly version?: string }[]
   /** First-publish approval pending (waiting-approve render state). */
   readonly waitingApprove?: { readonly appId: string; readonly version: string }
+  /** The in-flight command digest (param replay form, non-co-visible). */
+  readonly activeCommand?: { readonly kind: PresenceCommandKind; readonly action?: string; readonly paramsSummary?: readonly PresenceParamSummary[] }
 }
 
 /** The summary card material (§3.6): a deterministic fold of one lease. */
@@ -147,9 +149,43 @@ export interface PresenceCommandStart {
   readonly action?: string
   readonly causeId?: string
   readonly origin?: 'installed' | 'dev'
+  /**
+   * Structured parameter digest for the non-co-visible param replay form
+   * (presence §3.2 X7): names and host-truncated values from the下行 params
+   * only. Never emitted on the app-layer SSE channel — free text never
+   * enters it; this rides the shell's authoritative snapshot instead.
+   */
+  readonly paramsSummary?: readonly PresenceParamSummary[]
+}
+
+/** One parameter pair in a command's structured digest (host-truncated). */
+export interface PresenceParamSummary {
+  readonly name: string
+  readonly value: string
+}
+
+/** Host-side param digest caps: per-value length and pair count. */
+const PRESENCE_PARAM_VALUE_MAX = 120
+const PRESENCE_PARAM_PAIRS_MAX = 4
+
+/**
+ * Build the structured param digest from invoke params (下行 params only —
+ * never DOM reads). Values render as JSON for composites, plain text for
+ * strings; every value is capped and pairs beyond the cap are dropped.
+ */
+export function summarizeParams(params: Readonly<Record<string, unknown>>): readonly PresenceParamSummary[] {
+  const out: PresenceParamSummary[] = []
+  for (const [name, value] of Object.entries(params)) {
+    if (out.length >= PRESENCE_PARAM_PAIRS_MAX) break
+    const raw = typeof value === 'string' ? value : JSON.stringify(value) ?? String(value)
+    out.push({ name, value: raw.length > PRESENCE_PARAM_VALUE_MAX ? `${raw.slice(0, PRESENCE_PARAM_VALUE_MAX)}…` : raw })
+  }
+  return out
 }
 
 interface Lease {
+  /** The in-flight command's digest (params ride the shell snapshot, not SSE). */
+  activeCommand?: { readonly kind: PresenceCommandKind; readonly action?: string; readonly paramsSummary?: readonly PresenceParamSummary[] } | undefined
   readonly leaseId: string
   readonly sessionId: string
   kind: 'micro' | 'macro'
@@ -222,6 +258,9 @@ export class PresenceCoordinator {
     // A user-interrupted lease records but stays suspended (X1: no clawback).
     lease.lastCommandAt = Date.now()
     lease.focus = { appId: start.appId, name: start.appName, ...(start.version !== undefined ? { version: start.version } : {}) }
+    lease.activeCommand = { kind: start.kind, ...(start.action !== undefined ? { action: start.action } : {}), ...(start.paramsSummary !== undefined && start.paramsSummary.length > 0 ? { paramsSummary: start.paramsSummary } : {}) }
+    // SSE keeps its no-free-text discipline: the param digest rides the
+    // shell's snapshot remote only, never the app-layer channel.
     this.emit(start.appId, 'command', { phase: 'start', commandKind: start.kind, ...(start.action !== undefined ? { action: start.action } : {}) })
     this.roster(lease, start)
     if (lease.kind === 'macro') {
@@ -241,6 +280,7 @@ export class PresenceCoordinator {
     this.emit(record.appId, 'command', { phase: 'settled', commandKind: record.kind, outcome: record.outcome, ...(record.action !== undefined ? { action: record.action } : {}) })
     const lease = this.leases.get(sessionId)
     if (lease !== undefined) {
+      lease.activeCommand = undefined
       if (lease.actions.length < PRESENCE_ACTIONS_CAP) lease.actions.push(record)
       this.roster(lease, record)
       if (record.action !== undefined && (record.keys === undefined || record.keys.length === 0) && record.kind === 'invoke' && record.outcome === 'ok') {
@@ -502,6 +542,7 @@ export class PresenceCoordinator {
       ...(lease.focus !== undefined ? { focus: lease.focus } : {}),
       apps: [...lease.apps.entries()].map(([appId, info]) => ({ appId, name: info.name, ...(info.version !== undefined ? { version: info.version } : {}) })),
       ...(lease.waitingApprove !== undefined ? { waitingApprove: lease.waitingApprove } : {}),
+      ...(lease.activeCommand !== undefined ? { activeCommand: lease.activeCommand } : {}),
     }
   }
 }

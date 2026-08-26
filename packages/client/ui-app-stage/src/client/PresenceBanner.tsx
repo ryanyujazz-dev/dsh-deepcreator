@@ -132,6 +132,16 @@ export function PresenceBanner({ feed, t, now = Date.now }: { feed: PresenceFeed
       <div className={`${css.banner} ${tone} ${p.idle ? css.bannerIdle : ''}`} role="status">
         <span className={`${css.dot} ${macro ? css.dotMacro : ''} ${p.idle ? css.dotIdle : ''} ${burst(p, at) ? css.dotBurst : ''}`} aria-hidden="true" />
         <span className={css.bannerText}>{line}</span>
+        {lease.activeCommand?.paramsSummary !== undefined && lease.activeCommand.paramsSummary.length > 0 && p.state !== 'waiting-user' && (
+          <span className={css.paramDigest} aria-hidden="true">
+            {lease.activeCommand.paramsSummary.map(pair => (
+              <span key={pair.name} className={css.paramPair}>
+                <span className={css.paramName}>{pair.name}</span>
+                <span className={css.paramValue}>{pair.value}</span>
+              </span>
+            ))}
+          </span>
+        )}
         <span className={css.bannerTime} aria-hidden="true">{clock(p.elapsedMs)}</span>
         {p.expiring && p.remainingMs !== undefined && <span className={css.bannerExpiring}>{t('presence.expiring').replace('{time}', clock(p.remainingMs))}</span>}
         <span className={css.bannerActions}>

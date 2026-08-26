@@ -10,7 +10,9 @@ import {
   PresenceCoordinator,
   PRESENCE_IDLE_SUSPEND_MS,
   PRESENCE_MACRO_AI_BUDGET_MS,
+  summarizeParams,
 } from '../src/presence.ts'
+import type { PresenceEvent } from '../src/presence.ts'
 
 const timers: Array<ReturnType<typeof setTimeout>> = []
 const hub = (): PresenceCoordinator => new PresenceCoordinator()
@@ -254,5 +256,31 @@ describe('lifecycle', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('param digest (M5f: non-co-visible param replay)', () => {
+  it('summarizeParams caps value length and pair count', () => {
+    const digest = summarizeParams({ title: 'x'.repeat(200), board: 'todo', meta: { nested: true }, extra: 'dropped', more: 'dropped' })
+    expect(digest).toHaveLength(4)
+    expect(digest[0]!.value).toHaveLength(121)
+    expect(digest[0]!.value.endsWith('…')).toBe(true)
+    expect(digest[1]).toEqual({ name: 'board', value: 'todo' })
+    expect(digest[2]!.value).toBe('{"nested":true}')
+    expect(digest.some(pair => pair.name === 'more')).toBe(false)
+  })
+
+  it('rides the shell snapshot but never the SSE channel', async () => {
+    const presence = new PresenceCoordinator()
+    const events: PresenceEvent[] = []
+    presence.subscribeEvents('kanban-demo', event => { events.push(event) })
+    presence.commandStarted('s1', { kind: 'invoke', appId: 'kanban-demo', appName: '看板演示', action: 'createTask', origin: 'installed', paramsSummary: [{ name: 'title', value: 'M5f验收卡' }] })
+    const [lease] = presence.snapshot('s1')
+    expect(lease?.activeCommand?.paramsSummary).toEqual([{ name: 'title', value: 'M5f验收卡' }])
+    const start = events.find(event => event.kind === 'command')
+    expect(JSON.stringify(start)).not.toContain('M5f验收卡')
+    expect(JSON.stringify(start)).not.toContain('paramsSummary')
+    presence.commandSettled('s1', { ts: Date.now(), kind: 'invoke', appId: 'kanban-demo', appName: '看板演示', action: 'createTask', outcome: 'ok', durationMs: 4, origin: 'installed' })
+    expect(presence.snapshot('s1')[0]?.activeCommand).toBeUndefined()
   })
 })
