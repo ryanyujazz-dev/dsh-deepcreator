@@ -1,6 +1,6 @@
 # App Stage 开发计划
 
-Status: **执行中 — M5 Px-β 主体已落（M5a 权威租约状态机 + M5b app_takeover + M5c 壳层投影，均已提交），待 GUI 验收；余 M5d 注入 runtime+SSE**（M4：桥 v2 路由 + 九工具 + 资产通道 + 通道一注册闸 + 活动信号；GUI 真实验收全通——preset 会话四步：createTask 落盘（created + persistedKeys + 版本回执）/ data_read 验证 / dev: 拒收 / app_open；活动 chip 由用户在自己的 GUI 面上亲眼确认（多面认领归最新 poller 的实测副产品：用户面常胜，chip 亮起即三层验证）；验收揪出三个真缺陷并修复：桥双绑 f444a28、宿主侧路由扇出双投递 22b8589（routerId 认领制，hub 四测含 poll-gap 边界）、demo 协议卫生 v0.2.1（已发布安装）；245 文件 / 2611 测试全绿；新宿主冒烟 rev11→12 恰好一写、多轮 8 连发全单写）。本文把 `docs/design/app-stage.md` v0.0.6 的阶段划分展开为可执行的开发计划：里程碑、包结构与行序、每步的产出与验收、验证纪律。设计依据四份文档：主提案（决策）、`app-stage-agent-surface.md` v1.0（工具/技能）、`app-stage-ui.md` v1.0（前端）、`app-stage-presence.md` v0.0.3（在场层）。计划执行中以实现事实为准回填，与设计冲突时先回设计文档裁决再改代码。
+Status: **执行中 — M5 Px-β 主体完成并 GUI 验收通过（含用户目击粒子边框；验收揪出两真缺陷已修复 08f565f），余 M5d 注入 runtime+SSE**（M4：桥 v2 路由 + 九工具 + 资产通道 + 通道一注册闸 + 活动信号；GUI 真实验收全通——preset 会话四步：createTask 落盘（created + persistedKeys + 版本回执）/ data_read 验证 / dev: 拒收 / app_open；活动 chip 由用户在自己的 GUI 面上亲眼确认（多面认领归最新 poller 的实测副产品：用户面常胜，chip 亮起即三层验证）；验收揪出三个真缺陷并修复：桥双绑 f444a28、宿主侧路由扇出双投递 22b8589（routerId 认领制，hub 四测含 poll-gap 边界）、demo 协议卫生 v0.2.1（已发布安装）；245 文件 / 2611 测试全绿；新宿主冒烟 rev11→12 恰好一写、多轮 8 连发全单写）。本文把 `docs/design/app-stage.md` v0.0.6 的阶段划分展开为可执行的开发计划：里程碑、包结构与行序、每步的产出与验收、验证纪律。设计依据四份文档：主提案（决策）、`app-stage-agent-surface.md` v1.0（工具/技能）、`app-stage-ui.md` v1.0（前端）、`app-stage-presence.md` v0.0.3（在场层）。计划执行中以实现事实为准回填，与设计冲突时先回设计文档裁决再改代码。
 
 ## 0. 总原则（继承自设计终审）
 
@@ -95,7 +95,9 @@ M4 GUI 验收操作事实（复验时照抄）：GUI 页面刷新会重置 prese
 
 待办：**M5d** HTML 注入中间件（`text/html` 在 `</head>` 前插 `/__dsh_presence__.js`，同源 CSP 零放宽）+ SSE 通道 + 注入 runtime（冻结预置、零可调用 API、单向数据流）；时间线活动视图（Launcher 右上入口+蓝点水位）与键入 ghost（共见分型）随后续轮次；Px-γ Desktop 投射随 IAB 分支。
 
-验收：presence 文档矩阵逐项过（已完成项：§2.1 双层租约、§2.2 权威/呈现分离、§2.3 词汇分级+色相纪律、§3.1 四边粒子+降级、§3.6 摘要卡+时间线数据源、§3.7 横幅三要素、§3.8 aria-live+结构化播报、§6 X1 租约级中断）；GUI 验收待宿主重启后走查（preset 会话 app_takeover → 横幅/粒子框/控件/摘要卡全链路 + 用户目击）；Desktop 投射下 invoke/呈现行为与 Web 一致（桥共享验证）。
+验收：presence 文档矩阵逐项过（已完成项：§2.1 双层租约、§2.2 权威/呈现分离、§2.3 词汇分级+色相纪律、§3.1 四边粒子+降级、§3.6 摘要卡+时间线数据源、§3.7 横幅三要素、§3.8 aria-live+结构化播报、§6 X1 租约级中断）；Desktop 投射下 invoke/呈现行为与 Web 一致（桥共享验证）。
+
+**GUI 真实验收记录（2026-08-26，preset 会话四轮）**：①宿主全链路——app_takeover 回执 `{leaseId, mode:autonomous, budgetMs:300000, expiresAt}`，createTask 卡片 journal 落盘（M5验收A/B/C/D/E 各轮）；②宏租约投影——横幅“AI 接管中 · 看板演示” + **16 颗四边粒子**（用户在自己的 GUI 面亲眼目击确认）+ mm:ss 计时 + 暂停 AI/收回控件；③X1 中断——“暂停 AI”→“已暂停 · AI 让位”（只显“继续”），“继续”→恢复 acting；④handback——“收回”→摘要卡如实折叠（接管时长/动作计数 invoke × N/涉及应用/**数据变更清单**/**“你于第 N 步接管”中断事实**）；⑤aria-live——常驻 region 播出“AI 操作结束”（a11y 树核验 status+alert 双通道）；⑥**验收揪出两真缺陷并修复提交（08f565f，均带回归测试）**：跨面租约盲区（非认领面无 router 活动信号→永不知租约存在；修复=10s 发现轮询，租约已知后 2s keepalive 接管）、宏租约孤儿定时器（idle 回调直写 expiryTimer 不清旧臂→续租后旧死线照样释放，实测 8 秒天折摘要 00:08；修复=armExpiry 独占期限所有权，idle 只降级视觉）；测试基线 247 文件/2645 绿。操作事实：GUI 端口随重启漂移（60619→51650→52238，重启后须重探）；playwright-chromium provider 随宿主重启死锁须换观测面；菜单点击 browser_act 仍被拒，ego 触发 + DOM 读取组合稳定。
 
 ### M6 — 生态（Phase 3，按需启动）
 
