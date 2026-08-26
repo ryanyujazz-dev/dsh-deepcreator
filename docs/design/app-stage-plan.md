@@ -1,6 +1,6 @@
 # App Stage 开发计划
 
-Status: **执行中 — M4 全部完成（代码 + GUI 验收 + 用户目击 chip），下一步 M5**（M4：桥 v2 路由 + 九工具 + 资产通道 + 通道一注册闸 + 活动信号；GUI 真实验收全通——preset 会话四步：createTask 落盘（created + persistedKeys + 版本回执）/ data_read 验证 / dev: 拒收 / app_open；活动 chip 由用户在自己的 GUI 面上亲眼确认（多面认领归最新 poller 的实测副产品：用户面常胜，chip 亮起即三层验证）；验收揪出三个真缺陷并修复：桥双绑 f444a28、宿主侧路由扇出双投递 22b8589（routerId 认领制，hub 四测含 poll-gap 边界）、demo 协议卫生 v0.2.1（已发布安装）；245 文件 / 2611 测试全绿；新宿主冒烟 rev11→12 恰好一写、多轮 8 连发全单写）。本文把 `docs/design/app-stage.md` v0.0.6 的阶段划分展开为可执行的开发计划：里程碑、包结构与行序、每步的产出与验收、验证纪律。设计依据四份文档：主提案（决策）、`app-stage-agent-surface.md` v1.0（工具/技能）、`app-stage-ui.md` v1.0（前端）、`app-stage-presence.md` v0.0.3（在场层）。计划执行中以实现事实为准回填，与设计冲突时先回设计文档裁决再改代码。
+Status: **执行中 — M5 Px-β 主体已落（M5a 权威租约状态机 + M5b app_takeover + M5c 壳层投影，均已提交），待 GUI 验收；余 M5d 注入 runtime+SSE**（M4：桥 v2 路由 + 九工具 + 资产通道 + 通道一注册闸 + 活动信号；GUI 真实验收全通——preset 会话四步：createTask 落盘（created + persistedKeys + 版本回执）/ data_read 验证 / dev: 拒收 / app_open；活动 chip 由用户在自己的 GUI 面上亲眼确认（多面认领归最新 poller 的实测副产品：用户面常胜，chip 亮起即三层验证）；验收揪出三个真缺陷并修复：桥双绑 f444a28、宿主侧路由扇出双投递 22b8589（routerId 认领制，hub 四测含 poll-gap 边界）、demo 协议卫生 v0.2.1（已发布安装）；245 文件 / 2611 测试全绿；新宿主冒烟 rev11→12 恰好一写、多轮 8 连发全单写）。本文把 `docs/design/app-stage.md` v0.0.6 的阶段划分展开为可执行的开发计划：里程碑、包结构与行序、每步的产出与验收、验证纪律。设计依据四份文档：主提案（决策）、`app-stage-agent-surface.md` v1.0（工具/技能）、`app-stage-ui.md` v1.0（前端）、`app-stage-presence.md` v0.0.3（在场层）。计划执行中以实现事实为准回填，与设计冲突时先回设计文档裁决再改代码。
 
 ## 0. 总原则（继承自设计终审）
 
@@ -87,7 +87,15 @@ M4 GUI 验收操作事实（复验时照抄）：GUI 页面刷新会重置 prese
 
 产出：presence 壳层（粒子边框/宏微租约/摘要卡/时间线/键入 ghost 按 presence 文档 Px-β 集）；Px-γ Desktop 投射（B1 投射 + B2 进程级 overlay，桥协议层共享）随 IAB 分支。
 
-验收：presence 文档矩阵逐项过；Desktop 投射下 invoke/呈现行为与 Web 一致（桥共享验证）。
+实现进度（Px-β 主体，三次提交）：
+
+- **M5a 权威租约状态机**（`packages/host/app-stage/src/presence.ts` + 服务接线）：PresenceCoordinator 双层租约——微租约任一命令流动作即亮（60s 静默挂起释放），宏租约显式接管（AI 自主 5min / 委托 15min 平台常数，租约内新命令才续期，静默永不续）；X1 租约级用户中断（AI 永不自动抢回，resume/handback 用户专属）；摘要卡确定性折叠（动作分类计数/涉及应用/**全部 AppData key 变更清单**/用户中断事实/unfulfilled persist 标注——反"视觉掩护下的静默篡改"）；时间线只聚合 installed origin（dev 内环自测不进全局水位，§3.6）。服务命令路径全部接线：invoke/open/assetWrite 起止、dataSet 按 causeId 前缀分流（agent- 命令流 vs ui- 应用效果）、首发审批 waiting-approve 投影（decline 如实记 USER_DECLINED）。13 个状态机单测全过。
+- **M5b app_takeover 工具**（B7 规格，preset 行）：无状态门面调常驻包 PresenceCoordinator；时长不开放参数（防 agent 自授长租）；需可见容器（粒子框是给用户看的，无 GUI 面拒绝 CONTAINER_UNAVAILABLE）；预算 16 次/会话。persona 补接管纪律段（generator 8）。
+- **M5c 壳层投影**（`packages/client/ui-app-stage/src/client/presence.ts` + `PresenceBanner.tsx`）：外部 store feed——router 活动信号 poke 驱动轮询，租约存活才跑 2s keepalive，其余全部本地推导（acting/taking-over/waiting-approve/waiting-user、60s idle 降级、最后 30s 剩余读数、2s 退出滞回防闪）；32px 壳层横幅（词汇分级：微租约"AI 正在操作"、宏租约才"AI 接管中"+四边粒子框；色相只表达状态永不表达授权来源）；16 颗 CSS 粒子（transform/opacity 单合成层、固定色相节奏签名、reduced-motion 降级 2px 静态内边框）；宏租约用户控件（暂停 AI/收回；waiting-user 只显继续）；租约消失即取摘要卡（常驻至关闭）；aria-live 双通道常驻 DOM（polite 开始/结束/暂停 + assertive 只播"需要你的确认"，播报只用结构化字段）。UI_STYLE_GUIDE 已登记。客户端 17 个新测全过。
+
+待办：**M5d** HTML 注入中间件（`text/html` 在 `</head>` 前插 `/__dsh_presence__.js`，同源 CSP 零放宽）+ SSE 通道 + 注入 runtime（冻结预置、零可调用 API、单向数据流）；时间线活动视图（Launcher 右上入口+蓝点水位）与键入 ghost（共见分型）随后续轮次；Px-γ Desktop 投射随 IAB 分支。
+
+验收：presence 文档矩阵逐项过（已完成项：§2.1 双层租约、§2.2 权威/呈现分离、§2.3 词汇分级+色相纪律、§3.1 四边粒子+降级、§3.6 摘要卡+时间线数据源、§3.7 横幅三要素、§3.8 aria-live+结构化播报、§6 X1 租约级中断）；GUI 验收待宿主重启后走查（preset 会话 app_takeover → 横幅/粒子框/控件/摘要卡全链路 + 用户目击）；Desktop 投射下 invoke/呈现行为与 Web 一致（桥共享验证）。
 
 ### M6 — 生态（Phase 3，按需启动）
 
