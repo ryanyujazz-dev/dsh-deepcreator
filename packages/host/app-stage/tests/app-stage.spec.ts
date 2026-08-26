@@ -102,5 +102,11 @@ describe('agent preset materializer', () => {
     const healed = await readFile(composition, 'utf8')
     expect(healed).toContain('- id: app-stage-agent')
     expect(healed).toMatch(/name: 'file:\/\//)
+    // The approval seam is HOST-plane (service row 36); the preset must NOT
+    // re-register it or the loader collides on ctx.userQuestions.
+    expect(healed).not.toContain("name: '@deepseek-ai/dsh-user-questions'")
+    // Rows whose official configs became required.
+    expect(healed).toContain('sampleOverCapGlobResults: false')
+    expect(healed).toContain('section: |')
   })
 })

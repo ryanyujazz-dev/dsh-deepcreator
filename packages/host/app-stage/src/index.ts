@@ -27,6 +27,7 @@ import { AppStageWatcherSet } from './watcher.ts'
 import { appDataChanges, appDataGet, appDataSet } from './appdata.ts'
 import { buildReport, commitSnapshot, gateForPublish, PACKAGE_MAX_BYTES, publishFingerprint, readStagedManifest, resolvePlan, stageSnapshot, uninstallApp, writeInstallPointer } from './publish.ts'
 import { probeStaging } from './probe.ts'
+import { preinstallBuiltin } from './builtin.ts'
 
 export * from './types.ts'
 export { validateManifest, validateManifestBytes, MANIFEST_MAX_BYTES } from './manifest.ts'
@@ -110,12 +111,23 @@ export class AppStageService extends TypertRemoteService {
     void this.materializePreset().catch(error => {
       this.ctx.logger.warn(`app-stage preset materialization failed: ${error instanceof Error ? error.message : String(error)}`)
     })
+    // Factory preinstall (v0.0.5): the sample app fills an empty desktop on
+    // first boot; a user uninstall stays honored until the id reappears by a
+    // real publish.
+    void this.preinstallBuiltin().catch(error => {
+      this.ctx.logger.warn(`app-stage builtin preinstall failed: ${error instanceof Error ? error.message : String(error)}`)
+    })
   }
 
   /** Materialize (or verify + heal) the app-stage agent preset. */
   async materializePreset(home: string = dshHome()): Promise<'materialized' | 'verified' | 'healed'> {
     const presetsRoot = `${home}/.agent-presets`
     return ensurePreset(presetsRoot, message => this.ctx.logger.warn(message))
+  }
+
+  /** Preinstall the sample app when its id is absent from the install store. */
+  async preinstallBuiltin(home: string = dshHome()): Promise<'installed' | 'already-present' | 'failed'> {
+    return preinstallBuiltin(home, join(storeRoot(home), 'apps', 'staging'))
   }
 
   /** Ready-entry sandbox URL for a dev source directory. */
@@ -212,7 +224,9 @@ export class AppStageService extends TypertRemoteService {
     if (!resolved.ok) return resolved
     try {
       const { value, rev } = await appDataGet(resolved.scope, resolved.appId, path, resolved.cwd, resolved.schemaVersion)
-      return { ok: true, value: value as AppJsonValue, rev }
+      // JSON-safe boundary: a missing key path reads as null (undefined would
+      // fail the typert result validation).
+      return { ok: true, value: (value === undefined ? null : value) as AppJsonValue, rev }
     } catch (error) {
       return { ok: false, code: 'PATH_INVALID', message: error instanceof Error ? error.message : String(error) }
     }

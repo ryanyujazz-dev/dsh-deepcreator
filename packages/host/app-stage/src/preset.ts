@@ -39,7 +39,7 @@ interface PresetStamp {
 }
 
 /** Bump when the generated files' shape changes (drifted stamps re-materialize). */
-const GENERATOR_VERSION = 3
+const GENERATOR_VERSION = 5
 
 const digest = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex')
 const nodeRequire = createRequire(import.meta.url)
@@ -62,7 +62,7 @@ const PERSONA = [
   '2. 写完先 `app_list` 过闸：条目必须 status=ready 才能继续；incomplete/rejected 时读 reason.fix 修复源码，不要硬闯。',
   '3. 自测用 ready 条目的 originURL 开自己的浏览器实例走查（双视角：首次进入的空态 + 操作后的状态），不要让用户当小白鼠。',
   '4. 应用数据一律走数据桥（`data.get/set/subscribe`），绝不把状态埋进 localStorage；渲染保持纯展示。',
-  '5. 上桌唯一路径是发布审批（app_publish，后续里程碑）；普通会话写 apps 目录只进开发中菜单，永不上桌。',
+  '5. 上桌唯一路径是发布审批（`app_publish`：机器扫描与探针通过后，首发与异源更新需用户批准，同源小版本免确认）；普通会话写 apps 目录只进开发中菜单，永不上桌。',
   '',
   '使用（驾应用）：先 `app_list` 后 `app_manifest`（渐进披露），操作走声明 action，数据写走 AppData；操作对等——用户在界面能做的，你也应有对应通道。',
   '',
@@ -108,6 +108,8 @@ function compositionFor(agentUrl: string): string {
     "  name: '@deepseek-ai/dsh-tool-fs'",
     '- id: tool-fs-search',
     "  name: '@deepseek-ai/dsh-tool-fs-search'",
+    '  config:',
+    '    sampleOverCapGlobResults: false',
     '',
     '# ── background jobs ────────────────────────────────────────────────────────',
     '- id: tool-jobs',
@@ -134,6 +136,17 @@ function compositionFor(agentUrl: string): string {
     '  config:',
     '    - id: plan-mode',
     "      name: '@deepseek-ai/dsh-plan-mode'",
+    '      config:',
+    '        section: |',
+    "          You are in plan mode. Stay in plan mode until exit_plan_mode succeeds or the user switches the session mode. Imperative language to implement changes means plan the implementation, not execute it. A user's conversational agreement — including an answer confirming something you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.",
+    '',
+    "          Explore first. Use non-mutating reads, searches, static analysis, and checks to ground the plan in the actual repository. Do not edit or write files, change configuration, run formatters or code generation that rewrites tracked files, commit, or otherwise carry out the plan. Prefer existing functions and patterns over new machinery.",
+    '',
+    "          The tool catalog stays the same across modes for request-cache stability. These plan-mode rules override any later tool description or guidance that suggests using mutation tools; those tools remain listed to keep the tool catalog unchanged. Do not use todo_write to track this planning phase: it tracks implementation after an approved plan, while the plan itself belongs to exit_plan_mode.",
+    '',
+    "          Resolve discoverable facts by inspection. Use ask_user_question only for user-owned choices or material ambiguity that inspection cannot answer. Do not ask the user where code lives or how current behavior works when you can find out.",
+    '',
+    "          Make the plan decision-complete: state the goal and success criteria; group implementation changes by subsystem; identify public API, schema, and data-flow changes; cover edge cases, failure modes, tests, acceptance criteria, and explicit assumptions. Keep it concise enough to review but detailed enough that another engineer can implement it without making design decisions.",
     '',
     '- id: compaction',
     '  name: cordis:group',
@@ -183,6 +196,13 @@ function compositionFor(agentUrl: string): string {
     '    allowParallelInProgress: true',
     '- id: tool-web',
     "  name: '@deepseek-ai/dsh-tool-web'",
+    '',
+    '# ── user questions (the approval seam app_publish hangs on) ────────────────',
+    '# No preset row here: the service is a HOST-plane row (composition line 36)',
+    '# and preset sessions run inside that composition, so ctx.userQuestions is',
+    '# already present (the media-producer precedent: its tool-ask-user also',
+    "# injects 'userQuestions' with no preset row). A duplicate row would collide",
+    '# on the service name.',
     '',
     '# ── the App Stage tool face (preset-only; never a bundle row) ───────────────',
     '- id: app-stage-agent',
