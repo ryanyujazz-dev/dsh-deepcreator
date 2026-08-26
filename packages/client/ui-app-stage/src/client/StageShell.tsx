@@ -18,6 +18,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { AppDevEntry, AppInstalledEntry, AppStageEnsureResult, AppStageListResult } from '@ryanyujazz/dsh-app-stage/types'
 import type { DevMenuRow, LauncherCard, StageShellProps } from './contract.ts'
+import { PresenceBanner } from './PresenceBanner.tsx'
 import css from './StageShell.module.css'
 
 function rowsFrom(entries: readonly AppDevEntry[]): DevMenuRow[] {
@@ -50,7 +51,7 @@ function cardsFrom(entries: readonly AppInstalledEntry[]): LauncherCard[] {
  * @param props - composed occupant props (owner share + locale + faces).
  * @returns the stage shell, or nothing before the seat has geometry.
  */
-export function StageShell({ phone, stageWidth, dockOpen, t, layout, sessions, remote, scanTick, router }: StageShellProps) {
+export function StageShell({ phone, stageWidth, dockOpen, t, layout, sessions, remote, scanTick, router, presence }: StageShellProps) {
   const sessionId = useSyncExternalStore(sessions.subscribe, sessions.getSnapshot)
   const [rows, setRows] = useState<readonly DevMenuRow[]>([])
   const [cards, setCards] = useState<readonly LauncherCard[]>([])
@@ -223,6 +224,7 @@ export function StageShell({ phone, stageWidth, dockOpen, t, layout, sessions, r
           </div>
         </div>
       </header>
+      <PresenceBanner feed={presence} t={t} />
       <div className={css.body}>
         {container !== undefined ? (
           <div className={css.containerArea}>

@@ -9,7 +9,7 @@ import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@ryanyujazz/dsh-client-ui-layout/client'
-import type { AppRouterOutcome, AppStageDataChangesResult, AppStageDataGetResult, AppStageDataSetResult, AppStageEnsureResult, AppJsonValue, AppStageListResult, AppStageRouterResultAck, AppStageWaitRequestsResult } from '@ryanyujazz/dsh-app-stage/types'
+import type { AppRouterOutcome, AppStageDataChangesResult, AppStageDataGetResult, AppStageDataSetResult, AppStageEnsureResult, AppStagePresenceControlResult, AppStagePresenceSnapshotResult, AppStagePresenceSummaryResult, AppJsonValue, AppStageListResult, AppStageRouterResultAck, AppStageWaitRequestsResult } from '@ryanyujazz/dsh-app-stage/types'
 
 /** The remote namespace face the shell captures once in apply. */
 export interface AppStageRemote {
@@ -25,6 +25,12 @@ export interface AppStageRemote {
    */
   waitRouterRequests: (sessionId: SessionId, afterCursor: number, routerId: string) => Promise<RemoteResult<AppStageWaitRequestsResult>>
   routerResult: (sessionId: SessionId, requestId: string, outcome: AppRouterOutcome) => Promise<RemoteResult<AppStageRouterResultAck>>
+  /** M5: live lease snapshots for this session (the banner/border projection). */
+  presenceSnapshot: (sessionId: SessionId) => Promise<RemoteResult<AppStagePresenceSnapshotResult>>
+  /** M5: user-side lease controls (interrupt / resume / handback). */
+  presenceControl: (sessionId: SessionId, op: 'interrupt' | 'resume' | 'handback') => Promise<RemoteResult<AppStagePresenceControlResult>>
+  /** M5: one emitted lease summary (the handing-back card material). */
+  presenceSummary: (sessionId: SessionId, leaseId: string) => Promise<RemoteResult<AppStagePresenceSummaryResult>>
 }
 
 /** One dev-menu row after the host's gate (view-model form). */
@@ -82,6 +88,8 @@ export interface StageShellInjected {
    * the live container and owns the shell's container store (the bridge
    * travels inside it — the shell never relays frames itself). */
   readonly router: import('./router.ts').StageRouterApi
+  /** M5: the presence projection feed (banner/frame/summary render from it). */
+  readonly presence: import('./presence.ts').PresenceFeedApi
 }
 
 /** Full composed props of the Stage Shell occupant. */

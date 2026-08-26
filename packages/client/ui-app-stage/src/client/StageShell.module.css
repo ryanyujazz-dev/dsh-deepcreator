@@ -4,6 +4,7 @@
  * grid) comes from spacing, not from new chrome. */
 
 .shell {
+  position: relative;
   display: flex;
   flex-direction: column;
   width: 100%;

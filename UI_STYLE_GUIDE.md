@@ -135,6 +135,9 @@
 - 应用卡簇（M3）：卡片外包 `cardShell` 相对定位容器，承载两个角标控件——更新蓝点（8px 圆点、业务蓝 `--dsw-alias-accent` 回退 #0071e3、右上 10px 锚点，安装版本高于上次打开版本时出现）与移除按钮（22px 圆形、右上 2px 锚点、默认 `opacity: 0`，hover 卡簇或进入确认态时 `opacity: 1`，120ms ease 过渡；首次点击进入确认态：浮层表面 + 1px l1 边框 + 警示色文字，字形 × 变 !，`aria-pressed` 表达，失焦自动解除；再次点击执行卸载）。卸载完成在图标墙首行显示 `launcherNotice` 通知行（14px/22px 次级文字，跨全部列 `1 / -1`）。
 - 沙箱容器：`sandbox="allow-scripts"` iframe 铺满桌面主体（无边框、base 底色），dev 实例左上角「开发中 v*」徽章（11px/16px 浮层表面 + 1px l1 边框 + 999px 圆角、`pointer-events: none`），不遮挡应用内容交互。容器单实例：打开新应用替换当前实例，返回桌面卸载。
 - 桌面不引入新 chrome 家族：全部控件复用工具按钮/浮层/徽章三族；密度感来自留白与网格，不是新的边框或底色系统。
+- Presence 横幅（M5，`PresenceBanner.tsx` + `PresenceBanner.module.css`）：32px 壳层 chrome，渲染于桌面顶栏之下、主体之前，永远在壳层绝不进应用视口（应用无法伪造权威视觉）。四态词汇分级（presence §2.3）：微租约横幅「AI 正在操作 {name}」（acting，accent 8% 底色）；宏租约「AI 接管中 · {name}」（accent 16% 底色，全边框粒子同步点亮）；等待确认「等待你确认首次发布」（粒子冻结）；用户中断「已暂停 · AI 让位」（次级文字）。横幅元素：8px 状态圆点（active 2s 脉动、宏租约 1s、命令落达 2s 内 0.5s 爆发档、idle 静止半透明）、主文案 500 字重、mm:ss 已进行时（tabular-nums）、剩余时间只在宏租约最后 30s 出现（禁压迫倒计时）。色相只表达状态，永不表达授权来源（来源区分靠措辞与边框强度）。
+- Presence 四边粒子框（宏租约专属，微租约永不点亮）：绝对定位 inset:0 覆盖桌面壳层、`pointer-events:none`、z-40；四边各 4 颗 5px 圆点共 16 颗（ambient 预算档），仅 transform/opacity 动画（`will-change` 单合成层，无逐帧 JS），漂移 3.6s 线性循环、命令落达 2s 内 1.2s 提速、idle 暂停、等待确认冻结；accent 色 + 60% 同色 6px 光晕构成注册性节奏签名（固定色相+节奏，应用无法同帧复刻视口外几何）。`prefers-reduced-motion: reduce` 整体降级为 2px 静态内边框（idle 25% 透明度），降级是显式状态不改认知标签。
+- Presence 控件与摘要卡：宏租约横幅右侧「暂停 AI」「收回」双按钮（waiting-user 态只显示「继续」），控件族为 1px l1 边框 + 浮起底色 + accent 文字 + 6px 圆角。摘要卡（Toast 几何但常驻至关闭）：右下 20px 锚点、min(360px, 100%-40px) 宽、10px 圆角浮层 + l1 边框 + lv3 阴影，两列网格（时长/动作计数/涉及应用/数据变更清单——反"视觉掩护下的静默篡改"），用户中断事实单列一行次级文字。aria-live 双通道常驻 DOM：polite 播开始/结束/暂停，assertive（`role="alert"`）只播"需要你的确认"；播报骨架只用结构化字段（应用名+状态），自由文本永不进 live region。
 
 ## 侧边栏
 

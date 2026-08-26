@@ -1,0 +1,153 @@
+/*
+ * Presence chrome (Px-β): 32 px banner + four-edge particle frame + summary
+ * card. Hue carries state only (active/idle/expiring); the authorization
+ * source never gets its own color (presence doc §2.3). The particle frame is
+ * transform/opacity only, 16 dots (ambient budget), and collapses to a
+ * static 2 px inner border under prefers-reduced-motion — an explicit
+ * degraded state that keeps the same labels.
+ */
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  height: 32px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  font-size: var(--dsw-font-body-s-font-size, 14px);
+  line-height: var(--dsw-font-body-s-line-height, 22px);
+  color: var(--dsh-app-stage-presence, var(--dsw-alias-accent, #0071e3));
+}
+
+.bannerMacro { background: color-mix(in oklab, var(--dsh-app-stage-presence, var(--dsw-alias-accent, #0071e3)) 16%, transparent); }
+.bannerMicro { background: color-mix(in oklab, var(--dsh-app-stage-presence, var(--dsw-alias-accent, #0071e3)) 8%, transparent); }
+.bannerApprove { background: color-mix(in oklab, var(--dsh-app-stage-presence, var(--dsw-alias-accent, #0071e3)) 12%, transparent); }
+.bannerPaused { background: color-mix(in oklab, var(--dsw-alias-accent, #0071e3) 8%, transparent); color: var(--dsw-alias-label-secondary); }
+.bannerIdle { opacity: 0.72; }
+
+.bannerText { font-weight: 500; }
+.bannerTime { color: var(--dsw-alias-label-secondary); font-variant-numeric: tabular-nums; }
+.bannerExpiring { color: var(--dsw-alias-label-secondary); font-variant-numeric: tabular-nums; }
+.bannerActions { margin-left: auto; display: flex; gap: 8px; }
+
+.dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: currentColor;
+  animation: presencePulse 2s ease-in-out infinite;
+}
+.dotMacro { animation-duration: 1s; }
+.dotBurst { animation-duration: 0.5s; }
+.dotIdle { animation: none; opacity: 0.5; }
+
+.control {
+  border: 1px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-bg-raised);
+  color: var(--dsh-app-stage-presence, var(--dsw-alias-accent, #0071e3));
+  border-radius: 6px;
+  font-size: var(--dsw-font-body-s-font-size, 14px);
+  line-height: 18px;
+  padding: 1px 10px;
+  cursor: pointer;
+}
+.control:hover { background: var(--dsw-alias-bg-hover); }
+
+.live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Four-edge particle frame — the macro signature (never micro). */
+.frame {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 40;
+}
+.frameIdle .particle { animation-play-state: paused; opacity: 0.3; }
+.frameFrozen .particle { animation-play-state: paused; }
+.frameBurst .particle { animation-duration: 1.2s; }
+
+.edge { position: absolute; display: flex; }
+.edgeTop { top: 2px; left: 4%; right: 4%; }
+.edgeBottom { bottom: 2px; left: 4%; right: 4%; justify-content: flex-end; }
+.edgeLeft { left: 2px; top: 8%; bottom: 8%; flex-direction: column; }
+.edgeRight { right: 2px; top: 8%; bottom: 8%; flex-direction: column; justify-content: flex-end; }
+
+.particle {
+  width: 5px;
+  height: 5px;
+  flex: none;
+  margin: auto;
+  border-radius: 50%;
+  background: var(--dsh-app-stage-presence, var(--dsw-alias-accent, #0071e3));
+  box-shadow: 0 0 6px color-mix(in oklab, var(--dsh-app-stage-presence, var(--dsw-alias-accent, #0071e3)) 60%, transparent);
+  will-change: transform, opacity;
+  animation: presenceDrift 3.6s linear infinite;
+}
+
+@keyframes presencePulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.75); }
+}
+
+@keyframes presenceDrift {
+  0% { transform: translate(0, 0); opacity: 0; }
+  12% { opacity: 1; }
+  50% { transform: translate(var(--drift, 28px), 0); opacity: 0.85; }
+  88% { opacity: 1; }
+  100% { transform: translate(calc(var(--drift, 28px) * 2), 0); opacity: 0; }
+}
+
+.edgeLeft .particle, .edgeRight .particle { --drift: 0px; animation-name: presenceDriftV; }
+@keyframes presenceDriftV {
+  0% { transform: translate(0, 0); opacity: 0; }
+  12% { opacity: 1; }
+  50% { transform: translate(0, 24px); opacity: 0.85; }
+  88% { opacity: 1; }
+  100% { transform: translate(0, 48px); opacity: 0; }
+}
+
+/* Summary card — toast geometry, persistent until dismissed (§3.6). */
+.summary {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  z-index: 40;
+  width: min(360px, calc(100% - 40px));
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-raised);
+  border: 1px solid var(--dsw-alias-border-l1);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 14%);
+  font-size: var(--dsw-font-body-s-font-size, 14px);
+  line-height: var(--dsw-font-body-s-line-height, 22px);
+  color: var(--dsw-alias-label-primary);
+}
+.summaryHead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.summaryTitle { font-size: var(--dsw-font-body-s-font-size, 14px); }
+.summaryClose {
+  border: none;
+  background: none;
+  color: var(--dsh-app-stage-presence, var(--dsw-alias-accent, #0071e3));
+  cursor: pointer;
+  font-size: var(--dsw-font-body-s-font-size, 14px);
+}
+.summaryGrid { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; }
+.summaryKey { color: var(--dsw-alias-label-secondary); }
+.summaryInterrupt { margin-top: 6px; color: var(--dsw-alias-label-secondary); }
+
+/* Degraded-but-explicit: static frame, same labels (§3.1). */
+@media (prefers-reduced-motion: reduce) {
+  .dot, .dotMacro, .dotBurst { animation: none; }
+  .particle { animation: none !important; opacity: 0; }
+  .frame { box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--dsh-app-stage-presence, var(--dsw-alias-accent, #0071e3)) 55%, transparent); }
+  .frameIdle { box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--dsh-app-stage-presence, var(--dsw-alias-accent, #0071e3)) 25%, transparent); }
+}

@@ -25,6 +25,7 @@ import type {} from './contract.ts'
 import { StageShell } from './StageShell.tsx'
 import { createAppStageBridge } from './bridge.ts'
 import { createStageRouter, startRouterLoop } from './router.ts'
+import { createPresenceFeed } from './presence.ts'
 import { en, zh, type AppStageKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -70,10 +71,16 @@ export function apply(ctx: ClientContext): void {
   const router = createStageRouter({
     remote: appStage,
     session: sessions.getSnapshot,
-    onActivity: activity => { ctx.layout.setStageActivity(activity) },
+    onActivity: activity => { ctx.layout.setStageActivity(activity); presence.poke() },
     onPresent: focus => { if (focus) ctx.layout.setStageMode('apps') },
   }, bridge)
   ctx.effect(() => startRouterLoop({ poll: () => router.poll() }, { session: sessions.getSnapshot }), 'ui-app-stage: router poll loop')
+
+  // M5 presence projection: no polling while no lease exists — the router's
+  // activity signal pokes the feed when a command flows, and the feed keeps
+  // a 2 s keepalive only while a lease is live (banner/frame/summary).
+  const presence = createPresenceFeed({ remote: appStage, session: sessions.getSnapshot })
+  ctx.effect(() => () => presence.dispose(), 'ui-app-stage: presence feed')
 
   ctx.effect(
     () => ctx.slots.inject('deepcreator.stage.apps', () => ctx.slots.register(
@@ -90,6 +97,7 @@ export function apply(ctx: ClientContext): void {
           sessions,
           scanTick: 0,
           router,
+          presence,
         }),
       },
       StageShell,

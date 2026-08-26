@@ -8,6 +8,8 @@ import type { AppDevEntry, AppInstalledEntry, AppStageEnsureResult, AppStageList
 import type { AppStageRemote, StageShellProps } from '../src/client/contract.ts'
 import type { StageRouterApi } from '../src/client/router.ts'
 import { createStageRouter } from '../src/client/router.ts'
+import { createPresenceFeed } from '../src/client/presence.ts'
+import type { PresenceLeaseSnapshot } from '@ryanyujazz/dsh-app-stage/types'
 import { StageShell } from '../src/client/StageShell.tsx'
 
 const t = (key: string): string => key === 'dev.menu.count' ? '开发中（{count}）' : key
@@ -38,6 +40,19 @@ function remoteWith(dev: readonly AppDevEntry[], installed: readonly AppInstalle
   return { ...remote, ensureMock }
 }
 
+function presenceWith(leases: readonly PresenceLeaseSnapshot[], controls: { presenceControl?: ReturnType<typeof vi.fn> } = {}): {
+  feed: import('../src/client/presence.ts').PresenceFeedApi
+  control: ReturnType<typeof vi.fn>
+} {
+  const control = controls.presenceControl ?? vi.fn(async () => ({ ok: true, value: { ok: true, applied: true } }))
+  const face = {
+    presenceSnapshot: vi.fn(async () => ({ ok: true, value: { ok: true, leases } })),
+    presenceControl: control,
+    presenceSummary: vi.fn(async () => ({ ok: true, value: { ok: false, code: 'UNKNOWN_LEASE', message: 'none' } })),
+  }
+  return { feed: createPresenceFeed({ remote: face, session: () => 's-1' as never }), control }
+}
+
 function props(over: Partial<StageShellProps> = {}): StageShellProps {
   const router = over.router ?? routerWith(over.remote as AppStageRemote | undefined)
   return {
@@ -50,6 +65,7 @@ function props(over: Partial<StageShellProps> = {}): StageShellProps {
     remote: remoteWith([]),
     scanTick: 0,
     router,
+    presence: over.presence ?? presenceWith([]).feed,
     ...over,
   } as StageShellProps
 }
@@ -207,5 +223,62 @@ describe('StageShell launcher (M3)', () => {
     const armed = await findByRole('button', { name: 'launcher.remove', pressed: true } as never)
     armed.click()
     await waitFor(() => { expect(uninstall).toHaveBeenCalledWith('s1' as never, 'pub') })
+  })
+})
+
+describe('presence banner (Px-β shell chrome)', () => {
+  const tZh = (key: string, vars?: Record<string, string>): string => {
+    const map: Record<string, string> = {
+      'presence.acting': 'AI 正在操作 {name}',
+      'presence.takeover': 'AI 接管中 · {name}',
+      'presence.paused': '已暂停 · AI 让位',
+      'presence.control.pause': '暂停 AI',
+      'presence.control.resume': '继续',
+      'presence.control.handback': '收回',
+    }
+    let text = map[key] ?? key
+    for (const [k, v] of Object.entries(vars ?? {})) text = text.replace(`{${k}}`, v)
+    return text
+  }
+  const lease = (over: Partial<PresenceLeaseSnapshot> = {}): PresenceLeaseSnapshot => ({
+    leaseId: 'pl-1', kind: 'micro', state: 'active', delegated: false,
+    startedAt: Date.now() - 4_000, lastCommandAt: Date.now() - 1_000,
+    apps: [{ appId: 'kanban-demo', name: '看板演示' }], focus: { appId: 'kanban-demo', name: '看板演示' },
+    ...over,
+  })
+
+  it('renders nothing without a lease', async () => {
+    const { feed } = presenceWith([])
+    render(<StageShell {...props({ presence: feed, t: tZh as never })} />)
+    await waitFor(() => { expect(feed.getSnapshot().state).toBe('hidden') })
+    expect(screen.queryByText(/AI 正在操作/)).toBeNull()
+  })
+
+  it('micro lease shows the acting banner without the particle frame', async () => {
+    const { feed } = presenceWith([lease()])
+    render(<StageShell {...props({ presence: feed, t: tZh as never })} />)
+    expect(await screen.findByText('AI 正在操作 看板演示')).toBeTruthy()
+    // Micro never lights the full border (vocabulary grading, §2.3).
+    expect(document.querySelectorAll('[aria-hidden="true"] .particle, [class*="particle"]')).toHaveLength(0)
+  })
+
+  it('macro lease lights the particle frame and offers the user controls', async () => {
+    const { feed, control } = presenceWith([lease({ kind: 'macro', expiresAt: Date.now() + 300_000 })])
+    render(<StageShell {...props({ presence: feed, t: tZh as never })} />)
+    expect(await screen.findByText(/AI 接管中/)).toBeTruthy()
+    expect(document.querySelectorAll('[class*="particle"]')).toHaveLength(16)
+    const pause = screen.getByText('暂停 AI')
+    pause.click()
+    await waitFor(() => { expect(control).toHaveBeenCalledWith('s-1', 'interrupt') })
+    expect(screen.getByText('收回')).toBeTruthy()
+  })
+
+  it('suspended-user shows the pause wording with resume only', async () => {
+    const { feed, control } = presenceWith([lease({ state: 'suspended-user' })])
+    render(<StageShell {...props({ presence: feed, t: tZh as never })} />)
+    expect(await screen.findByText('已暂停 · AI 让位')).toBeTruthy()
+    expect(screen.queryByText('暂停 AI')).toBeNull()
+    screen.getByText('继续').click()
+    await waitFor(() => { expect(control).toHaveBeenCalledWith('s-1', 'resume') })
   })
 })

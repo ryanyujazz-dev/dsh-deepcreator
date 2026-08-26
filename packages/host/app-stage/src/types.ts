@@ -340,3 +340,6 @@ export type AppStagePresenceSummaryResult =
 export type AppStagePresenceControlResult =
   | { readonly ok: true; readonly applied: boolean }
   | { readonly ok: false; readonly code: 'NO_WORKSPACE' | 'OP_INVALID'; readonly message: string }
+
+// Presence projection types (Px-β) — the client shell renders these.
+export type { PresenceLeaseState, PresenceLeaseSnapshot, PresenceSummary, PresenceTimelineRow, PresenceActionRecord, PresenceCommandKind } from './presence.ts'

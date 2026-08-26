@@ -50,10 +50,11 @@ describe('ui-app-stage apply', () => {
       scanTick: number
     }
     const faces = injected()
-    expect(Object.keys(faces)).toEqual(['layout', 'remote', 'sessions', 'scanTick', 'router'])
+    expect(Object.keys(faces)).toEqual(['layout', 'remote', 'sessions', 'scanTick', 'router', 'presence'])
     expect(faces.remote).toBe(b.appStage)
     expect(faces.sessions.getSnapshot()).toBe('s1')
     expect(faces.router).toBeDefined()
+    expect(faces.presence).toBeDefined()
     faces.layout.setDockOpen(true)
     expect(b.layout.setDockOpen).toHaveBeenCalledWith(true)
   })
