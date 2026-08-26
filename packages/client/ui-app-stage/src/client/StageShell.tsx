@@ -2,9 +2,14 @@
  * The App Stage shell — the occupant of ui-layout's `deepcreator.stage.apps`
  * seat. One desktop per person: the launcher aggregates installed apps, the
  * dev menu probes this workspace's `.deepcreator/apps/` on open (M1 refresh
- * semantics; the watcher set arrives in M2), and one sandboxed container
+ * semantics; the watcher set arrived in M2), and one sandboxed container
  * (`sandbox="allow-scripts"`, CSP'd static origin) stays physically mounted
- * while the layer is hidden, so leaving apps mode never reloads an app.
+ * while the layer is hidden, so leaving apps mode never reloads an app — and
+ * (M4) an agent can drive it from conversation mode through the router.
+ *
+ * The container is router-owned state (user clicks and agent requests
+ * converge on one store); the shell renders it, binds the live frame to the
+ * router, and keeps view state only.
  *
  * Pure props consumer: host data arrives through the captured remote
  * namespace, layout writes through the injected layout face — never ctx.
@@ -12,7 +17,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { AppDevEntry, AppInstalledEntry, AppStageEnsureResult, AppStageListResult } from '@ryanyujazz/dsh-app-stage/types'
-import type { DevMenuRow, LauncherCard, OpenContainer, StageShellProps } from './contract.ts'
+import type { DevMenuRow, LauncherCard, StageShellProps } from './contract.ts'
 import css from './StageShell.module.css'
 
 function rowsFrom(entries: readonly AppDevEntry[]): DevMenuRow[] {
@@ -45,12 +50,12 @@ function cardsFrom(entries: readonly AppInstalledEntry[]): LauncherCard[] {
  * @param props - composed occupant props (owner share + locale + faces).
  * @returns the stage shell, or nothing before the seat has geometry.
  */
-export function StageShell({ phone, stageWidth, dockOpen, t, layout, sessions, remote, scanTick, bridge }: StageShellProps) {
+export function StageShell({ phone, stageWidth, dockOpen, t, layout, sessions, remote, scanTick, router }: StageShellProps) {
   const sessionId = useSyncExternalStore(sessions.subscribe, sessions.getSnapshot)
   const [rows, setRows] = useState<readonly DevMenuRow[]>([])
   const [cards, setCards] = useState<readonly LauncherCard[]>([])
   const [menuOpen, setMenuOpen] = useState(false)
-  const [container, setContainer] = useState<OpenContainer | undefined>(undefined)
+  const container = useSyncExternalStore(router.subscribe, router.getSnapshot)
   const [opening, setOpening] = useState<string | undefined>(undefined)
   const [error, setError] = useState<string | undefined>(undefined)
   const menuRef = useRef<HTMLDivElement | null>(null)
@@ -93,7 +98,7 @@ export function StageShell({ phone, stageWidth, dockOpen, t, layout, sessions, r
     setOpening(row.appId)
     void remote.ensure(sessionId, `dev:${row.appId}`).then((wire: RemoteResult<AppStageEnsureResult>) => {
       if (wire.ok && wire.value.ok) {
-        setContainer({ appId: row.appId, name: row.name, version: row.version, url: wire.value.url, dev: true, ref: `dev:${row.appId}` })
+        router.openFromUser({ appId: row.appId, name: row.name, version: row.version, url: wire.value.url, dev: true, ref: `dev:${row.appId}` })
       } else if (wire.ok && !wire.value.ok) {
         setError(wire.value.message)
       } else if (!wire.ok) {
@@ -102,7 +107,7 @@ export function StageShell({ phone, stageWidth, dockOpen, t, layout, sessions, r
     }).catch(reason => { setError(String(reason)) }).finally(() => { setOpening(undefined) })
   }, [remote, sessionId])
 
-  const backToDesktop = useCallback(() => { setContainer(undefined) }, [])
+  const backToDesktop = useCallback(() => { router.close() }, [router])
 
   // Open one installed app: re-gate via ensure (also records the open, which
   // clears the blue dot on the next list), then mount the sandbox container.
@@ -112,7 +117,7 @@ export function StageShell({ phone, stageWidth, dockOpen, t, layout, sessions, r
     setOpening(card.appId)
     void remote.ensure(sessionId, card.appId).then((wire: RemoteResult<AppStageEnsureResult>) => {
       if (wire.ok && wire.value.ok) {
-        setContainer({ appId: card.appId, name: card.name, version: card.version, url: wire.value.url, dev: false, ref: card.appId })
+        router.openFromUser({ appId: card.appId, name: card.name, version: card.version, url: wire.value.url, dev: false, ref: card.appId })
       } else if (wire.ok && !wire.value.ok) {
         setError(wire.value.message)
       } else if (!wire.ok) {
@@ -141,14 +146,15 @@ export function StageShell({ phone, stageWidth, dockOpen, t, layout, sessions, r
     }).catch(reason => { setError(String(reason)) }).finally(() => { setArmedRemoval(undefined) })
   }, [remote, sessionId, t])
 
-  // Bind the sandbox data bridge to the live container frame: one attach per
-  // open (op → remote relay), detached when the container closes or swaps.
-  const frameRef = useRef<HTMLIFrameElement | null>(null)
+  // Bind the sandbox bridge to the live container frame: one attach per
+  // mount (op relay + the v2 action channel), detached when the container
+  // closes or swaps. The key makes a swap a remount, so the callback ref
+  // re-runs and the old bridge can never observe a swapped document.
   const containerRef = container?.ref
-  useEffect(() => {
-    if (containerRef === undefined || frameRef.current === null) return
-    return bridge(frameRef.current, containerRef)
-  }, [bridge, containerRef])
+  const frameCallback = useCallback((frame: HTMLIFrameElement | null) => {
+    if (frame === null || containerRef === undefined) return
+    return router.bindFrame(containerRef, frame)
+  }, [router, containerRef])
 
   return (
     <div className={css.shell} data-phone={phone || undefined}>
@@ -214,7 +220,8 @@ export function StageShell({ phone, stageWidth, dockOpen, t, layout, sessions, r
               <div className={css.devBadge}>{t('container.dev-badge').replace('{version}', container.version)}</div>
             )}
             <iframe
-              ref={frameRef}
+              key={container.ref}
+              ref={frameCallback}
               className={css.frame}
               title={container.name}
               sandbox="allow-scripts"

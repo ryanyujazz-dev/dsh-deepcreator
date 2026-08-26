@@ -196,6 +196,7 @@ export function apply(ctx: ClientContext): void {
       // framework delivers useStore/actions to AppFrame as standard props and
       // reuses the same root-scope instance for the segmented control below.
       store: layoutStore,
+      locale: 'layout',
       // The hook's only side effect connects the root store to ctx.layout;
       // conversation business actions belong to their registrants.
       inject: (actions: PanelActions) => {

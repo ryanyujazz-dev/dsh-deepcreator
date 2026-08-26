@@ -1,5 +1,6 @@
 /**
- * The sandbox data bridge — the app side of `data.get/set/subscribe`.
+ * The sandbox bridge — the app side of `data.get/set/subscribe` (v1) and the
+ * action channel (v2).
  *
  * Protocol v1 (minimal subset + version handshake): the sandboxed app posts
  * `{__appStage: 1, id, op, ...}` to its parent; this relay answers every
@@ -9,6 +10,12 @@
  * the journal face while the frame is alive and push `data.event` frames
  * down — key-path-level change events, so multi-instance broadcast comes
  * free once more than one container shares a document.
+ *
+ * Protocol v2 adds the invoke channel: the app registers action handlers
+ * (`op: 'action.register'`) and the relay drives them (`op: 'action.invoke'`
+ * posted down, same-`id` reply expected) — the machine side of "actions are
+ * the app's tool API". The attach handle exposes the registration set and a
+ * dispatching `invoke`, which the Stage router routes `app_invoke` through.
  *
  * The relay validates `event.source` against the attached frame's
  * contentWindow: messages from any other origin/frame are ignored. The
@@ -26,10 +33,12 @@ import type { AppStageRemote } from './contract.ts'
 export interface BridgeInbound {
   readonly __appStage: number
   readonly id: string
-  readonly op: 'data.get' | 'data.set' | 'data.subscribe' | 'data.unsubscribe'
+  readonly op: 'data.get' | 'data.set' | 'data.subscribe' | 'data.unsubscribe' | 'action.register'
   readonly path?: string
   readonly value?: AppJsonValue
   readonly sinceRev?: number
+  /** action.register only: the handler name the app is registering. */
+  readonly action?: string
 }
 
 /** One journal entry as the wire carries it down to the app. */
@@ -73,7 +82,7 @@ function parseInbound(data: unknown): BridgeInbound | undefined {
     return { __appStage: proto, id: data['id'], op: 'data.get' }
   }
   const op = data['op']
-  if (op !== 'data.get' && op !== 'data.set' && op !== 'data.subscribe' && op !== 'data.unsubscribe') return undefined
+  if (op !== 'data.get' && op !== 'data.set' && op !== 'data.subscribe' && op !== 'data.unsubscribe' && op !== 'action.register') return undefined
   return {
     __appStage: 1,
     id: data['id'],
@@ -81,6 +90,7 @@ function parseInbound(data: unknown): BridgeInbound | undefined {
     ...(typeof data['path'] === 'string' ? { path: data['path'] } : {}),
     ...('value' in data ? { value: data['value'] as AppJsonValue } : {}),
     ...(typeof data['sinceRev'] === 'number' ? { sinceRev: data['sinceRev'] } : {}),
+    ...(typeof data['action'] === 'string' ? { action: data['action'] } : {}),
   }
 }
 
@@ -90,10 +100,32 @@ function parseInbound(data: unknown): BridgeInbound | undefined {
  * @param env - the captured remote namespace and the live session feed.
  * @returns `attach(frame, ref)` → detach disposer.
  */
+/** The attach handle: dispose tears down; `invoke` drives a registered
+ * action handler inside the frame (protocol v2). */
+export interface BridgeHandle {
+  /** Tear the relay down (container close or swap). */
+  (): void
+  /** Action names the frame has registered so far. */
+  readonly actions: ReadonlySet<string>
+  /** Resolve once the frame registers `action` (or reject on timeout). */
+  waitForAction(action: string, timeoutMs: number): Promise<void>
+  /** Dispatch one action.invoke into the frame and await its reply. */
+  invoke(action: string, params: AppJsonValue, timeoutMs: number): Promise<{ ok: true; result?: AppJsonValue } | { ok: false; message: string }>
+}
+
+/** Bridge-level ceiling for one dispatch (the service ceiling is 30 s). */
+export const BRIDGE_INVOKE_TIMEOUT_MS = 25_000
+
+/**
+ * Create the relay factory. One factory per shell; `attach` is called by the
+ * container view for the live iframe and the returned handle detaches it.
+ * @param env - the captured remote namespace and the live session feed.
+ * @returns `attach(frame, ref)` → the bridge handle (callable disposer).
+ */
 export function createAppStageBridge(env: {
   readonly remote: BridgeRemote
   readonly session: () => SessionId | undefined
-}): (frame: HTMLIFrameElement, ref: string) => () => void {
+}): (frame: HTMLIFrameElement, ref: string) => BridgeHandle {
   return (frame, ref) => {
     let lastRev = 0
     let poller: ReturnType<typeof setInterval> | undefined
@@ -116,6 +148,24 @@ export function createAppStageBridge(env: {
         throw new Error('BRIDGE_NO_SESSION: the App Stage shell has no current session.')
       }
       return current
+    }
+
+    // Protocol v2 — the action channel. Registrations arrive as they happen;
+    // parked waiters (an invoke racing a cold frame) drain on each arrival.
+    const actions = new Set<string>()
+    const actionWaiters = new Set<(registered: boolean) => void>()
+    const pendingInvokes = new Map<string, (reply: { ok: true; result?: AppJsonValue } | { ok: false; message: string }) => void>()
+    const invokeTimers = new Map<string, ReturnType<typeof setTimeout>>()
+    let invokeSeq = 0
+
+    const settleInvoke = (id: string, reply: { ok: true; result?: AppJsonValue } | { ok: false; message: string }): void => {
+      const settle = pendingInvokes.get(id)
+      if (settle === undefined) return
+      pendingInvokes.delete(id)
+      const timer = invokeTimers.get(id)
+      if (timer !== undefined) clearTimeout(timer)
+      invokeTimers.delete(id)
+      settle(reply)
     }
 
     const pull = (): void => {
@@ -200,6 +250,16 @@ export function createAppStageBridge(env: {
           ensurePoller()
           break
         }
+        case 'action.register': {
+          if (inbound.action === undefined || inbound.action === '') {
+            errorReply(inbound.id, 'ACTION_INVALID', 'action.register requires an action name.')
+            break
+          }
+          actions.add(inbound.action)
+          for (const waiter of [...actionWaiters]) waiter(actions.has(inbound.action))
+          post({ __appStage: 1, proto: 1, id: inbound.id, ok: true })
+          break
+        }
         case 'data.unsubscribe': {
           if (poller !== undefined) clearInterval(poller)
           poller = undefined
@@ -209,12 +269,75 @@ export function createAppStageBridge(env: {
       }
     }
 
+    /** Protocol v2: the frame's replies to action.invoke carries the same id
+     * the dispatch minted; `result`/`error.message` are untrusted app text. */
+    const onInvokeReply = (data: unknown): void => {
+      if (!isRecord(data)) return
+      if (data['__appStage'] !== 1 || data['proto'] !== 2) return
+      if (typeof data['id'] !== 'string' || !pendingInvokes.has(data['id'])) return
+      if (data['ok'] === true) {
+        settleInvoke(data['id'], { ok: true, ...('result' in data ? { result: data['result'] as AppJsonValue } : {}) })
+      } else {
+        const error = isRecord(data['error']) && typeof data['error']['message'] === 'string' ? data['error']['message'] : 'the handler replied without an error message'
+        settleInvoke(data['id'], { ok: false, message: error })
+      }
+    }
+
+    const onAnyMessage = (event: MessageEvent): void => {
+      if (event.source !== frame.contentWindow) return
+      onInvokeReply(event.data)
+    }
+
     window.addEventListener('message', onMessage)
-    return () => {
+    window.addEventListener('message', onAnyMessage)
+
+    const dispose = (): void => {
       detached = true
       window.removeEventListener('message', onMessage)
+      window.removeEventListener('message', onAnyMessage)
       if (poller !== undefined) clearInterval(poller)
       poller = undefined
+      for (const timer of invokeTimers.values()) clearTimeout(timer)
+      invokeTimers.clear()
+      for (const settle of pendingInvokes.values()) settle({ ok: false, message: 'the container closed before the handler replied' })
+      pendingInvokes.clear()
+      for (const waiter of [...actionWaiters]) waiter(false)
+      actionWaiters.clear()
     }
+
+    const waitForAction = (action: string, timeoutMs: number): Promise<void> => new Promise((resolve, reject) => {
+      if (actions.has(action)) { resolve(); return }
+      let done = false
+      const finish = (registered: boolean): void => {
+        if (done) return
+        done = true
+        actionWaiters.delete(finish)
+        clearTimeout(timer)
+        if (registered) resolve()
+        else reject(new Error(`ACTION_NOT_REGISTERED: the frame did not register "${action}" within ${timeoutMs} ms`))
+      }
+      const timer = setTimeout(() => finish(false), timeoutMs)
+      actionWaiters.add(finish)
+    })
+
+    const invoke = (action: string, params: AppJsonValue, timeoutMs: number): Promise<{ ok: true; result?: AppJsonValue } | { ok: false; message: string }> =>
+      new Promise(resolve => {
+        const id = `i${++invokeSeq}`
+        const timer = setTimeout(() => settleInvoke(id, { ok: false, message: `the handler did not reply within ${timeoutMs} ms` }), timeoutMs)
+        invokeTimers.set(id, timer)
+        pendingInvokes.set(id, resolve)
+        const target = frame.contentWindow
+        if (target === null) {
+          settleInvoke(id, { ok: false, message: 'the container frame is gone' })
+          return
+        }
+        target.postMessage({ __appStage: 1, proto: 2, id, op: 'action.invoke', action, params }, '*')
+      })
+
+    return Object.assign(dispose, {
+      actions,
+      waitForAction,
+      invoke,
+    }) as BridgeHandle
   }
 }

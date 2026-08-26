@@ -71,6 +71,14 @@ export interface AppToolEnvironment {
 }
 
 /**
+/** The environment the M4 operation tools read (service faces + home override). */
+export interface AppOperationEnvironment {
+  readonly appStage: Pick<AppStageService, 'devOriginURL' | 'installedOriginURL' | 'invoke' | 'open' | 'dataGet' | 'dataSet' | 'dataProbe'>
+  /** DSH home override (tests); default is the real resolved home. */
+  readonly home?: string
+}
+
+/**
  * `app_list` — discovery + diagnosis from both sources: the global desktop
  * (installed) and this session's workspace (dev, including gate-rejected
  * entries with machine reasons). `originURL` on ready dev entries is the
@@ -316,6 +324,185 @@ export function createAppPublishTool(env: AppPublishEnvironment): ToolDefinition
         scanViolations: report.scan.violations.length,
         screenshotTaken: report.probe.screenshotTaken,
         note: committed.plan === 'update-same-source' ? 'Same-source update installed without approval (blue dot marks it on the desktop).' : 'Installed; the app now appears on the global desktop.',
+      })
+    },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// M4 — the operation face: invoke, open, and the installed-domain data tools.
+
+/** Invoke-phase failure codes that trip the per-app circuit (E1). */
+const CIRCUIT_CODES = new Set(['HANDLER_FAILED', 'INVOKE_TIMEOUT', 'ACTION_NOT_REGISTERED', 'CONTAINER_UNAVAILABLE'])
+
+/** Consecutive invoke failures (per app) before the session circuit opens. */
+export const INVOKE_CIRCUIT_THRESHOLD = 5
+
+/** `app_invoke` (B3): the structured command channel — drive one declared
+ * action of an installed app inside the Stage container. No automatic retry
+ * (actions are non-idempotent by default); five consecutive execution-phase
+ * failures on one app open the session's circuit. */
+export function createAppInvokeTool(env: AppOperationEnvironment): ToolDefinition {
+  const failures = new Map<string, number>()
+  return defineTool({
+    name: 'app_invoke',
+    description: 'Drive one declared action of an installed app through the structured command channel; the user\'s view is not switched (see app_open for presentation). Use this instead of DOM automation whenever the app declares a matching action. appId addresses only the installed copy; action must exist in the installed manifest; params must match declared names and types — extras or mistyped keys are rejected before execution. The return carries {appId, version} for skill-pack drift awareness.',
+    parameters: {
+      appId: { type: 'string', required: true, description: 'The installed app id: kebab-case segments of [a-z0-9], ≤64 chars. Dev copies are not addressable here — app_publish first.' },
+      action: { type: 'string', required: true, description: 'The declared action name (camelCase, ≤64 chars) exactly as app_manifest lists it.' },
+      params: { type: 'json', description: 'Arguments object for the action: only keys the manifest declares, each matching its declared type (string|number|boolean|json). Omit when the action declares none.' },
+    },
+    output: { schema: outputSchema, render },
+    async execute(args, exec) {
+      const session = owner(exec).session
+      const { appId, action } = args as { appId: string; action: string }
+      if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(appId) || appId.length > 64) {
+        return json(toolError('APP_ID_INVALID', `appId "${appId}" is not a legal app id (kebab-case segments of [a-z0-9], ≤64 chars).`, { appId }))
+      }
+      if (!/^[a-z][a-zA-Z0-9]*$/.test(action) || action.length > 64) {
+        return json(toolError('ACTION_INVALID', `action "${action}" is not a legal action name (camelCase, ≤64 chars).`, { appId, action }))
+      }
+      const circuit = failures.get(appId) ?? 0
+      if (circuit >= INVOKE_CIRCUIT_THRESHOLD) {
+        return json(toolError('CIRCUIT_OPEN', `App "${appId}" failed ${circuit} consecutive invokes in this session; the circuit is open. Diagnose with app_list / app_manifest before any further attempt.`, { appId, failures: String(circuit) }))
+      }
+      const params = ((args as { params?: unknown }).params ?? {}) as import('@ryanyujazz/dsh-app-stage/types').AppJsonValue
+      const result = await env.appStage.invoke(session, appId, action, params)
+      if (!result.ok) {
+        if (CIRCUIT_CODES.has(result.code)) failures.set(appId, circuit + 1)
+        return json(toolError(result.code, result.message, {
+          appId, action,
+          ...(result.actionApplied === true ? { actionApplied: 'true' } : {}),
+          ...(result.code === 'INVOKE_TIMEOUT' ? { fix: 'verify with app_data_read before any retry — the command may already have run' } : {}),
+        }))
+      }
+      failures.delete(appId)
+      return json({
+        appId: result.appId,
+        version: result.version,
+        action: result.action,
+        ...(result.result === undefined ? {} : { result: result.result }),
+        persistedKeys: result.persistedKeys,
+      })
+    },
+  })
+}
+
+/** `app_open` (B4): presentation intent — ensure the Stage container is open;
+ * focus:true is the agent face's only user-view switch and is reserved for
+ * when the user asked to see or final output is ready. */
+export function createAppOpenTool(env: AppOperationEnvironment): ToolDefinition {
+  let opens = 0
+  return defineTool({
+    name: 'app_open',
+    description: 'Present an installed app to the user by ensuring its Stage container is open. Use when the user wants to see an app or you have produced results worth showing; do not use it to drive actions (use app_invoke). focus:false (default) only opens the container and lights the activity signal without changing the user\'s view; focus:true additionally switches the user into apps mode and focuses the container — reserve it for when the user asked to see or you are presenting final output.',
+    parameters: {
+      appId: { type: 'string', required: true, description: 'The installed app id: kebab-case segments of [a-z0-9], ≤64 chars.' },
+      focus: { type: 'boolean', description: 'Additionally switch the user into apps mode (default false).' },
+    },
+    output: { schema: outputSchema, render },
+    async execute(args, exec) {
+      const session = owner(exec).session
+      const { appId } = args as { appId: string }
+      const focus = (args as { focus?: boolean }).focus === true
+      if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(appId) || appId.length > 64) {
+        return json(toolError('APP_ID_INVALID', `appId "${appId}" is not a legal app id (kebab-case segments of [a-z0-9], ≤64 chars).`, { appId }))
+      }
+      opens += 1
+      if (opens > 64) {
+        return json(toolError('OPEN_LIMIT', 'This session exceeded the open budget (64); the container set is already as open as it can be.', { appId }))
+      }
+      const result = await env.appStage.open(session, appId, focus)
+      if (!result.ok) return json(toolError(result.code, result.message, { appId }))
+      return json({ appId: result.appId, version: result.version, opened: result.opened, focused: result.focused })
+    },
+  })
+}
+
+/** `app_data_read` (B5): read an installed app's AppData at key-path
+ * granularity — learn structure before writing, verify a write or invoke took
+ * effect (AppData is the single source of truth; DOM is a projection). */
+export function createAppDataReadTool(env: AppOperationEnvironment): ToolDefinition {
+  return defineTool({
+    name: 'app_data_read',
+    description: 'Read the AppData document of an installed app at key-path granularity. Use it to learn an app\'s data structure before writing, to verify a write or invoke took effect (AppData is the single source of truth; DOM is a projection), and to feed app output into your reasoning. Omit path for the whole document (may approach the 4 MiB cap — prefer narrow reads first). found:false distinguishes an absent path from a stored null.',
+    parameters: {
+      appId: { type: 'string', required: true, description: 'The installed app id: kebab-case segments of [a-z0-9], ≤64 chars.' },
+      path: { type: 'string', description: 'Dot-separated key path (segments [A-Za-z0-9_-], ≤256 chars total). Omit for the whole document.' },
+    },
+    output: { schema: outputSchema, render },
+    async execute(args, exec) {
+      const session = owner(exec).session
+      const { appId } = args as { appId: string }
+      const path = (args as { path?: string }).path
+      if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(appId) || appId.length > 64) {
+        return json(toolError('APP_ID_INVALID', `appId "${appId}" is not a legal app id (kebab-case segments of [a-z0-9], ≤64 chars).`, { appId }))
+      }
+      if (path !== undefined && !/^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$/.test(path)) {
+        return json(toolError('PATH_INVALID', `path "${path}" is not a legal dot-separated key path.`, { appId, path }))
+      }
+      const result = await env.appStage.dataProbe(session, appId, path)
+      if (!result.ok) {
+        const code = result.code === 'NOT_FOUND' ? 'APP_NOT_INSTALLED' : result.code === 'NOT_READY' ? 'RUNTIME_BROKEN' : result.code
+        return json(toolError(code, result.message, { appId }))
+      }
+      return json({
+        appId,
+        ...(path === undefined ? {} : { path }),
+        found: result.found,
+        ...(result.found ? { value: result.value } : {}),
+        dataVersion: String(result.rev),
+      })
+    },
+  })
+}
+
+/** `app_data_write` (B6): write one key path of an installed app's AppData;
+ * the change broadcasts to every open instance immediately and is journaled.
+ * One call writes one path — sequential calls preserve per-entry journal
+ * semantics. */
+export function createAppDataWriteTool(env: AppOperationEnvironment): ToolDefinition {
+  let writes = 0
+  let consecutiveFailures = 0
+  return defineTool({
+    name: 'app_data_write',
+    description: 'Write one key path of an installed app\'s AppData document; the change broadcasts to every open instance immediately and is journaled. Use it to deliver your work output into apps — feeding apps is your job, not the user\'s. One call writes one path (multi-key updates are sequential calls, preserving per-entry journal semantics). Values >256 KiB or documents that would exceed 4 MiB are rejected — binary assets never belong here.',
+    parameters: {
+      appId: { type: 'string', required: true, description: 'The installed app id: kebab-case segments of [a-z0-9], ≤64 chars.' },
+      path: { type: 'string', required: true, description: 'Dot-separated key path (segments [A-Za-z0-9_-], ≤256 chars total).' },
+      value: { type: 'json', required: true, description: 'Any JSON value for the key path (serialized ≤256 KiB; the document stays ≤4 MiB).' },
+    },
+    output: { schema: outputSchema, render },
+    async execute(args, exec) {
+      const session = owner(exec).session
+      const { appId, path } = args as { appId: string; path: string }
+      const value = (args as { value?: unknown }).value ?? null
+      if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(appId) || appId.length > 64) {
+        return json(toolError('APP_ID_INVALID', `appId "${appId}" is not a legal app id (kebab-case segments of [a-z0-9], ≤64 chars).`, { appId }))
+      }
+      if (!/^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$/.test(path) || path.length > 256) {
+        return json(toolError('PATH_INVALID', `path "${path}" is not a legal dot-separated key path (≤256 chars).`, { appId, path }))
+      }
+      writes += 1
+      if (writes > 128) {
+        return json(toolError('WRITE_LIMIT', 'This session exceeded the write budget (128); batch remaining work into fewer, larger values.', { appId }))
+      }
+      if (consecutiveFailures >= 3) {
+        return json(toolError('WRITE_CIRCUIT', 'Three consecutive write failures; read the document structure with app_data_read before the next attempt.', { appId }))
+      }
+      const causeId = `agent-${crypto.randomUUID()}`
+      const result = await env.appStage.dataSet(session, appId, path, value as import('@ryanyujazz/dsh-app-stage/types').AppJsonValue, causeId)
+      if (!result.ok) {
+        consecutiveFailures += 1
+        const code = result.code === 'NOT_FOUND' ? 'APP_NOT_INSTALLED' : result.code === 'NOT_READY' ? 'RUNTIME_BROKEN' : result.code
+        return json(toolError(code, result.message, { appId, path }))
+      }
+      consecutiveFailures = 0
+      return json({
+        appId,
+        path,
+        dataVersion: String(result.rev),
+        bytes: String(JSON.stringify(value ?? null).length),
       })
     },
   })

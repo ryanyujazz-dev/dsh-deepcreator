@@ -39,6 +39,8 @@ type LayoutState = {
   stageMode: StageMode
   dockOpen: boolean
   dockWidth: number
+  /** Agent-driven app activity (M4): lights the stage dot + conversation chip. */
+  stageActivity: { appId: string; name: string } | undefined
 }
 
 /**
@@ -55,6 +57,7 @@ type LayoutActions = {
   setStageMode: (draft: LayoutState, mode: StageMode) => void
   setDockOpen: (draft: LayoutState, open: boolean) => void
   setDockWidth: (draft: LayoutState, px: number) => void
+  setStageActivity: (draft: LayoutState, activity: { appId: string; name: string } | undefined) => void
 }
 
 /**
@@ -78,6 +81,7 @@ export function createLayoutStore(): EngineStoreHandle<LayoutState, LayoutAction
       stageMode: 'conversation',
       dockOpen: false,
       dockWidth: 400,
+      stageActivity: undefined,
     }),
     actions: {
       setSidebar: (d, px: number) => { d.sidebar = clampWidth(px, SIDEBAR_MIN, SIDEBAR_MAX) },
@@ -107,6 +111,7 @@ export function createLayoutStore(): EngineStoreHandle<LayoutState, LayoutAction
       },
       setDockOpen: (d, open: boolean) => { d.dockOpen = open },
       setDockWidth: (d, px: number) => { d.dockWidth = clampWidth(px, DOCK_WIDTH_MIN, DOCK_WIDTH_MAX) },
+      setStageActivity: (d, activity) => { d.stageActivity = activity },
     },
   })
   return handle

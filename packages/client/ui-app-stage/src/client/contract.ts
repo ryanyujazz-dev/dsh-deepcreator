@@ -9,7 +9,7 @@ import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@ryanyujazz/dsh-client-ui-layout/client'
-import type { AppStageDataChangesResult, AppStageDataGetResult, AppStageDataSetResult, AppStageEnsureResult, AppJsonValue, AppStageListResult } from '@ryanyujazz/dsh-app-stage/types'
+import type { AppRouterOutcome, AppStageDataChangesResult, AppStageDataGetResult, AppStageDataSetResult, AppStageEnsureResult, AppJsonValue, AppStageListResult, AppStageRouterResultAck, AppStageWaitRequestsResult } from '@ryanyujazz/dsh-app-stage/types'
 
 /** The remote namespace face the shell captures once in apply. */
 export interface AppStageRemote {
@@ -19,6 +19,8 @@ export interface AppStageRemote {
   dataSet: (sessionId: SessionId, ref: string, path: string, value: AppJsonValue, causeId: string) => Promise<RemoteResult<AppStageDataSetResult>>
   dataChanges: (sessionId: SessionId, ref: string, sinceRev: number) => Promise<RemoteResult<AppStageDataChangesResult>>
   uninstall: (sessionId: SessionId, appId: string) => Promise<RemoteResult<{ ok: true; appId: string; removed: true } | { ok: false; code: string; message: string }>>
+  waitRouterRequests: (sessionId: SessionId, afterCursor: number) => Promise<RemoteResult<AppStageWaitRequestsResult>>
+  routerResult: (sessionId: SessionId, requestId: string, outcome: AppRouterOutcome) => Promise<RemoteResult<AppStageRouterResultAck>>
 }
 
 /** One dev-menu row after the host's gate (view-model form). */
@@ -72,12 +74,10 @@ export interface StageShellInjected {
   }
   /** Refresh hint channel: bump to rescan (probe-at-open). */
   readonly scanTick: number
-  /**
-   * Sandbox data bridge attach: bind the relay to a live container frame and
-   * its data ref (`dev:<appId>` / installed id); the returned disposer
-   * detaches with the container.
-   */
-  readonly bridge: (frame: HTMLIFrameElement, ref: string) => () => void
+  /** The M4 operation router: executes app_invoke/app_open requests against
+   * the live container and owns the shell's container store (the bridge
+   * travels inside it — the shell never relays frames itself). */
+  readonly router: import('./router.ts').StageRouterApi
 }
 
 /** Full composed props of the Stage Shell occupant. */

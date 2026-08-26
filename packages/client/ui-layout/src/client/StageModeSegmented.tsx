@@ -29,6 +29,7 @@ export type StageModeSegmentedProps =
  */
 export function StageModeSegmented({ wide, useStore, actions, t }: StageModeSegmentedProps) {
   const stageMode = useStore(s => s.stageMode)
+  const activity = useStore(s => s.stageActivity)
   if (!wide) return null
   return (
     <div className={css.stageModeSwitcher} role="tablist" aria-label={t('stage-mode.switcher')}>
@@ -49,6 +50,9 @@ export function StageModeSegmented({ wide, useStore, actions, t }: StageModeSegm
         onClick={() => { actions.setStageMode('apps') }}
       >
         {t('stage-mode.apps')}
+        {activity !== undefined && (
+          <span className={css.segmentDot} aria-hidden="true" title={t('stage-mode.activity').replace('{name}', activity.name)} />
+        )}
       </button>
     </div>
   )

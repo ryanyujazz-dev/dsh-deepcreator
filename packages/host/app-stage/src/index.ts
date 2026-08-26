@@ -18,7 +18,7 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-workspace'
-import type { AppDataChange, AppDevEntry, AppInstalledEntry, AppJsonValue, AppManifest, AppPublishPlan, AppStageDataChangesResult, AppStageDataGetResult, AppStageDataSetResult, AppStageEnsureResult, AppStageListResult, AppStagePublishCommitResult, AppStagePublishPrepareResult, AppStageUninstallResult } from './types.ts'
+import type { AppDataChange, AppDevEntry, AppInstalledEntry, AppJsonValue, AppManifest, AppPublishPlan, AppRouterOutcome, AppStageDataChangesResult, AppStageDataGetResult, AppStageDataSetResult, AppStageEnsureResult, AppStageInvokeResult, AppStageListResult, AppStageOpenResult, AppStagePublishCommitResult, AppStagePublishPrepareResult, AppStageRouterResultAck, AppStageUninstallResult, AppStageWaitRequestsResult } from './types.ts'
 import { AppStageStaticServer } from './serve.ts'
 import { listInstalled, gateDevEntry, scanDevRoot } from './registry.ts'
 import { dshHome, readInstallPointer, readOpenedVersions, recordOpenedVersion, storeRoot } from './store.ts'
@@ -27,6 +27,8 @@ import { AppStageWatcherSet } from './watcher.ts'
 import { appDataChanges, appDataGet, appDataSet } from './appdata.ts'
 import { buildReport, commitSnapshot, gateForPublish, PACKAGE_MAX_BYTES, publishFingerprint, readStagedManifest, resolvePlan, stageSnapshot, uninstallApp, writeInstallPointer } from './publish.ts'
 import { probeStaging } from './probe.ts'
+import { AppRouterHub, INVOKE_TIMEOUT_MS, OPEN_TIMEOUT_MS } from './control.ts'
+import { validateInvokeParams } from './params.ts'
 import { preinstallBuiltin } from './builtin.ts'
 
 export * from './types.ts'
@@ -46,6 +48,9 @@ export {
   publishFingerprint, PACKAGE_MAX_BYTES, SCAN_VIOLATIONS_MAX,
 } from './publish.ts'
 export { probeStaging, PROBE_SUBSCRIBE_WAIT_MS, PROBE_LOAD_TIMEOUT_MS } from './probe.ts'
+export { AppRouterHub, ROUTER_POLL_MS, INVOKE_TIMEOUT_MS, OPEN_TIMEOUT_MS, ROUTER_PRESENCE_GRACE_MS, ROUTER_SEEN_WINDOW_MS } from './control.ts'
+export type { RoutedSettlement } from './control.ts'
+export { validateInvokeParams } from './params.ts'
 export { readOpenedVersions, recordOpenedVersion } from './store.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -79,6 +84,8 @@ export class AppStageService extends TypertRemoteService {
   readonly watchers: AppStageWatcherSet
   /** Staged publish drafts by token (approval window state; host-lifetime). */
   private readonly publishDrafts = new Map<string, PublishDraft>()
+  /** The M4 operation face's routing hub (long-polled by the GUI router). */
+  private readonly router = new AppRouterHub()
 
   constructor(ctx: Context) {
     super(ctx, 'appStage')
@@ -232,6 +239,22 @@ export class AppStageService extends TypertRemoteService {
     }
   }
 
+  /**
+   * The operation face's read (B5): the bridge `data.get` plus the `found`
+   * bit a wire-flattened null cannot express. Not a Remote — the preset
+   * tools call it in-process.
+   */
+  async dataProbe(session: Session, ref: string, path?: string): Promise<{ ok: true; found: boolean; value: AppJsonValue; rev: number } | { ok: false; code: string; message: string }> {
+    const resolved = await this.resolveDataRef(session, ref)
+    if (!resolved.ok) return resolved
+    try {
+      const { value, rev } = await appDataGet(resolved.scope, resolved.appId, path, resolved.cwd, resolved.schemaVersion)
+      return { ok: true, found: value !== undefined, value: (value === undefined ? null : value) as AppJsonValue, rev }
+    } catch (error) {
+      return { ok: false, code: 'PATH_INVALID', message: error instanceof Error ? error.message : String(error) }
+    }
+  }
+
   /** Bridge `data.set`: one validated key-path write, journaled. */
   @Remote('dataSet')
   async dataSet(session: Session, ref: string, path: string, value: AppJsonValue, causeId: string): Promise<AppStageDataSetResult> {
@@ -341,7 +364,120 @@ export class AppStageService extends TypertRemoteService {
     if ('removed' in result) return { ok: true, appId, removed: true }
     return { ok: false, code: result.code, message: result.message }
   }
+
+  // -------------------------------------------------------------------------
+  // M4 — the operation face: invoke routing through the GUI's Stage router.
+
+  /** Resolve the installed entry an operation-face call addresses (bare id). */
+  private async resolveInstalled(appId: string): Promise<{ ok: true; appId: string; version: string; manifest: AppManifest } | { ok: false; code: 'APP_NOT_INSTALLED' | 'RUNTIME_BROKEN'; message: string }> {
+    const installed = await listInstalled(dshHome())
+    const match = installed.find(item => item.appId === appId)
+    if (match === undefined) {
+      return { ok: false, code: 'APP_NOT_INSTALLED', message: `No installed app "${appId}"; the operation face addresses only installed copies (app_publish is the path onto the desktop).` }
+    }
+    if (match.status !== 'ready' || match.manifest === undefined || match.pointer === undefined) {
+      return { ok: false, code: 'RUNTIME_BROKEN', message: `Installed app "${appId}" is not readable; app_list diagnoses the entry.` }
+    }
+    return { ok: true, appId, version: match.pointer.version, manifest: match.manifest }
+  }
+
+  /**
+   * `app_invoke` (B3): route one declared, param-checked action into the
+   * Stage container the GUI router owns. The journal rev before dispatch
+   * feeds the persistedKeys diff and the INVOKE_TIMEOUT actionApplied hint.
+   */
+  @Remote('invoke')
+  async invoke(session: Session, appId: string, action: string, params: AppJsonValue): Promise<AppStageInvokeResult> {
+    void session
+    const resolved = await this.resolveInstalled(appId)
+    if (!resolved.ok) return resolved
+    const decl = resolved.manifest.actions.find(item => item.name === action)
+    if (decl === undefined) {
+      return { ok: false, code: 'ACTION_NOT_DECLARED', message: `App "${appId}" declares no action "${action}"; app_manifest lists the installed contract.` }
+    }
+    const checked = validateInvokeParams(params, decl.params)
+    if (!checked.ok) return { ok: false, code: 'PARAMS_MISMATCH', message: checked.message }
+    const revBefore = await this.installedRev(appId)
+    const settlement = await this.router.push(
+      { kind: 'invoke', appId, version: resolved.version, action, params },
+      INVOKE_TIMEOUT_MS,
+    )
+    const applied = (await this.installedRev(appId)) !== revBefore
+    if (settlement.kind === 'reported') {
+      const failure = settlement.outcome.error
+      if (failure !== undefined) {
+        if (failure.code === 'ACTION_NOT_REGISTERED') {
+          return { ok: false, code: 'ACTION_NOT_REGISTERED', message: `the app never registered a handler for "${action}" — an app defect; check app_manifest and whether a newer version declares it.` }
+        }
+        if (failure.code === 'CONTAINER_UNAVAILABLE') {
+          return { ok: false, code: 'CONTAINER_UNAVAILABLE', message: `the Stage container could not present "${appId}": ${failure.message}` }
+        }
+        return { ok: false, code: 'HANDLER_FAILED', message: `the app's handler failed: ${failure.message} (untrusted app text)`, ...(applied ? { actionApplied: true } : {}) }
+      }
+      const changes = await appDataChanges('installed', appId, revBefore, undefined)
+      const persistedKeys = [...new Set(changes.map(change => change.path))]
+      return {
+        ok: true,
+        appId,
+        version: resolved.version,
+        action,
+        ...(settlement.outcome.result !== undefined ? { result: settlement.outcome.result } : {}),
+        persistedKeys,
+      }
+    }
+    if (settlement.kind === 'timeout') {
+      return { ok: false, code: 'INVOKE_TIMEOUT', message: `the router did not complete within ${INVOKE_TIMEOUT_MS} ms; the command may already have run — verify with app_data_read before any retry (E1.1).`, ...(applied ? { actionApplied: true } : {}) }
+    }
+    return { ok: false, code: 'CONTAINER_UNAVAILABLE', message: 'no Stage router is connected; the app needs a Stage container to run (open the desktop once, or app_open from a GUI-connected session).' }
+  }
+
+  /** `app_open` (B4): presentation intent — ensure the container, maybe focus. */
+  @Remote('open')
+  async open(session: Session, appId: string, focus: boolean): Promise<AppStageOpenResult> {
+    void session
+    const resolved = await this.resolveInstalled(appId)
+    if (!resolved.ok) return resolved
+    const settlement = await this.router.push({ kind: 'open', appId, version: resolved.version, focus }, OPEN_TIMEOUT_MS)
+    if (settlement.kind === 'reported') {
+      if (settlement.outcome.error !== undefined) {
+        return { ok: false, code: 'CONTAINER_UNAVAILABLE', message: `the Stage router could not present the app: ${settlement.outcome.error.message}` }
+      }
+      return { ok: true, appId, version: resolved.version, opened: settlement.outcome.opened ?? true, focused: settlement.outcome.focused ?? focus }
+    }
+    if (settlement.kind === 'timeout') {
+      return { ok: false, code: 'CONTAINER_UNAVAILABLE', message: `the Stage router did not acknowledge within ${OPEN_TIMEOUT_MS} ms (container cold-start budget).` }
+    }
+    return { ok: false, code: 'CONTAINER_UNAVAILABLE', message: 'no Stage router is connected; the app needs a Stage container to run.' }
+  }
+
+  /** The GUI router's long-poll face: queued requests after a cursor. */
+  @Remote('waitRouterRequests')
+  async waitRouterRequests(session: Session, afterCursor: number): Promise<AppStageWaitRequestsResult> {
+    void session
+    const reply = await this.router.waitRequests(afterCursor)
+    return { ok: true, requests: reply.requests, cursor: reply.cursor }
+  }
+
+  /** The GUI router's completion report for one dispatched request. */
+  @Remote('routerResult')
+  routerResult(session: Session, requestId: string, outcome: AppRouterOutcome): AppStageRouterResultAck {
+    void session
+    const known = this.router.reportResult(requestId, outcome)
+    if (!known) return { ok: false, code: 'UNKNOWN_REQUEST', message: `no pending router request "${requestId}" (already settled or timed out).` }
+    return { ok: true, requestId }
+  }
+
+  /** Current journal rev of an installed app's AppData document (0 when absent). */
+  private async installedRev(appId: string): Promise<number> {
+    try {
+      const { rev } = await appDataGet('installed', appId, undefined, undefined)
+      return rev
+    } catch {
+      return 0
+    }
+  }
 }
+
 
 export default AppStageService
 export type { AppDevEntry, AppInstalledEntry }

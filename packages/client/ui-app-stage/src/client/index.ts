@@ -7,6 +7,12 @@
  * component needs: the layout write face (`ctx.layout`) and the captured
  * appStage remote namespace. Reads of live geometry arrive as owner props;
  * writes never climb back through them.
+ *
+ * M4 adds the Stage router: the long-poll executor that drains host-queued
+ * `app_invoke` / `app_open` requests into the live container, owns the
+ * container store the shell renders, and raises the activity signal (the
+ * segmented switch dot + the conversation-mode chip) while an agent drives
+ * an app.
  * @module @ryanyujazz/dsh-client-ui-app-stage/client
  */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
@@ -18,6 +24,7 @@ import type {} from '@ryanyujazz/dsh-app-stage/remote'
 import type {} from './contract.ts'
 import { StageShell } from './StageShell.tsx'
 import { createAppStageBridge } from './bridge.ts'
+import { createStageRouter, startRouterLoop } from './router.ts'
 import { en, zh, type AppStageKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -56,6 +63,18 @@ export function apply(ctx: ClientContext): void {
   // same live session feed; the container view attaches it per open frame.
   const bridge = createAppStageBridge({ remote: appStage, session: sessions.getSnapshot })
 
+  // The M4 operation router: executes host-queued invoke/open requests in
+  // the live container. The activity signal lights the layout's stage dot
+  // and the conversation chip; app_open focus is the agent face's one
+  // user-view switch.
+  const router = createStageRouter({
+    remote: appStage,
+    session: sessions.getSnapshot,
+    onActivity: activity => { ctx.layout.setStageActivity(activity) },
+    onPresent: focus => { if (focus) ctx.layout.setStageMode('apps') },
+  }, bridge)
+  ctx.effect(() => startRouterLoop({ poll: () => router.poll() }, { session: sessions.getSnapshot }), 'ui-app-stage: router poll loop')
+
   ctx.effect(
     () => ctx.slots.inject('deepcreator.stage.apps', () => ctx.slots.register(
       {
@@ -70,7 +89,7 @@ export function apply(ctx: ClientContext): void {
           remote: appStage,
           sessions,
           scanTick: 0,
-          bridge,
+          router,
         }),
       },
       StageShell,

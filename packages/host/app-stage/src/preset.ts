@@ -39,7 +39,7 @@ interface PresetStamp {
 }
 
 /** Bump when the generated files' shape changes (drifted stamps re-materialize). */
-const GENERATOR_VERSION = 5
+const GENERATOR_VERSION = 6
 
 const digest = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex')
 const nodeRequire = createRequire(import.meta.url)
@@ -64,7 +64,11 @@ const PERSONA = [
   '4. 应用数据一律走数据桥（`data.get/set/subscribe`），绝不把状态埋进 localStorage；渲染保持纯展示。',
   '5. 上桌唯一路径是发布审批（`app_publish`：机器扫描与探针通过后，首发与异源更新需用户批准，同源小版本免确认）；普通会话写 apps 目录只进开发中菜单，永不上桌。',
   '',
-  '使用（驾应用）：先 `app_list` 后 `app_manifest`（渐进披露），操作走声明 action，数据写走 AppData；操作对等——用户在界面能做的，你也应有对应通道。',
+  '使用（驾应用）：先 `app_list` 后 `app_manifest`（渐进披露），再按指南操作；操作对等——用户在界面能做的，你也应有对应通道。',
+  '- 驱动走结构化命令通道 `app_invoke`（只寻址已安装版，参数按声明键名与类型校验；返回带 {appId, version} 供技能包版本感知），绝不 DOM 自动化代替声明 action。',
+  '- 数据进出走 `app_data_read` / `app_data_write`（键路径级，写即广播到所有打开实例；AppData 是唯一事实源，DOM 只是投影——验证效果先读数据）。',
+  '- 呈现走 `app_open`（focus:true 是你切用户视图的唯一合法触发点，仅在用户要求看或成品就绪时用；focus:false 只开容器亮活动信号）。你在对话模式驱动应用时，侧边栏「应用」亮活动点并出现活动 chip——用户看得见你在操作什么。',
+  '- 超时纪律（E1）：`app_invoke` 超时的命令可能已执行——先 `app_data_read` 验证效果再决定重试，非幂等 action 禁盲目重发；同一应用连续 5 次失败会熔断（CIRCUIT_OPEN），先 `app_list`/`app_manifest` 诊断根因，不要硬闯。',
   '',
   '纪律：错误显式可行动；改完源码立即重新过闸复测；文档与 AGENT.md 随应用走。',
 ].join('\n')

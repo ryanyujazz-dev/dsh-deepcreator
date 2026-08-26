@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { AppDevEntry, AppInstalledEntry, AppStageEnsureResult, AppStageListResult } from '@ryanyujazz/dsh-app-stage/types'
 import type { AppStageRemote, StageShellProps } from '../src/client/contract.ts'
+import type { StageRouterApi } from '../src/client/router.ts'
+import { createStageRouter } from '../src/client/router.ts'
 import { StageShell } from '../src/client/StageShell.tsx'
 
 const t = (key: string): string => key === 'dev.menu.count' ? '开发中（{count}）' : key
@@ -37,18 +39,30 @@ function remoteWith(dev: readonly AppDevEntry[], installed: readonly AppInstalle
 }
 
 function props(over: Partial<StageShellProps> = {}): StageShellProps {
+  const router = over.router ?? routerWith(over.remote as AppStageRemote | undefined)
   return {
     phone: false,
     stageWidth: 1200,
     dockOpen: false,
     t,
     layout: { setDockOpen: vi.fn(), setStageMode: vi.fn() },
-    bridge: () => () => {},
     sessions: noSessions,
     remote: remoteWith([]),
     scanTick: 0,
+    router,
     ...over,
   } as StageShellProps
+}
+
+/** One fresh router per props build: a real router store over a stub env,
+ * so container lifecycle assertions exercise the production path. */
+function routerWith(remote?: AppStageRemote): StageRouterApi {
+  return createStageRouter({
+    remote: remote ?? remoteWith([]),
+    session: () => undefined,
+    onActivity: () => {},
+    onPresent: () => {},
+  }, () => (() => {}) as unknown as import('../../src/client/bridge.ts').BridgeHandle)
 }
 
 afterEach(cleanup)

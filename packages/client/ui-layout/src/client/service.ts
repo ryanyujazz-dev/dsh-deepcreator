@@ -36,6 +36,8 @@ export interface ILayout {
   setDockOpen(open: boolean): void
   /** Set the conversation dock width preference (px, clamped to its steps). */
   setDockWidth(px: number): void
+  /** Set the agent-driven app activity signal (undefined clears it). */
+  setStageActivity(activity: { appId: string; name: string } | undefined): void
 }
 
 /** Cross-plugin panel-action face (ctx.layout). */
@@ -81,6 +83,10 @@ export class LayoutController implements ILayout {
 
   setDockWidth(px: number): void {
     this.#require().setDockWidth(px)
+  }
+
+  setStageActivity(activity: { appId: string; name: string } | undefined): void {
+    this.#require().setStageActivity(activity)
   }
 
   #require(): PanelActions {

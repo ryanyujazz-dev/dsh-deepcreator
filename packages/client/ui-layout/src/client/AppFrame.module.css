@@ -398,3 +398,39 @@
 @media (prefers-reduced-motion: reduce) {
   .frame[data-phone] .sidebarCol { transition: none; }
 }
+
+/* Conversation-mode activity chip (M4): the visible affordance while an
+ * agent drives an app from the conversation — floating surface, 1px l1
+ * border, 8px radius, tool-button hover family; the dot mirrors the
+ * segmented switch's activity dot. Anchored bottom-right above the composer
+ * fringe, pointer-interactive, never covering the conversation scroll. */
+.activityChip {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  z-index: 40;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--dsw-alias-border-l1, rgba(0, 0, 0, 0.12));
+  border-radius: 8px;
+  background: var(--dsw-alias-surface-overlay, #fff);
+  color: var(--dsw-alias-text-1, inherit);
+  font-size: 13px;
+  line-height: 20px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.activityChip:hover {
+  background: var(--dsw-alias-surface-hover, #f5f5f7);
+}
+
+.activityChipDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #0071e3;
+}

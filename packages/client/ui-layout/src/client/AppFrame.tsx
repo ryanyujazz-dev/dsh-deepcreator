@@ -11,7 +11,7 @@
  * zero self-made hooks.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import { computeColumns, SIDEBAR_AUTO_COLLAPSE, SIDEBAR_DEFAULT } from './columns.ts'
 import { detectNativeWindowChrome } from './native-window-chrome.ts'
 import type { createLayoutStore } from './stores.ts'
@@ -37,6 +37,7 @@ export type AppFrameProps =
   & PropsRuntime<'root'>
   & PropsRenderSlots<'sidebar' | 'conversation' | 'details' | 'deepcreator.stage.apps' | 'deepcreator.shell.sidebar-toggle' | 'shell.overlay'>
   & PropsStore<ReturnType<typeof createLayoutStore>>
+  & PropsLocale<'layout'>
 
 /**
  * One drag handle: pointer capture, rAF-throttled dx reports against the drag-start origin.
@@ -94,6 +95,7 @@ export function AppFrame({
   useSessions,
   actions,
   renderSlot,
+  t,
 }: AppFrameProps) {
   const panels = useStore(s => s)
   const nativeWindowChrome = detectNativeWindowChrome(window.navigator.userAgent)
@@ -167,6 +169,7 @@ export function AppFrame({
   // desktop): session/workspace switches never leave apps mode and the
   // breakpoint never collapses the dock back to conversation.
   const stageMode = useStore(s => s.stageMode)
+  const stageActivity = useStore(s => s.stageActivity)
   const dockOpen = useStore(s => s.dockOpen)
   const dockWidth = useStore(s => s.dockWidth)
   const appsActive = stageMode === 'apps'
@@ -368,6 +371,20 @@ export function AppFrame({
             : { active: true, startWidth: detailsResizeStart },
         })}</div>
       </>
+      {/* Conversation-mode activity chip (M4): while an agent drives an app
+          from the conversation, one visible affordance names the app and
+          carries the user straight to the desktop on click. */}
+      {stageMode === 'conversation' && stageActivity !== undefined && (
+        <button
+          type="button"
+          className={css.activityChip}
+          onClick={() => { actions.setStageMode('apps') }}
+          title={t('stage-mode.activity').replace('{name}', stageActivity.name)}
+        >
+          <span className={css.activityChipDot} aria-hidden="true" />
+          {t('stage-mode.activity').replace('{name}', stageActivity.name)}
+        </button>
+      )}
       {/* The App Stage seat: mounted permanently (root scope), hidden while
           conversation mode owns the Stage. Covering geometry follows the
           details-Focus family — the layer insets over the Stage past the

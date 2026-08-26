@@ -23,7 +23,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 // Type-only: pulls the userQuestions Context merge (S1 approval seam).
 import type {} from '@deepseek-ai/dsh-user-questions'
-import { createAppListTool, createAppManifestTool, createAppPublishTool, type AppToolEnvironment } from './tools.ts'
+import { createAppDataReadTool, createAppDataWriteTool, createAppInvokeTool, createAppListTool, createAppManifestTool, createAppOpenTool, createAppPublishTool, type AppOperationEnvironment, type AppToolEnvironment } from './tools.ts'
 
 /** Cordis plugin id inside the preset composition. */
 export const name = 'app-stage-agent'
@@ -31,10 +31,16 @@ export const name = 'app-stage-agent'
 /** Registry + tools + the official user-questions seam back the tool face. */
 export const inject = ['appStage', 'userQuestions', 'tools']
 
-/** Register the `app_*` face (`app_list`, `app_manifest`, `app_publish`). */
+/** Register the `app_*` face (`app_list`, `app_manifest`, `app_publish`, and
+ * the M4 operation tools `app_invoke` / `app_open` / `app_data_read` /
+ * `app_data_write`). */
 export function apply(ctx: Context): void {
-  const env: AppToolEnvironment = { appStage: ctx.appStage }
+  const env: AppToolEnvironment & AppOperationEnvironment = { appStage: ctx.appStage }
   ctx.tools.register(createAppListTool(env))
   ctx.tools.register(createAppManifestTool(env))
   ctx.tools.register(createAppPublishTool({ appStage: ctx.appStage, userQuestions: ctx.userQuestions }))
+  ctx.tools.register(createAppInvokeTool(env))
+  ctx.tools.register(createAppOpenTool(env))
+  ctx.tools.register(createAppDataReadTool(env))
+  ctx.tools.register(createAppDataWriteTool(env))
 }

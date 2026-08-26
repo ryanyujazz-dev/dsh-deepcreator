@@ -223,3 +223,74 @@ export type AppStagePublishCommitResult =
 export type AppStageUninstallResult =
   | { readonly ok: true; readonly appId: string; readonly removed: true }
   | { readonly ok: false; readonly code: 'APP_NOT_INSTALLED' | 'STORE_WRITE_FAILED'; readonly message: string }
+
+// ---------------------------------------------------------------------------
+// M4 — the operation face: invoke routing, presentation, router wire types.
+
+/** One request the GUI router executes inside a Stage container (M4). */
+export interface AppRouterRequest {
+  readonly kind: 'invoke' | 'open'
+  readonly requestId: string
+  readonly appId: string
+  readonly version: string
+  /** invoke only: the declared action name. */
+  readonly action?: string
+  /** invoke only: the validated params object. */
+  readonly params?: AppJsonValue
+  /** open only: additionally switch the user into apps mode. */
+  readonly focus?: boolean
+}
+
+/** The router's outcome for one dispatched request (wire form). */
+export interface AppRouterOutcome {
+  /** invoke only: the handler's return value, when it returned one. */
+  readonly result?: AppJsonValue
+  /** Failure detail from the frame (untrusted app text) or the router itself. */
+  readonly error?: { readonly code?: string; readonly message: string }
+  /** open only: whether the router had to mount the container. */
+  readonly opened?: boolean
+  /** open only: whether the user's view was switched. */
+  readonly focused?: boolean
+}
+
+/** `app_invoke` (B3): the structured command channel into a Stage container. */
+export type AppStageInvokeResult =
+  | {
+    readonly ok: true
+    readonly appId: string
+    readonly version: string
+    readonly action: string
+    readonly result?: AppJsonValue
+    readonly persistedKeys: readonly string[]
+  }
+  | {
+    readonly ok: false
+    readonly code:
+      | 'APP_NOT_INSTALLED'
+      | 'ACTION_NOT_DECLARED'
+      | 'PARAMS_MISMATCH'
+      | 'ACTION_NOT_REGISTERED'
+      | 'HANDLER_FAILED'
+      | 'INVOKE_TIMEOUT'
+      | 'CONTAINER_UNAVAILABLE'
+      | 'CIRCUIT_OPEN'
+      | 'RUNTIME_BROKEN'
+    readonly message: string
+    /** INVOKE_TIMEOUT context: whether AppData advanced during the window. */
+    readonly actionApplied?: boolean
+  }
+
+/** `app_open` (B4): presentation intent — ensure the container, maybe focus. */
+export type AppStageOpenResult =
+  | { readonly ok: true; readonly appId: string; readonly version: string; readonly opened: boolean; readonly focused: boolean }
+  | { readonly ok: false; readonly code: 'APP_NOT_INSTALLED' | 'CONTAINER_UNAVAILABLE' | 'RUNTIME_BROKEN'; readonly message: string }
+
+/** The long-poll face the GUI router drives (`waitRouterRequests`). */
+export type AppStageWaitRequestsResult =
+  | { readonly ok: true; readonly requests: readonly AppRouterRequest[]; readonly cursor: number }
+  | { readonly ok: false; readonly code: 'NO_WORKSPACE'; readonly message: string }
+
+/** The router's completion report face (`routerResult`). */
+export type AppStageRouterResultAck =
+  | { readonly ok: true; readonly requestId: string }
+  | { readonly ok: false; readonly code: 'UNKNOWN_REQUEST'; readonly message: string }
