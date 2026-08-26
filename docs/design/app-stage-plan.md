@@ -108,9 +108,22 @@ M4 GUI 验收操作事实（复验时照抄）：GUI 页面刷新会重置 prese
 
 **GUI 真实验收记录（2026-08-26，preset 会话四轮）**：①宿主全链路——app_takeover 回执 `{leaseId, mode:autonomous, budgetMs:300000, expiresAt}`，createTask 卡片 journal 落盘（M5验收A/B/C/D/E 各轮）；②宏租约投影——横幅“AI 接管中 · 看板演示” + **16 颗四边粒子**（用户在自己的 GUI 面亲眼目击确认）+ mm:ss 计时 + 暂停 AI/收回控件；③X1 中断——“暂停 AI”→“已暂停 · AI 让位”（只显“继续”），“继续”→恢复 acting；④handback——“收回”→摘要卡如实折叠（接管时长/动作计数 invoke × N/涉及应用/**数据变更清单**/**“你于第 N 步接管”中断事实**）；⑤aria-live——常驻 region 播出“AI 操作结束”（a11y 树核验 status+alert 双通道）；⑥**验收揪出两真缺陷并修复提交（08f565f，均带回归测试）**：跨面租约盲区（非认领面无 router 活动信号→永不知租约存在；修复=10s 发现轮询，租约已知后 2s keepalive 接管）、宏租约孤儿定时器（idle 回调直写 expiryTimer 不清旧臂→续租后旧死线照样释放，实测 8 秒天折摘要 00:08；修复=armExpiry 独占期限所有权，idle 只降级视觉）；测试基线 247 文件/2645 绿。操作事实：GUI 端口随重启漂移（60619→51650→52238，重启后须重探）；playwright-chromium provider 随宿主重启死锁须换观测面；菜单点击 browser_act 仍被拒，ego 触发 + DOM 读取组合稳定。
 
-### M6 — 生态（Phase 3，按需启动）
+### M6 — 生态（Phase 3）✅ 主体完成（2026-02，M6a–M6f）
 
-导入（本地包/目录/git）+ 回退/发布历史 + 受控能力权限模型 + 无人值守 + 声明式渲染器扩展位。本计划不展开，届时另立计划。
+计划经两轮对抗审计（安全面 + 范围一致性面，各 3-4 致命/5-6 高）修订后分批落地；致命项全部在对应批次关闭。
+
+| 批次 | 内容 | 提交 |
+|---|---|---|
+| M6a | **发布链加固 + 历史数据面**：白名单快照（符号链接永不跟随/`.git`+隐藏+`node_modules` 永不进包/边拷边限——修复既有 dev 发布路径的真实外泄面）；`history.jsonl`（cap 50）+ `maxversion.json` 水位（回退不下调、卸载随域清除）；`resolvePlan` v2 四档（`update-below-watermark` 硬审批）；`installedHistory` remote | 7657760 |
+| M6b | **回退 + 历史视图**：`rollbackInstalled`（digest 对账防偷换 + per-app 串行化 + 数据不动 + dataVersion 警告语义入确认文案）；卡下历史面板；`app_history` 只读工具重纳（agent-surface 原否决=阶段错位）；**M6b 测试咬出 M6a 真缺陷**（advanceWatermark 读指针回退致水位永不落盘——已修） | 4739d8a |
+| M6c | **导入第二入口**：目录/加固 git（https-only/拒私网回环元数据/argv 传参/禁凭据提示/60s 超时/浅克隆）；分档审批（导入恒异源语义）；digest 优先防钓鱼事实卡 | e75359a |
+| M6d | **权限模型设计轮**（non-normative 提案 v0.0.1 + 红队评审）：词表候选/manifest v2 草案/逃生通道=资产通道结论/审批卡列示规范；红队裁决「需修订后再评」（1 致命+7 高），修订轮归 Phase 4 初 | fd768b5 |
+| M6e | **迁移 + 资产回收 + 节流**：dev→installed 整域原子拷（rev 连续/仅空目标域）；`app_asset_delete`（D16）；孤儿资产 advisory（30 天窗，绝不自动删；**测试咬出 APFS 亚毫秒 mtime 竞态——年龄钳零**）；发布节流 advisory | 6f0a3bc |
+| M6f | **遗留决策备忘录**：无人值守（维持无 runner，重开条件写死）+ Px-δ（ui-hints 并入权限修订轮/回放挂归因/字段协作挂场景） | fd768b5 |
+
+**验收基线**：每批 typecheck 0 错 → 受影响测试 → 全量 249 文件/2673+ 绿 → host+workbench-remotes+agent 三链重建 → dump-config → 真实 GUI 热上架走查（无重建/重启/刷新）。GUI 验收轮次：M6a–M6e 合并一轮（宿主重启一次由用户代劳）。
+
+**代码事实与文档同步**：app-stage.md v0.0.7（Phase 3 行拆已落地/缓裁；开放问题 8/12/13/17 关闭）；agent-surface v1.0+（app_history 重纳 + app_asset_delete D16 + 操作索引）；capabilities/两份决策备忘录新建；UI_STYLE_GUIDE（历史面板/导入面板/审批卡细节行）；host/client README。
 
 ## 3. 实现期 spike 清单（进入对应里程碑时第一件事）
 
