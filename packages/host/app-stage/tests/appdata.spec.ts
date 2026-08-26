@@ -1,9 +1,9 @@
-import { mkdtemp, readFile, writeFile, mkdir } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
-  appDataChanges, appDataDir, appDataDrop, appDataGet, appDataSet,
+  appDataChanges, appDataDir, appDataDrop, appDataGet, appDataSet, migrateDevDataToInstalled,
   DOC_MAX_BYTES, VALUE_MAX_BYTES, workspaceToken,
 } from '../src/appdata.ts'
 

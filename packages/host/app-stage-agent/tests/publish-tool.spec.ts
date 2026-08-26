@@ -48,7 +48,7 @@ describe('app_publish approval policy', () => {
     const tool = createAppPublishTool({ appStage: svc, userQuestions: { ask } })
     const result = envelope(await tool.execute({ appId: 'kanban-demo' }, execWith()))
     expect(ask).not.toHaveBeenCalled()
-    expect(svc.commitPublish).toHaveBeenCalledWith(expect.anything(), 'tok-1')
+    expect(svc.commitPublish).toHaveBeenCalledWith(expect.anything(), 'tok-1', false)
     expect(result.error).toBeUndefined()
     expect(result.plan).toBe('update-same-source')
   })
@@ -63,7 +63,7 @@ describe('app_publish approval policy', () => {
     expect(question.header).toBe('发布审批')
     expect(question.detail).toContain('可随时移除')
     expect(question.detail).toContain('桥订阅验证')
-    expect(svc.commitPublish).toHaveBeenCalledWith(expect.anything(), 'tok-1')
+    expect(svc.commitPublish).toHaveBeenCalledWith(expect.anything(), 'tok-1', false)
     expect(result.note).toContain('global desktop')
   })
 

@@ -18,20 +18,20 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-workspace'
-import type { AppDataChange, AppDevEntry, AppInstalledEntry, AppJsonValue, AppManifest, AppPublishPlan, AppRouterOutcome, AppStageAssetListResult, AppStageAssetWriteResult, AppStageDataChangesResult, AppStageDataGetResult, AppStageDataSetResult, AppStageEnsureResult, AppStageHistoryResult, AppStageInvokeResult, AppStageRollbackResult, AppStageListResult, AppStageOpenResult, AppStagePresenceControlResult, AppStagePresenceSnapshotResult, AppStagePresenceSummaryResult, AppStagePresenceTimelineResult, AppStagePublishCommitResult, AppStagePublishPrepareResult, AppStageRouterResultAck, AppStageUninstallResult, AppStageWaitRequestsResult, AppStageImportAbortResult, AppStageImportCommitResult, AppStageImportPrepareResult } from './types.ts'
+import type { AppDataChange, AppDevEntry, AppInstalledEntry, AppJsonValue, AppManifest, AppPublishPlan, AppRouterOutcome, AppStageAssetListResult, AppStageAssetWriteResult, AppStageDataChangesResult, AppStageDataGetResult, AppStageDataSetResult, AppStageEnsureResult, AppStageHistoryResult, AppStageInvokeResult, AppStageRollbackResult, AppStageListResult, AppStageOpenResult, AppStagePresenceControlResult, AppStagePresenceSnapshotResult, AppStagePresenceSummaryResult, AppStagePresenceTimelineResult, AppStagePublishCommitResult, AppStagePublishPrepareResult, AppStageRouterResultAck, AppStageUninstallResult, AppStageWaitRequestsResult, AppStageImportAbortResult, AppStageImportCommitResult, AppStageImportPrepareResult, AppStageAssetDeleteResult } from './types.ts'
 import { AppStageStaticServer } from './serve.ts'
 import { listInstalled, gateDevEntry, scanDevRoot } from './registry.ts'
 import { dshHome, readActivitySeen, readInstallPointer, readOpenedVersions, recordOpenedVersion, storeRoot, writeActivitySeen } from './store.ts'
 import { ensurePreset } from './preset.ts'
 import { AppStageWatcherSet } from './watcher.ts'
-import { appDataChanges, appDataGet, appDataSet } from './appdata.ts'
+import { appDataChanges, appDataGet, appDataSet, migrateDevDataToInstalled } from './appdata.ts'
 import { buildReport, commitSnapshot, gateForPublish, hashSnapshot, PACKAGE_MAX_BYTES, publishFingerprint, readHistory, readStagedManifest, readWatermark, resolvePlan, rollbackInstalled, stageSnapshot, uninstallApp, withInstallLock, writeInstallPointer } from './publish.ts'
 import { hardenedClone, resolveImportPlan } from './import.ts'
 import { validateManifestBytes } from './manifest.ts'
 import { probeStaging } from './probe.ts'
 import { AppRouterHub, INVOKE_TIMEOUT_MS, OPEN_TIMEOUT_MS } from './control.ts'
 import { PresenceCoordinator, PRESENCE_MACRO_AI_BUDGET_MS, PRESENCE_MACRO_DELEGATED_BUDGET_MS, summarizeParams } from './presence.ts'
-import { listAssets, removeAssets, writeAsset } from './assets.ts'
+import { deleteAsset, listAssets, removeAssets, writeAsset } from './assets.ts'
 import { validateInvokeParams } from './params.ts'
 import { preinstallBuiltin } from './builtin.ts'
 
@@ -58,7 +58,7 @@ export { PresenceCoordinator, PRESENCE_IDLE_SUSPEND_MS, PRESENCE_MACRO_AI_BUDGET
 export type { PresenceLeaseState, PresenceLeaseSnapshot, PresenceSummary, PresenceTimelineRow, PresenceActionRecord, PresenceCommandKind } from './presence.ts'
 export { validateInvokeParams } from './params.ts'
 export {
-  ASSET_MEDIA_TYPES, ASSET_NAME_PATTERN, ASSET_QUOTA_BYTES, ASSET_MAX_BYTES, ASSETS_ROUTE, assetUrl, assetsDir, listAssets, removeAssets, writeAsset,
+  ASSET_MEDIA_TYPES, ASSET_NAME_PATTERN, ASSET_QUOTA_BYTES, ASSET_MAX_BYTES, ASSETS_ROUTE, assetUrl, assetsDir, deleteAsset, listAssets, removeAssets, writeAsset, ORPHAN_WINDOW_MS, scanOrphanAssets,
 } from './assets.ts'
 export { readOpenedVersions, recordOpenedVersion } from './store.ts'
 
@@ -90,7 +90,10 @@ interface PublishDraft {
   readonly plan: AppPublishPlan
   readonly sourceWorkspace: string
   readonly sourceSession: string
+  readonly sourceCwd: string
   readonly digest: string
+  /** M6e: user ticked "carry dev data over" on the approval card (first-install flows). */
+  readonly migrateData: boolean
 }
 
 /**
@@ -390,7 +393,7 @@ export class AppStageService extends TypertRemoteService {
     }
     const report = await buildReport(stagingDir, manifest, probe)
     const draftToken = randomUUID()
-    this.publishDrafts.set(draftToken, { appId, stagingDir, manifest, fingerprint, plan, sourceWorkspace: basename(cwd), sourceSession: String(session.id), digest: report.digest })
+    this.publishDrafts.set(draftToken, { appId, stagingDir, manifest, fingerprint, plan, sourceWorkspace: basename(cwd), sourceSession: String(session.id), sourceCwd: cwd, digest: report.digest, migrateData: false })
     if (plan !== 'update-same-source') {
       // First publish and cross-source updates wait for the user: the lease
       // projects waiting-approve until approve/decline resolves it.
@@ -405,7 +408,7 @@ export class AppStageService extends TypertRemoteService {
 
   /** Publish commit: move the staged snapshot into the store + pointer write. */
   @Remote('commitPublish')
-  async commitPublish(session: Session, draftToken: string): Promise<AppStagePublishCommitResult> {
+  async commitPublish(session: Session, draftToken: string, migrateData: boolean): Promise<AppStagePublishCommitResult> {
     void session
     const draft = this.publishDrafts.get(draftToken)
     if (draft === undefined) return { ok: false, code: 'SOURCE_MISSING', message: 'No staged publish draft for this token (it may have been consumed or the host restarted).' }
@@ -416,6 +419,8 @@ export class AppStageService extends TypertRemoteService {
       await rm(draft.stagingDir, { recursive: true, force: true })
       return { ok: false, code: 'SOURCE_MISSING', message: 'The staged snapshot changed during approval; re-run app_publish.' }
     }
+    // M6e outcome rides the success payload (absent when not requested).
+    let migration: { ok: true; migrated: boolean } | { ok: false; code: string; message: string } | undefined
     try {
       // Serialized with rollback on the same app (audit H1): the commit and
       // a user rollback must never interleave their pointer writes.
@@ -426,13 +431,33 @@ export class AppStageService extends TypertRemoteService {
         sourceWorkspace: draft.sourceWorkspace, sourceFingerprint: draft.fingerprint,
         sourceSession: draft.sourceSession, publishedVia: 'app_publish',
       }, home)
+      if (migrateData || draft.migrateData) {
+        // First-install flows only: the overwrite case is refused here and
+        // surfaced — the user re-decides with the overwrite spelled out.
+        migration = await migrateDevDataToInstalled(draft.appId, draft.sourceCwd, home)
+      }
       })
     } catch (error) {
       return { ok: false, code: 'STORE_WRITE_FAILED', message: `install store write failed: ${error instanceof Error ? error.message : String(error)}` }
     }
     this.presence.approveResolved(String(session.id), false)
     this.presence.commandSettled(String(session.id), { ts: Date.now(), kind: 'publish', appId: draft.appId, appName: draft.manifest.name, version: draft.manifest.version, outcome: 'ok', durationMs: 0, origin: 'installed' })
-    return { ok: true, appId: draft.appId, version: draft.manifest.version, plan: draft.plan }
+    return { ok: true, appId: draft.appId, version: draft.manifest.version, plan: draft.plan, ...(migration === undefined ? {} : { migration }) }
+  }
+
+  /**
+   * Tick/untick "carry dev data over" on a staged publish draft (M6e). The
+   * migration itself runs at commit, only in first-install flows, only when
+   * the installed domain is empty (or the user explicitly accepted an
+   * overwrite after an uninstall+reinstall).
+   */
+  @Remote('setPublishMigrate')
+  async setPublishMigrate(session: Session, draftToken: string, migrateData: boolean): Promise<{ ok: true; set: boolean }> {
+    void session
+    const draft = this.publishDrafts.get(draftToken)
+    if (draft === undefined) return { ok: true, set: false }
+    this.publishDrafts.set(draftToken, { ...draft, migrateData })
+    return { ok: true, set: true }
   }
 
   /** Drop a staged draft without installing (declined or abandoned approval). */
@@ -806,6 +831,20 @@ export class AppStageService extends TypertRemoteService {
     if (!resolved.ok) return { ok: false, code: 'APP_NOT_INSTALLED', message: resolved.message }
     const listed = await listAssets(dshHome(), appId)
     return { ok: true, appId, ...listed }
+  }
+
+  /**
+   * Delete one named runtime asset (M6e). Same name fence as write; the
+   * dangling-reference tradeoff is stated in the tool description and the
+   * client's orphan hint, not silently repaired.
+   */
+  @Remote('assetDelete')
+  async assetDelete(session: Session, appId: string, name: string): Promise<AppStageAssetDeleteResult> {
+    void session
+    const resolved = await this.resolveInstalled(appId)
+    if (!resolved.ok) return { ok: false, code: 'APP_NOT_INSTALLED', message: resolved.message }
+    const result = await deleteAsset(dshHome(), appId, name)
+    return result.ok ? { ok: true, appId, name } : { ok: false, code: result.code, message: result.message }
   }
 
   /** Current journal rev of an installed app's AppData document (0 when absent). */

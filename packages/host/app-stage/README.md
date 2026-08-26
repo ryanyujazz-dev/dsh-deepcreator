@@ -41,3 +41,11 @@ tsdown 的 typert 生成 `./typert`（host 面）与 `./remote`（client 投影�
 ## 刷新语义（M2 起）
 
 `list` 每次调用现扫（probe-at-open），GUI 开发中菜单展开即重扫；watcher 随会话绑定起止提供目录变更事件（`app-stage/dev-changed`），发现永远走运行时数据路径，全程无 DeepCreator 重建/重启/刷新。手放/删除应用目录 → 菜单计数零刷新跟随（M2 真实 GUI 验证）。
+
+
+## M6e — 迁移、资产回收与节流
+
+- `migrateDevDataToInstalled(appId, cwd, home, {overwrite})`：dev→installed 整域原子拷（staging 目录 + rename；doc+journal 同拷保 rev 连续）。仅 installed 域为空时执行；`DEV_DATA_EMPTY`/`INSTALLED_DATA_PRESENT` 两码；卸载重装后的覆盖语义须用户显式接受。
+- `deleteAsset(home, appId, name)`：单资产删除，basename 围栏（拒绝分隔符与 `..`），`ASSET_NOT_FOUND`/`ASSET_NAME_INVALID`。preset 工具 `app_asset_delete`（第 12 工具，agent-surface D16）。
+- `scanOrphanAssets(home, appId, docText, windowMs=30d)`：孤儿资产候选（mtime 超 30 天窗口且 doc 无 url 文本引用）——纯 advisory，绝不自动删除；年龄钳零（APFS 亚毫秒 mtime 与整数毫秒时钟的舍入差不是负年龄）。
+- 发布节流 advisory：agent 侧每 app 24h 滑窗计数，第 4 次起审批卡细节追加非阻断提示行。

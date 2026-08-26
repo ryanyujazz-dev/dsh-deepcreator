@@ -8,7 +8,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { assetUrl, assetsDir, listAssets, removeAssets, writeAsset } from '../src/assets.ts'
+import { assetUrl, assetsDir, deleteAsset, listAssets, removeAssets, scanOrphanAssets, writeAsset } from '../src/assets.ts'
 
 const roots: string[] = []
 afterAll(async () => { await Promise.all(roots.map(root => rm(root, { recursive: true, force: true }))) })
@@ -105,5 +105,47 @@ describe('app_asset_list and the uninstall wipe', () => {
     await removeAssets(home, 'gallery')
     expect(await listAssets(home, 'gallery')).toEqual({ assets: [], quotaUsedBytes: 0, quotaLimitBytes: 256 * 1024 * 1024 })
     expect(assetsDir(home, 'ghost')).toContain(join('deepcreator', 'apps', 'assets', 'ghost'))
+  })
+})
+
+
+describe('asset delete + orphan scan (M6e)', () => {
+  it('deletes a named asset with basename fence, keeps neighbors', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'appstage-del-'))
+    const ws = join(home, 'ws'); await mkdir(join(ws, 'out'), { recursive: true })
+    await writeFile(join(ws, 'out/a.png'), PNG)
+    await writeFile(join(ws, 'out/b.png'), PNG)
+    await writeAsset(home, 'canvas', 'a.png', 'out/a.png', ws)
+    await writeAsset(home, 'canvas', 'b.png', 'out/b.png', ws)
+    const gone = await deleteAsset(home, 'canvas', 'a.png')
+    expect(gone.ok).toBe(true)
+    const left = await listAssets(home, 'canvas')
+    expect(left.assets.map(item => item.name)).toEqual(['b.png'])
+    const missing = await deleteAsset(home, 'canvas', 'a.png')
+    expect('code' in missing && missing.code).toBe('ASSET_NOT_FOUND')
+    // Fence: separators and traversal never reach the filesystem.
+    const evil = await deleteAsset(home, 'canvas', '../b.png')
+    expect('code' in evil && evil.code).toBe('ASSET_NAME_INVALID')
+    const evil2 = await deleteAsset(home, 'canvas', 'sub/b.png')
+    expect('code' in evil2 && evil2.code).toBe('ASSET_NAME_INVALID')
+    await rm(home, { recursive: true, force: true })
+  })
+
+  it('orphan scan: referenced assets never candidates; fresh unreferenced not yet; stale unreferenced yes', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'appstage-orphan-'))
+    const ws = join(home, 'ws'); await mkdir(join(ws, 'out'), { recursive: true })
+    await writeFile(join(ws, 'out/kept.png'), PNG)
+    await writeFile(join(ws, 'out/gone.png'), PNG)
+    await writeAsset(home, 'canvas', 'kept.png', 'out/kept.png', ws)
+    await writeAsset(home, 'canvas', 'gone.png', 'out/gone.png', ws)
+    const doc = JSON.stringify({ data: { img: assetUrl('canvas', 'kept.png') } })
+    // Fresh unreferenced asset: below the window → not a candidate.
+    const fresh = await scanOrphanAssets(home, 'canvas', doc)
+    expect(fresh.candidates).toEqual([])
+    // Push gone.png's mtime past the window by scanning with window 0 (age ≥ 0 always).
+    const stale = await scanOrphanAssets(home, 'canvas', doc, 0)
+    expect(stale.candidates.map(item => item.name)).toEqual(['gone.png'])
+    expect(stale.candidates[0]!.bytes).toBeGreaterThan(0)
+    await rm(home, { recursive: true, force: true })
   })
 })

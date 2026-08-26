@@ -187,6 +187,53 @@ export async function listAssets(home: string, appId: string): Promise<{ assets:
 }
 
 /** Remove one app's whole asset directory (the uninstall path). */
+/**
+ * Delete one named asset (M6e). The name is a stored-path basename — no
+ * separators, no `..` (same fence as write). Callers that know a doc still
+ * references the url should say so in their UX; the tool description makes
+ * the dangling-reference tradeoff explicit.
+ */
+export async function deleteAsset(home: string, appId: string, name: string): Promise<{ ok: true } | { ok: false; code: 'ASSET_NOT_FOUND' | 'ASSET_NAME_INVALID'; message: string }> {
+  if (typeof name !== 'string' || name.includes('/') || name.includes('\\') || name === '.' || name === '..' || name.includes('..')) {
+    return { ok: false, code: 'ASSET_NAME_INVALID', message: `Asset name "${name}" is not a plain basename.` }
+  }
+  const target = join(assetsDir(home, appId), name)
+  const existed = await stat(target).then(() => true, () => false)
+  if (!existed) return { ok: false, code: 'ASSET_NOT_FOUND', message: `Asset "${name}" does not exist under this app.` }
+  await rm(target, { force: true })
+  return { ok: true }
+}
+
+/**
+ * Orphan-scan (M6e): assets whose mtime is older than the conservative
+ * window AND whose url is not textually present in the doc — advisory only.
+ * A dynamic拼装 assetUrl must never be auto-deleted (it can look unreferenced
+ * to every scan), so this returns candidates with ages; deletion is a
+ * separate user-confirmed action, never automatic.
+ */
+export async function scanOrphanAssets(
+  home: string, appId: string, docText: string, windowMs: number = ORPHAN_WINDOW_MS,
+): Promise<{ candidates: { name: string; ageMs: number; bytes: number }[] }> {
+  const dir = assetsDir(home, appId)
+  const names = await readdir(dir).catch(() => [] as string[])
+  const now = Date.now()
+  const candidates: { name: string; ageMs: number; bytes: number }[] = []
+  for (const name of names.sort()) {
+    const info = await stat(join(dir, name)).catch(() => undefined)
+    if (info === undefined || !info.isFile()) continue
+    if (docText.includes(assetUrl(appId, name))) continue
+    // Clamp: APFS mtime is sub-millisecond float while Date.now() is integer
+    // ms, so a just-written file can read as fractionally "in the future".
+    // Its true age is 0, never negative.
+    const ageMs = Math.max(0, now - info.mtimeMs)
+    if (ageMs >= windowMs) candidates.push({ name, ageMs, bytes: info.size })
+  }
+  return { candidates }
+}
+
+/** Conservative age before an unreferenced asset is even a GC candidate. */
+export const ORPHAN_WINDOW_MS = 30 * 24 * 60 * 60 * 1000
+
 export async function removeAssets(home: string, appId: string): Promise<void> {
   await rm(assetsDir(home, appId), { recursive: true, force: true })
 }

@@ -87,7 +87,7 @@ export interface AppToolEnvironment {
 /**
 /** The environment the M4 operation tools read (service faces + home override). */
 export interface AppOperationEnvironment {
-  readonly appStage: Pick<AppStageService, 'devOriginURL' | 'installedOriginURL' | 'invoke' | 'open' | 'dataGet' | 'dataSet' | 'dataProbe' | 'assetWrite' | 'assetList' | 'takeover' | 'installedHistory'>
+  readonly appStage: Pick<AppStageService, 'devOriginURL' | 'installedOriginURL' | 'invoke' | 'open' | 'dataGet' | 'dataSet' | 'dataProbe' | 'assetWrite' | 'assetList' | 'assetDelete' | 'takeover' | 'installedHistory'>
   /** DSH home override (tests); default is the real resolved home. */
   readonly home?: string
 }
@@ -213,7 +213,7 @@ export function createAppManifestTool(env: AppToolEnvironment): ToolDefinition {
 /** The publish tool's view of the resident service (Typert remote methods). */
 export interface AppPublishServiceFace {
   preparePublish(session: import('@deepseek-ai/dsh-session').Session, appId: string): Promise<import('@ryanyujazz/dsh-app-stage/types').AppStagePublishPrepareResult>
-  commitPublish(session: import('@deepseek-ai/dsh-session').Session, draftToken: string): Promise<import('@ryanyujazz/dsh-app-stage/types').AppStagePublishCommitResult>
+  commitPublish(session: import('@deepseek-ai/dsh-session').Session, draftToken: string, migrateData: boolean): Promise<import('@ryanyujazz/dsh-app-stage/types').AppStagePublishCommitResult>
   abortPublish(session: import('@deepseek-ai/dsh-session').Session, draftToken: string): { ok: boolean }
 }
 
@@ -245,7 +245,20 @@ const APPROVE = '安装'
 const DECLINE = '拒绝'
 
 /** Render the approval card's rich detail (shared facts, plain text). */
-function approvalDetail(report: import('@ryanyujazz/dsh-app-stage/types').AppPublishReport, plan: string, previous: { version: string; sourceWorkspace: string } | undefined, cwdName: string): string {
+/** M6e throttling advisory: per-app publish counts in a sliding 24h window. */
+const PUBLISH_WINDOW_MS = 24 * 60 * 60 * 1000
+const publishTimes = new Map<string, number[]>()
+
+/** Count (and record) this app's publishes in the last 24h; ≥3 turns on the advisory line. */
+function notePublishAndThrottle(appId: string): { count24h: number; throttled: boolean } {
+  const now = Date.now()
+  const kept = (publishTimes.get(appId) ?? []).filter(ts => now - ts < PUBLISH_WINDOW_MS)
+  kept.push(now)
+  publishTimes.set(appId, kept)
+  return { count24h: kept.length, throttled: kept.length > 3 }
+}
+
+function approvalDetail(report: import('@ryanyujazz/dsh-app-stage/types').AppPublishReport & { publishes24h?: number; throttled?: boolean }, plan: string, previous: { version: string; sourceWorkspace: string } | undefined, cwdName: string): string {
   const lines = [
     `应用：${report.name}（${report.appId}）v${report.version}`,
     `来源工作区：${cwdName}`,
@@ -258,6 +271,7 @@ function approvalDetail(report: import('@ryanyujazz/dsh-app-stage/types').AppPub
   if (plan === 'first') lines.push('首次发布将安装到你的全局桌面。')
   else if (plan === 'update-below-watermark') lines.push('此版本号不高于历史最高版本，或与历史记录的内容指纹不一致——需你明确批准后才会安装（防回滚重发与同号换码）。')
   else lines.push('此更新将替换你桌面上的现有版本。')
+  if (report.throttled === true) lines.push(`提示：此应用 24 小时内已发布 ${report.publishes24h} 次——频繁发布会反复打扰确认，建议攒批。`)
   lines.push('可随时移除：卸载即净（快照、资产、数据域）。')
   return lines.join('\n')
 }
@@ -290,8 +304,10 @@ export function createAppPublishTool(env: AppPublishEnvironment): ToolDefinition
       }
       const prepared = await env.appStage.preparePublish(session, appId)
       if (!prepared.ok) return json(toolError(prepared.code, prepared.message, { appId }))
+      const throttle = notePublishAndThrottle(appId)
+      const report: typeof prepared.report & { publishes24h?: number; throttled?: boolean } = { ...prepared.report, publishes24h: throttle.count24h, throttled: throttle.throttled }
 
-      const { draftToken, plan, report } = prepared
+      const { draftToken, plan } = prepared
       const cwdName = session.header.cwd?.split(/[\\/]/).filter(Boolean).pop() ?? 'unknown workspace'
       if (plan !== 'update-same-source') {
         let approved = false
@@ -329,7 +345,8 @@ export function createAppPublishTool(env: AppPublishEnvironment): ToolDefinition
         }
       }
 
-      const committed = await env.appStage.commitPublish(session, draftToken)
+      // Migration is a user-card tick, never an agent decision (M6e).
+      const committed = await env.appStage.commitPublish(session, draftToken, false)
       if (!committed.ok) return json(toolError(committed.code, committed.message, { appId }))
       return json({
         appId: committed.appId,
@@ -512,6 +529,38 @@ export function createAppDataReadTool(env: AppOperationEnvironment): ToolDefinit
         ...(result.found ? { value: result.value } : {}),
         dataVersion: String(result.rev),
       })
+    },
+  })
+}
+
+/**
+ * `app_asset_delete` (M6e, agent-surface D16): delete one named asset. The
+ * counterpart discipline to app_asset_write: agent-written bytes are also
+ * agent-removable. A doc that still references the deleted url renders a
+ * broken image — the description tells the agent to clear references first
+ * (dangling urls are the accepted, explicit tradeoff; there is no reference
+ * graph to consult).
+ */
+export function createAppAssetDeleteTool(env: AppOperationEnvironment): ToolDefinition {
+  let deletions = 0
+  return defineTool({
+    name: 'app_asset_delete',
+    description: 'Delete one runtime asset by name (the name from app_asset_list). The bytes leave the per-app quota immediately. Check the AppData doc for references to the asset url first and clear them in the same turn — a dangling url renders as a broken image in the app. Never deletes anything outside this app\'s asset directory.',
+    parameters: {
+      appId: { type: 'string', required: true, description: 'The installed app id.' },
+      name: { type: 'string', required: true, description: 'The asset name exactly as app_asset_list reports (a plain basename).' },
+    },
+    output: { schema: outputSchema, render },
+    async execute(args, exec) {
+      const session = owner(exec).session
+      const { appId, name } = args as { appId: string; name: string }
+      if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(appId) || appId.length > 64) {
+        return json(toolError('APP_ID_INVALID', `appId "${appId}" is not a legal app id (kebab-case segments of [a-z0-9], ≤64 chars).`, { appId }))
+      }
+      const result = await env.appStage.assetDelete(session, appId, name)
+      if (!result.ok) return json(toolError(result.code, result.message, { appId, name }))
+      deletions += 1
+      return json({ ok: true as const, text: `deleted asset ${name} of ${appId} (deletions this session: ${deletions})` })
     },
   })
 }

@@ -221,7 +221,7 @@ export type AppStagePublishPrepareResult =
   | { readonly ok: false; readonly code: AppPublishFailureCode; readonly message: string }
 
 export type AppStagePublishCommitResult =
-  | { readonly ok: true; readonly appId: string; readonly version: string; readonly plan: AppPublishPlan }
+  | { readonly ok: true; readonly appId: string; readonly version: string; readonly plan: AppPublishPlan; readonly migration?: { readonly ok: true; readonly migrated: boolean } | { readonly ok: false; readonly code: string; readonly message: string } }
   | { readonly ok: false; readonly code: AppPublishFailureCode; readonly message: string }
 
 export type AppStageUninstallResult =
@@ -327,6 +327,11 @@ export type AppStageRouterResultAck =
 export type AppStagePresenceSnapshotResult =
   | { readonly ok: true; readonly leases: readonly import('./presence.ts').PresenceLeaseSnapshot[] }
   | { readonly ok: false; readonly code: 'NO_WORKSPACE'; readonly message: string }
+
+/** `assetDelete`: remove one named runtime asset (M6e). */
+export type AppStageAssetDeleteResult =
+  | { readonly ok: true; readonly appId: string; readonly name: string }
+  | { readonly ok: false; readonly code: 'APP_NOT_INSTALLED' | 'ASSET_NOT_FOUND' | 'ASSET_NAME_INVALID'; readonly message: string }
 
 /** Import source for `importPrepare` (M6c): a directory or a git URL. */
 export type AppImportSource =

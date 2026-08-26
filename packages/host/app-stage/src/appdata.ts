@@ -13,7 +13,7 @@
  * @module @ryanyujazz/dsh-app-stage/appdata
  */
 import { createHash } from 'node:crypto'
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { dshHome } from './store.ts'
 
@@ -200,6 +200,38 @@ export async function appDataChanges(
  * Remove an app's whole AppData domain (uninstall path, M3).
  * @returns completion; a missing directory is already clean.
  */
+/**
+ * One-shot dev→installed data migration (M6e): copy doc.json + journal.jsonl
+ * whole so the rev sequence stays continuous — a doc copied without its
+ * journal would replay wrong, a journal copied without its doc is dead
+ * weight. Atomic at the directory level: stage to a temp sibling, rename in.
+ * Only runs when the installed domain is empty (first-install flows); an
+ * uninstall+reinstall asks the user explicitly because it OVERWRITES.
+ */
+export async function migrateDevDataToInstalled(
+  appId: string, cwd: string, home: string = dshHome(), opts: { overwrite?: boolean } = {},
+): Promise<{ ok: true; migrated: boolean } | { ok: false; code: 'DEV_DATA_EMPTY' | 'INSTALLED_DATA_PRESENT'; message: string }> {
+  const fromDir = appDataDir('dev', appId, cwd, home)
+  const toDir = appDataDir('installed', appId, undefined, home)
+  const fromDoc = await readFile(join(fromDir, 'doc.json'), 'utf8').then(text => JSON.parse(text) as { rev?: number }, () => undefined)
+  const fromJournal = await readFile(join(fromDir, 'journal.jsonl'), 'utf8').then(text => text.length, () => 0)
+  if (fromDoc === undefined || (fromDoc.rev ?? 0) === 0) {
+    return { ok: false, code: 'DEV_DATA_EMPTY', message: 'The dev workspace has no data worth carrying (empty document).' }
+  }
+  void fromJournal
+  const toExists = await readFile(join(toDir, 'doc.json'), 'utf8').then(() => true, () => false)
+  if (toExists && opts.overwrite !== true) {
+    return { ok: false, code: 'INSTALLED_DATA_PRESENT', message: 'Installed data already exists; migrating would overwrite it.' }
+  }
+  const staged = `${toDir}.migrating-${Date.now().toString(36)}`
+  await mkdir(dirname(toDir), { recursive: true })
+  await rm(staged, { recursive: true, force: true })
+  await cp(fromDir, staged, { recursive: true })
+  await rm(toDir, { recursive: true, force: true })
+  await rename(staged, toDir)
+  return { ok: true, migrated: true }
+}
+
 export async function appDataDrop(scope: AppDataScope, appId: string, cwd: string | undefined, home?: string): Promise<void> {
   await rm(appDataDir(scope, appId, cwd, home), { recursive: true, force: true })
 }
