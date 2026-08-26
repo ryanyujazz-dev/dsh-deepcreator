@@ -39,6 +39,8 @@ function remoteWith(dev: readonly AppDevEntry[], installed: readonly AppInstalle
     presenceTimeline: vi.fn(async () => ({ ok: true, value: { ok: true, rows: [], latest: 0 } }) as never),
     presenceSeen: vi.fn(async () => ({ ok: true, value: { ok: true, seen: 0, latest: 0 } }) as never),
     presenceMarkSeen: vi.fn(async () => ({ ok: true, value: { ok: true, seen: 0 } }) as never),
+    installedHistory: vi.fn(async () => ({ ok: true, value: { ok: true, records: [] } }) as never),
+    rollbackInstalled: vi.fn(async () => ({ ok: true, value: { ok: true, appId: 'a', version: '0.1.0' } }) as never),
   }
   return { ...remote, ensureMock }
 }

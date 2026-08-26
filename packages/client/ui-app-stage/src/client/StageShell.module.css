@@ -319,3 +319,30 @@
 .activityAction { color: var(--dsw-alias-label-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .activityOk { margin-left: auto; color: var(--dsw-alias-label-tertiary); }
 .activityFail { margin-left: auto; color: var(--dsw-alias-status-error, #d33); }
+
+/* Install history panel (M6b): per-card dropdown under the launcher row. */
+.historyPanel {
+  margin: 2px 0 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--dsw-alias-l1);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.historyRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+  font-size: var(--dsw-font-body-s-font-size, 14px);
+  line-height: var(--dsw-font-body-s-line-height, 22px);
+}
+
+.historyVersion { color: var(--dsw-alias-label-primary); font-variant-numeric: tabular-nums; }
+.historyVia { color: var(--dsw-alias-label-tertiary); }
+.historyDigest { color: var(--dsw-alias-label-tertiary); font-variant-numeric: tabular-nums; }
+.historyCurrent { margin-left: auto; color: var(--dsw-alias-accent, #0071e3); }

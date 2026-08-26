@@ -87,7 +87,7 @@ export interface AppToolEnvironment {
 /**
 /** The environment the M4 operation tools read (service faces + home override). */
 export interface AppOperationEnvironment {
-  readonly appStage: Pick<AppStageService, 'devOriginURL' | 'installedOriginURL' | 'invoke' | 'open' | 'dataGet' | 'dataSet' | 'dataProbe' | 'assetWrite' | 'assetList' | 'takeover'>
+  readonly appStage: Pick<AppStageService, 'devOriginURL' | 'installedOriginURL' | 'invoke' | 'open' | 'dataGet' | 'dataSet' | 'dataProbe' | 'assetWrite' | 'assetList' | 'takeover' | 'installedHistory'>
   /** DSH home override (tests); default is the real resolved home. */
   readonly home?: string
 }
@@ -512,6 +512,37 @@ export function createAppDataReadTool(env: AppOperationEnvironment): ToolDefinit
         ...(result.found ? { value: result.value } : {}),
         dataVersion: String(result.rev),
       })
+    },
+  })
+}
+
+/**
+ * `app_history` — the install history + rollback baseline, read-only (M6b).
+ * Visibility for the agent (rollback itself is a user-lifecycle action, the
+ * same family as uninstall — the user rolls back from the app detail view).
+ * Re-admitted at Phase 3 per the verdict table's stage-misplacement note.
+ */
+export function createAppHistoryTool(env: AppOperationEnvironment): ToolDefinition {
+  return defineTool({
+    name: 'app_history',
+    description: 'Read an installed app\'s install history and rollback baseline: every remembered install (version, digest prefix, source, via) and the high-water mark that governs republish approvals. Use it to answer "what versions existed" and "why is this republish asks for approval" before advising the user; rolling back is a user action in the app detail view.',
+    parameters: {
+      appId: { type: 'string', required: true, description: 'The installed app id.' },
+    },
+    output: { schema: outputSchema, render },
+    async execute(args, exec) {
+      const { appId } = args as { appId: string }
+      if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(appId) || appId.length > 64) {
+        return json(toolError('APP_ID_INVALID', `appId "${appId}" is not a legal app id (kebab-case segments of [a-z0-9], ≤64 chars).`, { appId }))
+      }
+      const result = await env.appStage.installedHistory(owner(exec).session, appId)
+      if (!result.ok) return json(toolError(result.code, result.message, { appId }))
+      const lines = [
+        `history for ${appId}:`,
+        ...[...result.records].reverse().map(record => `  v${record.version} · ${record.publishedVia} · digest ${record.digest.slice(0, 12)}… · ${record.at} · from ${record.sourceWorkspace}`),
+        `watermark (highest ever installed): ${result.watermark !== undefined ? `v${result.watermark.version}` : 'none'} — republishing at/below it with content history does not vouch for needs user approval.`,
+      ]
+      return json({ ok: true as const, text: lines.join('\n') })
     },
   })
 }

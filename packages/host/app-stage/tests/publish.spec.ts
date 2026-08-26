@@ -8,8 +8,9 @@ import {
   compareVersions, resolvePlan, scanZeroExternal, hashSnapshot, stageSnapshot,
   writeInstallPointer, commitSnapshot, uninstallApp, readStagedManifest, gateForPublish,
   PACKAGE_MAX_BYTES, appendHistory, readHistory, readWatermark, advanceWatermark,
-  HISTORY_CAP, type AppHistoryRecord,
+  HISTORY_CAP, rollbackInstalled, type AppHistoryRecord,
 } from '../src/publish.ts'
+import { installedVersionDir as installedVersionDirOf } from '../src/store.ts'
 import { readInstallPointer, readOpenedVersions, recordOpenedVersion } from '../src/store.ts'
 
 async function tempHome(): Promise<string> { return mkdtemp(join(tmpdir(), 'appstage-pub-')) }
@@ -44,6 +45,49 @@ describe('publish machinery', () => {
     expect(resolvePlan('0.3.0', installed, 'f1', watermark, 'd3-evil', new Map([['0.3.0', 'd3']]))).toBe('update-below-watermark')
     // No watermark file yet (legacy installs): current-version comparison only.
     expect(resolvePlan('0.2.0', installed, 'f1', undefined, 'd2')).toBe('update-same-source')
+  })
+
+  it('rolls back to a history version with digest verification (M6b)', async () => {
+    const home = await tempHome()
+    const staging = await mkdtemp(join(tmpdir(), 'appstage-rb-'))
+    const rec = (version: string): AppHistoryRecord & { installedAt: string } => ({
+      appId: 'kanban-demo', version, digest: '', installedAt: `2026-01-0${version.endsWith('0') ? '1' : '2'}T00:00:00Z`,
+      sourceWorkspace: 'ws', sourceFingerprint: 'f1', sourceSession: 's1', publishedVia: 'app_publish', at: '',
+    } as never)
+    // Two real committed versions with their true digests.
+    for (const version of ['0.1.0', '0.2.0']) {
+      const dir = join(staging, version)
+      await mkdir(dir, { recursive: true })
+      await writeFile(join(dir, 'app.json'), JSON.stringify({ version }))
+      await commitSnapshot(dir, 'kanban-demo', version, home)
+    }
+    const d1 = (await hashSnapshot(installedVersionDirOf('kanban-demo', '0.1.0', home))).digest
+    await writeInstallPointer('kanban-demo', { ...rec('0.1.0'), digest: d1, installedAt: '2026-01-01T00:00:00Z' }, home)
+    const d2 = (await hashSnapshot(installedVersionDirOf('kanban-demo', '0.2.0', home))).digest
+    await writeInstallPointer('kanban-demo', { ...rec('0.2.0'), digest: d2, installedAt: '2026-01-02T00:00:00Z' }, home)
+
+    // Rollback to 0.1.0: ok, pointer moves, watermark STAYS at 0.2.0.
+    const back = await rollbackInstalled('kanban-demo', '0.1.0', home, { workspace: 'w', session: 's' })
+    expect('ok' in back && back.ok).toBe(true)
+    const pointer = await readInstallPointer('kanban-demo', home)
+    expect(pointer?.version).toBe('0.1.0')
+    expect(pointer?.publishedVia).toBe('rollback')
+    expect((await readWatermark('kanban-demo', home))?.version).toBe('0.2.0')
+    const history = await readHistory('kanban-demo', home)
+    expect(history.at(-1)?.publishedVia).toBe('rollback')
+    expect(history.at(-1)?.version).toBe('0.1.0')
+
+    // Tampered store: the 0.2.0 directory no longer matches its digest → refuse.
+    await writeFile(join(installedVersionDirOf('kanban-demo', '0.2.0', home), 'app.json'), 'tampered')
+    const tampered = await rollbackInstalled('kanban-demo', '0.2.0', home, { workspace: 'w', session: 's' })
+    expect('code' in tampered && tampered.code).toBe('ROLLBACK_DIGEST_MISMATCH')
+
+    // Unknown version and not-installed app.
+    const missing = await rollbackInstalled('kanban-demo', '9.9.9', home, { workspace: 'w', session: 's' })
+    expect('code' in missing && missing.code).toBe('ROLLBACK_TARGET_MISSING')
+    const absent = await rollbackInstalled('ghost-app', '0.1.0', home, { workspace: 'w', session: 's' })
+    expect('code' in absent && absent.code).toBe('APP_NOT_INSTALLED')
+    await rm(staging, { recursive: true, force: true })
   })
 
   it('history + watermark survive cap trimming and never regress on rollback (M6a)', async () => {

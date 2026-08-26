@@ -328,6 +328,11 @@ export type AppStagePresenceSnapshotResult =
   | { readonly ok: true; readonly leases: readonly import('./presence.ts').PresenceLeaseSnapshot[] }
   | { readonly ok: false; readonly code: 'NO_WORKSPACE'; readonly message: string }
 
+/** `rollbackInstalled`: switch the pointer to a history version (M6b). */
+export type AppStageRollbackResult =
+  | { readonly ok: true; readonly appId: string; readonly version: string }
+  | { readonly ok: false; readonly code: 'APP_NOT_INSTALLED' | 'ROLLBACK_TARGET_MISSING' | 'ROLLBACK_DIGEST_MISMATCH'; readonly message: string }
+
 /** `installedHistory`: the install history + rollback baseline (M6a).
  * The watermark rides as an optional field (typert remote boundaries carry
  * no `| undefined` unions — M5f/M6 wire discipline). */
@@ -352,3 +357,4 @@ export type AppStagePresenceControlResult =
 
 // Presence projection types (Px-β) — the client shell renders these.
 export type { PresenceLeaseState, PresenceLeaseSnapshot, PresenceSummary, PresenceTimelineRow, PresenceActionRecord, PresenceCommandKind } from './presence.ts'
+export type { AppHistoryRecord, AppWatermark } from './publish.ts'

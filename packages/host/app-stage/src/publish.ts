@@ -273,23 +273,96 @@ export async function appendHistory(appId: string, record: AppHistoryRecord, hom
   await writeFile(historyPath(appId, home), kept.map(item => JSON.stringify(item)).join('\n') + '\n')
 }
 
-/** Read the rollback baseline; falls back to the current pointer once. */
-export async function readWatermark(appId: string, home: string): Promise<AppWatermark | undefined> {
+/** Read only the persisted watermark file (no pointer fallback). */
+async function readWatermarkFile(appId: string, home: string): Promise<AppWatermark | undefined> {
   try {
     const raw = JSON.parse(await readFile(watermarkPath(appId, home), 'utf8')) as Partial<AppWatermark>
     if (typeof raw.version === 'string' && typeof raw.digest === 'string') return { version: raw.version, digest: raw.digest, at: typeof raw.at === 'string' ? raw.at : '' }
   } catch { /* absent */ }
+  return undefined
+}
+
+/**
+ * Read the rollback baseline. Legacy installs (pre-M6a) have no file yet;
+ * there the current pointer stands in until the next install materializes
+ * the file — a pointer can never exceed a persisted watermark, so the
+ * fallback only ever UNDERSTATES the baseline (safe side).
+ */
+export async function readWatermark(appId: string, home: string): Promise<AppWatermark | undefined> {
+  const persisted = await readWatermarkFile(appId, home)
+  if (persisted !== undefined) return persisted
   const pointer = await readInstallPointer(appId, home)
   return pointer === undefined ? undefined : { version: pointer.version, digest: pointer.digest, at: pointer.installedAt }
 }
 
-/** Advance the watermark; only a strictly higher version moves it. */
+/**
+ * Advance the watermark; only a strictly higher version moves it. Compares
+ * against the FILE alone — the pointer was just written to the same version,
+ * so a pointer fallback here would always compare equal and never persist
+ * anything (found by the M6b rollback test: the watermark silently degraded
+ * to "read the pointer", which rollback then moved).
+ */
 export async function advanceWatermark(appId: string, version: string, digest: string, home: string): Promise<void> {
-  const current = await readWatermark(appId, home)
+  const current = await readWatermarkFile(appId, home)
   if (current !== undefined && compareVersions(version, current.version) <= 0) return
   const dir = join(storeRoot(home), 'apps', 'installed', appId)
   await mkdir(dir, { recursive: true })
   await writeFile(watermarkPath(appId, home), `${JSON.stringify({ version, digest, at: new Date().toISOString() }, null, 2)}\n`)
+}
+
+/**
+ * Per-app mutation serialization (audit H1): pointer writes from a publish
+ * commit and a rollback must not interleave. Single host process; a promise
+ * chain per app is the whole lock.
+ */
+const installMutex = new Map<string, Promise<unknown>>()
+
+/** Run an install-store mutation under the app's serialization chain. */
+export function withInstallLock<T>(appId: string, run: () => Promise<T>): Promise<T> {
+  const prior = installMutex.get(appId) ?? Promise.resolve()
+  const next = prior.then(run, run)
+  installMutex.set(appId, next.then(() => undefined, () => undefined))
+  return next
+}
+
+/**
+ * Roll the current pointer back to an already-installed version (M6b).
+ * Safety: the target version directory must exist AND its recomputed digest
+ * must match the history record (audit safety#3 — without this, the
+ * 'rollback to the already-approved v2' combo could serve freshly swapped
+ * code as v2). Data/journal/assets stay untouched (code-only switch);
+ * the watermark never moves (that is its entire purpose).
+ */
+export async function rollbackInstalled(
+  appId: string, version: string, home: string, source: { workspace: string; session: string },
+): Promise<{ ok: true; record: AppHistoryRecord } | { ok: false; code: 'ROLLBACK_TARGET_MISSING' | 'ROLLBACK_DIGEST_MISMATCH' | 'APP_NOT_INSTALLED'; message: string }> {
+  return withInstallLock(appId, async () => {
+    const pointer = await readInstallPointer(appId, home)
+    if (pointer === undefined) return { ok: false, code: 'APP_NOT_INSTALLED', message: `"${appId}" is not installed.` }
+    const history = await readHistory(appId, home)
+    const record = [...history].reverse().find(item => item.version === version)
+    const dir = installedVersionDir(appId, version, home)
+    let exists = true
+    try { await stat(dir) } catch { exists = false }
+    if (record === undefined || !exists) {
+      return { ok: false, code: 'ROLLBACK_TARGET_MISSING', message: `Version ${version} is not available to roll back to (no history entry or the version directory is gone).` }
+    }
+    const { digest } = await hashSnapshot(dir)
+    if (digest !== record.digest) {
+      return { ok: false, code: 'ROLLBACK_DIGEST_MISMATCH', message: `Version ${version} directory content no longer matches its recorded digest — the store is corrupted; reinstall the app.` }
+    }
+    const next: AppHistoryRecord = {
+      appId, version, digest, at: new Date().toISOString(),
+      sourceWorkspace: source.workspace, sourceFingerprint: pointer.sourceFingerprint,
+      sourceSession: source.session, publishedVia: 'rollback',
+    }
+    await writeInstallPointer(appId, {
+      version, digest, installedAt: next.at,
+      sourceWorkspace: pointer.sourceWorkspace, sourceFingerprint: pointer.sourceFingerprint,
+      sourceSession: pointer.sourceSession, publishedVia: 'rollback',
+    }, home)
+    return { ok: true, record: next }
+  })
 }
 
 /** Move a staged snapshot into the install store under its version. */

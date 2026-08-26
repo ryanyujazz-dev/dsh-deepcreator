@@ -18,14 +18,14 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-workspace'
-import type { AppDataChange, AppDevEntry, AppInstalledEntry, AppJsonValue, AppManifest, AppPublishPlan, AppRouterOutcome, AppStageAssetListResult, AppStageAssetWriteResult, AppStageDataChangesResult, AppStageDataGetResult, AppStageDataSetResult, AppStageEnsureResult, AppStageHistoryResult, AppStageInvokeResult, AppStageListResult, AppStageOpenResult, AppStagePresenceControlResult, AppStagePresenceSnapshotResult, AppStagePresenceSummaryResult, AppStagePresenceTimelineResult, AppStagePublishCommitResult, AppStagePublishPrepareResult, AppStageRouterResultAck, AppStageUninstallResult, AppStageWaitRequestsResult } from './types.ts'
+import type { AppDataChange, AppDevEntry, AppInstalledEntry, AppJsonValue, AppManifest, AppPublishPlan, AppRouterOutcome, AppStageAssetListResult, AppStageAssetWriteResult, AppStageDataChangesResult, AppStageDataGetResult, AppStageDataSetResult, AppStageEnsureResult, AppStageHistoryResult, AppStageInvokeResult, AppStageRollbackResult, AppStageListResult, AppStageOpenResult, AppStagePresenceControlResult, AppStagePresenceSnapshotResult, AppStagePresenceSummaryResult, AppStagePresenceTimelineResult, AppStagePublishCommitResult, AppStagePublishPrepareResult, AppStageRouterResultAck, AppStageUninstallResult, AppStageWaitRequestsResult } from './types.ts'
 import { AppStageStaticServer } from './serve.ts'
 import { listInstalled, gateDevEntry, scanDevRoot } from './registry.ts'
 import { dshHome, readActivitySeen, readInstallPointer, readOpenedVersions, recordOpenedVersion, storeRoot, writeActivitySeen } from './store.ts'
 import { ensurePreset } from './preset.ts'
 import { AppStageWatcherSet } from './watcher.ts'
 import { appDataChanges, appDataGet, appDataSet } from './appdata.ts'
-import { buildReport, commitSnapshot, gateForPublish, hashSnapshot, PACKAGE_MAX_BYTES, publishFingerprint, readHistory, readStagedManifest, readWatermark, resolvePlan, stageSnapshot, uninstallApp, writeInstallPointer } from './publish.ts'
+import { buildReport, commitSnapshot, gateForPublish, hashSnapshot, PACKAGE_MAX_BYTES, publishFingerprint, readHistory, readStagedManifest, readWatermark, resolvePlan, rollbackInstalled, stageSnapshot, uninstallApp, withInstallLock, writeInstallPointer } from './publish.ts'
 import { probeStaging } from './probe.ts'
 import { AppRouterHub, INVOKE_TIMEOUT_MS, OPEN_TIMEOUT_MS } from './control.ts'
 import { PresenceCoordinator, PRESENCE_MACRO_AI_BUDGET_MS, PRESENCE_MACRO_DELEGATED_BUDGET_MS, summarizeParams } from './presence.ts'
@@ -401,12 +401,16 @@ export class AppStageService extends TypertRemoteService {
       return { ok: false, code: 'SOURCE_MISSING', message: 'The staged snapshot changed during approval; re-run app_publish.' }
     }
     try {
+      // Serialized with rollback on the same app (audit H1): the commit and
+      // a user rollback must never interleave their pointer writes.
+      await withInstallLock(draft.appId, async () => {
       await commitSnapshot(draft.stagingDir, draft.appId, draft.manifest.version, home)
       await writeInstallPointer(draft.appId, {
         version: draft.manifest.version, digest: draft.digest, installedAt: new Date().toISOString(),
         sourceWorkspace: draft.sourceWorkspace, sourceFingerprint: draft.fingerprint,
         sourceSession: draft.sourceSession, publishedVia: 'app_publish',
       }, home)
+      })
     } catch (error) {
       return { ok: false, code: 'STORE_WRITE_FAILED', message: `install store write failed: ${error instanceof Error ? error.message : String(error)}` }
     }
@@ -427,6 +431,19 @@ export class AppStageService extends TypertRemoteService {
   }
 
   /** Remove one installed app completely: snapshots, pointer, assets, AppData. */
+  /**
+   * Roll the current pointer back to a history version (M6b). User-lifecycle
+   * surface (same family as uninstall): code-only — data, journal, and
+   * assets are untouched; the target's digest is re-verified against
+   * history before the switch. Agents get visibility via `app_history`,
+   * not this remote.
+   */
+  @Remote('rollbackInstalled')
+  async rollbackInstalledRemote(session: Session, appId: string, version: string): Promise<AppStageRollbackResult> {
+    const result = await rollbackInstalled(appId, version, dshHome(), { workspace: basename(session.header.cwd ?? ''), session: String(session.id) })
+    return 'record' in result ? { ok: true, appId, version } : { ok: false, code: result.code, message: result.message }
+  }
+
   @Remote('uninstall')
   async uninstall(session: Session, appId: string): Promise<AppStageUninstallResult> {
     void session

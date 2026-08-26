@@ -17,8 +17,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { AppDevEntry, AppInstalledEntry, AppStageEnsureResult, AppStageListResult } from '@ryanyujazz/dsh-app-stage/types'
-import type { ActivityRow, DevMenuRow, LauncherCard, StageShellProps } from './contract.ts'
-import type { AppStagePresenceTimelineResult } from '@ryanyujazz/dsh-app-stage/types'
+import type { ActivityRow, DevMenuRow, HistoryRow, LauncherCard, StageShellProps } from './contract.ts'
+import type { AppStagePresenceTimelineResult, AppStageRollbackResult } from '@ryanyujazz/dsh-app-stage/types'
 import { PresenceBanner } from './PresenceBanner.tsx'
 import css from './StageShell.module.css'
 
@@ -56,6 +56,9 @@ export function StageShell({ phone, stageWidth, dockOpen, t, layout, sessions, r
   const sessionId = useSyncExternalStore(sessions.subscribe, sessions.getSnapshot)
   const [rows, setRows] = useState<readonly DevMenuRow[]>([])
   const [cards, setCards] = useState<readonly LauncherCard[]>([])
+  const [historyFor, setHistoryFor] = useState<string | undefined>(undefined)
+  const [historyRows, setHistoryRows] = useState<readonly HistoryRow[]>([])
+  const [historyNote, setHistoryNote] = useState<string | undefined>(undefined)
   const [menuOpen, setMenuOpen] = useState(false)
   const [activityOpen, setActivityOpen] = useState(false)
   const [activityRows, setActivityRows] = useState<readonly ActivityRow[]>([])
@@ -111,6 +114,34 @@ export function StageShell({ phone, stageWidth, dockOpen, t, layout, sessions, r
     }).catch(() => { /* silent: next scan retries */ })
     return () => { cancelled = true }
   }, [remote, sessionId, scanTick, activityTick, activityOpen])
+
+  // Install history (M6b): probe-at-open — fetch on open, newest first,
+  // roll back on explicit confirm (data untouched, watermark untouched).
+  useEffect(() => {
+    if (historyFor === undefined) { setHistoryRows([]); setHistoryNote(undefined); return }
+    if (sessionId === undefined) return
+    let cancelled = false
+    void remote.installedHistory(sessionId, historyFor).then((wire: RemoteResult<{ ok: true; records: readonly { version: string; digest: string; at: string; publishedVia: string; sourceWorkspace: string }[]; watermark?: { version: string; digest: string; at: string } } | { ok: false; code: 'NO_WORKSPACE'; message: string }>) => {
+      if (cancelled || !wire.ok || !wire.value.ok) return
+      const rows = wire.value.records.map(record => ({ version: record.version, digest: record.digest, at: record.at, publishedVia: record.publishedVia, sourceWorkspace: record.sourceWorkspace }))
+      setHistoryRows([...rows].reverse())
+    }).catch(() => { /* silent: next open retries */ })
+    return () => { cancelled = true }
+  }, [remote, sessionId, historyFor, scanTick])
+
+  /** Roll back one app to a history version (explicit confirm inside the panel). */
+  const rollback = useCallback((appId: string, version: string) => {
+    if (sessionId === undefined) return
+    void remote.rollbackInstalled(sessionId, appId, version).then((wire: RemoteResult<AppStageRollbackResult>) => {
+      if (!wire.ok) { setHistoryNote(t('history.rollback.failed').replace('{message}', wire.error.message)); return }
+      if (!wire.value.ok) { setHistoryNote(t('history.rollback.failed').replace('{message}', wire.value.message)); return }
+      setHistoryNote(t('history.rollback.done').replace('{version}', version))
+      return remote.list(sessionId)
+    }).then(rescan => {
+      if (rescan === undefined || !rescan.ok || !rescan.value.ok) return
+      setCards(cardsFrom(rescan.value.list.installed))
+    }).catch(() => { setHistoryNote(t('history.rollback.failed').replace('{message}', 'network')) })
+  }, [remote, sessionId, t])
 
   // Outside-click closes the dev menu (standard dropdown dismissal).
   useEffect(() => {
@@ -310,7 +341,8 @@ export function StageShell({ phone, stageWidth, dockOpen, t, layout, sessions, r
           <div className={css.launcher} style={{ '--stage-width': `${stageWidth}px` } as CSSProperties}>
             {notice !== undefined && <div className={css.launcherNotice} role="status">{notice}</div>}
             {cards.map(card => (
-              <div key={card.appId} className={css.cardShell}>
+              <div key={card.appId} style={{ display: 'contents' }}>
+              <div className={css.cardShell}>
                 <button
                   type="button"
                   className={css.card}
@@ -329,6 +361,15 @@ export function StageShell({ phone, stageWidth, dockOpen, t, layout, sessions, r
                 <button
                   type="button"
                   className={css.cardRemove}
+                  aria-label={t('history.button')}
+                  aria-expanded={historyFor === card.appId}
+                  onClick={() => { setHistoryFor(historyFor === card.appId ? undefined : card.appId); setHistoryNote(undefined) }}
+                >
+                  {'⌛'}
+                </button>
+                <button
+                  type="button"
+                  className={css.cardRemove}
                   aria-label={t('launcher.remove').replace('{name}', card.name)}
                   title={armedRemoval === card.appId ? t('launcher.remove.confirm').replace('{name}', card.name) : t('launcher.remove').replace('{name}', card.name)}
                   aria-pressed={armedRemoval === card.appId}
@@ -340,6 +381,27 @@ export function StageShell({ phone, stageWidth, dockOpen, t, layout, sessions, r
                 >
                   {armedRemoval === card.appId ? '!' : '×'}
                 </button>
+              </div>
+              {historyFor === card.appId && (
+                <div className={css.historyPanel} role="group" aria-label={t('history.title')}>
+                  {historyRows.length === 0 && <div className={css.menuHint}>{t('history.empty')}</div>}
+                  {historyRows.map(row => (
+                    <div key={`${row.version}-${row.at}`} className={css.historyRow}>
+                      <span className={css.historyVersion}>v{row.version}</span>
+                      <span className={css.historyVia}>{t(`history.via.${row.publishedVia}` as Parameters<typeof t>[0])}</span>
+                      <span className={css.historyDigest} title={row.digest}>{row.digest.slice(0, 8)}</span>
+                      {row.version === card.version
+                        ? <span className={css.historyCurrent}>{t('history.current')}</span>
+                        : (
+                          <button type="button" className={css.control} onClick={() => { rollback(card.appId, row.version) }}>
+                            {t('history.rollback')}
+                          </button>
+                        )}
+                    </div>
+                  ))}
+                  {historyNote !== undefined && <div className={css.menuHint} role="status">{historyNote}</div>}
+                </div>
+              )}
               </div>
             ))}
           </div>

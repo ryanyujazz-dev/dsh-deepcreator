@@ -9,7 +9,8 @@ import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@ryanyujazz/dsh-client-ui-layout/client'
-import type { AppRouterOutcome, AppStageDataChangesResult, AppStageDataGetResult, AppStageDataSetResult, AppStageEnsureResult, AppStagePresenceControlResult, AppStagePresenceSnapshotResult, AppStagePresenceSummaryResult, AppStagePresenceTimelineResult, AppJsonValue, AppStageListResult, AppStageRouterResultAck, AppStageWaitRequestsResult } from '@ryanyujazz/dsh-app-stage/types'
+import type { AppRouterOutcome, AppStageDataChangesResult, AppStageDataGetResult, AppStageDataSetResult, AppStageEnsureResult, AppStagePresenceControlResult, AppStagePresenceSnapshotResult, AppStagePresenceSummaryResult, AppStagePresenceTimelineResult, AppStageRollbackResult, AppJsonValue, AppStageListResult, AppStageRouterResultAck, AppStageWaitRequestsResult } from '@ryanyujazz/dsh-app-stage/types'
+import type { AppHistoryRecord, AppWatermark } from '@ryanyujazz/dsh-app-stage/types'
 
 /** The remote namespace face the shell captures once in apply. */
 export interface AppStageRemote {
@@ -33,10 +34,23 @@ export interface AppStageRemote {
   presenceSummary: (sessionId: SessionId, leaseId: string) => Promise<RemoteResult<AppStagePresenceSummaryResult>>
   /** M5e: the global installed-origin activity feed after a cursor. */
   presenceTimeline: (sessionId: SessionId, sinceSeq: number) => Promise<RemoteResult<AppStagePresenceTimelineResult>>
+  /** M6b: the install history + rollback baseline (user detail view). */
+  installedHistory: (sessionId: SessionId, appId: string) => Promise<RemoteResult<{ ok: true; records: readonly AppHistoryRecord[]; watermark?: AppWatermark } | { ok: false; code: 'NO_WORKSPACE'; message: string }>>
+  /** M6b: roll the current pointer back to a history version (user action). */
+  rollbackInstalled: (sessionId: SessionId, appId: string, version: string) => Promise<RemoteResult<AppStageRollbackResult>>
   /** M5d: the global timeline watermark (seen + head in one read). */
   presenceSeen: (sessionId: SessionId) => Promise<RemoteResult<{ ok: true; seen: number; latest: number }>>
   /** M5d: advance the watermark (clears the activity blue dot). */
   presenceMarkSeen: (sessionId: SessionId, seq: number) => Promise<RemoteResult<{ ok: true; seen: number }>>
+}
+
+/** One install-history row in the detail view (M6b). */
+export interface HistoryRow {
+  readonly version: string
+  readonly digest: string
+  readonly at: string
+  readonly publishedVia: string
+  readonly sourceWorkspace: string
 }
 
 /** One timeline row in the activity view (the shell renders these). */
