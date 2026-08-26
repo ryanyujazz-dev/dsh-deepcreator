@@ -99,6 +99,7 @@ export class AppStageService extends TypertRemoteService {
   constructor(ctx: Context) {
     super(ctx, 'appStage')
     this.statics = new AppStageStaticServer(ctx.webServer)
+    this.statics.setPresenceSource(this.presence)
     this.watchers = new AppStageWatcherSet(ctx)
     ctx.effect(() => () => this.statics.dispose(), 'app-stage: static origins')
     ctx.effect(() => {

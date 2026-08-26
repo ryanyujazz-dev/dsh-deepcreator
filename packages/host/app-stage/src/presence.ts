@@ -47,6 +47,24 @@ export const PRESENCE_TIMELINE_CAP = 500
 /** Emitted summaries kept for late fetches (per coordinator). */
 export const PRESENCE_SUMMARIES_CAP = 50
 
+/** SSE event ring cap (late subscribers replay the recent window). */
+export const PRESENCE_EVENTS_CAP = 100
+
+/**
+ * One app-layer presence event (the injected runtime's sole input). The
+ * payload carries structured fields only — app ids, manifest-declared
+ * action names, states, timings — never free app text (the §3.8 discipline
+ * applied to the wire). The stream is strictly one-way: the runtime has no
+ * callable API, and nothing a page does can produce or alter these events.
+ */
+export interface PresenceEvent {
+  readonly seq: number
+  readonly appId: string
+  readonly kind: 'lease' | 'command'
+  readonly ts: number
+  readonly payload: Readonly<Record<string, string | number | boolean>>
+}
+
 /** The authoritative lease state (§2.2); host stores no render state. */
 export type PresenceLeaseState = 'active' | 'suspended-idle' | 'suspended-user' | 'releasing'
 
@@ -163,6 +181,9 @@ export class PresenceCoordinator {
   private readonly timeline: PresenceTimelineRow[] = []
   private seq = 0
   private disposed = false
+  private eventSeq = 0
+  private readonly events: PresenceEvent[] = []
+  private readonly eventListeners = new Set<{ appId: string | undefined; listener: (event: PresenceEvent) => void }>()
 
   /** Snapshot every live lease for one session (the shell's projection feed). */
   snapshot(sessionId: string): PresenceLeaseSnapshot[] {
@@ -181,6 +202,18 @@ export class PresenceCoordinator {
     return this.summaries.get(leaseId)
   }
 
+  /** Subscribe to the app-layer event stream (SSE consumers). */
+  subscribeEvents(appId: string | undefined, listener: (event: PresenceEvent) => void): () => void {
+    const entry = { appId, listener }
+    this.eventListeners.add(entry)
+    return () => { this.eventListeners.delete(entry) }
+  }
+
+  /** The recent event window (connect-time replay; seq-deduped client-side). */
+  recentEvents(appId?: string): readonly PresenceEvent[] {
+    return this.events.filter(event => appId === undefined || event.appId === appId)
+  }
+
   /** Command start: open/renew the lease and refocus — the fast light. */
   commandStarted(sessionId: string, start: PresenceCommandStart): string | undefined {
     if (this.disposed) return undefined
@@ -189,6 +222,7 @@ export class PresenceCoordinator {
     // A user-interrupted lease records but stays suspended (X1: no clawback).
     lease.lastCommandAt = Date.now()
     lease.focus = { appId: start.appId, name: start.appName, ...(start.version !== undefined ? { version: start.version } : {}) }
+    this.emit(start.appId, 'command', { phase: 'start', commandKind: start.kind, ...(start.action !== undefined ? { action: start.action } : {}) })
     this.roster(lease, start)
     if (lease.kind === 'macro') {
       // Renewal requires a new command and re-arms the budget (§2.1).
@@ -204,6 +238,7 @@ export class PresenceCoordinator {
   /** Command settlement: append the ledger row and the timeline entry. */
   commandSettled(sessionId: string, record: PresenceActionRecord): void {
     if (this.disposed) return
+    this.emit(record.appId, 'command', { phase: 'settled', commandKind: record.kind, outcome: record.outcome, ...(record.action !== undefined ? { action: record.action } : {}) })
     const lease = this.leases.get(sessionId)
     if (lease !== undefined) {
       if (lease.actions.length < PRESENCE_ACTIONS_CAP) lease.actions.push(record)
@@ -252,6 +287,7 @@ export class PresenceCoordinator {
     }
     lease.kind = 'macro'
     lease.delegated = delegated
+    this.emit(app.appId, 'lease', { phase: 'active', leaseKind: 'macro', delegated })
     lease.startedAt = now
     lease.lastCommandAt = now
     lease.expiresAt = now + budget
@@ -270,6 +306,7 @@ export class PresenceCoordinator {
     if (lease.state === 'suspended-user') return true
     lease.userInterrupt = { at: Date.now(), actionsBefore: lease.actions.length }
     lease.state = 'suspended-user'
+    this.emit(this.focusApp(lease), 'lease', { phase: 'suspended-user', leaseKind: lease.kind })
     lease.waitingApprove = undefined
     this.armIdle(lease) // silence still suspends-and-releases underneath
     return true
@@ -281,6 +318,7 @@ export class PresenceCoordinator {
     if (lease === undefined || lease.state !== 'suspended-user') return false
     lease.state = 'active'
     lease.lastCommandAt = Date.now()
+    this.emit(this.focusApp(lease), 'lease', { phase: 'active', leaseKind: lease.kind })
     if (lease.kind === 'macro') {
       const budget = lease.delegated ? PRESENCE_MACRO_DELEGATED_BUDGET_MS : PRESENCE_MACRO_AI_BUDGET_MS
       lease.expiresAt = lease.lastCommandAt + budget
@@ -334,9 +372,27 @@ export class PresenceCoordinator {
       if (lease.expiryTimer !== undefined) clearTimeout(lease.expiryTimer)
     }
     this.leases.clear()
+    this.events.length = 0
+    this.eventListeners.clear()
   }
 
   // -----------------------------------------------------------------------
+
+  /** Publish one app-layer event (ring-buffered + fan-out; structured only). */
+  private emit(appId: string, kind: PresenceEvent['kind'], payload: Readonly<Record<string, string | number | boolean>>): void {
+    if (this.disposed) return
+    this.eventSeq += 1
+    const event: PresenceEvent = { seq: this.eventSeq, appId, kind, ts: Date.now(), payload }
+    this.events.push(event)
+    if (this.events.length > PRESENCE_EVENTS_CAP) this.events.splice(0, this.events.length - PRESENCE_EVENTS_CAP)
+    for (const entry of this.eventListeners) {
+      if (entry.appId === undefined || entry.appId === appId) entry.listener(event)
+    }
+  }
+
+  private focusApp(lease: Lease): string {
+    return lease.focus?.appId ?? lease.apps.keys().next().value ?? ''
+  }
 
   private openMicro(sessionId: string, start: PresenceCommandStart): Lease {
     const lease: Lease = {
@@ -400,6 +456,7 @@ export class PresenceCoordinator {
     if (lease.idleTimer !== undefined) clearTimeout(lease.idleTimer)
     if (lease.expiryTimer !== undefined) clearTimeout(lease.expiryTimer)
     lease.state = 'releasing'
+    this.emit(this.focusApp(lease), 'lease', { phase: 'released', leaseKind: lease.kind })
     const summary = this.fold(lease)
     if (keepSummary) {
       this.summaries.set(summary.leaseId, summary)
