@@ -65,6 +65,34 @@ function routerWith(remote?: AppStageRemote): StageRouterApi {
   }, () => (() => {}) as unknown as import('../../src/client/bridge.ts').BridgeHandle)
 }
 
+
+// React 19 ignores a cleanup returned from a callback ref: attaching the
+// bridge there never detaches, and a remount stacks a second dispatch
+// path on the same frame (one invoke executes twice). The shell binds
+// through useEffect — one attach per (frame, container), detach on swap.
+it('binds the container frame once and rebinds on container swap', async () => {
+  const bound: string[] = []
+  const detached: string[] = []
+  const remote = remoteWith([])
+  const factory = (frame: HTMLIFrameElement, ref: string): import('../src/client/bridge.ts').BridgeHandle => {
+    void frame
+    const n = bound.length + detached.length + 1
+    bound.push(`${ref}#${n}`)
+    return Object.assign(() => { detached.push(`${ref}#${n}`) }, {
+      actions: new Set<string>(),
+      waitForAction: async () => {},
+      invoke: async () => ({ ok: true, result: null }),
+    }) as unknown as import('../src/client/bridge.ts').BridgeHandle
+  }
+  const router = createStageRouter({ remote, session: () => undefined, onActivity: () => {}, onPresent: () => {} }, factory as unknown as never)
+  render(<StageShell {...props({ remote, router, sessions: session('s1') })} />)
+  router.openFromUser({ appId: 'a', name: 'a', version: '0.1.0', url: '/x', dev: false, ref: 'a' })
+  await waitFor(() => { expect(bound).toEqual(['a#1']) })
+  router.openFromUser({ appId: 'b', name: 'b', version: '0.1.0', url: '/y', dev: false, ref: 'b' })
+  await waitFor(() => { expect(detected()).toBe(true) })
+  function detected(): boolean { return detached.length >= 1 && bound.length === 2 }
+})
+
 afterEach(cleanup)
 
 describe('StageShell desktop', () => {

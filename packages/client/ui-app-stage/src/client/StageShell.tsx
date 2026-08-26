@@ -151,7 +151,17 @@ export function StageShell({ phone, stageWidth, dockOpen, t, layout, sessions, r
   // closes or swaps. The key makes a swap a remount, so the callback ref
   // re-runs and the old bridge can never observe a swapped document.
   const containerRef = container?.ref
+  const frameRef = useRef<HTMLIFrameElement | null>(null)
   const frameCallback = useCallback((frame: HTMLIFrameElement | null) => {
+    frameRef.current = frame
+  }, [])
+  // Bind through an effect, not the callback ref's return value: React 19
+  // ignores a cleanup returned from a callback ref, so a bridge attached
+  // there never detaches — a remount would stack a second dispatch path on
+  // the same frame (double execution of one invoke). The effect tears the
+  // binding down on every dependency change and unmount.
+  useEffect(() => {
+    const frame = frameRef.current
     if (frame === null || containerRef === undefined) return
     return router.bindFrame(containerRef, frame)
   }, [router, containerRef])
