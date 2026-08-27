@@ -137,8 +137,16 @@ export function StageShell({ phone, stageWidth, dockOpen, t, layout, sessions, r
     let cancelled = false
     void remote.installedHistory(sessionId, historyFor).then((wire: RemoteResult<{ ok: true; records: readonly { version: string; digest: string; at: string; publishedVia: string; sourceWorkspace: string }[]; watermark?: { version: string; digest: string; at: string } } | { ok: false; code: 'NO_WORKSPACE'; message: string }>) => {
       if (cancelled || !wire.ok || !wire.value.ok) return
+      // Newest-first, deduped per version (latest entry wins): a rollback
+      // appends a second entry for the rolled-back-to version, and showing
+      // both would render two 'current' markers and dead rollback buttons.
       const rows = wire.value.records.map(record => ({ version: record.version, digest: record.digest, at: record.at, publishedVia: record.publishedVia, sourceWorkspace: record.sourceWorkspace }))
-      setHistoryRows([...rows].reverse())
+      const seen = new Set<string>()
+      setHistoryRows([...rows].reverse().filter(row => {
+        if (seen.has(row.version)) return false
+        seen.add(row.version)
+        return true
+      }))
     }).catch(() => { /* silent: next open retries */ })
     return () => { cancelled = true }
   }, [remote, sessionId, historyFor, scanTick])
