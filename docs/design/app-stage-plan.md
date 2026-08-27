@@ -123,6 +123,20 @@ M4 GUI 验收操作事实（复验时照抄）：GUI 页面刷新会重置 prese
 
 **验收基线**：每批 typecheck 0 错 → 受影响测试 → 全量 249 文件/2673+ 绿 → host+workbench-remotes+agent 三链重建 → dump-config → 真实 GUI 热上架走查（无重建/重启/刷新）。GUI 验收轮次：M6a–M6e 合并一轮（宿主重启一次由用户代劳）。
 
+**M6 GUI 验收记录（2026-08-27，宿主重启后一轮走查，验收夹具 = kanban-demo 遗留安装 0.2.0/0.2.1）**：
+
+1. Launcher 新面：顶栏「导入 ▾」+ 每卡「历史 ⌛」按钮渲染 ✓
+2. 历史面板空态（遗留安装无 history.jsonl）→「还没有历史记录。」✓
+3. 目录导入 0.2.2：表单 → 事实卡（digest 优先：appId+digest 前缀常显、已装版本 v0.2.1、4 文件/7.1KiB）+ 轻确认文案（「版本高于历史最高水位」）→ 确认 → 卡面 v0.2.2 + 来源「来自 022」✓；存储三件套落盘（history 1 条 / maxversion.json 0.2.2 / current via import）✓
+4. 目录导入 0.2.3 → v0.2.3；历史面板两行最新在前、via 徽标、当前标记 ✓
+5. 两步回退到 0.2.2：确认文案明示「数据与日志不动/水位不降」→ 执行 →「已回退到 v0.2.2」+ 卡面回 0.2.2 ✓；磁盘不变量：current=0.2.2(rollback)、**水位保持 0.2.3 不降**、history 追加 rollback 条目（共 3 条）、doc.json mtime 未动（数据不动）✓
+6. 硬审批档：导入 022x（同号 0.2.2、篡改 digest）→ 事实卡警告文案（「不高于历史最高水位，或与历史记录的内容不一致——仅在明确确认后安装」）→ 取消（abort 弃 draft）✓
+7. git 负例：file:// URL → 可行动拒绝（「Only https:// git URLs may be imported」）✓
+8. `app_history` 工具在真实 preset 会话调用成功：3 条历史最新在前 + 水位语义行 ✓
+9. **验收咬出并当场修复**：回退后 history 双 v0.2.2 条目（import+rollback）致双「当前」标记、回退钮缺失——客户端按版本去重（每版本最新条目胜，agent 侧视图不去重）；修复后面板两行单一「当前」+正确回退钮 ✓
+
+遗留说明：git 正例 GUI 未走（需 https 公网仓库夹具；URL 策略全矩阵已单测覆盖，GUI 负例已验）；agent 侧 `app_publish` 水位档未单独驱动（导入路径同一 `resolveImportPlan` 分档已实测硬档）。验收后存储终态：kanban-demo v0.2.2（回退），水位 0.2.3。
+
 **代码事实与文档同步**：app-stage.md v0.0.7（Phase 3 行拆已落地/缓裁；开放问题 8/12/13/17 关闭）；agent-surface v1.0+（app_history 重纳 + app_asset_delete D16 + 操作索引）；capabilities/两份决策备忘录新建；UI_STYLE_GUIDE（历史面板/导入面板/审批卡细节行）；host/client README。
 
 ## 3. 实现期 spike 清单（进入对应里程碑时第一件事）
