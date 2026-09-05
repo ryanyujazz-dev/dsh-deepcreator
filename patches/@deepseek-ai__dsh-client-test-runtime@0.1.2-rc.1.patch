@@ -1,0 +1,14 @@
+diff --git a/lib/index.js b/lib/index.js
+index 000000..000000 100644
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -2,8 +2,7 @@ import { Context, Inject } from "@deepseek-ai/cordis";
+ import { Fragment, createElement, useSyncExternalStore } from "react";
+ import { act, render, within } from "@testing-library/react";
+ import { SlotRegistry } from "@deepseek-ai/dsh-client-ui-renderer/client";
+-import { bindSnapshotSelector as bindSnapshotSelector$1 } from "@deepseek-ai/dsh-client-ui-renderer/src/client/bind.ts";
+-import { createSlotRenderer as createSlotRenderer$1 } from "@deepseek-ai/dsh-client-ui-renderer/src/client/scoped-slots.tsx";
++import { bindSnapshotSelector as bindSnapshotSelector$1, createSlotRenderer as createSlotRenderer$1 } from "@deepseek-ai/dsh-client-ui-renderer/client";
+ import { apply, inject } from "@deepseek-ai/dsh-client-ui-session/client";
+ import { afterEach, beforeEach, expect, vi } from "vitest";
+ import { MutableSessionEventSource, SESSION_SEARCH_RESULT_LIMIT, createScope, scopeOf } from "@deepseek-ai/dsh-api-session-controller/client";

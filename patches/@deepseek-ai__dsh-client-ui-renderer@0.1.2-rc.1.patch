@@ -1,0 +1,26 @@
+diff --git a/lib/client.js b/lib/client.js
+index 000000..000000 100644
+--- a/lib/client.js
++++ b/lib/client.js
+@@ -1443,6 +1443,8 @@ window.__ModuleLoader__.load({
+ 		//#endregion
+ 		exports.SlotRegistry = SlotRegistry;
+ 		exports.apply = apply;
++		exports.bindSnapshotSelector = bindSnapshotSelector;
++		exports.createSlotRenderer = createSlotRenderer;
+ 		exports.inject = inject;
+ 		return module.exports;
+ 	}
+diff --git a/lib/types/client/index.d.ts b/lib/types/client/index.d.ts
+index 000000..000000 100644
+--- a/lib/types/client/index.d.ts
++++ b/lib/types/client/index.d.ts
+@@ -2,6 +2,8 @@ import type { Context } from '@deepseek-ai/cordis';
+ import { SlotRegistry } from './registry.ts';
+ export { SlotRegistry } from './registry.ts';
+ export type { RootOwnerProps } from './registry.ts';
++export { bindSnapshotSelector } from './bind.ts';
++export { createSlotRenderer } from './scoped-slots.tsx';
+ export type { ChainRenderOpts, HostObservable, RenderOpts, SnapshotSelectorHook, SlotRenderer, ScopedStandardSourceBinding, SlotRendererHost, SlotScopeAdapter, StandardSourceBinding, StoreInstanceLike, } from '@deepseek-ai/dsh-client-ui-slots';
+ /** Mount operation exposed to the framework-free boot kernel. */
+ export interface UiRendererService {

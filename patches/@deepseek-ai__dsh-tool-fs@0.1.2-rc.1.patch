@@ -1,8 +1,8 @@
 diff --git a/lib/index.js b/lib/index.js
-index e720306f4f9ce498fe127733e0c95e47ef259cf3..b7a0f27adc0042aa518bbdd06c0cdf46afb15129 100644
+index 000000..000000 100644
 --- a/lib/index.js
 +++ b/lib/index.js
-@@ -501,7 +501,9 @@ function computeHunkDiffs(path, before, after) {
+@@ -500,7 +500,9 @@ function computeHunkDiffs(path, before, after) {
  		diffs.push({
  			path,
  			oldText: oldLines.length > 0 ? oldLines.join("\n") : null,
@@ -13,7 +13,7 @@ index e720306f4f9ce498fe127733e0c95e47ef259cf3..b7a0f27adc0042aa518bbdd06c0cdf46
  		});
  	}
  	return diffs;
-@@ -644,10 +646,12 @@ function applyWriteTool(ctx, sandbox) {
+@@ -643,10 +645,12 @@ function applyWriteTool(ctx, sandbox) {
  				type: "text",
  				text: formatWriteOutput(value.path, value)
  			}],
@@ -28,7 +28,7 @@ index e720306f4f9ce498fe127733e0c95e47ef259cf3..b7a0f27adc0042aa518bbdd06c0cdf46
  			})) })
  		},
  		async execute(args, exec) {
-@@ -793,10 +797,12 @@ function applyEditTool(ctx, sandbox) {
+@@ -792,10 +796,12 @@ function applyEditTool(ctx, sandbox) {
  				type: "text",
  				text: formatEditOutput(value.path, args.replace_all ?? false)
  			}],
@@ -43,14 +43,14 @@ index e720306f4f9ce498fe127733e0c95e47ef259cf3..b7a0f27adc0042aa518bbdd06c0cdf46
  			})) })
  		},
  		async execute(args, exec) {
-@@ -1234,4 +1240,4 @@ function apply(ctx, config) {
+@@ -1280,4 +1286,4 @@ function apply(ctx, config) {
  	applyEditTool(ctx, sandbox);
  }
  //#endregion
 -export { Config, apply, inject, name };
 +export { Config, apply, computeHunkDiffs, inject, name };
 diff --git a/lib/types/index.d.ts b/lib/types/index.d.ts
-index 3a246680d60d03c0eefd49a64eb14a7663ce6e77..98e407039a1589dd1a0e9b5011dbf730efac3c13 100644
+index 000000..000000 100644
 --- a/lib/types/index.d.ts
 +++ b/lib/types/index.d.ts
 @@ -6,6 +6,7 @@
