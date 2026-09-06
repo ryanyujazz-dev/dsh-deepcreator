@@ -80,9 +80,6 @@
     - id: deepcreator-artifacts
       name: '@ryanyujazz/dsh-artifacts'
 
-    - id: deepcreator-app-stage
-      name: '@ryanyujazz/dsh-app-stage'
-
     - id: deepcreator-remote-access
       name: '@ryanyujazz/dsh-remote-access'
 
@@ -127,9 +124,6 @@
 
     - id: deepcreator-conversation
       name: '@ryanyujazz/dsh-client-ui-conversation'
-
-    - id: deepcreator-app-stage-ui
-      name: '@ryanyujazz/dsh-client-ui-app-stage'
 
     - id: deepcreator-workbench
       name: '@ryanyujazz/dsh-client-ui-workbench'
