@@ -4,7 +4,7 @@ import {
   type ContextMessageNode,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ForkTranslate } from '../locales.ts'
-import { DisclosureRow, IconBrowseOutline16 } from '@ryanyujazz/dsh-client-ui-primitives'
+import { DisclosureRow, IconContextInjectionOutline16, ReferenceIcon } from '@ryanyujazz/dsh-client-ui-primitives'
 import { contextBody } from './ContextBody.tsx'
 import css from './ContextInjectionRow.module.css'
 
@@ -44,7 +44,12 @@ export function ContextInjectionRow({ content, source, provenance, form, execflo
     <DisclosureRow
       className={clsx(css.root, execflow === true && css.execflow)}
       rowClassName={css.row}
-      icon={<IconBrowseOutline16 size={14} />}
+      // Official parity: a plain context injection carries the dedicated
+      // context glyph; a recall (a session-memory reference pulled back in)
+      // swaps to the session reference mark instead.
+      icon={provenance.role === 'recall'
+        ? <span data-context-recall-icon><ReferenceIcon kind="session" /></span>
+        : <IconContextInjectionOutline16 size={14} />}
       chevronClassName={css.chevron}
       titleClassName={css.title}
       title={t(provenance.role === 'recall' ? 'message.contextRecall' : 'message.contextInjection')}
