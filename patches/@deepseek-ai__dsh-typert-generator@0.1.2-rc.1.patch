@@ -1,7 +1,7 @@
 diff --git a/lib/types/analyzer.js b/lib/types/analyzer.js
-index 0d4c5fb58c8782abd5d8001f38da2bf048f70d2f..c50c85d1fb4db291436625175082a37d23eec513 100644
+index 0d4c5fb58c8782abd5d8001f38da2bf048f70d2f..9a058a702e1482a02450143712689b3888d38e2b 100644
 --- a/lib/types/analyzer.js
-+++ b/lib/types/analyzer.js
++++ b/lib/types/analyzer.js	
 @@ -1204,7 +1204,8 @@ class FaceAnalyzer {
                      const declaration = preferredDeclaration(resolved);
                      if (declaration !== undefined
@@ -50,7 +50,7 @@ index 0d4c5fb58c8782abd5d8001f38da2bf048f70d2f..c50c85d1fb4db291436625175082a37d
          const registration = this.registrationForFile(declaration.getSourceFile().fileName);
          if (registration?.name === '@deepseek-ai/dsh-typert-protocol')
              return true;
-+        if (realPath(declaration.getSourceFile().fileName).includes('/node_modules/@deepseek-ai/dsh-typert-protocol/'))
++        if (npmOfficialPackageOf(realPath(declaration.getSourceFile().fileName))?.name === '@deepseek-ai/dsh-typert-protocol')
 +            return true;
          for (let current = declaration; current !== undefined; current = optionalParent(current)) {
              if (ts.isModuleDeclaration(current)
@@ -84,20 +84,23 @@ index 0d4c5fb58c8782abd5d8001f38da2bf048f70d2f..c50c85d1fb4db291436625175082a37d
      packageNameForFile(file) {
          const path = realPath(file);
          return this.allRegistrations.find(registration => isWithin(path, registration.root))?.name ?? '<external>';
-@@ -2449,6 +2470,19 @@ function sourcePathForExport(packageRoot, target) {
+@@ -2449,6 +2470,22 @@ function sourcePathForExport(packageRoot, target) {
      }
      return resolve(packageRoot, normalized);
  }
 +
 +function npmOfficialPackageOf(file) {
++    // Windows realPath() yields backslash separators; normalize before matching
++    // the POSIX-style /node_modules/ marker so platform paths resolve equally.
++    const normalized = file.replaceAll('\\', '/');
 +    const marker = '/node_modules/';
-+    const at = file.lastIndexOf(marker);
++    const at = normalized.lastIndexOf(marker);
 +    if (at < 0) return undefined;
-+    const rest = file.slice(at + marker.length);
++    const rest = normalized.slice(at + marker.length);
 +    const match = rest.match(/^(@[^/]+\/[^/]+)\//) ?? rest.match(/^([^@][^/]*)\//);
 +    if (match === undefined || match === null || !match[1].startsWith('@deepseek-ai/')) return undefined;
 +    const name = match[1];
-+    const packageRoot = file.slice(0, at + marker.length + name.length);
++    const packageRoot = normalized.slice(0, at + marker.length + name.length);
 +    return { name, packageRoot };
 +}
 +
