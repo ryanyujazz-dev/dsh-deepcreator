@@ -4,7 +4,9 @@ import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ToolResultNode } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type ToolResultNode,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { ImageToolRow } from '../src/client/ImageToolRow.tsx'
 import { GeneratedTurnImages } from '../src/client/GeneratedTurnImages.tsx'
 
@@ -63,13 +65,14 @@ describe('GeneratedTurnImages', () => {
       ['call:image-1', { kind: 'tool-call', data: { root: result } }],
       ['call:image-2', { kind: 'tool-call', data: { root: second } }],
     ])
-    const snapshot = { chat: { locations: { getTurn: () => [...nodes.keys()] }, nodes } }
+    const chat = { locations: { getTurn: () => [...nodes.keys()] }, nodes }
     const renderMessageImages = vi.fn(() => <span data-final-image />)
     const view = render(
       <GeneratedTurnImages
         turn={{ turn: 1 } as never}
         renderMessageImages={renderMessageImages}
-        useSession={((selector: (value: typeof snapshot) => unknown) => selector(snapshot)) as never}
+        useConversation={((selector: (value: { views: { get: (target: string) => unknown } }) => unknown) =>
+          selector({ views: { get: (target: string) => target === 'chat' ? chat : undefined } })) as never}
       />,
     )
 

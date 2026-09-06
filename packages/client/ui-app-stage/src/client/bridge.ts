@@ -24,7 +24,9 @@
  * trust boundary).
  * @module @ryanyujazz/dsh-client-ui-app-stage/client/bridge
  */
-import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { AppStageDataChangesResult, AppStageDataGetResult, AppStageDataSetResult, AppJsonValue } from '@ryanyujazz/dsh-app-stage/types'
 import type { AppStageRemote } from './contract.ts'

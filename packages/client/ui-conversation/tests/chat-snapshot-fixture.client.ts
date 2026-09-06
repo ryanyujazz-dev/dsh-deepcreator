@@ -1,9 +1,21 @@
-import type {
-  AssistantMessageNode, ChatConversationViewNode, ChatSnapshot, ConversationNode,
-  ChatLocationNodeIndex, ChatNodeStore, CompactionSummaryNode, ConversationLocationDataStore,
-  ConversationTurnDataMap, LegacyConversationSlice, PartialAssistant, RunningToolCall,
-  ToolCallBlock, TurnLocation,
-} from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type AssistantMessageNode,
+  type CompactionSummaryNode,
+  type ConversationLocationDataStore,
+  type ConversationNode,
+  type ConversationTurnDataMap,
+  type PartialAssistant,
+  type RunningToolCall,
+  type ToolCallBlock,
+  type TurnLocation,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import {
+  type ChatConversationViewNode,
+  type ChatLocationNodeIndex,
+  type ChatNodeStore,
+  type ChatSnapshot,
+  type LegacyConversationSlice,
+} from '@deepseek-ai/dsh-client-ui-chat/client'
 import { deriveTurnMetrics } from '../src/client/chat/turn-metrics.ts'
 
 const EMPTY: readonly never[] = []

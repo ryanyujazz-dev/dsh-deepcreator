@@ -1,55 +1,55 @@
 /** Conversation slot declarations and their composed component props. */
-import type { ReactNode, RefObject } from 'react'
+import type { ReactNode } from 'react'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type {
-  InjectFace, MaybeSnapshotSelectorHook, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore,
-  SlotHookFactory, SnapshotSelectorHook,
+  InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore,
 } from '@deepseek-ai/dsh-client-ui-slots'
 import type {
-  CommandNode, CompactionSummaryNode, ConversationSnapshot, ConversationTurnDataMap,
-  ObservableSnapshot, PendingInteraction, PendingWait, SessionId,
-  TurnLocation, WorkspaceId,
-} from '@deepseek-ai/dsh-client-runtime/client'
+  ObservableSnapshot,
+} from '@deepseek-ai/dsh-client-store'
+import type {
+  PendingWait,
+} from '@ryanyujazz/dsh-client-compat'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type {
+  ChatNodeKind, TurnTailOwnerProps,
+} from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { MarkdownFileMentions } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { SettingsGeneralItemOwnerProps } from '@ryanyujazz/dsh-client-ui-settings/client'
-import type { MessageId } from '@deepseek-ai/dsh-client-connection/client'
 import type {} from '@ryanyujazz/dsh-client-ui-layout/client'
 import type { ComposerBlock } from '../input/blocks.ts'
 import type {
-  ComposerKeyboard, DraftAttachmentId, EditSelection, InputActions, InputNotice, InputState,
+  ComposerKeyboard, DraftAttachmentId, EditSelection, InputNotice,
 } from '../input/contract.ts'
 import type { createChatStore } from '../stores.ts'
 import type { ComposerSubmitGesture, InputSubmitMode } from './composer-submission.ts'
-import type { ChatNode, ChatNodeKind } from './chat-nodes.ts'
 import type { CallId, ViewTab } from './views.ts'
 import type { ConversationRenderMode } from '../../submission-settings.ts'
 
+/**
+ * Slot names owned by the official 0.1.2 packages (`dsh-client-ui-conversation`
+ * and `dsh-client-ui-chat`) are deliberately NOT redeclared here — duplicate
+ * SlotMap merges with different shapes are a compile error, and this package
+ * renders INTO those official entries. The official owner types are reused,
+ * extended where noted with the fork-only members below.
+ */
+
 /** Browser-owned image that has not crossed the durable host boundary. */
-export interface ComposerAttachment {
-  kind: 'image'
-  id: DraftAttachmentId
-  file: File
-  previewUrl: string
-}
+export type ComposerAttachment =
+  import('@deepseek-ai/dsh-client-ui-conversation/client').ComposerAttachment
 
 /** Draft-image state handed to the retained official attachment presenter. */
-export interface ComposerAttachmentsOwnerProps {
-  attachments: readonly ComposerAttachment[]
-  canAcceptDrop: boolean
-  onAddImages: (files: readonly File[]) => void
-  onRemoveImage: (id: DraftAttachmentId) => void
-  dropLimits?: { readonly count: number; readonly size: string } | undefined
-}
+export type ComposerAttachmentsOwnerProps =
+  import('@deepseek-ai/dsh-client-ui-conversation/client').ComposerAttachmentsOwnerProps
 
 /** Durable message images handed to the retained official attachment presenter. */
-export interface MessageImagesOwnerProps {
-  images: readonly { readonly attachment: ImageAttachmentRef }[]
-  loadImage: (attachment: ImageAttachmentRef) => Promise<string>
-  align: 'start' | 'end'
-}
+export type MessageImagesOwnerProps =
+  import('@deepseek-ai/dsh-client-ui-conversation/client').MessageImagesOwnerProps
 
 /** Slot-backed image renderer; conversation owns data, attachment owns React. */
-export type RenderMessageImages = (owner: Omit<MessageImagesOwnerProps, 'loadImage'>) => ReactNode
+export type RenderMessageImages =
+  import('@deepseek-ai/dsh-client-ui-conversation/client').RenderMessageImages
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
@@ -63,24 +63,6 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
       owner: SettingsGeneralItemOwnerProps
     }
     /**
-     * The entire body of one session: taking this seat means rendering that
-     * session's conversation yourself. The occupant also owns the per-session
-     * draft mirror and the active view ring, so a replacement inherits both
-     * duties and an empty one leaves a blank session pane — nothing here
-     * degrades gracefully. To ADD rather than replace, take a seat inside the
-     * flow instead: `conversation.view` for a whole tab, the input regions for
-     * composer chrome.
-     */
-    'conversation.session': { kind: 'single'; scope: 'session'; owner: ConversationSessionOwnerProps }
-    /**
-     * The strip above the session's scrollport: title, view tabs, and the
-     * action row. Taking this seat means rendering all three yourself, and it
-     * also collapses `conversation.session.header.actions` — that additive
-     * seat is declared by whoever occupies this one, so replacing the header
-     * takes every action entry down with it.
-     */
-    'conversation.session.header': { kind: 'single'; scope: 'session' }
-    /**
      * Per-session activity chips directly under the session header — the
      * visibility outlet for background agent work on installed apps (the
      * App Stage's invoke-activity signal lives here in conversation mode).
@@ -89,30 +71,6 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * own inject face. An empty seat is invisible.
      */
     'conversation.activity.chip': { kind: 'list'; scope: 'session' }
-    /**
-     * One button in the session header's action row — the additive way to put
-     * a per-session control beside the title without replacing the header.
-     * Entries render by ascending `order`; negative values are reserved for
-     * static session context that precedes interactive actions. The owner
-     * passes nothing: everything a control needs comes from the framework
-     * session kit (`sessionId`, `useSession`, `useInput`, `inputActions`) and
-     * from the registrant's own inject face, so an empty owner share means
-     * self-sufficient, not starved.
-     */
-    'conversation.session.header.actions': { kind: 'list'; scope: 'session'; owner: ConversationHeaderActionOwnerProps }
-    /**
-     * Right-aligned Session utilities kept outside the title-adjacent action
-     * group, so an optional utility cannot reorder session context or lineage.
-     */
-    'conversation.session.header.utilities': { kind: 'list'; scope: 'session'; owner: ConversationHeaderUtilityOwnerProps }
-    /**
-     * The conversation view ring: one list entry per view tab (chat here;
-     * trajectory/waterfall from ui-trajectory), rendered one-at-a-time by
-     * the session body via `only: <active id>`. Declared by this package's
-     * body entry (declaring is claiming). Session scope: views read the
-     * conversation snapshot through the standard kit.
-     */
-    'conversation.view': { kind: 'list'; scope: 'session'; owner: ConvViewOwnerProps }
     /**
      * Root adapter for an explicitly addressed, non-navigating child Session.
      * It declares one strict-session surface so the framework supplies the
@@ -129,37 +87,18 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
       scope: 'session'
       owner: ConversationEmbedSurfaceOwnerProps
     }
-    /** Final business node renderer, dispatched by `ChatConversationViewNode.kind`. */
-    'conversation.chat.node': {
-      kind: 'keyed'
-      scope: 'session'
-      owner: ChatNodeOwnerProps
-      keyProps: { [Kind in ChatNodeKind]: { node: ChatNode<Kind> } }
-      hookContext: string
-      inject: ChatNodeTurnDataInjected
-    }
-    /** Optional official renderer for one consecutive group of durable images. */
-    'conversation.message.images': {
+    /**
+     * Fork-private replacement for the official owner-less
+     * `conversation.session` seat: the entire body of one session, with the
+     * render-occurrence owner share the official entry cannot carry. The
+     * occupant also owns the per-session draft mirror and the active view
+     * ring, so a replacement inherits both duties.
+     */
+    'deepcreator.conversation.session': {
       kind: 'single'
       scope: 'session'
-      owner: MessageImagesOwnerProps
+      owner: ConversationSessionOwnerProps
     }
-    /**
-     * The chat view's per-command row hole: keyed dispatch on the command
-     * name (`command/run.name`; a run-less cross-window node has none and
-     * always lands on the fallback). Declared by the chat view entry; the
-     * render site dispatches via `entryKey: name` with GenericCommandCard as
-     * the `fallback` — a slash command renders durably with zero
-     * registration, and a domain upgrades by registering one row component.
-     */
-    'conversation.chat.commandview': { kind: 'keyed'; scope: 'session'; owner: CommandRowOwnerProps }
-    /**
-     * The completed Turn Node's extension chain, rendered before that Node's
-     * IconActions. Entries derive a match from the engine-owned Turn and
-     * closing seq before mounting, so presentation components never mount
-     * only to return null; an all-declined chain renders nothing.
-     */
-    'conversation.chat.turnTail': { kind: 'chain'; scope: 'session'; owner: TurnTailOwnerProps }
     /** Generated media rendered independently before the produced-files card. */
     'deepcreator.conversation.chat.turnMedia': {
       kind: 'list'
@@ -179,18 +118,6 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
       owner: TurnTailOwnerProps
     }
     /**
-     * Action strip attached to one finalized assistant message, rendered
-     * inside that message's IconActions row. The chat entry owns the render
-     * site and passes the addressed message identity; contributors add
-     * per-message actions without importing the conversation implementation.
-     * Entries render by ascending `order`.
-     */
-    'conversation.chat.assistant-actions': {
-      kind: 'list'
-      scope: 'session'
-      owner: AssistantActionOwnerProps
-    }
-    /**
      * The chat view's render-mode ring: one list entry per rendering mode
      * (this package ships `normal`; a plugin adds an alternative mode with a
      * fresh id, and reusing the shipped id puts it in THAT cell and replaces
@@ -206,138 +133,19 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
       scope: 'session'
       owner: ChatRenderOwnerProps
     }
-    /**
-     * The composer takeover chain: entries are selector-routed replacements
-     * of the default InputBar. Declared by this package's 'conversation'
-     * entry; the owner dispatches the {@link ComposerChainProps} currency and
-     * routing lives in entry selectors — new takeover kinds register with
-     * zero owner changes.
-     */
-    'conversation.composer': { kind: 'chain'; scope: 'session'; owner: ComposerChainProps }
-    /**
-     * The hero-phase Workspace picker hole: rendered by ConversationRoot
-     * while the session is blank (picking another workspace switches to that
-     * workspace's blank session, draft carried). Root scope: the picker
-     * reads the global workspace list.
-     */
-    'conversation.hero.workspace': { kind: 'single'; scope: 'root'; owner: EmptyWorkspaceOwnerProps }
-    /**
-     * The agent-preset chip beside the workspace picker on the new-session
-     * screen. Root scope: no session exists yet, so the choice is staged for
-     * the next one rather than applied to a current one.
-     */
-    'conversation.hero.agentPreset': { kind: 'single'; scope: 'root'; owner: HeroAgentPresetOwnerProps }
-    // 'conversation.input.overlay' merges in ui-input-trigger (the dependency
-    // direction is the hard constraint — ui-input-trigger cannot import
-    // this package, while this package's input contract already imports
-    // ui-input-trigger, so the type arrives transitively). The runtime declaration
-    // (children table in apply.ts) stays here with the other input slots.
-    /**
-     * A full-width row of its own, stacked above the composer card — the seat
-     * for anything that needs a line to itself (queue rows, a todo strip, a
-     * goal bar). Pick this over the three seats below when your content wraps
-     * or carries prose; pick `conversation.composer.dock` for an ambient
-     * readout under the card, and `conversation.input.left` /
-     * `.right` for a small control INSIDE the card's tool row.
-     * Read only `session`/`input` off the owner share ({@link InputZone}) —
-     * both are point-in-time snapshots re-rendered for you, never subscribe.
-     */
-    'conversation.input.dock': { kind: 'list'; scope: 'session'; owner: InputZone }
-    /**
-     * The band under the composer card, inside the bar's width column — the
-     * seat for an ambient readout about the conversation (the shipped stats
-     * line lives here). Same {@link InputZone} owner share as the other
-     * regions. Anything the user must click belongs in the tool row instead
-     * (`conversation.input.left` / `.right`); anything needing its own line
-     * above the card belongs in `conversation.input.dock`.
-     */
-    'conversation.composer.dock': { kind: 'list'; scope: 'session'; owner: InputZone }
-    /**
-     * The left end of the tool row INSIDE the composer card, after the
-     * resident chrome (access mode, plan, attach) — the seat for a small
-     * always-visible control. Entries sit beside that chrome, never replace
-     * it. Same {@link InputZone} owner share; use `.right` for a control that
-     * belongs next to the send button, and the docks for anything taller than
-     * one row.
-     */
-    'conversation.input.left': { kind: 'list'; scope: 'session'; owner: InputZone }
-    /**
-     * The right end of the same tool row, before the primary send button —
-     * the seat for a control the user reaches on the way to sending (the
-     * model select sits in its own named seat just left of here). Same
-     * {@link InputZone} owner share and the same one-row height budget as
-     * `conversation.input.left`.
-     */
-    'conversation.input.right': { kind: 'list'; scope: 'session'; owner: InputZone }
-    /**
-     * The default composer body: a single slot rendered as the composer
-     * chain's fallback (a real entry, not a chain rider, so a
-     * takeover election hides rather than unmounts it and the textarea DOM
-     * survives). Session-maybe: the bar stays mounted across the
-     * no-session/session transition — the no-workspace hero renders the SAME
-     * textarea DOM as a read-only Workspace-picker trigger instead of a
-     * parallel inert tree — with the machine hooks absent until a session is
-     * current. InputBar registers
-     * here from this package's apply; its machine state arrives through the
-     * standard provide channel (useInput + inputActions), the keyboard
-     * command face through its own inject.
-     */
-    'conversation.composer.bar': { kind: 'single'; scope: 'session-maybe'; owner: ComposerBarOwnerProps }
-    /** Optional official draft-image rail, drop target, and preview surface. */
-    'conversation.input.attachments': {
-      kind: 'single'
-      scope: 'session-maybe'
-      owner: ComposerAttachmentsOwnerProps
-    }
-    /**
-     * The named plan-status seat in the composer tool row, immediately right
-     * of the access-mode control — one occupant, so taking it means rendering
-     * the plan affordance yourself. The owner passes only `locked` (see
-     * {@link InputControlOwnerProps}): honour it by refusing interaction, and
-     * take everything else from the framework session kit or your own inject.
-     * Unoccupied, the seat renders nothing at all — the bar paints no
-     * placeholder, so an absent plan plugin costs no layout.
-     */
-    'conversation.input.plan': { kind: 'single'; scope: 'session'; owner: InputControlOwnerProps }
-    /**
-     * The named model-select seat at the right end of the composer tool row,
-     * left of the send button — one occupant, so taking it means rendering the
-     * whole model affordance yourself. Same `locked`-only owner share and same
-     * renders-nothing-while-empty contract as the plan seat. Note the composer
-     * deliberately keeps this seat LIVE while it refuses text for a
-     * model-related block: every such block is one the user clears by picking
-     * a model here.
-     */
-    'conversation.input.model': { kind: 'single'; scope: 'session'; owner: InputControlOwnerProps }
-  }
-
-  /**
-   * ui-conversation's members of the session standard kit, provided through
-   * `sessions.provide`: every session-scope slot component
-   * receives the input machine's state hook and the two public actions.
-   */
-  interface SessionStandardProps {
-    /** Selector hook over the session's live input machine state. */
-    useInput: SnapshotSelectorHook<InputState>
-    /** The public input action face (stable identity per session). */
-    inputActions: InputActions
-  }
-
-  /** Input members for the resident composer while current session is optional. */
-  interface SessionMaybeStandardProps {
-    useInput: MaybeSnapshotSelectorHook<InputState>
-    inputActions: InputActions | undefined
   }
 }
 
 /** Owner share of the hero agent-preset chip: the shell supplies nothing. */
-export interface HeroAgentPresetOwnerProps {
-  /** Marker field: the chip owns its own roster, staging, and menu state. */
-  children?: never
-}
+export type { HeroAgentPresetOwnerProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 
-/** Header actions derive their state from the standard session/global kit. */
-export interface ConversationHeaderActionOwnerProps {}
+/**
+ * Header actions derive their state from the standard session/global kit.
+ * The fork's Session-header utilities read the optional `panelControls`
+ * placement hint; merged into the official owner share so the render site
+ * (this package's header) can pass it.
+ */
+export type { ConversationHeaderActionOwnerProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 
 /** Placement contract for right-aligned Session Header utility entries. */
 export interface ConversationHeaderUtilityOwnerProps {
@@ -346,29 +154,80 @@ export interface ConversationHeaderUtilityOwnerProps {
 }
 
 /**
- * The input-region slot currency: dock/left/right entries read
- * the conversation snapshot and the live input state as owner props (both
- * are point-in-time snapshots — the dispatching skeleton re-renders on
- * either store's change, so entries stay current without subscribing).
+ * Fork-only members merged into the official header-action owner share:
+ * the Session header's utilities renderer passes the placement hint through.
  */
-export interface InputZone {
-  readonly session: ConversationSnapshot
-  readonly input: InputState
+declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
+  interface ConversationHeaderActionOwnerProps {
+    /** Workbench utilities placement: every type button, or one Panel menu. */
+    panelControls?: 'expanded' | 'compact'
+  }
 }
 
 /**
- * View-slot owner share: the cross-view inspect handoff (otherwise views need
- * nothing from the render site — sessionId and the snapshot hook arrive as
- * framework-standard props; tool rows go through each view's own declared
- * toolview hole).
+ * The input-region slot currency: dock/left/right entries read
+ * the session snapshot and the live input state as owner props (both
+ * are point-in-time snapshots — the dispatching skeleton re-renders on
+ * either store's change, so entries stay current without subscribing).
+ * The official entry now keys `session` on the Session Controller snapshot
+ * (the queue projection included).
  */
-export interface ConvViewOwnerProps {
-  /** Render occurrence used to isolate scroll memory across simultaneous surfaces. */
-  surfaceId?: string
-  /** One-shot inspect request from another view (chat's Inspect button); null when idle. */
-  inspect?: { callId: CallId } | null
-  /** Acknowledge the inspect request once applied (clears the store field). */
-  onInspectDone?: () => void
+export type { InputZone } from '@deepseek-ai/dsh-client-ui-conversation/client'
+
+/**
+ * Fork-only members merged into the official Conversation-view owner share:
+ * the cross-view inspect handoff and the render-occurrence id used to
+ * isolate scroll memory across simultaneous surfaces.
+ */
+declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
+  interface ConvViewOwnerProps {
+    /** Render occurrence used to isolate scroll memory across simultaneous surfaces. */
+    surfaceId?: string
+    /** One-shot inspect request from another view (chat's Inspect button); null when idle. */
+    inspect?: { callId: CallId } | null
+    /** Acknowledge the inspect request once applied (clears the store field). */
+    onInspectDone?: () => void
+  }
+}
+
+/**
+ * Fork-only members merged into the official Chat-node owner share: the
+ * review-surface handoff, the session-authorized image loader, and the
+ * think display form consumed by the fork's render modes.
+ */
+declare module '@deepseek-ai/dsh-client-ui-chat/client' {
+  interface ChatNodeOwnerProps {
+    /**
+     * Focus a tool-arg path's change in the review surface when one is
+     * composed (relative paths resolve against the session cwd); absent = the
+     * mutation link keeps its Host fallback. Other file rows use the
+     * Artifact-first `openFile` path.
+     */
+    revealChange?: ((path: string, turn?: number) => void) | undefined
+    /** Resolve a session-authorized historical image for inline display. */
+    loadImage: (attachment: ImageAttachmentRef) => Promise<string>
+    /** Active think display form: 'compact' hides reasoning blocks downstream
+     * (the execflow render modes); absent renders the native collapsed rows. */
+    thinkMode?: ThinkMode | undefined
+  }
+}
+
+/**
+ * Fork-only members merged into the official composer-bar owner share: the
+ * region contents the fork's ConversationRoot renders as chrome around the
+ * bar (the official bar entry stays the declarer).
+ */
+declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
+  interface ComposerBarOwnerProps {
+    /** Floating overlay anchor content (menu / popup shell entries), rendered inside the card. */
+    overlay?: ReactNode
+    /** input.left slot entries (tool row, beside the resident chrome). */
+    leftItems?: ReactNode
+    /** input.right slot entries (tool row, before the primary button). */
+    rightItems?: ReactNode
+    /** composer.dock entries (stats line), rendered under the card inside the bar's width column. */
+    footer?: ReactNode
+  }
 }
 
 /**
@@ -378,15 +237,7 @@ export interface ConvViewOwnerProps {
  * service — the providing plugin composed out of cordis.yml — turns the
  * surface off; the prose renders inert code.
  */
-export interface ChatFileMentions {
-  /**
-   * Mention vocabulary for the closing message the owner currency names.
-   * @param owner - Turn-tail owner currency (Turn data, closing seq, opener).
-   * @returns The resolver MarkdownText consumes, or undefined when the turn
-   * produced nothing worth linking.
-   */
-  forClosing(owner: TurnTailOwnerProps): MarkdownFileMentions | undefined
-}
+export type { ChatFileMentions } from '@deepseek-ai/dsh-client-ui-chat/client'
 
 /** Optional bridge owned by the Review integration for turn-aware file links. */
 export interface TurnChangeNavigation {
@@ -396,8 +247,6 @@ export interface TurnChangeNavigation {
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
-    /** Prose file-mention provider (Artifact in DeepCreator); reach via ctx.get — optional. */
-    chatFileMentions: ChatFileMentions
     /** Turn-aware Review navigation; absent when the Review plugin is not composed. */
     turnChangeNavigation: TurnChangeNavigation
   }
@@ -408,47 +257,24 @@ declare module '@deepseek-ai/cordis' {
  * the closing assistant's anchor. Registrants read their own typed Turn data
  * and open files through the same Artifact-first opener the tool rows use.
  */
-export interface TurnTailOwnerProps {
-  /** Engine-owned closing Turn boundary. */
-  turn: TurnLocation
-  /** The closing assistant's seq — the anchor the tail renders under. */
-  seq: number
-  /**
-   * Open a filesystem path in the Artifact Workbench when composed, falling
-   * back to the Host; the chat view resolves it against the session cwd.
-   */
-  openFile: (path: string) => void
-}
+export type { TurnTailOwnerProps } from '@deepseek-ai/dsh-client-ui-chat/client'
 
 /** Additive generated-media currency, retaining the official attachment presenter. */
 export interface TurnMediaOwnerProps extends TurnTailOwnerProps {
   renderMessageImages: RenderMessageImages
 }
 
-/**
- * Owner currency of the assistant-message action strip: the durable identity
- * of the one finalized message the contributed actions address. Only finalized
- * messages reach this slot, so the id is always present.
- */
-export interface AssistantActionOwnerProps {
-  /** Stable identity carried from the `assistant/message` event. */
-  messageId: MessageId
-}
+/** Owner currency of the assistant-message action strip (durable message id). */
+export type { AssistantActionOwnerProps } from '@deepseek-ai/dsh-client-ui-chat/client'
 
 /** Hook constrained to business data published on the current Chat Node's Turn. */
-export type UseChatNodeTurnData = <Key extends Extract<keyof ConversationTurnDataMap, string>>(
-  key: Key,
-) => Readonly<ConversationTurnDataMap[Key]> | undefined
+export type { UseChatNodeTurnData } from '@deepseek-ai/dsh-client-ui-chat/client'
 
 /** Think display form: inline rows in the flow vs hidden (content-anchored runs). */
 export type ThinkMode = 'inline' | 'compact'
 
 /** Slot-level Hook factory used by renderers reading their Node's Turn data. */
-export interface ChatNodeTurnDataInjected {
-  hooks: {
-    turnData: SlotHookFactory<'conversation.chat.node', UseChatNodeTurnData>
-  }
-}
+export type { ChatNodeTurnDataInjected } from '@deepseek-ai/dsh-client-ui-chat/client'
 
 /** Owner share of the embeddable child execution flow. */
 export interface ConversationEmbedOwnerProps {
@@ -470,33 +296,14 @@ export interface ConversationSessionOwnerProps {
 }
 
 /** Stable owner currency delivered to one keyed Chat business renderer. */
-export interface ChatNodeOwnerProps {
-  /** Session workspace root; Tool summaries display paths relative to it. */
-  cwd?: string | undefined
-  /** Activate the file as an Artifact tab when available, else use the Host opener. */
-  openFile: (path: string) => void
-  /**
-   * Focus a tool-arg path's change in the review surface when one is
-   * composed (relative paths resolve against the session cwd); absent = the
-   * mutation link keeps its Host fallback. Other file rows use the
-   * Artifact-first `openFile` path.
-   */
-  revealChange?: ((path: string, turn?: number) => void) | undefined
-  inspectCall: (callId: CallId) => void
-  forkAt: (seq: number) => void
-  /** Resolve a session-authorized historical image for inline display. */
-  loadImage: (attachment: ImageAttachmentRef) => Promise<string>
-  /** Render historical images through the attachment slot implementation. */
-  renderMessageImages: RenderMessageImages
-  fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined
-  /** Active think display form: 'compact' hides reasoning blocks downstream
-   * (the execflow render modes); absent renders the native collapsed rows. */
-  thinkMode?: ThinkMode | undefined
-}
+export type { ChatNodeOwnerProps } from '@deepseek-ai/dsh-client-ui-chat/client'
 
 /** Full props of one registered keyed Chat business renderer. */
 export type ChatNodeViewProps<Kind extends ChatNodeKind = ChatNodeKind> =
   PropsRuntime<'conversation.chat.node', Kind> & PropsLocale<'conversation'>
+
+/** Renderer kinds contributed by the currently installed Chat business modules. */
+export type { ChatNodeKind } from './chat-nodes.ts'
 
 /**
  * Owner share of the per-command row slot: the frozen {@link CommandNode}
@@ -506,12 +313,7 @@ export type ChatNodeViewProps<Kind extends ChatNodeKind = ChatNodeKind> =
  * explicitly linked projection node needed to fold two log records into one
  * presentation row.
  */
-export interface CommandRowOwnerProps {
-  /** Folded command lifecycle node (run + optional done). */
-  node: CommandNode
-  /** Explicitly linked compaction checkpoint for the settled `/compact` presentation. */
-  compaction?: CompactionSummaryNode
-}
+export type { CommandRowOwnerProps } from '@deepseek-ai/dsh-client-ui-chat/client'
 
 /** Full props of a registered command-row component. */
 export type CommandRowProps = PropsRuntime<'conversation.chat.commandview'>
@@ -542,7 +344,7 @@ export interface ConversationInjected {
    * the root renders as the inert composer's placeholder.
    */
   hooks: { composerBlock: ObservableSnapshot<ComposerBlock | undefined> }
-  /** Publish the root entry's authorized `conversation.session` outlet. */
+  /** Publish the root entry's authorized session-body outlet. */
   publishSessionRenderer: (renderer: (owner: ConversationSessionOwnerProps) => ReactNode) => () => void
 }
 
@@ -593,40 +395,11 @@ export interface ConversationSessionHeaderInjected {
  * Owner share of the composer-bar slot: ConversationRoot's layout-phase
  * inputs plus the input-region child-slot content it renders (the region
  * slots stay declared/rendered by the conversation entry; the bar hosts the
- * results as chrome).
+ * results as chrome). The official share is extended with the fork's region
+ * members above.
  */
-export interface ComposerBarOwnerProps {
-  /** Hero = empty-state centered card; composer = resident bottom bar. */
-  variant: 'hero' | 'composer'
-  /**
-   * A block another plugin raised for this session: the bar refuses input and
-   * shows the blocker's reason as the placeholder, but — unlike `disabled` —
-   * keeps the model seat live. Every block this contract has is one the user
-   * clears by choosing a model, so locking that seat too would leave the
-   * composer telling them to do the one thing it prevents.
-   */
-  blocked?: { readonly reason: string }
-  /**
-   * Inert no-workspace state: the bar locks message actions while preserving
-   * its normal DOM so the Workspace pick transitions in place.
-   */
-  disabled?: boolean
-  /** Whether the shared Workspace picker menu is expanded, regardless of which trigger opened it. */
-  workspacePickerOpen?: boolean
-  /** Open the existing Workspace picker from the inert textarea. */
-  onRequestWorkspace?: () => void
-  placeholder?: string
-  /** Optional content rendered above the textarea. */
-  accessory?: ReactNode
-  /** Floating overlay anchor content (menu / popup shell entries), rendered inside the card. */
-  overlay?: ReactNode
-  /** input.left slot entries (tool row, beside the resident chrome). */
-  leftItems?: ReactNode
-  /** input.right slot entries (tool row, before the primary button). */
-  rightItems?: ReactNode
-  /** composer.dock entries (stats line), rendered under the card inside the bar's width column. */
-  footer?: ReactNode
-}
+export type ComposerBarOwnerProps =
+  import('@deepseek-ai/dsh-client-ui-conversation/client').ComposerBarOwnerProps
 
 /** Injected share of the composer-bar entry (package-internal faces). */
 export interface ComposerBarInjected {
@@ -675,10 +448,7 @@ export interface ComposerBarInjected {
  * Owner share of the two named composer control seats (plan / model): the
  * bar passes its disable state; the filling entry owns everything else.
  */
-export interface InputControlOwnerProps {
-  /** Session-removed lock (the bar's chrome disable state). */
-  locked: boolean
-}
+export type { InputControlOwnerProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 
 /** Full composer-bar props: standard kit & owner share & control-seat render share & injected share (hooks bound) & locale seat. */
 export type ComposerBarProps =
@@ -689,16 +459,11 @@ export type ComposerBarProps =
 
 /**
  * Composer chain currency: what ConversationRoot dispatches at its
- * renderSlotChain site. The owner declares the currency only — never a
- * per-entry contract; takeover packages narrow it in their own selectors
- * (`interactions.find(i => i.kind === ...)`), so new takeover kinds register
- * with zero owner changes.
+ * renderSlotChain site. The official share keys the Session lifecycle
+ * snapshot and the framework Session-pending-interaction carrier; takeover
+ * packages narrow it in their own selectors.
  */
-export interface ComposerChainProps {
-  interactions: readonly PendingInteraction[]
-  /** Current conversation facts for feature-owned takeover selectors. */
-  session: ConversationSnapshot | undefined
-}
+export type { ComposerChainProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 
 /**
  * Full conversation-slot component props: runtime & child-render (view ring
@@ -707,7 +472,7 @@ export interface ComposerChainProps {
  */
 export type ConversationSlotProps =
   PropsRuntime<'conversation'> & PropsRenderSlots<
-    | 'conversation.session' | 'conversation.session.header'
+    | 'deepcreator.conversation.session' | 'conversation.session.header'
     | 'conversation.activity.chip'
     | 'conversation.composer' | 'conversation.composer.bar'
     | 'conversation.input.overlay'
@@ -721,7 +486,7 @@ export type ConversationSlotProps =
 
 /** Full strict-session body props: per-session store, view ring, and draft mirror. */
 export type ConversationSessionSlotProps =
-  PropsRuntime<'conversation.session'>
+  PropsRuntime<'deepcreator.conversation.session'>
   & PropsRenderSlots<'conversation.view'>
   & PropsStore<ChatStore>
   & ConversationSessionInjected
@@ -939,12 +704,9 @@ export type ChatViewSlotProps =
   & PropsRenderSlots<'conversation.chat.node' | 'conversation.chat.render' | 'conversation.message.images'>
   & PropsStore<ChatStore> & ChatViewInjected & PropsLocale<'conversation'>
 
+/** View-slot owner share (official share plus the fork's inspect handoff above). */
+export type { ConvViewOwnerProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
+
 /** Owner share common to the hero / New-Session Workspace pickers. */
-export interface EmptyWorkspaceOwnerProps {
-  open: boolean
-  anchorRef?: RefObject<HTMLElement>
-  /** Currently active workspace (renders a trailing check in the picker list). */
-  selectedId?: WorkspaceId | undefined
-  onPick: (workspaceId: WorkspaceId) => void
-  onClose: () => void
-}
+export type EmptyWorkspaceOwnerProps =
+  import('@deepseek-ai/dsh-client-ui-conversation/client').EmptyWorkspaceOwnerProps

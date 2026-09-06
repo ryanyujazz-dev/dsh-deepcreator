@@ -3,36 +3,61 @@
     "target": "es2024",
     "module": "esnext",
     "moduleResolution": "bundler",
-    "lib": ["ES2024"],
-    "types": ["node"],
+    "lib": [
+      "ES2024"
+    ],
+    "types": [
+      "node"
+    ],
     "strict": true,
-    "skipLibCheck": true,
-    "paths": {
-      "@deepseek-ai/dsh-typert-protocol": ["./packages/internal/typert-protocol-face/src/index.ts"],
-      "@deepseek-ai/dsh-session": ["./packages/internal/session-face/src/index.ts"],
-      "@deepseek-ai/dsh-session/types": ["./packages/internal/session-face/src/types.ts"],
-      "@deepseek-ai/dsh-agent": ["./packages/internal/agent-face/src/index.ts"]
-    }
+    "skipLibCheck": true
   },
   "files": [],
   "references": [
-    { "path": "./packages/internal/typert-protocol-face" },
-    { "path": "./packages/internal/session-face" },
-    { "path": "./packages/internal/agent-face" },
-    { "path": "./packages/host/artifacts" },
-    { "path": "./packages/host/app-stage" },
-    { "path": "./packages/host/app-stage-agent" },
-    { "path": "./packages/host/remote-access" },
-    { "path": "./packages/host/browser" },
-    { "path": "./packages/host/image-generation" },
-    { "path": "./packages/host/browser-playwright" },
-    { "path": "./packages/host/browser-iab" },
-    { "path": "./packages/host/browser-chrome" },
-    { "path": "./packages/host/presentation" },
-    { "path": "./packages/host/session-admin" },
-    { "path": "./packages/host/skill-admin" },
-    { "path": "./packages/host/jobs-admin" },
-    { "path": "./packages/host/review" },
-    { "path": "./packages/host/terminal-workbench" }
+    {
+      "path": "./packages/host/artifacts"
+    },
+    {
+      "path": "./packages/host/app-stage"
+    },
+    {
+      "path": "./packages/host/app-stage-agent"
+    },
+    {
+      "path": "./packages/host/remote-access"
+    },
+    {
+      "path": "./packages/host/browser"
+    },
+    {
+      "path": "./packages/host/image-generation"
+    },
+    {
+      "path": "./packages/host/browser-playwright"
+    },
+    {
+      "path": "./packages/host/browser-iab"
+    },
+    {
+      "path": "./packages/host/browser-chrome"
+    },
+    {
+      "path": "./packages/host/presentation"
+    },
+    {
+      "path": "./packages/host/session-admin"
+    },
+    {
+      "path": "./packages/host/skill-admin"
+    },
+    {
+      "path": "./packages/host/jobs-admin"
+    },
+    {
+      "path": "./packages/host/review"
+    },
+    {
+      "path": "./packages/host/terminal-workbench"
+    }
   ]
 }

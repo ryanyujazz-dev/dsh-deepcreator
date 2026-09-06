@@ -1,7 +1,9 @@
 /** Host registration for browser conversation preferences. */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
+// Type-only: pulls the `Context.settings` (SettingsProvider) declaration this
+// file's registration reads through.
+import type {} from '@deepseek-ai/dsh-settings'
 import { CONVERSATION_SETTINGS_NAMESPACE, ConversationSettingsSchema } from './submission-settings.ts'
 
 export {
@@ -18,7 +20,7 @@ export {
 export function apply(ctx: Context): void {
   ctx.inject(['settings'], (settingsCtx) => {
     settingsCtx.settings.register(
-      settingsNamespace(CONVERSATION_SETTINGS_NAMESPACE),
+      CONVERSATION_SETTINGS_NAMESPACE,
       ConversationSettingsSchema,
     )
   })

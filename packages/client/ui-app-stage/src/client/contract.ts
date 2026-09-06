@@ -6,7 +6,9 @@
  * @module @ryanyujazz/dsh-client-ui-app-stage/client/contract
  */
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@ryanyujazz/dsh-client-ui-layout/client'
 import type { AppRouterOutcome, AppStageDataChangesResult, AppStageDataGetResult, AppStageDataSetResult, AppStageEnsureResult, AppStagePresenceControlResult, AppStagePresenceSnapshotResult, AppStagePresenceSummaryResult, AppStagePresenceTimelineResult, AppStageRollbackResult, AppJsonValue, AppStageListResult, AppStageRouterResultAck, AppStageWaitRequestsResult } from '@ryanyujazz/dsh-app-stage/types'

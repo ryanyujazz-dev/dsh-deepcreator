@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import type {
-  SessionId, SessionListState, SessionSummary, WorkspaceId, WorkspaceView,
-} from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type SessionId,
+  type WorkspaceId,
+} from '@deepseek-ai/dsh-session/types'
+import {
+  type SessionListState,
+  type SessionSummary,
+} from '@deepseek-ai/dsh-api-session-controller/client'
+import {
+  type WorkspaceView,
+} from '@deepseek-ai/dsh-api-workspace-controller/client'
 import {
   deriveFlat, deriveGroups, derivePinned, deriveSearchResults, workspaceLabel, relativeTime,
   UNGROUPED_KEY, UNGROUPED_LABEL,

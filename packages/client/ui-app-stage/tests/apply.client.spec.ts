@@ -1,8 +1,11 @@
+// @vitest-environment jsdom
 /** Seat registration semantics: waits for the frame's declaration, injects
  * its faces once, and unloads reversibly with the plugin fiber. */
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
-import { SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  SlotRegistry,
+} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { LocaleRuntime } from '@ryanyujazz/dsh-client-locale/client'
 import { apply, inject } from '@ryanyujazz/dsh-client-ui-app-stage/client'
 
@@ -38,7 +41,8 @@ describe('ui-app-stage apply', () => {
 
   it('occupies the declared seat with its injected faces', async () => {
     const b = await bench()
-    await b.ctx.plugin({ inject: [...inject], apply }).await()
+    const plugin = b.ctx.plugin({ inject: [...inject], apply })
+    await plugin.await()
     await new Promise(resolve => { setTimeout(resolve, 0) })
     expect(b.slots.entries('deepcreator.stage.apps')).toHaveLength(1)
     const entry = b.slots.entries('deepcreator.stage.apps')[0]!
@@ -57,13 +61,16 @@ describe('ui-app-stage apply', () => {
     expect(faces.presence).toBeDefined()
     faces.layout.setDockOpen(true)
     expect(b.layout.setDockOpen).toHaveBeenCalledWith(true)
+    await plugin.dispose()
   })
 
   it('stays a pending wait (never an error) without the declaration — S3', async () => {
     const b = await bench(false)
-    await b.ctx.plugin({ inject: [...inject], apply }).await()
+    const plugin = b.ctx.plugin({ inject: [...inject], apply })
+    await plugin.await()
     await new Promise(resolve => { setTimeout(resolve, 0) })
     expect(b.slots.entries('deepcreator.stage.apps')).toHaveLength(0)
+    await plugin.dispose()
   })
 
   it('vacates the seat on plugin teardown', async () => {

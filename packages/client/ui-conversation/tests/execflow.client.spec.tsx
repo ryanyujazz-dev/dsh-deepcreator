@@ -7,13 +7,29 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
-import type {
-  ConversationSnapshot, RunningToolCall, SessionId, SessionListState,
-  ToolResultNode, WorkspaceListState,
-} from '@deepseek-ai/dsh-client-runtime/client'
 import {
-  createSnapshotStore, EMPTY_CONVERSATION_VIEWS,
-} from '@deepseek-ai/dsh-client-runtime/client'
+  type AssistantMessageNode,
+  type ConversationSnapshot,
+  type RunningToolCall,
+  type ToolResultNode,
+  type UserMessageNode,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
+import {
+  type SessionListState,
+} from '@deepseek-ai/dsh-api-session-controller/client'
+import {
+  type WorkspaceSnapshot,
+} from '@deepseek-ai/dsh-api-workspace-controller/client'
+import {
+  createSnapshotStore,
+} from '@deepseek-ai/dsh-client-store'
+import {
+  EMPTY_CONVERSATION_VIEWS,
+} from '@ryanyujazz/dsh-client-compat'
+
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import type { ChatRenderSlotProps } from '../src/client/contract/slots.ts'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
@@ -22,7 +38,7 @@ import { createChatStore } from '../src/client/stores.ts'
 import { ExecFlowBody, type ExecFlowBodyProps } from '../src/client/chat/ExecFlowBody.tsx'
 import { zh } from '../src/client/locales.ts'
 import { chatSnapshotFixture } from './chat-snapshot-fixture.client.ts'
-import type { AssistantMessageNode, UserMessageNode } from '@deepseek-ai/dsh-client-runtime/client'
+
 import type { InputState } from '../src/client/input/contract.ts'
 
 afterEach(() => {
@@ -99,7 +115,7 @@ function emptySessions() {
 }
 
 function emptyWorkspaces() {
-  const store = createSnapshotStore<WorkspaceListState>({
+  const store = createSnapshotStore<WorkspaceSnapshot>({
     items: [], archivedSessionIds: [], state: 'idle', phase: 'ready', error: null,
     baselinesReady: true, recentWorkspaceId: undefined,
   })

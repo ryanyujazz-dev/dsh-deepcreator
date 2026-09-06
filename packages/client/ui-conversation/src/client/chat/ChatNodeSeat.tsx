@@ -3,6 +3,7 @@ import { JsonBlock } from '@ryanyujazz/dsh-client-ui-primitives'
 import type {
   ChatNodeOwnerProps, ChatNodeRenderSlot, ChatViewSlotProps, ThinkMode,
 } from '../contract/slots.ts'
+import type { ForkTranslate } from '../locales.ts'
 import type { ChatNode } from '../contract/chat-nodes.ts'
 import css from './ChatView.module.css'
 
@@ -10,9 +11,9 @@ interface ChatNodeSeatProps extends ChatNodeOwnerProps {
   readonly nodeKey: string
   /** Active think display form (compact hides reasoning blocks downstream). */
   readonly thinkMode?: ThinkMode | undefined
-  readonly useSession: ChatViewSlotProps['useSession']
+  readonly useChat: ChatViewSlotProps['useChat']
   readonly renderSlot: ChatNodeRenderSlot
-  readonly t: ChatViewSlotProps['t']
+  readonly t: ForkTranslate
 }
 
 type RoutedChatNodeOwner = {
@@ -22,12 +23,16 @@ type RoutedChatNodeOwner = {
 /** Subscribe and dispatch one stable Context key without observing sibling Nodes. */
 export const ChatNodeSeat = memo(function ChatNodeSeat({
   nodeKey, thinkMode, cwd, openFile, revealChange, inspectCall, forkAt,
-  loadImage, renderMessageImages, fileMentions, useSession, renderSlot, t,
+  loadImage, renderMessageImages, fileMentions, useChat, renderSlot, t,
 }: ChatNodeSeatProps) {
-  const node = useSession(snapshot => snapshot.chat.nodes.get(nodeKey))
+  const node = useChat(snapshot => snapshot.nodes.get(nodeKey))
   const routedNode = node as ChatNode | undefined
   const turnId = node?.location.kind === 'turn' || node?.location.kind === 'step'
     ? node.location.turn.turn
+    : undefined
+  // The Turn-scoped business-value store the keyed renderers' turnData hook reads.
+  const turnData = node?.location.kind === 'turn' || node?.location.kind === 'step'
+    ? node.location.turn.data
     : undefined
   const routedRevealChange = useMemo(() => revealChange === undefined
     ? undefined
@@ -59,7 +64,7 @@ export const ChatNodeSeat = memo(function ChatNodeSeat({
     >
       {renderSlot('conversation.chat.node', routedOwner, {
         entryKey: routedNode.kind,
-        hookContext: nodeKey,
+        hookContext: turnData,
         fallback: (
           <JsonBlock
             label={t('message.unknownSurface', { type: routedNode.kind })}

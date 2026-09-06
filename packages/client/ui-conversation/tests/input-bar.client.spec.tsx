@@ -8,11 +8,24 @@ import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import {
-  createSnapshotStore, EMPTY_CHAT_SNAPSHOT, EMPTY_CONVERSATION_VIEWS,
-} from '@deepseek-ai/dsh-client-runtime/client'
+  createSnapshotStore,
+} from '@deepseek-ai/dsh-client-store'
+import {
+  EMPTY_CHAT_SNAPSHOT,
+} from '@deepseek-ai/dsh-client-ui-chat/client'
+import {
+  EMPTY_CONVERSATION_VIEWS,
+} from '@ryanyujazz/dsh-client-compat'
+import type { ClientContext } from '@ryanyujazz/dsh-client-compat'
+import {
+  type ConversationSnapshot,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@ryanyujazz/dsh-client-locale/src/locales/zh.ts'
-import type { ClientContext, ConversationSnapshot, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+
 import { SessionInputShell } from '../src/client/input/facade.ts'
 import type { ComposerAttachment, ComposerAttachmentsOwnerProps } from '../src/client/contract/slots.ts'
 import type { DraftAttachmentId } from '../src/client/input/contract.ts'

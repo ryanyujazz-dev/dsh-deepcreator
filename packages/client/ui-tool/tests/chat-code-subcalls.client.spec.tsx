@@ -13,13 +13,32 @@ import { stubSettingsScope } from '@deepseek-ai/dsh-client-test-runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import {
-  ConversationEventRegistry, ConversationViewRegistry, createSnapshotStore,
-  EMPTY_CONVERSATION_VIEWS, SlotRegistry,
-} from '@deepseek-ai/dsh-client-runtime/client'
-import type {
-  ConversationSnapshot, RunningToolCall, SessionId, SessionListState,
-  ToolCallBlock, ToolResultNode, WorkspaceListState,
-} from '@deepseek-ai/dsh-client-runtime/client'
+  ConversationEventRegistry,
+  ConversationViewRegistry,
+  type ConversationSnapshot,
+  type RunningToolCall,
+  type ToolCallBlock,
+  type ToolResultNode,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import {
+  createSnapshotStore,
+} from '@deepseek-ai/dsh-client-store'
+import {
+  EMPTY_CONVERSATION_VIEWS,
+} from '@ryanyujazz/dsh-client-compat'
+import {
+  SlotRegistry,
+} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
+import {
+  type SessionListState,
+} from '@deepseek-ai/dsh-api-session-controller/client'
+import {
+  type WorkspaceSnapshot,
+} from '@deepseek-ai/dsh-api-workspace-controller/client'
+
 import { createSlotRenderer } from '@deepseek-ai/dsh-client-test-runtime'
 import { LocaleRuntime } from '@ryanyujazz/dsh-client-locale/client'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
@@ -148,7 +167,7 @@ async function bench(snapshot: ConversationSnapshot, isLoopback = false) {
   }
   ctx.provide('sessions', sessionsFake)
   const workspaces = {
-    list: createSnapshotStore<WorkspaceListState>({
+    list: createSnapshotStore<WorkspaceSnapshot>({
       items: [], archivedSessionIds: [], state: 'idle', phase: 'ready', error: null,
       baselinesReady: true, recentWorkspaceId: undefined,
     }),

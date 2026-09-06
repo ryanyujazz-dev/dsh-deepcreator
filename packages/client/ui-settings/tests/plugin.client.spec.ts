@@ -1,6 +1,6 @@
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it } from 'vitest'
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext } from '@ryanyujazz/dsh-client-compat'
 import { apply, inject } from '../src/client/index.ts'
 
 describe('DeepCreator settings extension', () => {

@@ -11,7 +11,15 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup } from '@testing-library/react'
-import type { ISession, SessionId, ToolResultNode } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type ISession,
+} from '@deepseek-ai/dsh-api-session-controller/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
+import {
+  type ToolResultNode,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import { SlotTestRuntime, stubSettingsScope } from '@deepseek-ai/dsh-client-test-runtime'
 import { LocaleRuntime } from '@ryanyujazz/dsh-client-locale/client'

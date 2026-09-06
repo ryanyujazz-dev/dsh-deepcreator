@@ -5,7 +5,9 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createAppStageBridge } from '../src/client/bridge.ts'
-import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
 
 type Listener = (event: MessageEvent) => void
 

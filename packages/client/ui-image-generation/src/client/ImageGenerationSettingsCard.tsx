@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import type { IApiClient } from '@deepseek-ai/dsh-api-remotes/client'
-import type { SettingsScope } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientRemote } from '@deepseek-ai/dsh-api-remotes/client'
+import {
+  type SettingsScope,
+} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ImageGenerationSettings, ImageProviderProfile, ImageProviderProtocol } from '@ryanyujazz/dsh-image-generation/types'
 import { IconChevronDownOutline14, IconPlusOutline16, IconTrashOutline16 } from '@ryanyujazz/dsh-client-ui-primitives'
@@ -9,7 +11,7 @@ import type { ImageGenerationLocaleKey } from './locales.ts'
 import css from './ImageGenerationSettingsCard.module.css'
 import { SelectMenu } from './SelectMenu.tsx'
 
-type Api = Pick<IApiClient, 'credentials'>
+type Api = ClientRemote['credentials']
 type Props = PropsLocale<'image-generation'> & { settings: SettingsScope<ImageGenerationSettings>; api: Api }
 type EditorMode = 'create' | 'custom' | 'edit'
 type ModelDraft = { key: number; id: string; name: string }
@@ -61,8 +63,8 @@ function ProviderEditor({ provider, mode, settings, api, t, onCancel, onSaved }:
   }, [customIdentity, provider])
   useEffect(() => {
     let alive = true
-    void api.credentials.describe({ refs: [draft.apiKeyEnv] }).then(response => {
-      if (alive && response.result.ok) setKeyConfigured(response.result.value.credentials[draft.apiKeyEnv]?.configured ?? false)
+    void api.describe([draft.apiKeyEnv]).then(response => {
+      if (alive && response.ok) setKeyConfigured(response.value[draft.apiKeyEnv]?.configured ?? false)
     })
     return () => { alive = false }
   }, [api, draft.apiKeyEnv])
@@ -96,8 +98,8 @@ function ProviderEditor({ provider, mode, settings, api, t, onCancel, onSaved }:
         ? current.providers.map(item => item.id === provider.id ? next : item)
         : [...current.providers, next]
       if (key.trim() !== '') {
-        const response = await api.credentials.set({ ref: next.apiKeyEnv, value: key.trim() })
-        if (!response.result.ok) throw new Error(response.result.error.message)
+        const response = await api.set(next.apiKeyEnv, key.trim())
+        if (!response.ok) throw new Error(response.error.message)
       }
       await settings.set('providers', providers)
       if (current.providers.length === 0 || (mode === 'edit' && current.defaultProvider === provider.id && next.id !== provider.id)) {
@@ -226,8 +228,8 @@ function ProviderRow({ provider, isDefault, writable, credentialRevision, api, t
   useEffect(() => {
     let alive = true
     setConfigured(undefined)
-    void api.credentials.describe({ refs: [provider.apiKeyEnv] }).then(response => {
-      if (alive) setConfigured(response.result.ok ? response.result.value.credentials[provider.apiKeyEnv]?.configured ?? false : false)
+    void api.describe([provider.apiKeyEnv]).then(response => {
+      if (alive) setConfigured(response.ok ? response.value[provider.apiKeyEnv]?.configured ?? false : false)
     })
     return () => { alive = false }
   }, [api, credentialRevision, provider.apiKeyEnv])
@@ -278,7 +280,7 @@ export function ImageGenerationSettingsCard({ settings, api, t }: Props) {
         if (providers[0] === undefined) await settings.unset('defaultProvider')
         else await settings.set('defaultProvider', providers[0].id)
       }
-      if (!providers.some(item => item.apiKeyEnv === provider.apiKeyEnv)) await api.credentials.unset({ ref: provider.apiKeyEnv })
+      if (!providers.some(item => item.apiKeyEnv === provider.apiKeyEnv)) await api.unset(provider.apiKeyEnv)
       if (editingId === provider.id) setEditingId(undefined)
     } catch (error) {
       setNotice(`${t('failed')} ${message(error)}`)

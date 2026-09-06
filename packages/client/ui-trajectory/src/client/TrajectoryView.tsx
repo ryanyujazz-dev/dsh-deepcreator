@@ -3,10 +3,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ConvViewProps } from '@ryanyujazz/dsh-client-ui-conversation/client'
 import type { InjectFace, PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
-import type {
-  AssistantBlock, AssistantMessageNode, ConversationSnapshot,
-  SnapshotStore,
-} from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type AssistantBlock,
+  type AssistantMessageNode,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import {
+  type ObservableSnapshot,
+  type SnapshotStore,
+} from '@deepseek-ai/dsh-client-store'
+import type { TrajectorySnapshot } from './trajectory-contract.ts'
 import {
   TrajectoryTable,
   type TrajectoryRequestNumber,
@@ -57,7 +62,7 @@ function timelineBlock(block: AssistantBlock): AssistantBlock {
   }
 }
 
-function partialStructureSignature(partial: ConversationSnapshot['partial']): string {
+function partialStructureSignature(partial: TrajectorySnapshot['partial']): string {
   if (partial === null) return ''
   return partial.blocks.map(block => block.kind === 'tool-call'
     ? `${block.kind}:${block.callId}:${block.name}`
@@ -68,6 +73,8 @@ function partialStructureSignature(partial: ConversationSnapshot['partial']): st
 export interface TrajectoryViewInjected {
   hooks: {
     duration: SnapshotStore<boolean>
+    /** The Session's Trajectory target feed; the view's subscription activates the target. */
+    trajectory: ObservableSnapshot<TrajectorySnapshot | undefined>
   }
   /** Write the browser-wide duration projection preference. */
   setDuration: (value: boolean) => void
@@ -119,8 +126,8 @@ function addUsage(
 }
 
 export function TrajectoryView({
-  useSession, useDuration, setDuration, loadOlder,
-  inspect, onInspectDone, t,
+  useSession, useTrajectory, useDuration, setDuration, loadOlder,
+  viewRequest, completeViewRequest, t,
 }: ConvViewProps & InjectFace<TrajectoryViewInjected> & PropsLocale<'trajectory'>) {
   const [collapsedTurns, setCollapsedTurns] = useState<ReadonlySet<number>>(EMPTY_TURN_IDS)
   const [collapsedAssistants, setCollapsedAssistants] =
@@ -140,8 +147,7 @@ export function TrajectoryView({
   const [timelineRecordFocus, setTimelineRecordFocus] = useState<{
     readonly index: number
   } | null>(null)
-  const inspection = useSession(snapshot =>
-    snapshot.views.get('trajectory') ?? EMPTY_TRAJECTORY_SNAPSHOT)
+  const inspection = useTrajectory(snapshot => snapshot ?? EMPTY_TRAJECTORY_SNAPSHOT)
   const historyLoading = useSession(snapshot => snapshot.openState === 'loading')
   const olderHistoryLoading = useSession(snapshot => snapshot.loadingOlder)
   const hasOlderHistory = useSession(snapshot => snapshot.hasMore)
@@ -270,7 +276,7 @@ export function TrajectoryView({
     runningCalls, requests, callSchemas,
   ])
   const timelinePartialSignature = partialStructureSignature(partial)
-  const timelinePartial = useMemo<ConversationSnapshot['partial']>(() => partial === null
+  const timelinePartial = useMemo<TrajectorySnapshot['partial']>(() => partial === null
     ? null
     : {
       turn: partial.turn,
@@ -498,8 +504,8 @@ export function TrajectoryView({
           onToggleTurn={toggleTurn}
           collapsedAssistants={collapsedAssistants}
           onToggleAssistant={toggleAssistant}
-          inspectCallId={inspect?.callId ?? null}
-          onInspectApplied={onInspectDone}
+          inspectCallId={viewRequest?.view === 'trajectory' ? viewRequest.focus : null}
+          onInspectApplied={completeViewRequest}
         />
       </div>
     </div>

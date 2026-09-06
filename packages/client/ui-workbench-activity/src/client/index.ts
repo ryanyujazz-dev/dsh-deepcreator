@@ -4,14 +4,16 @@
  * catalog. Each subagent opens as a real Workbench tab — a panel instance
  * keyed by the child session id — whose body mounts the real child Session
  * transcript without changing the current conversation. Background jobs open
- * namespaced instances derived from the same official JobView snapshot; no
+ * namespaced instances derived from the same official SessionJob snapshot; no
  * output cursor is consumed by presentation. Views receive the
  * Host actions as plain callbacks through the slot inject; no React
  * component touches Cordis context or the RPC surface.
  */
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext } from '@ryanyujazz/dsh-client-compat'
 import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@ryanyujazz/dsh-client-locale/client'
+// Type-only: pulls the ctx.slots merge (SlotRegistry service) into this program.
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 // Type-only: merges the 'jobs-admin' namespace into TypertClientRemote.
 import type {} from '@ryanyujazz/dsh-jobs-admin/remote'
 import { DeepCreatorIconActivity16 } from '@ryanyujazz/dsh-client-ui-primitives'

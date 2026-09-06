@@ -1,9 +1,15 @@
 /** Preferences-group row for the default conversation-flow renderer. */
 
 import clsx from 'clsx'
-import type { SessionId, SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
+import {
+  type SnapshotStore,
+} from '@deepseek-ai/dsh-client-store'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ConversationRenderMode } from '../../submission-settings.ts'
+import { forkT } from '../locales.ts'
 import type { ConversationKey } from '../locales.ts'
 import css from './DefaultRenderModeRow.module.css'
 
@@ -35,8 +41,9 @@ const OPTIONS: readonly { id: ConversationRenderMode; label: ConversationKey }[]
  * @returns the preference row.
  */
 export function DefaultRenderModeRow({
-  useSessions, useDefaultRenderMode, setDefaultRenderMode, t,
+  useSessions, useDefaultRenderMode, setDefaultRenderMode, t: tRaw,
 }: DefaultRenderModeRowProps) {
+  const t = forkT(tRaw)
   const selected = useDefaultRenderMode(value => value)
   const currentSessionId = useSessions(state => state.current)
   return (

@@ -12,8 +12,12 @@ import { Context } from '@deepseek-ai/cordis'
 import { stubSettingsScope } from '@deepseek-ai/dsh-client-test-runtime'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
-  ConversationEventRegistry, ConversationViewRegistry, SlotRegistry,
-} from '@deepseek-ai/dsh-client-runtime/client'
+  ConversationEventRegistry,
+  ConversationViewRegistry,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import {
+  SlotRegistry,
+} from '@deepseek-ai/dsh-client-ui-renderer/client'
 
 const PLUGIN_ID = '@ryanyujazz/dsh-client-ui-trajectory'
 
@@ -50,7 +54,7 @@ describe('tsdown client artifact', () => {
       ['react', await import('react')],
       ['react/jsx-runtime', await import('react/jsx-runtime')],
       ['react-dom', await import('react-dom')],
-      ['@deepseek-ai/dsh-client-runtime/client', await import('@deepseek-ai/dsh-client-runtime/client')],
+      ['@deepseek-ai/dsh-client-ui-conversation/client', await import('@deepseek-ai/dsh-client-ui-conversation/client')],
       ['@ryanyujazz/dsh-client-ui-primitives', await import('@ryanyujazz/dsh-client-ui-primitives')],
     ])
     const exports = handoff!.factory((spec) => {

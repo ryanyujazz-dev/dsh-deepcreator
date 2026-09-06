@@ -1,33 +1,91 @@
 import type { Context } from '@deepseek-ai/cordis'
-import type {
-  ConversationNodeContext, ConversationNodeDefinition,
-} from '@deepseek-ai/dsh-client-runtime/client'
-import { isAppendSurfaceEvent } from '@deepseek-ai/dsh-client-runtime/client'
-import type { ToolCallView } from '@deepseek-ai/dsh-tools/presentation'
+import {
+  type ConversationNodeContext,
+  type ConversationNodeDefinition,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import {
+  isAppendSurfaceEvent,
+} from '@deepseek-ai/dsh-session/surface'
+
 import type { ArtifactTurnData, ProducedPath } from './artifact-contract.ts'
 
 /** Reducer-maintained state of one turn Context. */
 interface ArtifactTurnState {
   readonly turn: number
-  readonly calls: ReadonlyMap<string, ToolCallView | null>
+  readonly calls: ReadonlyMap<string, string | null>
   readonly produced: readonly ProducedPath[]
   readonly anchorSeq: number
 }
 
 /**
- * Files a tool call produces, following the official deliverables rule: a
- * mutation is recognized by render intent, not by tool name — a diff card, or
- * a generic card whose `kind` is `edit` — so a new mutation tool joins by
- * declaring what it does. Reads contribute nothing, deletes leave nothing to
- * open, and failed calls never produce. Mirrors the official ui-deliverables
- * derivation so the panel can never drift from the conversation's own
- * produced-files chips.
+ * Extract the produced path from a supported first-party mutation call. The
+ * 0.1.2 conversation Match no longer carries the host's presentation view, so
+ * the mutation is recognized from the wire call itself — the same vocabulary
+ * the official ui-deliverables derivation uses, so the panel can never drift
+ * from the conversation's own produced-files chips. Reads contribute nothing,
+ * deletes leave nothing to open, and failed calls never produce.
+ * @param name - wire tool name.
+ * @param argsRaw - model-produced JSON arguments.
+ * @returns the mutation path, or null when the call is not a supported mutation.
  */
-function producedPaths(view: ToolCallView | null): string[] {
-  if (view === null) return []
-  if (view.card === 'diff') return (view.locations ?? []).map(location => location.path)
-  if (view.card === 'generic' && view.kind === 'edit') return (view.locations ?? []).map(location => location.path)
-  return []
+function mutationPath(name: string, argsRaw: string): string | null {
+  let args: unknown
+  try {
+    args = JSON.parse(argsRaw) as unknown
+  } catch {
+    return null
+  }
+  if (typeof args !== 'object' || args === null || Array.isArray(args)) return null
+  const record = args as Readonly<Record<string, unknown>>
+  switch (name) {
+    case 'write':
+      return typeof record.content === 'string' ? pathValue(record.file_path) : null
+    case 'edit':
+      return validEditArgs(record) ? pathValue(record.file_path) : null
+    case 'str_replace_editor':
+      return editorMutationPath(record)
+    default:
+      return null
+  }
+}
+
+/** Validate the fields that an `edit` execution requires. */
+function validEditArgs(args: Readonly<Record<string, unknown>>): boolean {
+  return typeof args.old_string === 'string'
+    && args.old_string.length > 0
+    && typeof args.new_string === 'string'
+    && args.old_string !== args.new_string
+    && (args.replace_all === undefined || typeof args.replace_all === 'boolean')
+}
+
+/** Extract a path only from a complete mutating editor command. */
+function editorMutationPath(args: Readonly<Record<string, unknown>>): string | null {
+  const path = pathValue(args.path)
+  if (path === null) return null
+  switch (args.command) {
+    case 'create':
+      return typeof args.file_text === 'string' ? path : null
+    case 'str_replace':
+      return typeof args.old_str === 'string'
+        && args.old_str.length > 0
+        && (args.new_str === undefined || typeof args.new_str === 'string')
+        ? path
+        : null
+    case 'insert':
+      return typeof args.insert_line === 'number'
+        && Number.isInteger(args.insert_line)
+        && (args.insert_line as number) >= 0
+        && typeof args.new_str === 'string'
+        ? path
+        : null
+    default:
+      return null
+  }
+}
+
+/** A non-blank path preserves the exact spelling supplied to the tool. */
+function pathValue(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value : null
 }
 
 /** Per-Turn produced paths visible at one closing Assistant sequence. */
@@ -73,14 +131,16 @@ export const artifactNodeDefinition: ConversationNodeDefinition<ArtifactTurnStat
   update: (context, match) => {
     if (match.event.type === 'tool/call') {
       const calls = new Map(context.state.calls)
-      calls.set(String(match.event.data.callId), match.view?.for === 'call' ? match.view.view : null)
+      calls.set(String(match.event.data.callId), mutationPath(match.event.data.name, match.event.data.arguments))
       return { ...context.state, calls, anchorSeq: match.event.seq }
     }
     if (match.event.type !== 'tool/result') return context.state
     if (match.event.data.message.content[0]?.isError === true) return context.state
     const callId = String(match.event.data.message.source.callId)
-    const additions: ProducedPath[] = producedPaths(context.state.calls.get(callId) ?? null)
-      .map(path => ({ path, seq: match.event.seq, time: match.event.time }))
+    const path = context.state.calls.get(callId) ?? null
+    const additions: ProducedPath[] = path === null
+      ? []
+      : [{ path, seq: match.event.seq, time: match.event.time }]
     return additions.length === 0
       ? context.state
       : {
@@ -121,5 +181,5 @@ export const artifactNodeDefinition: ConversationNodeDefinition<ArtifactTurnStat
  * @returns idempotent disposer.
  */
 export function registerArtifactNodeDefinition(ctx: Context): () => void {
-  return ctx.conversationEvents.register(artifactNodeDefinition)
+  return ctx.uiConversation.events.register(artifactNodeDefinition)
 }

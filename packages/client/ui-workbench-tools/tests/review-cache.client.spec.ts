@@ -5,7 +5,14 @@
 // parse-reference reuse on identical revalidates.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ConversationNode, ConversationSnapshot, SessionId, ToolResultNode } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type ConversationNode,
+  type ConversationSnapshot,
+  type ToolResultNode,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
 import { ReviewCacheController } from '../src/client/review-cache.ts'
 
 afterEach(() => { vi.useRealTimers() })

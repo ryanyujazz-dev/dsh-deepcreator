@@ -8,9 +8,20 @@
  * bail events) and owns the default-sink choreography: every session is a
  * real host entity, so the sink is one unconditional prompt path.
  */
-import type { ClientContext, ISessions, SessionBinding, SessionFace, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext } from '@ryanyujazz/dsh-client-compat'
+import {
+  type ISessions,
+  type SessionBinding,
+  type SessionFace,
+} from '@deepseek-ai/dsh-api-session-controller/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
 import type { InputTriggerController } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
-import type { TranslateNS } from '@ryanyujazz/dsh-client-locale/client'
+import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
+import type { ChatSnapshot } from '@deepseek-ai/dsh-client-ui-chat/client'
+import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
+import type { ConversationKey } from '../locales.ts'
 import type { ComposerKeyboard, DraftAttachmentId, SessionInputResolver, SessionInput } from './contract.ts'
 import type { InputSubmitMode } from '../contract/composer-submission.ts'
 import type { PopupDismissFace } from './facade.ts'
@@ -47,7 +58,7 @@ export class InputHub implements SessionInputResolver {
    */
   constructor(
     private readonly rootCtx: ClientContext,
-    private readonly t: TranslateNS<'conversation'>,
+    private readonly t: Translate<ConversationKey>,
   ) {}
 
   /**
@@ -68,9 +79,11 @@ export class InputHub implements SessionInputResolver {
    * queryable, hence binding-fed and hence the thunked slash/popup deps).
    * Wires the scoped event listeners + teardown into the session scope.
    * @param binding - session assembly handle.
+   * @param chatView - registered chat-view snapshot source (0.1.2 moved the
+   * durable chat rows off the Session snapshot); absent = queue-only pairing.
    * @returns the shell.
    */
-  shellFor(binding: SessionBinding): SessionInputShell {
+  shellFor(binding: SessionBinding, chatView?: ObservableSnapshot<ChatSnapshot | undefined>): SessionInputShell {
     const existing = this.shells.get(binding.sessionId)
     if (existing !== undefined) return existing
     const { sessionId: id, session, ctx: actx } = binding
@@ -79,6 +92,7 @@ export class InputHub implements SessionInputResolver {
       inputTriggers: () => this.controller(actx),
       popup: () => this.popup(actx),
       authoritative: session,
+      chatView,
       defaultSink: (text, imageIds, mode) => { this.sink(session, text, imageIds, mode) },
       commandImages: {
         serialize: ids => this.conversation().serializeDraftImages(ids),
@@ -181,12 +195,13 @@ export class InputHub implements SessionInputResolver {
   /**
    * Steer every still-pending queued message into the running turn, in FIFO
    * order — the same strict-steer operation as the queue dock's per-row
-   * button. A turn closing mid-way (`steer-unavailable`) or a row already
-   * claimed by the agent (`queue-item-not-found`) converges silently, while a
-   * genuine failure surfaces as one composer notice. Repeated triggers
-   * (e.g. two rapid empty-draft chords) rely on that `queue-item-not-found`
-   * convergence: the snapshot may still list a row the host already steered,
-   * and the duplicate strict steer is a silent no-op.
+   * button. A turn closing mid-way (`session/steer-unavailable`) or a row
+   * already claimed by the agent (`session/queue-item-not-found`) converges
+   * silently, while a genuine failure surfaces as one composer notice.
+   * Repeated triggers (e.g. two rapid empty-draft chords) rely on that
+   * `session/queue-item-not-found` convergence: the snapshot may still list
+   * a row the host already steered, and the duplicate strict steer is a
+   * silent no-op.
    * @param session - the addressed host session.
    * @param shell - the resident shell (notice outlet).
    */
@@ -196,7 +211,8 @@ export class InputHub implements SessionInputResolver {
     for (const item of queued) {
       const result = await session.updateQueue(item.id, { kind: 'steer' })
       if (result.ok) continue
-      if (result.error.code === 'steer-unavailable' || result.error.code === 'queue-item-not-found') return
+      if (result.error.code === 'session/steer-unavailable'
+        || result.error.code === 'session/queue-item-not-found') return
       shell.notify('error', this.t('queue.steerFailed'))
       return
     }

@@ -1,7 +1,8 @@
 import type { Context } from '@deepseek-ai/cordis'
-import type {
-  ConversationNodeDefinition, ConversationPreviousContext,
-} from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type ConversationNodeDefinition,
+  type ConversationPreviousContext,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { InboxTarget } from '@deepseek-ai/dsh-agent/types'
 
 interface InboxIdentity {
@@ -61,5 +62,5 @@ export const nextStepInboxDefinition = inboxDefinition('next-step')
  * @param ctx - owning UI Conversation context.
  */
 export function registerInboxConversationNodes(ctx: Context): void {
-  ctx.conversationEvents.register(nextStepInboxDefinition)
+  ctx.uiConversation.events.register(nextStepInboxDefinition)
 }

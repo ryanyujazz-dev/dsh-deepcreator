@@ -2,11 +2,19 @@
 
 import { useEffect, useSyncExternalStore } from 'react'
 import clsx from 'clsx'
-import type { SessionId, SessionListState, SessionSummary } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
+import {
+  type SessionListState,
+  type SessionSummary,
+} from '@deepseek-ai/dsh-api-session-controller/client'
 import type {
   ConversationSessionHeaderSlotProps, ConversationSessionSlotProps,
 } from '../contract/slots.ts'
 import type { ViewTab } from '../contract/views.ts'
+import { conversationPhase } from '../contract/snapshot.ts'
+import { forkT } from '../locales.ts'
 import { ChatRenderMenu } from '../chat/ChatRenderMenu.tsx'
 import { resolveActiveMode } from '../chat/render-modes.ts'
 import css from './ConversationRoot.module.css'
@@ -61,8 +69,8 @@ function equalBreadcrumbs(left: readonly Breadcrumb[], right: readonly Breadcrum
  * @returns the hidden blank-session header or visible view switcher and title.
  */
 export function ConversationSessionHeader({
-  sessionId, useSession, useSessions, useStore, actions,
-  renderSlot, views, modes, open, t,
+  sessionId, useSession, useSessions, useConversation, useStore, actions,
+  renderSlot, views, modes, open, t: tRaw,
 }: ConversationSessionHeaderProps) {
   useSyncExternalStore(views.subscribe, views.version)
   useSyncExternalStore(modes.subscribe, modes.version)
@@ -74,8 +82,12 @@ export function ConversationSessionHeader({
   const selectedMode = useStore(s => s.renderMode)
   const activeMode = resolveActiveMode(modeTabs, selectedMode, defaultMode)
   const ancestry = useSessions(s => deriveAncestry(s, sessionId), equalBreadcrumbs)
-  const composerPhase = useSession(s => s.composerPhase)
-  const blank = useSession(s => s.blank)
+  const t = forkT(tRaw)
+  const session = useSession(s => s)
+  const conversation = useConversation(s => s)
+  // 0.1.2 moved the composer phase onto the conversation target snapshot.
+  const composerPhase = conversationPhase(session, conversation)
+  const blank = session.blank
   const hideChrome = blank && composerPhase === 'blank'
   const pickerVisible = activeMode !== undefined
 
@@ -156,15 +168,18 @@ export function ConversationSessionHeader({
  */
 export function ConversationSession({
   surfaceId, transcriptOnly = false,
-  sessionId, useSession, useInput, inputActions, useStore, actions,
+  sessionId, useSession, useConversation, useInput, inputActions, useStore, actions,
   renderSlot, views, bindDraftMirror, retainSessionImages,
 }: ConversationSessionProps) {
   useSyncExternalStore(views.subscribe, views.version)
   const tabs = views.list()
   const selectedId = useStore(s => s.view)
   const active = resolveActiveView(tabs, selectedId)
-  const composerPhase = useSession(s => s.composerPhase)
-  const blank = useSession(s => s.blank)
+  const session = useSession(s => s)
+  const conversation = useConversation(s => s)
+  // 0.1.2 moved the composer phase onto the conversation target snapshot.
+  const composerPhase = conversationPhase(session, conversation)
+  const blank = session.blank
   // `?? null`: persisted snapshots from before the inspect field rehydrate without it.
   const inspect = useStore(s => s.inspect ?? null)
 
@@ -184,6 +199,12 @@ export function ConversationSession({
       {!(blank && composerPhase === 'blank') && (
         <div className={css.viewArea} data-session-id={sessionId} data-transcript-surface-id={surfaceId}>
           {active !== undefined && renderSlot('conversation.view', {
+            // 0.1.2 requires the View focus-request share on every owner; the
+            // fork's view ring has no focus-request producer, so it ships the
+            // inert official members alongside its own inspect handoff.
+            viewRequest: null,
+            openView: () => { },
+            completeViewRequest: () => { },
             surfaceId,
             inspect,
             onInspectDone: () => { actions.setInspect(null) },

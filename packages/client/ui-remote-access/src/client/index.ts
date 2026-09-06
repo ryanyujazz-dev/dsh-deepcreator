@@ -1,6 +1,7 @@
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext } from '@ryanyujazz/dsh-client-compat'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
 import type { RemoteResult, TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@ryanyujazz/dsh-client-locale/client'
 import type {} from '@ryanyujazz/dsh-client-ui-settings/client'
 import type {} from '@ryanyujazz/dsh-remote-access/remote'

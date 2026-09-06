@@ -4,7 +4,7 @@ import type { ToolCallViewProps } from '@ryanyujazz/dsh-client-ui-tool/client'
 import { DeepCreatorIconInspectOutline12, DeepCreatorIconSparkle16, DisclosureRow, Tooltip } from '@ryanyujazz/dsh-client-ui-primitives'
 import css from './ImageToolRow.module.css'
 
-type Props = ToolCallViewProps & PropsLocale<'conversation'>
+type Props = ToolCallViewProps & PropsLocale<'image-generation'>
 
 function argsRaw(block: Props['block']): string { return 'kind' in block ? block.call?.argsRaw ?? '' : block.argsRaw }
 
@@ -50,7 +50,7 @@ export function ImageToolRow({ toolName, block, inspect, execflow, renderMessage
         <div className={css.bodyWrap} data-image-tool-body-wrap>
           <div className={css.body}>
             {images.length > 0 ? renderMessageImages({ images, align: 'start' }) : diagnostic !== null ? <pre>{diagnostic}</pre> : null}
-            {inspect !== undefined && <Tooltip label={t('execflow.inspect')} side="bottom"><button type="button" className={css.inspect} aria-label={t('execflow.inspect')} onClick={inspect}><DeepCreatorIconInspectOutline12 /></button></Tooltip>}
+            {inspect !== undefined && <Tooltip label={t('inspect')} side="bottom"><button type="button" className={css.inspect} aria-label={t('inspect')} onClick={inspect}><DeepCreatorIconInspectOutline12 /></button></Tooltip>}
           </div>
         </div>
       </DisclosureRow>

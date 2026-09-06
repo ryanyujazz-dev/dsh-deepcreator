@@ -5,7 +5,10 @@
 // no Cordis: the panel wires these into component state.
 
 import { parseUnifiedDiff, type DiffHunk } from '@ryanyujazz/dsh-client-ui-primitives'
-import type { ConversationNode, ToolCallBlock } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type ConversationNode,
+  type ToolCallBlock,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ReviewDiffResult, ReviewFileStatus } from '@ryanyujazz/dsh-review/types'
 
 /** Backward-compatible controller default; idle preheat is intentionally tiny. */

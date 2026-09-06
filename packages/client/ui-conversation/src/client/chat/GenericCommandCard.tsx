@@ -5,7 +5,8 @@
 // it as a base, feeding the same owner payload through.
 
 import { useState, type ReactNode } from 'react'
-import type { ChatViewSlotProps, CommandRowOwnerProps } from '../contract/slots.ts'
+import type { CommandRowOwnerProps } from '../contract/slots.ts'
+import type { ForkTranslate } from '../locales.ts'
 import { DisclosureRow, IconApiOutline14, StateDot } from '@ryanyujazz/dsh-client-ui-primitives'
 import a11yCss from './accessibility.module.css'
 import css from './GenericCommandCard.module.css'
@@ -24,7 +25,7 @@ function leadingFor(state: CommandRowState): ReactNode {
 
 /** Card props: the owner payload plus the render site's locale seat (plain prop). */
 export interface GenericCommandCardProps extends CommandRowOwnerProps {
-  t: ChatViewSlotProps['t']
+  t: ForkTranslate
   /** Command-specific running copy; absent uses the generic command label. */
   runningSummary?: string | undefined
 }

@@ -1,9 +1,23 @@
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext } from '@ryanyujazz/dsh-client-compat'
+import {
+  type SessionBinding,
+} from '@deepseek-ai/dsh-api-session-controller/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
-import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+
 import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+// Type-only: pulls the ctx.slots merge (SlotRegistry service) into this program.
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
+// Type-only: pulls the ctx.uiConversation merge and the ConversationViewSnapshotStore
+// face into this program.
+import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+// Type-only: registers the 'chat' entry into ConversationViewSnapshotMap.
+import type { ChatSnapshot } from '@deepseek-ai/dsh-client-ui-chat/client'
 import { createElement, type ReactNode } from 'react'
 import type {} from '@ryanyujazz/dsh-client-locale/client'
 import type {} from '@ryanyujazz/dsh-client-workbench-remotes/client'
@@ -25,7 +39,7 @@ type IconComponent = (props: { size?: number; className?: string }) => ReactNode
 function iconRenderer(Icon: IconComponent) { return ({ size }: WorkbenchPanelIconProps) => Icon({ size }) }
 
 export const inject = [
-  'slots', 'workbench', 'locale', 'remote', 'sessions',
+  'slots', 'workbench', 'locale', 'remote', 'sessions', 'uiConversation',
   'remote.review', 'remote.terminal-workbench',
   'presentation',
   'connection',
@@ -47,20 +61,33 @@ export function apply(ctx: ClientContext): void {
   // opens, so review data is warm on first open) and dies when the session
   // leaves the list. The panel is a view over its snapshot.
   const reviewCaches = new Map<SessionId, ReviewCacheController>()
+  // The Review invalidation signal rides the official Chat view target: the
+  // per-Session conversation assembly publishes its snapshot through the
+  // `uiConversation` binding, and subscribing to the target keeps the Chat
+  // projection alive for the cache's lifetime.
+  const chatSources = new WeakMap<SessionBinding, ObservableSnapshot<ChatSnapshot | undefined>>()
+  const chatSource = (binding: SessionBinding): ObservableSnapshot<ChatSnapshot | undefined> => {
+    let source = chatSources.get(binding)
+    if (source === undefined) {
+      const target = ctx.uiConversation.binding(binding).target('chat')
+      source = { getSnapshot: () => target.getSnapshot(), subscribe: listener => target.subscribe(listener) }
+      chatSources.set(binding, source)
+    }
+    return source
+  }
   const reviewCacheFor = (sessionId: SessionId): ReviewCacheController => {
     const existing = reviewCaches.get(sessionId)
     if (existing !== undefined) return existing
-    const session = ctx.sessions.binding(sessionId)?.session
+    const binding = ctx.sessions.binding(sessionId)
     const controller = new ReviewCacheController({
       remote,
       sessionId,
-      session: session ?? {
-        // Defensive: the staged session always resolves a binding; a stale
-        // panel render must still get a cache, inert until the real feed
-        // exists.
-        subscribe: () => () => {},
-        getSnapshot: () => ({ nodes: [], turnEnds: new Map() }) as never,
-      },
+      // Defensive: the staged session always resolves a binding; a stale
+      // panel render must still get a cache, inert until the real feed
+      // exists.
+      session: binding === undefined
+        ? { getSnapshot: () => undefined, subscribe: () => () => {} }
+        : chatSource(binding),
     })
     reviewCaches.set(sessionId, controller)
     return controller

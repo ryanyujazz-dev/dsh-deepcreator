@@ -15,10 +15,12 @@
  * an app.
  * @module @ryanyujazz/dsh-client-ui-app-stage/client
  */
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext } from '@ryanyujazz/dsh-client-compat'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@ryanyujazz/dsh-client-locale/client'
 import type {} from '@ryanyujazz/dsh-client-ui-layout/client'
+// Type-only: pulls the ctx.slots Context merge into this program.
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 // Type-only: the generated remote-client face keys 'appStage' into TypertClientRemote.
 import type {} from '@ryanyujazz/dsh-app-stage/remote'
 import type {} from './contract.ts'
@@ -74,7 +76,10 @@ export function apply(ctx: ClientContext): void {
     onActivity: activity => { ctx.layout.setStageActivity(activity); presence.poke() },
     onPresent: focus => { if (focus) ctx.layout.setStageMode('apps') },
   }, bridge)
-  ctx.effect(() => startRouterLoop({ poll: () => router.poll() }, { session: sessions.getSnapshot }), 'ui-app-stage: router poll loop')
+  ctx.effect(() => {
+    const stopLoop = startRouterLoop({ poll: () => router.poll() }, { session: sessions.getSnapshot })
+    return () => { stopLoop(); router.dispose() }
+  }, 'ui-app-stage: router poll loop')
 
   // M5 presence projection: no polling while no lease exists — the router's
   // activity signal pokes the feed when a command flows, and the feed keeps
@@ -97,8 +102,8 @@ export function apply(ctx: ClientContext): void {
         inject: () => ({
           // Writes stay one-way: the shell calls down into ctx.layout.
           layout: {
-            setDockOpen: open => { ctx.layout.setDockOpen(open) },
-            setStageMode: mode => { ctx.layout.setStageMode(mode) },
+            setDockOpen: (open: boolean) => { ctx.layout.setDockOpen(open) },
+            setStageMode: (mode: 'conversation' | 'apps') => { ctx.layout.setStageMode(mode) },
           },
           remote: appStage,
           sessions,

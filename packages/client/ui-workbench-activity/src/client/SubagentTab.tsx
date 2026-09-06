@@ -5,7 +5,12 @@
 
 import { memo, startTransition, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { SessionId, SessionProjectionMap } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
+import {
+  type SessionProjectionMap,
+} from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-token-meter/client'
 import type { ActivityKey } from './locales.ts'
 import css from './ActivityPanel.module.css'

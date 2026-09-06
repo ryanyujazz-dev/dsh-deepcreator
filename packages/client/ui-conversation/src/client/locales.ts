@@ -1,4 +1,5 @@
 /** `conversation` namespace dictionaries. */
+import type { CommonKeyOf, Translate, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 
 /** Dictionary namespace owned by this plugin. */
 export const NS = 'conversation'
@@ -426,3 +427,19 @@ export const en = {
   'clock.md': '{m}/{d}',
   'clock.ymd': '{y}-{m}-{d}',
 } satisfies Record<ConversationKey, string>
+
+/**
+ * Widen the official conversation locale seat to the fork's dictionary: the
+ * fork key union is a superset of the official `LocaleKeysOf<'conversation'>`,
+ * so the runtime seat (typed with the official union) also answers the fork's
+ * presentation keys. The shared common vocabulary stays accepted (the lookup
+ * chain consults it after the namespace). A pure type-level widening — no
+ * runtime behavior.
+ * @param t - the official-typed locale seat.
+ * @returns the same function, typed with the fork's key union.
+ */
+export type ForkTranslate = Translate<ConversationKey | CommonKeyOf>
+
+export function forkT(t: TranslateNS<'conversation'>): ForkTranslate {
+  return t as ForkTranslate
+}

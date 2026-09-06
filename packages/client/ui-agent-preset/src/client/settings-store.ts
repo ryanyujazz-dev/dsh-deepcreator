@@ -1,14 +1,20 @@
 /**
  * Agent-preset default-settings controller.
  *
- * Options and the current default both come from one `agentPreset.list` call:
+ * Options and the current default both come from one `agentPresets.list` call:
  * the roster already reports which id a session with no explicit choice gets,
  * so the row needs no schema introspection. Writes target the settings
  * namespace's `default` field, which is what the host resolves at creation.
  */
 
-import type { IApiClient } from '@deepseek-ai/dsh-api-remotes/client'
-import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
+// Type-only: pulls the ctx.remote merge into this program.
+import type {} from '@deepseek-ai/dsh-api-remotes/client'
+import type { AgentPresetRoster } from '@deepseek-ai/dsh-agent-presets/types'
+import {
+  createSnapshotStore,
+  type SnapshotStore,
+} from '@deepseek-ai/dsh-client-store'
 
 /** The agent-preset settings namespace on the host wire. */
 export const AGENT_PRESET_SETTINGS_NS = 'agent-presets'
@@ -30,23 +36,27 @@ export function messageOf(error: unknown): string {
  * The default is a settings field rather than a preset property, so both the
  * General row and the management section write it here — one home for which
  * namespace and field the host resolves at session creation.
- * @param api - the settings wire face.
+ * @param ctx - the browser plugin context carrying the Remote namespaces.
  * @param id - the preset to make default.
  * @returns the failure message, or undefined once the write landed.
  */
 export async function writeDefaultPreset(
-  api: Pick<IApiClient, 'settings'>,
+  ctx: ClientContext,
   id: string,
 ): Promise<string | undefined> {
   let response
   try {
-    response = await api.settings.update({ ns: AGENT_PRESET_SETTINGS_NS, patch: { default: id } })
+    response = await ctx.remote.settings.update(
+      AGENT_PRESET_SETTINGS_NS,
+      { default: id },
+      undefined,
+    )
   } catch (error) {
     // The transport rejected rather than answering; the caller must be able to
     // say so instead of the row silently snapping back.
     return messageOf(error)
   }
-  return response.result.ok ? undefined : response.result.error.message
+  return response.ok ? undefined : response.error.message
 }
 
 /** One selectable preset. */
@@ -62,33 +72,12 @@ export interface AgentPresetOption {
 }
 
 /** One roster entry exactly as the host reports it. */
-export interface RosterPreset {
-  /** Preset id and directory name. */
-  id: string
-  /** Whether the preset ships with the deployment or was authored locally. */
-  trust: 'system' | 'user'
-  /** Whether a session that names no preset gets this one. */
-  isDefault: boolean
-  /** Display name the preset published, absent when it published none. */
-  name?: string
-  /** One sentence on what the preset is for. */
-  description?: string
-  /** Why the preset cannot compose a session, absent when it can. */
-  broken?: string
-}
-
-/** The roster the host answered with. */
-export interface RosterValue {
-  /** Every preset the deployment composes, in the order the host lists them. */
-  presets: readonly RosterPreset[]
-  /** Whether this browser may author presets at all. */
-  authorable: boolean
-  /** Whether the host can open a preset directory on a native desktop. */
-  hasDocument: boolean
-}
+export type RosterPreset = AgentPresetRoster['presets'][number]
 
 /** The roster, or the message to show in its place. */
-export type RosterRead = { ok: true; value: RosterValue } | { ok: false; error: string }
+export type RosterRead = { ok: true; value: AgentPresetRoster } | { ok: false; error: string }
+
+const EMPTY_ROSTER: AgentPresetRoster = { presets: [], authorable: false }
 
 /**
  * Read the roster, folding both refusal shapes into one message.
@@ -97,18 +86,17 @@ export type RosterRead = { ok: true; value: RosterValue } | { ok: false; error: 
  * `ok: false` envelope — and every surface treats them identically. Folding
  * them here keeps each store's `load` about what it does with a roster rather
  * than about how the call can fail.
- * @param api - the agent-preset wire face.
+ * @param ctx - the browser plugin context carrying the Remote namespaces.
  * @returns the roster, or the message to show in its place.
  */
-export async function readRoster(api: Pick<IApiClient, 'agentPresets'>): Promise<RosterRead> {
-  try {
-    const response = await api.agentPresets.list({})
-    return response.result.ok
-      ? { ok: true, value: response.result.value }
-      : { ok: false, error: response.result.error.message }
-  } catch (error) {
-    return { ok: false, error: messageOf(error) }
-  }
+export async function readRoster(ctx: ClientContext): Promise<RosterRead> {
+  const result = await ctx.remote.agentPresets.list()
+  if (result.ok) return { ok: true, value: result.value }
+  // Agent presets are optional: without that service every session uses the
+  // Host composition, so callers receive the same empty roster as a mounted
+  // service with no configured roots.
+  if (result.error.code === 'gateway/invocation-unavailable') return { ok: true, value: EMPTY_ROSTER }
+  return { ok: false, error: result.error.message }
 }
 
 /**
@@ -118,18 +106,18 @@ export async function readRoster(api: Pick<IApiClient, 'agentPresets'>): Promise
  * A surface that gets `undefined` returns without touching its snapshot
  * further — either another read owns it, or this one already wrote the
  * failure. What differs between surfaces starts after this.
- * @param api - the agent-preset wire face.
+ * @param ctx - the browser plugin context carrying the Remote namespaces.
  * @param store - the surface's own snapshot store.
  * @returns the roster, or undefined when the caller should return.
  */
 export async function beginRosterRead<S extends { status: string; error: string | null }>(
-  api: Pick<IApiClient, 'agentPresets'>,
+  ctx: ClientContext,
   store: SnapshotStore<S>,
-): Promise<RosterValue | undefined> {
+): Promise<AgentPresetRoster | undefined> {
   const before = store.getSnapshot()
   if (before.status === 'loading') return undefined
   store.set({ ...before, status: 'loading', error: null })
-  const roster = await readRoster(api)
+  const roster = await readRoster(ctx)
   if (roster.ok) return roster.value
   store.set({ ...store.getSnapshot(), status: 'error', error: roster.error })
   return undefined
@@ -191,7 +179,7 @@ export class AgentPresetSettingsController {
   /** Row snapshot the renderer subscribes to. */
   readonly store: SnapshotStore<AgentPresetSettingsState> = createSnapshotStore(INITIAL)
 
-  constructor(private readonly api: IApiClient) {}
+  constructor(private readonly ctx: ClientContext) {}
 
   private set(patch: Partial<AgentPresetSettingsState>): void {
     this.store.set({ ...this.store.getSnapshot(), ...patch })
@@ -204,7 +192,7 @@ export class AgentPresetSettingsController {
    * @returns once the snapshot reflects the host.
    */
   async load(): Promise<void> {
-    const roster = await beginRosterRead(this.api, this.store)
+    const roster = await beginRosterRead(this.ctx, this.store)
     if (roster === undefined) return
     const { presets } = roster
     const [first] = presets
@@ -217,11 +205,11 @@ export class AgentPresetSettingsController {
       // this browser may write the choice down. A non-loopback browser reaches
       // neither method, so a refused describe leaves the row read-only rather
       // than offering a control whose write answers `settings-not-exposed`.
-      const described = await this.api.settings.describe({})
+      const described = await this.ctx.remote.settings.describe()
       this.set({
         status: 'ready',
         error: null,
-        writable: described.result.ok && described.result.value.writable,
+        writable: described.ok && described.value.writable,
         options: presetOptions(presets),
         // A roster can mark nothing default: settings can name a preset that
         // was since deleted, and the picker still has to show something.
@@ -243,7 +231,7 @@ export class AgentPresetSettingsController {
     const before = this.store.getSnapshot()
     if (before.status === 'saving' || id === before.currentValue) return
     this.set({ status: 'saving', error: null, currentValue: id })
-    const failure = await writeDefaultPreset(this.api, id)
+    const failure = await writeDefaultPreset(this.ctx, id)
     if (failure !== undefined) {
       this.set({ status: 'ready', currentValue: before.currentValue, error: failure })
       return

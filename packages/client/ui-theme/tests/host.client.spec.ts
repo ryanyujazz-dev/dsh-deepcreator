@@ -1,7 +1,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it } from 'vitest'
 import type { WebServer } from '@deepseek-ai/dsh-host-webserver'
-import { SettingsProvider, settingsNamespace, type SettingsNamespace } from '@deepseek-ai/dsh-settings'
+import { SettingsProvider, type SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import {
   DEFAULT_CODE_FONT, DEFAULT_DARK_CODE_THEME, DEFAULT_LIGHT_CODE_THEME,
   DEFAULT_PREFERENCE, DEFAULT_TRANSCRIPT_TEXT_SIZE, THEME_SETTINGS_NAMESPACE, apply,
@@ -21,7 +21,7 @@ describe('ui-theme host', () => {
     await ctx.plugin(MemorySettings).await()
     const fiber = ctx.plugin({ apply })
     await fiber.await()
-    const ns = settingsNamespace(THEME_SETTINGS_NAMESPACE)
+    const ns = THEME_SETTINGS_NAMESPACE
     expect(ctx.settings.get(ns)).toEqual({
       preference: DEFAULT_PREFERENCE,
       transcriptTextSize: DEFAULT_TRANSCRIPT_TEXT_SIZE,
@@ -52,7 +52,7 @@ describe('ui-theme host', () => {
     const fiber = ctx.plugin({ apply })
     await fiber.await()
     expect(transform?.('<body></body>')).toContain('const preference = "system"')
-    await ctx.settings.update(settingsNamespace(THEME_SETTINGS_NAMESPACE), { preference: 'dark' })
+    await ctx.settings.update(THEME_SETTINGS_NAMESPACE, { preference: 'dark' })
     expect(transform?.('<body></body>')).toContain('const preference = "dark"')
     await fiber.dispose()
     expect(disposed).toBe(true)

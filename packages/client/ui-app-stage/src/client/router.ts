@@ -19,7 +19,9 @@
  * diverge.
  * @module @ryanyujazz/dsh-client-ui-app-stage/client/router
  */
-import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
 import type { AppJsonValue, AppRouterOutcome, AppRouterRequest } from '@ryanyujazz/dsh-app-stage/types'
 import type { BridgeHandle } from './bridge.ts'
 import type { AppStageRemote, OpenContainer } from './contract.ts'
@@ -43,6 +45,8 @@ export interface StageRouterApi {
   bindFrame(ref: string, frame: HTMLIFrameElement): () => void
   /** Kick the long-poll loop (session arrival, after a user open). */
   poll(): void
+  /** Stop the loop for good (plugin teardown); in-flight polls settle quietly. */
+  dispose(): void
 }
 
 /** The environment the router needs (captured faces, never ctx). */
@@ -211,6 +215,9 @@ export function createStageRouter(env: RouterEnv, bridge: (frame: HTMLIFrameElem
     },
     poll() {
       void poll()
+    },
+    dispose() {
+      disposed = true
     },
     bindFrame(ref, frame) {
       const handle = bridge(frame, ref)

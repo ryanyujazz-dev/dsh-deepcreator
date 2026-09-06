@@ -6,10 +6,15 @@
  * sink). Package-private; the hub alone constructs it and wires the scoped
  * event listeners onto it.
  */
-import type {
-  ClientContext, ConversationSnapshot, ObservableSnapshot, SnapshotStore,
-} from '@deepseek-ai/dsh-client-runtime/client'
-import { createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext } from '@ryanyujazz/dsh-client-compat'
+import type { SessionSnapshot } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { ChatSnapshot } from '@deepseek-ai/dsh-client-ui-chat/client'
+import {
+  createSnapshotStore,
+  type ObservableSnapshot,
+  type SnapshotStore,
+} from '@deepseek-ai/dsh-client-store'
+
 import type {
   ArbitrateKey, ArbitrateOutcome, CommandClaim, ConsumeTokenRequest, PickOutcome,
   ReferenceInsert, InputTriggerController, TokenSpan,
@@ -41,8 +46,10 @@ export interface SessionInputDeps {
   popup?: (() => PopupDismissFace | undefined) | undefined
   /** Queue read face; overlaid onto InputState.queue (absent = empty). */
   queue?: ObservableSnapshot<readonly QueuedMessage[]> | undefined
-  /** Official Session snapshot used to pair local echoes with authoritative successors. */
-  authoritative?: ObservableSnapshot<ConversationSnapshot> | undefined
+  /** Official Session snapshot: queue occurrences plus the reconcile trigger. */
+  authoritative?: ObservableSnapshot<SessionSnapshot> | undefined
+  /** Registered chat-view snapshot (`uiConversation.binding(binding).target('chat')`): durable user/steering rows pairing. */
+  chatView?: ObservableSnapshot<ChatSnapshot | undefined> | undefined
   /**
    * Steer every still-pending queued message into the running turn, in FIFO
    * order (the empty-draft accelerated-Enter gesture); absent = unsupported.
@@ -113,14 +120,18 @@ export class SessionInputShell implements SessionInput {
   constructor(private readonly deps: SessionInputDeps) {
     this.state = createSnapshotStore<InputState>(this.compose())
     if (deps.authoritative !== undefined) {
-      for (const item of authoritativeMessages(deps.authoritative.getSnapshot())) {
+      for (const item of authoritativeMessages(deps.authoritative.getSnapshot(), deps.chatView?.getSnapshot())) {
         if (item.source === 'queue') this.observedQueue.add(item.id)
         else this.observedChatSeq = Math.max(this.observedChatSeq, item.seq)
       }
       this.sourceOffs.push(deps.authoritative.subscribe(() => {
-        this.reconcileOutgoing(deps.authoritative?.getSnapshot())
+        this.reconcileOutgoing(deps.authoritative?.getSnapshot(), deps.chatView?.getSnapshot())
         this.publish()
       }))
+      this.sourceOffs.push(deps.chatView?.subscribe(() => {
+        this.reconcileOutgoing(deps.authoritative?.getSnapshot(), deps.chatView?.getSnapshot())
+        this.publish()
+      }) ?? (() => {}))
     } else {
       this.sourceOffs.push(deps.queue?.subscribe(() => { this.publish() }) ?? (() => {}))
     }
@@ -588,9 +599,9 @@ export class SessionInputShell implements SessionInput {
    * occurrence pairs with at most one local occurrence, preserving FIFO
    * behavior for rapid identical sends.
    */
-  private reconcileOutgoing(snapshot: ConversationSnapshot | undefined): void {
+  private reconcileOutgoing(snapshot: SessionSnapshot | undefined, chat: ChatSnapshot | undefined): void {
     if (snapshot === undefined) return
-    const authoritative = authoritativeMessages(snapshot)
+    const authoritative = authoritativeMessages(snapshot, chat)
     const nextQueue = new Set(authoritative.filter(item => item.source === 'queue').map(item => item.id))
     const fresh = authoritative.filter(item => item.source === 'queue'
       ? !this.observedQueue.has(item.id)
@@ -668,8 +679,16 @@ function contentIdentity(content: readonly unknown[]): Pick<AuthoritativeMessage
   return { text, imageNames }
 }
 
-/** Enumerate the official queue/log occurrences that can replace local echoes. */
-function authoritativeMessages(snapshot: ConversationSnapshot): AuthoritativeMessage[] {
+/**
+ * Enumerate the official queue/log occurrences that can replace local echoes.
+ * 0.1.2 split the old ConversationSnapshot: queue occurrences live on the
+ * Session snapshot, durable chat rows live on the registered `chat` view
+ * target's snapshot.
+ */
+function authoritativeMessages(
+  snapshot: SessionSnapshot,
+  chat: ChatSnapshot | undefined,
+): AuthoritativeMessage[] {
   const messages: AuthoritativeMessage[] = []
   for (const item of snapshot.queue) {
     if (item.placement === 'context') continue
@@ -684,22 +703,24 @@ function authoritativeMessages(snapshot: ConversationSnapshot): AuthoritativeMes
       accepts: item.placement === 'queued' ? ['turn', 'queue', 'steering'] : ['steering', 'queue'],
     })
   }
-  for (const key of snapshot.chat.order) {
-    const node = snapshot.chat.nodes.get(key)
-    if (node?.kind !== 'user' && node?.kind !== 'steering') continue
-    const data = node.data
-    if (typeof data !== 'object' || data === null
-      || !('seq' in data) || typeof data.seq !== 'number'
-      || !('content' in data) || !Array.isArray(data.content)) continue
-    messages.push({
-      id: `chat:${node.kind}:${String(data.seq)}`,
-      source: 'chat',
-      seq: data.seq,
-      ...contentIdentity(data.content),
-      // A queued message can be consumed before its queue frame reaches the
-      // browser; its durable user row is still the authoritative handoff.
-      accepts: node.kind === 'steering' ? ['steering', 'queue'] : ['turn', 'queue', 'steering'],
-    })
+  if (chat !== undefined) {
+    for (const key of chat.order) {
+      const node = chat.nodes.get(key)
+      if (node?.kind !== 'user' && node?.kind !== 'steering') continue
+      const data = node.data
+      if (typeof data !== 'object' || data === null
+        || !('seq' in data) || typeof data.seq !== 'number'
+        || !('content' in data) || !Array.isArray(data.content)) continue
+      messages.push({
+        id: `chat:${node.kind}:${String(data.seq)}`,
+        source: 'chat',
+        seq: data.seq,
+        ...contentIdentity(data.content),
+        // A queued message can be consumed before its queue frame reaches the
+        // browser; its durable user row is still the authoritative handoff.
+        accepts: node.kind === 'steering' ? ['steering', 'queue'] : ['turn', 'queue', 'steering'],
+      })
+    }
   }
   return messages
 }

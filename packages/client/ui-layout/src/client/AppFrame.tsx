@@ -12,6 +12,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { computeColumns, SIDEBAR_AUTO_COLLAPSE, SIDEBAR_DEFAULT } from './columns.ts'
 import { detectNativeWindowChrome } from './native-window-chrome.ts'
 import type { createLayoutStore } from './stores.ts'
@@ -95,6 +96,7 @@ export function AppFrame({
   useSessions,
   actions,
   renderSlot,
+  SessionProvider,
   t,
 }: AppFrameProps) {
   const panels = useStore(s => s)
@@ -360,16 +362,16 @@ export function AppFrame({
         {/* Both column occupants stay at fixed tree positions from first
             paint — no loading gate: a bare status line reads worse than
             the shell's own pending rendering. The conversation
-            is session-maybe; the strict details entry naturally renders
-            empty while no session is current. */}
+            is session-maybe; SessionProvider withholds the strict details
+            entry while no session is current. */}
         <div ref={centerRef} className={css.centerCol}>{renderSlot('conversation', {})}</div>
-        <div ref={detailsRef} className={css.detailsCol}>{renderSlot('details', {
+        <div ref={detailsRef} className={css.detailsCol}><SessionProvider>{renderSlot('details', {
           width: phone ? viewport : cols.details,
           stageWidth: phone ? viewport : Math.max(0, viewport - cols.sidebar),
           resizeGesture: detailsResizeStart === null
             ? null
             : { active: true, startWidth: detailsResizeStart },
-        })}</div>
+        })}</SessionProvider></div>
       </>
       {/* Conversation-mode activity chip (M4): while an agent drives an app
           from the conversation, one visible affordance names the app and

@@ -14,7 +14,8 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { defineTool, type JsonValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+import { defineTool, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { AppStageService } from '@ryanyujazz/dsh-app-stage'
 import { ASSET_NAME_PATTERN, dshHome, installedVersionDir, listInstalled, scanDevRoot } from '@ryanyujazz/dsh-app-stage'
 

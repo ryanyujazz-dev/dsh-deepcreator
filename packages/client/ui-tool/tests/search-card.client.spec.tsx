@@ -10,11 +10,26 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import {
-  createSnapshotStore, EMPTY_CONVERSATION_VIEWS,
-} from '@deepseek-ai/dsh-client-runtime/client'
-import type {
-  ConversationSnapshot, RunningToolCall, SessionId, SessionListState, ToolResultNode, WorkspaceListState,
-} from '@deepseek-ai/dsh-client-runtime/client'
+  createSnapshotStore,
+} from '@deepseek-ai/dsh-client-store'
+import {
+  EMPTY_CONVERSATION_VIEWS,
+} from '@ryanyujazz/dsh-client-compat'
+import {
+  type ConversationSnapshot,
+  type RunningToolCall,
+  type ToolResultNode,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
+import {
+  type SessionListState,
+} from '@deepseek-ai/dsh-api-session-controller/client'
+import {
+  type WorkspaceSnapshot,
+} from '@deepseek-ai/dsh-api-workspace-controller/client'
+
 import type { ToolResultView } from '@deepseek-ai/dsh-api-remotes/client'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@ryanyujazz/dsh-client-locale/src/locales/zh.ts'

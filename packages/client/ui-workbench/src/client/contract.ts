@@ -143,6 +143,10 @@ export type WorkbenchControlsProps = PropsRuntime<'conversation.session.header.u
   & PropsStore<WorkbenchStore>
   & PropsLocale<'workbench'>
   & { controller: WorkbenchController; addressed: boolean }
+  // The official 0.1.2 SlotMap declares this seat with an empty owner share and
+  // wins the declaration merge; the DeepCreator conversation shell still passes
+  // the strip mode at runtime, so it is typed here as an optional share.
+  & { panelControls?: 'expanded' | 'compact' }
 
 export type WorkbenchPanelProps = PropsRuntime<'deepcreator.workbench.panel'> & WorkbenchPanelOwnerProps
 export type WorkbenchPanelIconProps = PropsRuntime<'deepcreator.workbench.panel-icon'> & WorkbenchPanelIconOwnerProps

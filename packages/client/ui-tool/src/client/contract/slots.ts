@@ -1,6 +1,8 @@
 /** Tool UI slot declarations and their composed component props. */
 import type { PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { ToolCallBlock } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type ToolCallBlock,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@ryanyujazz/dsh-client-ui-conversation/client'
 import type { RenderMessageImages } from '@ryanyujazz/dsh-client-ui-conversation/client'
 import type {} from '@ryanyujazz/dsh-client-locale/client'
@@ -69,3 +71,13 @@ export type ToolviewSeat = typeof TOOLVIEW_SEATS[number]
 export type ToolTreeProps = PropsRuntime<'conversation.chat.node', 'tool-call'>
   & PropsRenderSlots<'tool.call.toolview'>
   & PropsLocale<'conversation'>
+  // The official 0.1.2 SlotMap declares this seat with the upstream owner
+  // share and wins the declaration merge; the DeepCreator conversation shell
+  // still passes the review-handoff and execflow shares at runtime, so they
+  // are typed here as optional shares.
+  & {
+      /** Focus a tool-arg path's change in the review surface when one is composed. */
+      revealChange?: ((path: string, turn?: number) => void) | undefined
+      /** Active think display form; its presence selects the execflow row chrome. */
+      thinkMode?: 'inline' | 'compact' | undefined
+    }

@@ -3,7 +3,7 @@
  * owns settingsScope, settingsSchema, the describe mirror, and every official
  * settings slot; this package adds only the product-specific Preferences seat.
  */
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext } from '@ryanyujazz/dsh-client-compat'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import './contract/slots.ts'
 import { SettingsNavigationController } from './navigation.ts'

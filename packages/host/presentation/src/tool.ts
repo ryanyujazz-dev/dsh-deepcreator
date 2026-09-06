@@ -1,6 +1,7 @@
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import {
-  ToolArgsError, assertSupportedJsonSchema, type JsonSchemaNode, type JsonValue, type ToolDefinition,
+  ToolArgsError, assertSupportedJsonSchema, type JsonSchemaNode, type ToolDefinition,
   type ToolRunContext, validateJsonSchemaValue, valueSchemaSpecToJsonSchema,
 } from '@deepseek-ai/dsh-tools'
 import type { PresentationRuntime } from './runtime.ts'

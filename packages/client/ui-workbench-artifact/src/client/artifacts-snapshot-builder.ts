@@ -1,4 +1,9 @@
-import type { ConversationTimelineSnapshot, ConversationViewBuilder, ConversationViewDefinition, ConversationViewNode } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type ConversationTimelineSnapshot,
+  type ConversationViewBuilder,
+  type ConversationViewDefinition,
+  type ConversationViewNode,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ArtifactConversationNode, ArtifactsSnapshot, FileArtifactRecord } from './artifact-contract.ts'
 
@@ -57,5 +62,5 @@ export const artifactsViewDefinition: ConversationViewDefinition<ArtifactConvers
  * @returns idempotent disposer.
  */
 export function registerArtifactsConversationView(ctx: Context): () => void {
-  return ctx.conversationViews.register(artifactsViewDefinition)
+  return ctx.uiConversation.views.register(artifactsViewDefinition)
 }

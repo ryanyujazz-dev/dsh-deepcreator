@@ -9,9 +9,10 @@
  * document.body; a third contributes the stage-mode segmented control into
  * ui-sidebar's stage-mode seat.
  */
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext } from '@ryanyujazz/dsh-client-compat'
 import type {} from '@ryanyujazz/dsh-client-ui-theme/client'
 import type {} from '@ryanyujazz/dsh-client-locale/client'
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { PanelActions } from './service.ts'
 import { AppFrame } from './AppFrame.tsx'
 import { StageModeSegmented } from './StageModeSegmented.tsx'

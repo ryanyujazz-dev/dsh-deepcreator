@@ -21,10 +21,8 @@ import type { ReactNode } from 'react'
 import {
   DisclosureRow, FileIcon, IconChecklistOutline14, IconCodeOutline16, IconEditOutline16, IconListPenOutline16,
 } from '@ryanyujazz/dsh-client-ui-primitives'
-import type { ChatViewSlotProps } from '../contract/slots.ts'
+import type { ConversationKey } from '../locales.ts'
 import css from './DraftingToolRow.module.css'
-
-type ConversationKey = Parameters<ChatViewSlotProps['t']>[0]
 
 /** One drafting mapping: locale key + the settled row's glyph. */
 export interface DraftingEntry {

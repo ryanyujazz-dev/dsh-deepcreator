@@ -1,4 +1,9 @@
-import type { SessionId, SubagentAddress } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
+import {
+  type SubagentAddress,
+} from '@deepseek-ai/dsh-subagent/client'
 import type { JobStopResult, SubagentOverviewResult } from '@ryanyujazz/dsh-jobs-admin'
 
 /**

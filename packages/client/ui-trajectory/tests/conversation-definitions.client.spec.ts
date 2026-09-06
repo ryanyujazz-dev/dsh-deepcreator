@@ -1,9 +1,14 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it } from 'vitest'
-import type {
-  ConversationEventInput, ConversationNodeDefinition, ConversationViewDefinition,
-} from '@deepseek-ai/dsh-client-runtime/client'
-import { ConversationNodeAssembler } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type SessionEventLikeEntry,
+} from '@deepseek-ai/dsh-api-session-controller/client'
+import {
+  ConversationNodeAssembler,
+  type ConversationNodeDefinition,
+  type ConversationViewDefinition,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+
 import { registerTrajectoryAssistantDefinition } from '../src/client/trajectory-assistant-definition.ts'
 import { registerTrajectoryCompactionDefinitions } from '../src/client/trajectory-compaction-definition.ts'
 import type { TrajectorySnapshot } from '../src/client/trajectory-contract.ts'
@@ -49,7 +54,7 @@ function at(
   type: string,
   data: unknown,
   extra: Record<string, unknown> = {},
-): ConversationEventInput {
+): SessionEventLikeEntry {
   return {
     event: {
       seq,
@@ -57,12 +62,12 @@ function at(
       type,
       data,
       ...extra,
-    } as unknown as ConversationEventInput['event'],
+    } as unknown as SessionEventLikeEntry['event'],
     view: undefined,
   }
 }
 
-function assembler(events: readonly ConversationEventInput[]): ConversationNodeAssembler {
+function assembler(events: readonly SessionEventLikeEntry[]): ConversationNodeAssembler {
   const value = new ConversationNodeAssembler(
     new TestEventDefinitions(),
     new TestViewDefinitions(),

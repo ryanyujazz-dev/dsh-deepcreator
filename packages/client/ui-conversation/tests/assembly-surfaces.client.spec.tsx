@@ -4,7 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import { useState } from 'react'
 import { LocaleRuntime } from '@ryanyujazz/dsh-client-locale/client'
-import type { ISession, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type ISession,
+} from '@deepseek-ai/dsh-api-session-controller/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import { SlotTestRuntime, usePinnedBrowserLanguages, stubSettingsScope } from '@deepseek-ai/dsh-client-test-runtime'
 import { apply, inject, type EmptyWorkspaceOwnerProps } from '@ryanyujazz/dsh-client-ui-conversation/client'

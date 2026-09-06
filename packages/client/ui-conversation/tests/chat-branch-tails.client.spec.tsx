@@ -10,9 +10,12 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@ryanyujazz/dsh-client-locale/src/locales/zh.ts'
-import type {
-  ChatConversationViewNode, ConversationNode,
-} from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type ChatConversationViewNode,
+} from '@deepseek-ai/dsh-client-ui-chat/client'
+import {
+  type ConversationNode,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ChatNodeViewProps } from '../src/client/contract/slots.ts'
 import {
   formatMessageClock, msUntilNextLocalMidnight, startOfLocalDay,

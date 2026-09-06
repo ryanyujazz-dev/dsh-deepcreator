@@ -42,7 +42,7 @@
   },
   "license": "MIT",
   "peerDependencies": {
-    "@deepseek-ai/cordis": "4.0.1",
+    "@deepseek-ai/cordis": "4.0.2",
     "@deepseek-ai/dsh-client-connection": "^0.1.2-rc.1",
     "@deepseek-ai/dsh-client-ui-slots": "^0.1.2-rc.1",
     "@deepseek-ai/dsh-typert-protocol": "^0.1.2-rc.1",
@@ -66,20 +66,23 @@
     "@ryanyujazz/dsh-client-compat": "workspace:*"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "4.0.1",
+    "@deepseek-ai/cordis": "4.0.2",
+    "@deepseek-ai/dsh-api-session-controller": "0.1.2-rc.1",
     "@deepseek-ai/dsh-client-connection": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-chat": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-renderer": "0.1.2-rc.1",
     "@deepseek-ai/dsh-client-ui-slots": "0.1.2-rc.1",
     "@deepseek-ai/dsh-typert-protocol": "0.1.2-rc.1",
-    "@types/react": "~18.3.1",
-    "react": "^18.2.0",
     "@ryanyujazz/dsh-client-locale": "workspace:^",
-    "@ryanyujazz/dsh-client-workbench-remotes": "workspace:^",
+    "@ryanyujazz/dsh-client-presentation": "workspace:^",
+    "@ryanyujazz/dsh-client-ui-conversation": "workspace:^",
     "@ryanyujazz/dsh-client-ui-primitives": "workspace:^",
     "@ryanyujazz/dsh-client-ui-workbench": "workspace:^",
-    "@ryanyujazz/dsh-client-ui-conversation": "workspace:^",
+    "@ryanyujazz/dsh-client-workbench-remotes": "workspace:^",
     "@ryanyujazz/dsh-review": "workspace:^",
     "@ryanyujazz/dsh-terminal-workbench": "workspace:^",
-    "@ryanyujazz/dsh-client-presentation": "workspace:^"
+    "@types/react": "~18.3.1",
+    "react": "^18.2.0"
   },
   "files": [
     "lib/index.js",

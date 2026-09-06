@@ -13,7 +13,7 @@
  * The General-settings row separately writes the default preset for sessions
  * created later through the host Settings API.
  */
-import type { ConnectionHandle } from '@deepseek-ai/dsh-api-remotes/client'
+import type { ClientRemote } from '@deepseek-ai/dsh-api-remotes/client'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@ryanyujazz/dsh-client-locale/client'
 // Type-only: the settings slot types (this package registers a General row).
@@ -21,7 +21,12 @@ import type { SettingsSchemaService } from '@ryanyujazz/dsh-client-ui-settings/c
 // Type-only: pulls the ctx.remote merge and the forwarded-event key face
 // (the settings invalidation rides the allowlist) into this program.
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
-import type { ClientContext, SessionFace } from '@deepseek-ai/dsh-client-runtime/client'
+// Type-only: pulls the SlotRegistry service merge (ctx.slots).
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type { ClientContext } from '@ryanyujazz/dsh-client-compat'
+import {
+  type SessionFace,
+} from '@deepseek-ai/dsh-api-session-controller/client'
 import type { CommandUiContract, SelectOption } from '@deepseek-ai/dsh-client-ui-commands/client'
 import type { ClientSessionContext } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import type { PermissionSelect } from '@deepseek-ai/dsh-permission-presets/client'
@@ -112,9 +117,8 @@ export function apply(ctx: ClientContext): void {
 
   ctx.effect(() => ctx.locale.register('settings.permission', { zh, en }), 'ui-permission: settings row dictionaries')
 
-  const connection = ctx.get('connection') as ConnectionHandle
   const controller = new PermissionPresetSettingsController(
-    connection.api,
+    ctx.get('remote') as Pick<ClientRemote, 'settings'>,
     ctx.get('settingsSchema') as SettingsSchemaService,
   )
   const load = (): Promise<void> => controller.load()

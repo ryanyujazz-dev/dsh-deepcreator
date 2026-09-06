@@ -1,9 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import type {
-  ChatConversationViewNode, ChatSnapshot, ConversationEventInput,
-  ConversationNodeDefinition, ConversationViewDefinition,
-} from '@deepseek-ai/dsh-client-runtime/client'
-import { ConversationNodeAssembler } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type ChatConversationViewNode,
+  type ChatSnapshot,
+} from '@deepseek-ai/dsh-client-ui-chat/client'
+import {
+  type SessionEventLikeEntry,
+} from '@deepseek-ai/dsh-api-session-controller/client'
+import {
+  ConversationNodeAssembler,
+  type ConversationNodeDefinition,
+  type ConversationViewDefinition,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+
 import { assistantDefinition } from '../src/client/conversation-nodes/assistant.ts'
 import { chatViewDefinition } from '../src/client/conversation-nodes/chat-snapshot-builder.ts'
 import { commandDefinition } from '../src/client/conversation-nodes/command.ts'
@@ -54,7 +62,7 @@ function at(
   type: string,
   data: unknown,
   extra: Record<string, unknown> = {},
-): ConversationEventInput {
+): SessionEventLikeEntry {
   return {
     event: {
       seq,
@@ -62,12 +70,12 @@ function at(
       type,
       data,
       ...extra,
-    } as unknown as ConversationEventInput['event'],
+    } as unknown as SessionEventLikeEntry['event'],
     view: undefined,
   }
 }
 
-function assembler(entries: readonly ConversationEventInput[] = [], hasMore = false): ConversationNodeAssembler {
+function assembler(entries: readonly SessionEventLikeEntry[] = [], hasMore = false): ConversationNodeAssembler {
   const value = new ConversationNodeAssembler(new TestEventDefinitions(), new TestViewDefinitions())
   value.replaceWindow(entries, hasMore)
   value.flush()

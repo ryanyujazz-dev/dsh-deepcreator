@@ -5,7 +5,9 @@
  * capacity. */
 
 import { useEffect, useRef, useState } from 'react'
-import type { UseProjection } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type UseProjection,
+} from '@deepseek-ai/dsh-api-session-controller/client'
 // Type-only: the `contextPressure` / `contextBreakdown` projection key merges.
 import type {} from '@deepseek-ai/dsh-token-meter/client'
 import { Tooltip } from '@ryanyujazz/dsh-client-ui-primitives'

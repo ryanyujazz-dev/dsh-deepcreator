@@ -5,9 +5,13 @@
 // even when this UI version has never seen its producer.
 
 import type { ReactNode } from 'react'
-import type { ContextMessageNode, KnownContextForm } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type ContextMessageNode,
+  type KnownContextForm,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { FileIcon, JsonBlock } from '@ryanyujazz/dsh-client-ui-primitives'
-import type { ChatViewSlotProps } from '../contract/slots.ts'
+import type { CommonKeyOf, Translate as SlotTranslate } from '@deepseek-ai/dsh-client-ui-slots'
+import type { ConversationKey } from '../locales.ts'
 import css from './ContextBody.module.css'
 
 /** Model-facing text stays bounded at the disclosure, not at the producer. */
@@ -16,7 +20,7 @@ const MAX_CHARS = 20_000
 /** Rows a list body materializes before summarizing the remainder. */
 const MAX_ENTRIES = 200
 
-type Translate = ChatViewSlotProps['t']
+type Translate = SlotTranslate<ConversationKey | CommonKeyOf>
 
 /** One durable source narrowed to the readable-record shape; null for anything else. */
 function asRecord(value: unknown): Record<string, unknown> | null {

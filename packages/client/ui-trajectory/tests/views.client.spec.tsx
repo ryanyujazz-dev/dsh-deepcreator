@@ -14,14 +14,31 @@ import { createElement, type ComponentProps, type FC, type ReactNode } from 'rea
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
 import {
-  ConversationEventRegistry, ConversationViewRegistry, createSnapshotStore,
+  ConversationEventRegistry,
+  ConversationViewRegistry,
+  type ConversationSnapshot,
+  type RequestView,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import {
+  createSnapshotStore,
+  type SnapshotStore,
+} from '@deepseek-ai/dsh-client-store'
+import {
   EMPTY_CHAT_SNAPSHOT,
-} from '@deepseek-ai/dsh-client-runtime/client'
-import { SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
-import type {
-  ConversationSnapshot, RequestView,
-  SessionId, SessionListState, SnapshotStore, WorkspaceListState,
-} from '@deepseek-ai/dsh-client-runtime/client'
+} from '@deepseek-ai/dsh-client-ui-chat/client'
+import {
+  SlotRegistry,
+} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
+import {
+  type SessionListState,
+} from '@deepseek-ai/dsh-api-session-controller/client'
+import {
+  type WorkspaceSnapshot,
+} from '@deepseek-ai/dsh-api-workspace-controller/client'
+
 import type { ConvViewProps, ViewTab } from '@ryanyujazz/dsh-client-ui-conversation/client'
 import {
   ConversationSession, ConversationSessionHeader,
@@ -148,7 +165,7 @@ function emptySessions() {
 }
 
 function emptyWorkspaces() {
-  const store = createSnapshotStore<WorkspaceListState>({
+  const store = createSnapshotStore<WorkspaceSnapshot>({
     items: [], archivedSessionIds: [], state: 'idle', phase: 'ready', error: null, baselinesReady: true,
     recentWorkspaceId: undefined,
   })
@@ -1179,8 +1196,6 @@ describe('TrajectoryView state', () => {
     const restoredDuration = createTrajectoryDurationStore()
     expect(restoredDuration.getSnapshot()).toBe(true)
   })
-
-
 
   it('keeps ledger and timeline selection on the same event after prepend', () => {
     const older = {

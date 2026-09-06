@@ -54,13 +54,12 @@
     "@ryanyujazz/dsh-client-compat": "workspace:*",
     "@deepseek-ai/dsh-client-ui-renderer": "0.1.2-rc.1",
     "@deepseek-ai/dsh-api-session-controller": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-client-ui-chat": "0.1.2-rc.1",
     "@deepseek-ai/dsh-api-workspace-controller": "0.1.2-rc.1"
   },
   "peerDependencies": {
     "@deepseek-ai/dsh-agent": "^0.1.2-rc.1",
     "@deepseek-ai/dsh-invariants": "^0.1.2-rc.1",
-    "@deepseek-ai/cordis": "4.0.1",
+    "@deepseek-ai/cordis": "4.0.2",
     "@deepseek-ai/dsh-compaction": "^0.1.2-rc.1",
     "@deepseek-ai/dsh-tools": "^0.1.2-rc.1",
     "react": "^18.2.0",
@@ -69,20 +68,21 @@
     "@ryanyujazz/dsh-client-ui-primitives": "^0.1.0"
   },
   "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.2",
     "@deepseek-ai/dsh-agent": "0.1.2-rc.1",
     "@deepseek-ai/dsh-client-test-runtime": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-chat": "0.1.2-rc.1",
     "@deepseek-ai/dsh-client-ui-slots": "0.1.2-rc.1",
     "@deepseek-ai/dsh-compaction": "0.1.2-rc.1",
     "@deepseek-ai/dsh-invariants": "0.1.2-rc.1",
     "@deepseek-ai/dsh-tools": "0.1.2-rc.1",
+    "@ryanyujazz/dsh-client-locale": "workspace:^",
+    "@ryanyujazz/dsh-client-ui-conversation": "workspace:^",
+    "@ryanyujazz/dsh-client-ui-primitives": "workspace:^",
     "@types/react": "~18.3.1",
     "@types/react-dom": "~18.3.0",
-    "@deepseek-ai/cordis": "4.0.1",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "@ryanyujazz/dsh-client-locale": "workspace:^",
-    "@ryanyujazz/dsh-client-ui-primitives": "workspace:^",
-    "@ryanyujazz/dsh-client-ui-conversation": "workspace:^"
+    "react-dom": "^18.2.0"
   },
   "files": [
     "lib/index.js",

@@ -15,11 +15,11 @@
     "test": "vitest run --root ../../.. packages/host/browser-iab/tests"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "4.0.1",
+    "@deepseek-ai/cordis": "4.0.2",
     "@ryanyujazz/dsh-browser": "^0.1.0"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "4.0.1",
+    "@deepseek-ai/cordis": "4.0.2",
     "@ryanyujazz/dsh-browser": "workspace:^",
     "@types/node": "^22.20.0",
     "typescript": "^6.0.3",

@@ -20,6 +20,7 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { IconChevronDownOutline14 } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { ChatRenderSlotProps, ThinkMode } from '../contract/slots.ts'
+import { forkT, type ForkTranslate } from '../locales.ts'
 import { PendingOutgoingBubble, PendingSteeringBubble } from './MessageItem.tsx'
 import { ChatNodeSeat } from './ChatNodeSeat.tsx'
 import { ReasoningRow } from './ReasoningRow.tsx'
@@ -84,7 +85,7 @@ function TurnStatus({ startTime, t, thinkingText, onShowThinking }: {
    *  time when that boundary is outside the window. */
   startTime: number | null
   /** The owning mode body's locale seat. */
-  t: ChatRenderSlotProps['t']
+  t: ForkTranslate
   /** Current streaming reasoning block; null hides the classic-mode link. */
   thinkingText: string | null
   /** Enter the Think render mode, where the complete reasoning is inline. */
@@ -149,18 +150,19 @@ export type ExecFlowBodyProps = ChatRenderSlotProps & ExecFlowBodyInjected
  * delegated keyed seat) or an aggregated tool run (through ExecutionSlot).
  */
 export function ExecFlowBody({
-  useSession, useSessions, useInput, sessionId, openFile, revealChange, loadOlder, loadImage, renderMessageImages, inspectCall, chatScroll, forkAt,
-  fileMentions, selectRenderMode, acknowledgeOutgoing, renderSlot, t, actions, thinkForm, siblingId,
+  useSession, useSessions, useInput, useChat, sessionId, openFile, revealChange, loadOlder, loadImage, renderMessageImages, inspectCall, chatScroll, forkAt,
+  fileMentions, selectRenderMode, acknowledgeOutgoing, renderSlot, t: tRaw, actions, thinkForm, siblingId,
 }: ExecFlowBodyProps) {
-  const order = useSession(s => s.chat.order)
-  const nodeStore = useSession(s => s.chat.nodes)
+  const t = forkT(tRaw)
+  const order = useChat(s => s.order)
+  const nodeStore = useChat(s => s.nodes)
   // ChatNodeStore is identity-stable across content-only upserts. Its values
   // snapshot is the invalidation face: a tool/result replaces a running node
   // without changing either the store or order reference, but values() then
   // publishes a new list. Keep the flow partition subscribed to that list so
   // aggregate running/settled facts update on the result itself.
-  const nodeValues = useSession(s => s.chat.nodes.values())
-  const timeline = useSession(s => s.chat.timeline)
+  const nodeValues = useChat(s => s.nodes.values())
+  const timeline = useChat(s => s.timeline)
   const inbox = useSession(s => s.queue)
   // Workspace root off the session list row: path summaries display relative to it.
   const cwd = useSessions(s => s.byId[sessionId]?.cwd)
@@ -209,7 +211,7 @@ export function ExecFlowBody({
   )
   const runningTurnStart = useMemo(() => runningTurnStartTime(timeline), [timeline])
 
-  const partial = useSession(s => s.partial)
+  const partial = useChat(s => s.legacy.partial)
   const streamingTail = partial?.blocks.at(-1)
   const streamingReasoning = streamingTail?.kind === 'reasoning' ? streamingTail.text : null
   // Drafting signature: names+count of the partial's tool-call blocks. The
@@ -346,7 +348,7 @@ export function ExecFlowBody({
     <ChatNodeSeat
       nodeKey={nodeKey}
       thinkMode={thinkForm}
-      useSession={useSession}
+      useChat={useChat}
       cwd={cwd}
       openFile={openFile}
       revealChange={revealChange}
@@ -358,7 +360,7 @@ export function ExecFlowBody({
       renderSlot={renderSlot}
       t={t}
     />
-  ), [useSession, thinkForm, cwd, openFile, revealChange, inspectCall, forkAt, loadImage, fileMentions, renderSlot, t])
+  ), [useChat, thinkForm, cwd, openFile, revealChange, inspectCall, forkAt, loadImage, fileMentions, renderSlot, t])
 
   const columnRef = useRef<HTMLDivElement | null>(null)
   const atBottomRef = useRef(true)
@@ -584,7 +586,7 @@ export function ExecFlowBody({
               <ChatNodeSeat
                 nodeKey={entry.nodeKey}
                 thinkMode={thinkForm}
-                useSession={useSession}
+                useChat={useChat}
                 cwd={cwd}
                 openFile={openFile}
                 revealChange={revealChange}

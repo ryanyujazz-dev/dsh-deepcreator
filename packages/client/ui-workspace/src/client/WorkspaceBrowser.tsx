@@ -16,9 +16,17 @@ import {
   IconProjectAddOutline16, IconSearchOutline16, Menu, Modal, RiskConfirmation,
   SIDEBAR_ICON_SIZE, Tooltip,
 } from '@ryanyujazz/dsh-client-ui-primitives'
-import type {
-  SessionId, SessionListState, SessionSearchResultItem, WorkspaceId, WorkspaceView,
-} from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
+import {
+  type SessionListState,
+  type SessionSearchResultItem,
+} from '@deepseek-ai/dsh-api-session-controller/client'
+import {
+  type WorkspaceId,
+  type WorkspaceView,
+} from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { WorkspaceBrowserProps } from './contract/slots.ts'
 import type { SessionNode, SessionOrderBy } from './tree.ts'
 import { deriveFlat, deriveGroups, derivePinned, deriveSearchResults, UNGROUPED_KEY } from './tree.ts'
@@ -392,7 +400,8 @@ function SessionTree({
     })
   }
   const workspaceDropAtListStart = groups[0]?.workspaceId !== undefined
-    && workspaceDrag?.over?.id === groups[0].workspaceId
+    && workspaceDrag?.over !== null && workspaceDrag?.over !== undefined
+    && workspaceDrag.over.id === groups[0].workspaceId
     && workspaceDrag.over.half === 'before'
 
   return (
@@ -408,8 +417,10 @@ function SessionTree({
         )}
         {groups.map((group) => {
           const workspaceId = group.workspaceId
-          const workspaceMarker = workspaceId !== undefined && workspaceDrag?.over?.id === workspaceId
-            ? workspaceDrag.over.half
+          const workspaceOver = workspaceDrag?.over
+          const workspaceMarker = workspaceId !== undefined && workspaceOver !== null
+            && workspaceOver !== undefined && workspaceOver.id === workspaceId
+            ? workspaceOver.half
             : null
           const workspaceDragProps = workspaceId === undefined || !canManageWorkspaces ? undefined : {
             start: () => {

@@ -17,6 +17,11 @@
   disabled: true
 - id: ui-conversation
   disabled: true
+# 0.1.2 split the official chat view out of ui-conversation into this package.
+# The fork ships its own conversation plugin (deepcreator-conversation), so
+# the official chat row would double-register Definitions (inbox-next-step).
+- id: ui-chat
+  disabled: true
 - id: ui-tool
   disabled: true
 - id: ui-trajectory

@@ -6,9 +6,15 @@
 // view over its snapshot; user gestures (expand, reveal, manual refresh,
 // visibility) arrive as method calls.
 
-import type {
-  ConversationSnapshot, ObservableSnapshot, SessionId,
-} from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type ChatSnapshot,
+} from '@deepseek-ai/dsh-client-ui-chat/client'
+import {
+  type ObservableSnapshot,
+} from '@deepseek-ai/dsh-client-store'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
 import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   ReviewChecksResult, ReviewDiffResult, ReviewFileSummary, ReviewHistoryResult, ReviewLocation, ReviewManifestResult,
@@ -174,7 +180,7 @@ function missingRemoteMethod(reason: unknown, method: string): boolean {
 export class ReviewCacheController {
   private readonly remote: TypertClientRemote
   private readonly sessionId: SessionId
-  private readonly session: ObservableSnapshot<ConversationSnapshot>
+  private readonly session: ObservableSnapshot<ChatSnapshot | undefined>
   private readonly prefetchLimit: number
   private readonly cacheLimit: number
   private readonly cacheBytes: number
@@ -222,7 +228,7 @@ export class ReviewCacheController {
   constructor(options: {
     remote: TypertClientRemote
     sessionId: SessionId
-    session: ObservableSnapshot<ConversationSnapshot>
+    session: ObservableSnapshot<ChatSnapshot | undefined>
     prefetchLimit?: number
     cacheLimit?: number
     cacheBytes?: number
@@ -236,8 +242,8 @@ export class ReviewCacheController {
     // Seed the event baselines from the current snapshot: history that
     // predates this controller must not fire an invalidation.
     const initial = options.session.getSnapshot()
-    this.seenMutations = decodeMutationSignal(encodeMutationSignal(mutationSignal(initial.nodes)))
-    this.seenTurnEnds = initial.turnEnds.size
+    this.seenMutations = decodeMutationSignal(encodeMutationSignal(mutationSignal(initial?.legacy.nodes ?? [])))
+    this.seenTurnEnds = initial?.legacy.turnEnds.size ?? 0
     this.unsubscribeSession = options.session.subscribe(() => { this.onSessionSnapshot() })
     void this.initialize().finally(() => {
       this.initializing = false
@@ -1178,7 +1184,7 @@ export class ReviewCacheController {
   private onSessionSnapshot(): void {
     if (this.disposed) return
     const snapshot = this.session.getSnapshot()
-    const signal = decodeMutationSignal(encodeMutationSignal(mutationSignal(snapshot.nodes)))
+    const signal = decodeMutationSignal(encodeMutationSignal(mutationSignal(snapshot?.legacy.nodes ?? [])))
     const previousMutations = this.seenMutations
     this.seenMutations = signal
     if (signal.count > previousMutations.count) {
@@ -1201,7 +1207,7 @@ export class ReviewCacheController {
         void this.refresh({ silent: true, ...(target === null ? {} : { focusPath: target }) })
       }, MUTATION_DEBOUNCE_MS)
     }
-    const turnEndCount = snapshot.turnEnds.size
+    const turnEndCount = snapshot?.legacy.turnEnds.size ?? 0
     if (this.seenTurnEnds < 0) {
       this.seenTurnEnds = turnEndCount
     } else if (turnEndCount > this.seenTurnEnds) {

@@ -3,12 +3,13 @@
 // generic command card so no-history, cancellation, and failures retain their
 // complete handler-authored text.
 
-import type { ChatViewSlotProps, CommandRowOwnerProps } from '../contract/slots.ts'
+import type { CommandRowOwnerProps } from '../contract/slots.ts'
+import type { ForkTranslate } from '../locales.ts'
 import { CompactionItem } from './CompactionItem.tsx'
 import { GenericCommandCard } from './GenericCommandCard.tsx'
 
 interface CompactionCommandCardProps extends CommandRowOwnerProps {
-  t: ChatViewSlotProps['t']
+  t: ForkTranslate
 }
 
 /** Render one manual compaction lifecycle without duplicating its checkpoint marker. */

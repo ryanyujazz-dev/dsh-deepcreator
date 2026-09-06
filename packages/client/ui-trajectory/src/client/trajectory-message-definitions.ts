@@ -1,11 +1,16 @@
 import type { Context } from '@deepseek-ai/cordis'
-import type {
-  ContextMessageNode, ConversationNodeDefinition, ConversationPreviousContext,
-  SteeringMessageNode, UserMessageNode,
-} from '@deepseek-ai/dsh-client-runtime/client'
 import {
-  contextForm, contextProvenance,
-} from '@deepseek-ai/dsh-client-runtime/client'
+  type ContextMessageNode,
+  type ConversationNodeDefinition,
+  type ConversationPreviousContext,
+  type SteeringMessageNode,
+  type UserMessageNode,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import {
+  contextForm,
+  contextProvenance,
+} from '@ryanyujazz/dsh-client-compat'
+
 import type {} from '@deepseek-ai/dsh-agent/types'
 import { trajectoryNode } from './trajectory-definition-common.ts'
 
@@ -117,6 +122,6 @@ const trajectoryMessageDefinition: ConversationNodeDefinition<MessageNode> = {
  * @param ctx - Plugin context receiving the Definitions.
  */
 export function registerTrajectoryMessageDefinitions(ctx: Context): void {
-  ctx.conversationEvents.register(trajectoryInboxDefinition)
-  ctx.conversationEvents.register(trajectoryMessageDefinition)
+  ctx.uiConversation.events.register(trajectoryInboxDefinition)
+  ctx.uiConversation.events.register(trajectoryMessageDefinition)
 }

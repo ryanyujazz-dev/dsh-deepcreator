@@ -4,8 +4,10 @@
 // pagination, renderers, mode state and typography with the center column.
 
 import { useSyncExternalStore } from 'react'
+import type { ReactNode } from 'react'
 import clsx from 'clsx'
 import type { HostObservable, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { ConversationSessionRenderer } from '../surface-registry.ts'
 import rootCss from '../skeleton/ConversationRoot.module.css'
 import css from './ConversationEmbed.module.css'
@@ -25,10 +27,20 @@ export function ConversationEmbed({
   childSessionId, SessionProvider, renderSlot,
 }: ConversationEmbedProps) {
   const surfaceId = `activity:${childSessionId}`
+  // Fork-only session address: the official 0.1.2 standard session seat
+  // (`SessionAreaProps`) binds the runtime's CURRENT session only, while the
+  // fork runtime's area provider additionally reads an explicit `sessionId`
+  // and a render-prop `children`. The localized cast keeps that fork runtime
+  // contract expressible until an official addressed provider exists.
+  const AddressedSessionProvider = SessionProvider as unknown as (props: {
+    sessionId: SessionId
+    empty: () => null
+    children: () => ReactNode
+  }) => ReactNode
   return (
-    <SessionProvider sessionId={childSessionId} empty={() => null}>
+    <AddressedSessionProvider sessionId={childSessionId} empty={() => null}>
       {() => renderSlot('deepcreator.conversation.embed.surface', { surfaceId })}
-    </SessionProvider>
+    </AddressedSessionProvider>
   )
 }
 

@@ -2,7 +2,7 @@
 import { IconThinkOutline14 } from '@ryanyujazz/dsh-client-ui-primitives'
 import { ExecDisclosureRow } from './ExecDisclosureRow.tsx'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { ChatViewSlotProps } from '../contract/slots.ts'
+import type { ForkTranslate } from '../locales.ts'
 import { useThrottledVisualUpdate } from './use-throttled-visual-update.ts'
 import a11yCss from './accessibility.module.css'
 import css from './ReasoningRow.module.css'
@@ -34,7 +34,7 @@ export function ReasoningRow({ text, running, defaultExpanded = false, onActivat
   defaultExpanded?: boolean
   onActivate?: (() => void) | undefined
   activationLabel?: string | undefined
-  t: ChatViewSlotProps['t']
+  t: ForkTranslate
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded)
   const actionLabel = onActivate === undefined ? undefined : activationLabel ?? 'Think'

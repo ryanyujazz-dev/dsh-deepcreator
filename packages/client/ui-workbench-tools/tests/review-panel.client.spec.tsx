@@ -4,7 +4,12 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ConversationSnapshot, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type ConversationSnapshot,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
 import { ReviewPanel, matchReviewFile } from '../src/client/Panels.tsx'
 import { ReviewCacheController } from '../src/client/review-cache.ts'
 

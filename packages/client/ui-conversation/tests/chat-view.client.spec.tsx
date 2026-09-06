@@ -6,15 +6,38 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-library/react'
 import { useEffect } from 'react'
-import type {
-  AssistantMessageNode, CommandNode, CompactionSummaryNode, ConversationNode, ConversationSnapshot,
-  ModelRetryNode, RunningToolCall, SessionId, SessionListState, ToolCallBlock, ToolResultNode, TurnErrorNode,
-  TurnMaxTokensNode, UserMessageNode, WorkspaceListState,
-} from '@deepseek-ai/dsh-client-runtime/client'
-import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import {
-  createSnapshotStore, EMPTY_CONVERSATION_VIEWS, PendingWait,
-} from '@deepseek-ai/dsh-client-runtime/client'
+  type AssistantMessageNode,
+  type CommandNode,
+  type CompactionSummaryNode,
+  type ConversationNode,
+  type ConversationSnapshot,
+  type ModelRetryNode,
+  type RunningToolCall,
+  type ToolCallBlock,
+  type ToolResultNode,
+  type TurnErrorNode,
+  type TurnMaxTokensNode,
+  type UserMessageNode,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
+import {
+  type SessionListState,
+} from '@deepseek-ai/dsh-api-session-controller/client'
+import {
+  type WorkspaceSnapshot,
+} from '@deepseek-ai/dsh-api-workspace-controller/client'
+import {
+  createSnapshotStore,
+} from '@deepseek-ai/dsh-client-store'
+import {
+  EMPTY_CONVERSATION_VIEWS,
+  PendingWait,
+} from '@ryanyujazz/dsh-client-compat'
+import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
+
 import { RpcId } from '@deepseek-ai/dsh-client-connection/client'
 import type {
   ChatNode, ChatNodeOwnerProps, ChatNodeViewProps, ChatRenderOwnerProps, ChatViewSlotProps,
@@ -155,7 +178,7 @@ function emptySessions() {
 }
 
 function emptyWorkspaces() {
-  const store = createSnapshotStore<WorkspaceListState>({
+  const store = createSnapshotStore<WorkspaceSnapshot>({
     items: [], archivedSessionIds: [], state: 'idle', phase: 'ready', error: null,
     baselinesReady: true, recentWorkspaceId: undefined,
   })

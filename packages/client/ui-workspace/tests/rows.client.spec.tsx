@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, createEvent, fireEvent, render, screen } from '@testing-library/react'
-import type { SessionId, WorkspaceId } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type SessionId,
+  type WorkspaceId,
+} from '@deepseek-ai/dsh-session/types'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@ryanyujazz/dsh-client-locale/src/locales/zh.ts'
 import type { RowDragProps } from '../src/client/rows/Rows.tsx'
@@ -407,7 +410,6 @@ describe('workspace browser rows', () => {
       onOpenLocation={vi.fn()} canOpenLocation fileManager="explorer" t={t} />)
     expect(screen.getByRole<HTMLButtonElement>('menuitem', { name: '在资源管理器中打开' }).disabled).toBe(false)
   })
-
 
   it('shows the hover card after the dwell and suppresses it while the row menu is open', () => {
     vi.useFakeTimers()

@@ -15,9 +15,20 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
-import type {
-  JobView, SessionId, SessionProjectionMap, SubagentAddress, SubagentCatalogSnapshot, SessionSummary,
-} from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type SessionProjectionMap,
+  type SessionSummary,
+  type SubagentCatalogSnapshot,
+} from '@deepseek-ai/dsh-api-session-controller/client'
+import {
+  type SessionJob,
+} from '@deepseek-ai/dsh-api-session-controller/types'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
+import {
+  type SubagentAddress,
+} from '@deepseek-ai/dsh-subagent/client'
 import type { SubagentOverviewOk } from '@ryanyujazz/dsh-jobs-admin'
 import type {} from '@deepseek-ai/dsh-token-meter/client'
 import type { PropsLocale, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
@@ -34,7 +45,7 @@ type SessionsListState = {
   byId: Record<SessionId, SessionSummary>
   currentAddress: SubagentAddress | undefined
 } & {
-  jobsBySession: Record<SessionId, readonly JobView[]>
+  jobsBySession: Record<SessionId, readonly SessionJob[]>
   subagentsByParent: Record<SessionId, SubagentCatalogSnapshot>
 }
 type Props = WorkbenchPanelProps & PropsLocale<'workbench-activity'> & ActivityInjected
@@ -99,7 +110,7 @@ export function stateDot(status: string): 'ongoing' | 'warning' | 'done' | 'erro
   return 'done'
 }
 
-export function isLive(job: Pick<JobView, 'status'>): boolean {
+export function isLive(job: Pick<SessionJob, 'status'>): boolean {
   return job.status === 'running' || job.status === 'stopping'
 }
 
@@ -115,7 +126,7 @@ export function formatDuration(elapsedMs: number, t: T): string {
 }
 
 /** Live jobs first in start order, settled newest-first (official ordering). */
-function ordered(jobs: readonly JobView[]): JobView[] {
+function ordered(jobs: readonly SessionJob[]): SessionJob[] {
   return [...jobs].sort((a, b) => {
     const liveA = isLive(a), liveB = isLive(b)
     if (liveA !== liveB) return liveA ? -1 : 1
@@ -501,7 +512,7 @@ function JobInstance(props: Props & { homeId: SessionId; jobId: string }) {
 
 interface TasksPageProps {
   sessionId: SessionId
-  jobs: readonly JobView[]
+  jobs: readonly SessionJob[]
   cohort: SubagentCohort
   subagentCount: number
   addressedId: SessionId | undefined
@@ -817,7 +828,7 @@ function NestedSubagents({ parentId, catalogs, byId, openLevels, onToggleExpand,
 }
 
 interface JobRowProps {
-  job: JobView
+  job: SessionJob
   now: number
   stopping: boolean
   onOpen(): void

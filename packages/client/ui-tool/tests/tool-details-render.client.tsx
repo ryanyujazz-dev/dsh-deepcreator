@@ -1,7 +1,12 @@
 /** Build the canonical Chat slice consumed by Tool row and assembly tests. */
-import type {
-  ChatConversationViewNode, ChatSnapshot, ConversationNode, RunningToolCall,
-} from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type ChatConversationViewNode,
+  type ChatSnapshot,
+} from '@deepseek-ai/dsh-client-ui-chat/client'
+import {
+  type ConversationNode,
+  type RunningToolCall,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 
 export function toolChatSnapshot(
   settled: readonly ConversationNode[] = [],

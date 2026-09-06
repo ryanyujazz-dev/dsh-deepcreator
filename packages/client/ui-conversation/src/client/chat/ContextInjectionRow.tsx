@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import clsx from 'clsx'
-import type { ContextMessageNode } from '@deepseek-ai/dsh-client-runtime/client'
-import type { ChatViewSlotProps } from '../contract/slots.ts'
+import {
+  type ContextMessageNode,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { ForkTranslate } from '../locales.ts'
 import { DisclosureRow, IconBrowseOutline16 } from '@ryanyujazz/dsh-client-ui-primitives'
 import { contextBody } from './ContextBody.tsx'
 import css from './ContextInjectionRow.module.css'
@@ -18,7 +20,7 @@ export interface ContextInjectionRowProps {
    * (set by the execflow render modes through the node owner's think form). */
   execflow?: boolean | undefined
   /** The owning view's locale seat, passed down as a plain prop. */
-  t: ChatViewSlotProps['t']
+  t: ForkTranslate
 }
 
 /**

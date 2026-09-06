@@ -28,8 +28,15 @@ import type { HostObservable, PropsLocale, PropsRenderSlots, PropsRuntime, Props
 import type {} from '@ryanyujazz/dsh-client-ui-sidebar/client'
 import type {} from '@ryanyujazz/dsh-client-ui-conversation/client'
 import type {
-  SessionId, SessionSearchResultItem, WorkspaceId, WorkspaceView,
-} from '@deepseek-ai/dsh-client-runtime/client'
+  SessionId,
+} from '@deepseek-ai/dsh-session/types'
+import {
+  type SessionSearchResultItem,
+} from '@deepseek-ai/dsh-api-session-controller/client'
+import {
+  type WorkspaceId,
+  type WorkspaceView,
+} from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { createWorkspaceViewStore } from '../stores.ts'
 import type { NativeFileManager } from '../file-manager.ts'
 

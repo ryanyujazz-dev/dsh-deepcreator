@@ -1,12 +1,18 @@
 import type { Context } from '@deepseek-ai/cordis'
-import type {
-  ConversationMatch, ConversationNodeContext, ConversationNodeDefinition, TurnErrorNode,
-} from '@deepseek-ai/dsh-client-runtime/client'
-import { displayFailureMessage } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type ConversationMatch,
+  type ConversationNodeContext,
+  type ConversationNodeDefinition,
+  type TurnErrorNode,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import {
+  displayFailureMessage,
+} from '@ryanyujazz/dsh-client-compat'
+
 import type {} from '@deepseek-ai/dsh-llm-retry/types'
 import { chatNode } from './common.ts'
 
-declare module '@ryanyujazz/dsh-client-ui-conversation/client' {
+declare module '@deepseek-ai/dsh-client-ui-chat/client' {
   interface ChatNodeDataMap {
     /** Terminal turn failure not superseded by retry. */
     'turn-error': TurnErrorNode
@@ -109,5 +115,5 @@ export const turnErrorDefinition: ConversationNodeDefinition<TurnErrorState> = {
  * @param ctx - owning UI Conversation context.
  */
 export function registerTurnErrorConversationNode(ctx: Context): void {
-  ctx.conversationEvents.register(turnErrorDefinition)
+  ctx.uiConversation.events.register(turnErrorDefinition)
 }

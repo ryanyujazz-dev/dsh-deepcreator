@@ -2,7 +2,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
+import type {} from '@deepseek-ai/dsh-settings'
 import { injectBootTheme } from './boot-theme.ts'
 import {
   DEFAULT_PREFERENCE, THEME_SETTINGS_NAMESPACE, ThemeSettingsSchema,
@@ -20,7 +20,7 @@ export {
   type ThemePreference, type ThemeSettings, type TranscriptTextSize,
 } from './theme-settings.ts'
 
-const THEME_NAMESPACE = settingsNamespace(THEME_SETTINGS_NAMESPACE)
+const THEME_NAMESPACE = THEME_SETTINGS_NAMESPACE
 
 /** Read the registered preference or use the schema default without a settings provider. */
 function readPreference(ctx: Context): ThemePreference {

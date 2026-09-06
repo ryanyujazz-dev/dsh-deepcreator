@@ -2,7 +2,8 @@ import path from 'node:path'
 import { realpath } from 'node:fs/promises'
 import sharp from 'sharp'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
-import { defineTool, type JsonValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
+import { defineTool, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ImageAttachmentRef, ImageMediaType } from '@deepseek-ai/dsh-attachment'
 import { generateImage } from './providers.ts'
@@ -65,7 +66,7 @@ function sessionImages(events: readonly unknown[]): ImageAttachmentRef[] {
 
 async function attachmentInputs(ctx: Context, exec: ToolRunContext, ids: readonly string[]): Promise<ImageInput[]> {
   const agent = owner(exec)
-  const available = sessionImages(agent.session.events as readonly unknown[])
+  const available = sessionImages(agent.session.snapshotEvents() as readonly unknown[])
   const refs: ImageAttachmentRef[] = []
   for (const id of ids) {
     const ref = id === 'latest' ? available.at(-1) : available.find(candidate => candidate.attachmentId === id)

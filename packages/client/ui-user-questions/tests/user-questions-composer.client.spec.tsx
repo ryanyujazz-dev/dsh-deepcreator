@@ -1,10 +1,22 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import type {
-  ConversationSnapshot, SessionId, SessionListState, WorkspaceListState,
-} from '@deepseek-ai/dsh-client-runtime/client'
-import { PendingWait } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type ConversationSnapshot,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
+import {
+  type SessionListState,
+} from '@deepseek-ai/dsh-api-session-controller/client'
+import {
+  type WorkspaceSnapshot,
+} from '@deepseek-ai/dsh-api-workspace-controller/client'
+import {
+  PendingWait,
+} from '@ryanyujazz/dsh-client-compat'
+
 import type { RpcReceipt } from '@deepseek-ai/dsh-api-remotes/client'
 import { RpcId } from '@deepseek-ai/dsh-client-connection/client'
 import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
@@ -30,7 +42,7 @@ const kit = {
   sessionId: SID,
   useSession: ((selector: (snapshot: ConversationSnapshot) => unknown) => selector({ runningCalls: [] } as unknown as ConversationSnapshot)) as SnapshotSelectorHook<ConversationSnapshot>,
   useSessions: (() => { throw new Error('unused') }) as unknown as SnapshotSelectorHook<SessionListState>,
-  useWorkspaces: (() => { throw new Error('unused') }) as unknown as SnapshotSelectorHook<WorkspaceListState>,
+  useWorkspaces: (() => { throw new Error('unused') }) as unknown as SnapshotSelectorHook<WorkspaceSnapshot>,
   useProjection: (() => undefined) as never,
   useInput: (() => { throw new Error('unused') }) as never,
   inputActions: { setDraft: () => { throw new Error('unused') }, submit: () => { throw new Error('unused') } } as never,

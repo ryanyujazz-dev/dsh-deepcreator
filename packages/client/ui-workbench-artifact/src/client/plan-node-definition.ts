@@ -1,6 +1,12 @@
 import type { Context } from '@deepseek-ai/cordis'
-import type { ConversationNodeContext, ConversationNodeDefinition } from '@deepseek-ai/dsh-client-runtime/client'
-import { isAppendSurfaceEvent } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type ConversationNodeContext,
+  type ConversationNodeDefinition,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import {
+  isAppendSurfaceEvent,
+} from '@deepseek-ai/dsh-session/surface'
+
 import type { PlanArtifactRecord } from './artifact-contract.ts'
 
 export const EXIT_PLAN_MODE = 'exit_plan_mode'
@@ -70,5 +76,5 @@ export const planNodeDefinition: ConversationNodeDefinition<PlanNodeState> = {
 }
 
 export function registerPlanNodeDefinition(ctx: Context): () => void {
-  return ctx.conversationEvents.register(planNodeDefinition)
+  return ctx.uiConversation.events.register(planNodeDefinition)
 }

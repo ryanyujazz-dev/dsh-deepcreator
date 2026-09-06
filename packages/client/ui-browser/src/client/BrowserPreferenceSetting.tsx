@@ -1,5 +1,7 @@
 import { useState, useSyncExternalStore } from 'react'
-import type { SettingsScope } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type SettingsScope,
+} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { BrowserSettings } from '@ryanyujazz/dsh-browser'
 import { IconChevronDownOutline14, Menu } from '@ryanyujazz/dsh-client-ui-primitives'

@@ -3,7 +3,9 @@
  * recovery after an HMR collapse of the declaring entry. */
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  SlotRegistry,
+} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import {
   apply as applyOfficialSettings, inject as officialSettingsInject,
 } from '@deepseek-ai/dsh-client-ui-settings/client'

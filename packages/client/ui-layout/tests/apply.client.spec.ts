@@ -9,7 +9,9 @@
 import { Context } from '@deepseek-ai/cordis'
 import { stubSettingsScope } from '@deepseek-ai/dsh-client-test-runtime'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  SlotRegistry,
+} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { LocaleRuntime } from '@ryanyujazz/dsh-client-locale/client'
 import { apply as themeApply, inject as themeInject, ThemeRuntime } from '@ryanyujazz/dsh-client-ui-theme/client'
 import { apply, inject, LayoutController } from '@ryanyujazz/dsh-client-ui-layout/client'

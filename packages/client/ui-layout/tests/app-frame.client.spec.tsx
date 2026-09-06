@@ -17,9 +17,15 @@ import { AppFrame } from '@ryanyujazz/dsh-client-ui-layout/src/client/AppFrame.t
 import type { AppFrameProps } from '@ryanyujazz/dsh-client-ui-layout/src/client/AppFrame.tsx'
 import { SIDEBAR_COLLAPSED } from '@ryanyujazz/dsh-client-ui-layout/src/client/columns.ts'
 import { createLayoutStore } from '@ryanyujazz/dsh-client-ui-layout/src/client/stores.ts'
-import type {
-  SessionId, SessionListState, WorkspaceListState,
-} from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
+import {
+  type SessionListState,
+} from '@deepseek-ai/dsh-api-session-controller/client'
+import {
+  type WorkspaceSnapshot,
+} from '@deepseek-ai/dsh-api-workspace-controller/client'
 
 // Session selection controls for the SessionProvider and useSessions stubs.
 const selectedSession = { current: 's-test' as SessionId | undefined }
@@ -33,7 +39,6 @@ const baselinesReady = { current: true }
 // parameter stays contract-checked.
 const SessionProviderStub: AppFrameProps['SessionProvider'] = ({ children, empty }) =>
   selectedSession.current === undefined ? <>{empty?.() ?? null}</> : <>{children(selectedSession.current)}</>
-
 
 /** Observer stub: captures the callback so tests can fire resizes manually. */
 let fireResize: (() => void) | null = null
@@ -78,7 +83,7 @@ function mountFrame() {
     } as SessionListState
     return sel(sessionState)
   }) as never
-  const workspaceState: WorkspaceListState = {
+  const workspaceState: WorkspaceSnapshot = {
     items: [], archivedSessionIds: [], state: 'idle', phase: 'ready', error: null,
     baselinesReady: baselinesReady.current, recentWorkspaceId: undefined,
   }
@@ -88,7 +93,7 @@ function mountFrame() {
       actions={instance.actions}
       renderSlot={renderSlot}
       useSessions={useSessions}
-      useWorkspaces={((sel: (s: WorkspaceListState) => unknown) => sel(workspaceState)) as never}
+      useWorkspaces={((sel: (s: WorkspaceSnapshot) => unknown) => sel(workspaceState)) as never}
       SessionProvider={SessionProviderStub}
     />
   )

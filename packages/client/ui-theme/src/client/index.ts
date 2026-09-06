@@ -21,7 +21,12 @@ import '@fontsource-variable/jetbrains-mono/wght.css'
 import '@fontsource-variable/fira-code/wght.css'
 import '@fontsource-variable/source-code-pro/wght.css'
 import type { BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
-import type { ClientContext, SettingsScope } from '@deepseek-ai/dsh-client-runtime/client'
+// Type-only: pulls the SlotRegistry service merge (ctx.slots).
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type { ClientContext } from '@ryanyujazz/dsh-client-compat'
+import {
+  type SettingsScope,
+} from '@deepseek-ai/dsh-client-ui-settings/client'
 // Type-only: the ctx.settingsScope Context merge. Cross-plugin collaboration
 // goes through the service, never a value import (client bundle purity gate).
 import type {} from '@ryanyujazz/dsh-client-ui-settings/client'

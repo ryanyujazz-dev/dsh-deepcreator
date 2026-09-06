@@ -1,9 +1,12 @@
 /** General Settings row for the Composer's busy-state Enter preference. */
 import { useState } from 'react'
-import type { SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type SnapshotStore,
+} from '@deepseek-ai/dsh-client-store'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { IconChevronDownOutline14, Menu } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { BusyEnterBehavior } from '../contract/composer-submission.ts'
+import { forkT } from '../locales.ts'
 import type { ConversationKey } from '../locales.ts'
 import css from './EnterBehaviorRow.module.css'
 
@@ -36,7 +39,8 @@ const OPTIONS: readonly {
  * @param props - composed Settings slot props.
  * @returns the preference row.
  */
-export function EnterBehaviorRow({ useBusyEnter, setBusyEnter, t }: EnterBehaviorRowProps) {
+export function EnterBehaviorRow({ useBusyEnter, setBusyEnter, t: tRaw }: EnterBehaviorRowProps) {
+  const t = forkT(tRaw)
   const behavior = useBusyEnter(value => value)
   const [open, setOpen] = useState(false)
   const selectedLabel = behavior === 'queue' ? 'settings.enter.queue' : 'settings.enter.steer'

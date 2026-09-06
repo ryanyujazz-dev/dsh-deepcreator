@@ -1,6 +1,8 @@
 import type { BrowserNextAction, BrowserRemoteResult, BrowserStateSnapshot, BrowserTabState } from '@ryanyujazz/dsh-browser/types'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
-import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 
 export interface BrowserSurfaceBridge {

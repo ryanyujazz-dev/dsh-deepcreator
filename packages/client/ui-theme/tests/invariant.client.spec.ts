@@ -7,7 +7,9 @@ import { apply as nodeApply } from '@ryanyujazz/dsh-client-ui-theme'
 import { apply as clientApply, inject, ThemeRuntime } from '@ryanyujazz/dsh-client-ui-theme/client'
 import * as ThemeInvariant from '@ryanyujazz/dsh-client-ui-theme/invariant'
 import { apply as localeApply, inject as localeInject } from '@ryanyujazz/dsh-client-locale/client'
-import { SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  SlotRegistry,
+} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import InvariantRegistry from '@deepseek-ai/dsh-invariants'
 import { stubSettingsScope } from '@deepseek-ai/dsh-client-test-runtime'
 import { CODE_THEME_MAP } from '@ryanyujazz/dsh-client-ui-primitives/src/markdown/code-themes.ts'

@@ -224,6 +224,7 @@ export class InputMachine {
       source: reference.source,
       ref: reference.ref,
       offset,
+      length: reference.clipboardText.length,
       label: reference.label,
       clipboardText: reference.clipboardText,
     }

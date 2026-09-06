@@ -1,11 +1,13 @@
 import { memo, useMemo } from 'react'
 import type { ChatNodeViewProps, TurnTailOwnerProps } from '../contract/slots.ts'
+import { forkT } from '../locales.ts'
 import { AssistantMarkdown } from './AssistantMarkdown.tsx'
 
 /** Streaming, settled, and interrupted Assistant states share one keyed renderer instance. */
 export const AssistantNodeView = memo(function AssistantNodeView({
-  node, useTurnData, openFile, renderMessageImages, fileMentions, thinkMode, t,
+  node, useTurnData, openFile, renderMessageImages, fileMentions, thinkMode, t: tRaw,
 }: ChatNodeViewProps<'assistant-step'>) {
+  const t = forkT(tRaw)
   const data = node.data
   const turn = node.location.kind === 'turn' || node.location.kind === 'step'
     ? node.location.turn

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { SessionEvent } from '@deepseek-ai/dsh-session/types'
-import type { ConversationMatch, ConversationNodeContext } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type ConversationMatch,
+  type ConversationNodeContext,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ToolCallView } from '@deepseek-ai/dsh-tools/presentation'
 import { artifactNodeDefinition, producedForClosing } from '../src/client/artifact-node-definition.ts'
 

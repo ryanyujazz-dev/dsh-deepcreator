@@ -221,4 +221,5 @@ patchedDependencies:
   '@deepseek-ai/dsh-client-test-runtime@0.1.2-rc.1': patches/@deepseek-ai__dsh-client-test-runtime@0.1.2-rc.1.patch
   '@deepseek-ai/dsh-client-ui-renderer@0.1.2-rc.1': patches/@deepseek-ai__dsh-client-ui-renderer@0.1.2-rc.1.patch
   '@deepseek-ai/dsh-tool-fs@0.1.2-rc.1': patches/@deepseek-ai__dsh-tool-fs@0.1.2-rc.1.patch
-  '@deepseek-ai/dsh-tools@0.1.2-rc.1': patches/@deepseek-ai__dsh-tools@0.1.2-rc.1.patch 
+  '@deepseek-ai/dsh-tools@0.1.2-rc.1': patches/@deepseek-ai__dsh-tools@0.1.2-rc.1.patch
+  '@deepseek-ai/dsh-typert-generator@0.1.2-rc.1': patches/@deepseek-ai__dsh-typert-generator@0.1.2-rc.1.patch

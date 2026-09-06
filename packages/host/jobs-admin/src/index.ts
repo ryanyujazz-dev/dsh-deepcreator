@@ -1,7 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 // Type-only: pulls the `agents`/`jobs`/`subagents` Context merges into this program.
-import type {} from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-subagent'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session'
@@ -88,7 +87,7 @@ export class JobsAdmin extends TypertRemoteService {
     for (const entry of entries) {
       if (entry.kind !== 'child') continue
       const live = this.ctx.sessions.get(entry.id)
-      const lastEvent = live?.events[live.events.length - 1]
+      const lastEvent = live?.snapshotEvents().at(-1)
       children.push({
         id: entry.id,
         running: entry.activity === 'running',
@@ -99,8 +98,9 @@ export class JobsAdmin extends TypertRemoteService {
     // system injections are user/message events too; only source.kind === 'user'
     // marks what the human actually sent this turn.
     let turnStartedAt: number | undefined
-    for (let index = parent.events.length - 1; index >= 0; index -= 1) {
-      const event = parent.events[index]!
+    const events = parent.snapshotEvents()
+    for (let index = events.length - 1; index >= 0; index -= 1) {
+      const event = events[index]!
       if (event.type !== 'user/message') continue
       const source = (event.data as { source?: { kind?: unknown } } | null)?.source
       if (source?.kind !== 'user') continue

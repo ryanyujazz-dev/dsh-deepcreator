@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
-import { resolveWorkspacePath } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  resolveWorkspacePath,
+} from '@deepseek-ai/dsh-util-workspace-path'
 import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 // Type-only: pulls the `artifacts` remote namespace merge (TypertRemoteNamespaceMap)
 // into this program so TypertClientRemote['artifacts'] resolves.
@@ -12,7 +14,6 @@ import {
 } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { MarkdownImageResolver } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { WorkbenchPanelProps } from '@ryanyujazz/dsh-client-ui-workbench/client'
-import { EMPTY_ARTIFACTS_SNAPSHOT, EMPTY_PLANS_SNAPSHOT } from './artifact-contract.ts'
 import type { PlanArtifactStatus } from './artifact-contract.ts'
 import {
   artifactPathSegments, artifactTabFilePaths, artifactTabLabels, basename, formatAge, isMarkdownArtifactPath,
@@ -129,9 +130,9 @@ function ArtifactPath({ path, openContainingFolder, openFolderLabel, markdownMod
  * project index or plugin-owned copy. Only file instance content goes through
  * the mounted `artifacts` remote namespace, keyed by path.
  */
-export function ArtifactPanel({ artifacts, sessionId, route, tabs, activeInstanceId, openInstance, replaceInstanceId, openContainingFolder, workspaceRoot, useSession, contributeHeaderActions, contributePanelInfo, renderArtifact, reveal, t }: Props) {
-  const snapshot = useSession(selector => selector.views.get('artifacts') ?? EMPTY_ARTIFACTS_SNAPSHOT)
-  const plans = useSession(selector => selector.views.get('plans') ?? EMPTY_PLANS_SNAPSHOT)
+export function ArtifactPanel({ artifacts, sessionId, route, tabs, activeInstanceId, openInstance, replaceInstanceId, openContainingFolder, workspaceRoot, useArtifacts, usePlans, contributeHeaderActions, contributePanelInfo, renderArtifact, reveal, t }: Props) {
+  const snapshot = useArtifacts(selector => selector)
+  const plans = usePlans(selector => selector)
   const [content, setContent] = useState<ArtifactReadOk | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [refreshTick, setRefreshTick] = useState(0)

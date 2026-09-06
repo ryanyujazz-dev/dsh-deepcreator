@@ -9,8 +9,8 @@ import {
   ICON_TOOLBAR_BUTTON_SIZE, ICON_TOOLBAR_GAP, ICON_TOOLBAR_GLYPH_SIZE,
   IconDownloadOutline16, IconEllipsisOutline16, Menu, Tooltip, type MenuEntry,
 } from '@ryanyujazz/dsh-client-ui-primitives'
-import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ConversationSessionHeaderSlotProps } from '../contract/slots.ts'
+import type { ForkTranslate } from '../locales.ts'
 import type { ViewTab } from '../contract/views.ts'
 import css from './ChatRenderMenu.module.css'
 
@@ -24,14 +24,14 @@ interface ChatRenderMenuProps {
   /** Render the known Header utility contributions in their requested placement. */
   renderUtilities: ConversationSessionHeaderSlotProps['renderSlot']
   /** The header's locale seat. */
-  t: TranslateNS<'conversation'>
+  t: ForkTranslate
 }
 
 export interface RenderModeMenuProps {
   modes: readonly ViewTab[]
   activeId: string
   onPick: (id: string) => void
-  t: TranslateNS<'conversation'>
+  t: ForkTranslate
   additionalItems?: readonly MenuEntry[]
   onAdditionalSelect?: (id: string) => void
   onOpenChange?: (open: boolean) => void

@@ -6,13 +6,32 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import {
-  createSnapshotStore, EMPTY_CHAT_SNAPSHOT, EMPTY_CONVERSATION_VIEWS,
-} from '@deepseek-ai/dsh-client-runtime/client'
-import type {
-  ConversationSnapshot, SessionId, SessionListState, WorkspaceId, WorkspaceListState, WorkspaceView,
-} from '@deepseek-ai/dsh-client-runtime/client'
+  createSnapshotStore,
+} from '@deepseek-ai/dsh-client-store'
+import {
+  EMPTY_CHAT_SNAPSHOT,
+} from '@deepseek-ai/dsh-client-ui-chat/client'
+import {
+  EMPTY_CONVERSATION_VIEWS,
+} from '@ryanyujazz/dsh-client-compat'
+import {
+  type ConversationSnapshot,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import {
+  type SessionId,
+  type WorkspaceId,
+} from '@deepseek-ai/dsh-session/types'
+import {
+  type SessionListState,
+} from '@deepseek-ai/dsh-api-session-controller/client'
+import {
+  type WorkspaceSnapshot,
+  type WorkspaceView,
+} from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type { ClientContext } from '@ryanyujazz/dsh-client-compat'
+
 import type { ConversationRootProps } from '../src/client/skeleton/ConversationRoot.tsx'
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { en as commonEn } from '@ryanyujazz/dsh-client-locale/src/locales/en.ts'
 import { zh as commonZh } from '@ryanyujazz/dsh-client-locale/src/locales/zh.ts'
@@ -67,7 +86,7 @@ function workspace(id = 'w1'): WorkspaceView {
   }
 }
 
-const workspaceState = (items: readonly WorkspaceView[]): WorkspaceListState => ({
+const workspaceState = (items: readonly WorkspaceView[]): WorkspaceSnapshot => ({
   items, archivedSessionIds: [], state: 'idle', phase: 'ready', error: null,
   baselinesReady: true, recentWorkspaceId: undefined,
 })
@@ -118,7 +137,7 @@ function mount(
     current: SID,
     phase: 'ready', subagentsByParent: {}, jobsBySession: {}, currentAddress: undefined,
   })
-  const workspaces = createSnapshotStore<WorkspaceListState>(workspaceState(workspaceRows))
+  const workspaces = createSnapshotStore<WorkspaceSnapshot>(workspaceState(workspaceRows))
   const session = createSnapshotStore<ConversationSnapshot>(snapshot)
   const useSession = bindSnapshotSelector(session)
   const chat = createChatStore().create()

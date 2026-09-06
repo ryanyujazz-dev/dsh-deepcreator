@@ -1,6 +1,8 @@
 /** Register the Tool call tree and built-in atomic views. */
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext } from '@ryanyujazz/dsh-client-compat'
 import type {} from '@ryanyujazz/dsh-client-ui-conversation/client'
+// Type-only: pulls the ctx.slots merge (SlotRegistry service) into this program.
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { ToolCallTree } from './tool/ToolCallTree.tsx'
 import { CONVERSATION_NS as NS } from './locale.ts'
 import { askQuestionToolview } from './tool/toolviews/ask-question-row.tsx'

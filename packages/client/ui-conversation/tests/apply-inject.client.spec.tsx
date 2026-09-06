@@ -17,7 +17,12 @@ import { describe, expect, it, vi } from 'vitest'
 import { SlotTestRuntime, usePinnedBrowserLanguages, stubSettingsScope } from '@deepseek-ai/dsh-client-test-runtime'
 import type { SessionBehaviorOverrides } from '@deepseek-ai/dsh-client-test-runtime'
 import { LocaleRuntime } from '@ryanyujazz/dsh-client-locale/client'
-import type { ISession, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type ISession,
+} from '@deepseek-ai/dsh-api-session-controller/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
 import { apply, inject } from '@ryanyujazz/dsh-client-ui-conversation/client'
 import type {
   ChatViewInjected, ComposerBarInjected, ConversationInjected, ConversationSessionHeaderInjected,

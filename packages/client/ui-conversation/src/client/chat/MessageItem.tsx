@@ -5,11 +5,14 @@
 
 import { memo, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import type {
-  ModelRetryNode, TurnErrorNode, UserMessageNode,
-} from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type ModelRetryNode,
+  type TurnErrorNode,
+  type UserMessageNode,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { JsonBlock, MessageText, StateDot } from '@ryanyujazz/dsh-client-ui-primitives'
-import type { ChatNodeViewProps, ChatViewSlotProps } from '../contract/slots.ts'
+import type { ChatNodeViewProps } from '../contract/slots.ts'
+import { forkT, type ForkTranslate } from '../locales.ts'
 import type { PendingOutgoingMessage } from '../input/contract.ts'
 import { CompactionItem } from './CompactionItem.tsx'
 import { ContextInjectionRow } from './ContextInjectionRow.tsx'
@@ -49,7 +52,7 @@ interface RetryCountdown {
 function ModelRetryItem({ node, active, t }: {
   node: ModelRetryNode
   active: boolean
-  t: ChatViewSlotProps['t']
+  t: ForkTranslate
 }) {
   // Anchor the host-scheduled delay to this browser's first render of the
   // retry node. Host event time and Date.now() may belong to different clocks.
@@ -115,7 +118,7 @@ function ModelRetryItem({ node, active, t }: {
 /** Persistent, turn-positioned feedback for a terminal failure. */
 function TurnErrorItem({ node, t }: {
   node: TurnErrorNode
-  t: ChatViewSlotProps['t']
+  t: ForkTranslate
 }) {
   return (
     <div className={css.turnErrorRow} role="status">
@@ -131,7 +134,7 @@ function TurnErrorItem({ node, t }: {
 
 /** Persistent, turn-positioned notice for a turn ended at the output-token cap. */
 function TurnMaxTokensItem({ t }: {
-  t: ChatViewSlotProps['t']
+  t: ForkTranslate
 }) {
   return (
     <div className={css.turnErrorRow} role="status">
@@ -186,7 +189,7 @@ function UserStyleBubble({
   pending?: 'steering' | 'outgoing'
   /** Durable Chat successor identity; present only on official user/steering rows. */
   successorId?: string
-  t: ChatViewSlotProps['t']
+  t: ForkTranslate
 }): ReactNode {
   const { text, images, rest } = contentParts(content)
   const truncated = (total: number): string => t('json.truncated', { total })
@@ -220,7 +223,7 @@ function UserStyleBubble({
 export function PendingSteeringBubble({ content, renderMessageImages = () => null, t }: {
   content: readonly unknown[]
   renderMessageImages?: ChatNodeViewProps['renderMessageImages']
-  t: ChatViewSlotProps['t']
+  t: ForkTranslate
 }): ReactNode {
   return (
     <UserStyleBubble
@@ -247,7 +250,7 @@ export function PendingSteeringBubble({ content, renderMessageImages = () => nul
  */
 export function PendingOutgoingBubble({ message, t }: {
   message: PendingOutgoingMessage
-  t: ChatViewSlotProps['t']
+  t: ForkTranslate
 }): ReactNode {
   const imageOnly = message.text === '' && message.imageNames.length > 0
   const text = imageOnly
@@ -273,8 +276,9 @@ export function PendingOutgoingBubble({ message, t }: {
 
 /** User and admitted-steering keyed Chat renderer. */
 export const UserMessageNodeView = memo(function UserMessageNodeView({
-  node, renderMessageImages, t,
+  node, renderMessageImages, t: tRaw,
 }: ChatNodeViewProps<'user' | 'steering'>) {
+  const t = forkT(tRaw)
   const data = node.data
   return (
     <UserStyleBubble
@@ -296,7 +300,8 @@ export const UserMessageNodeView = memo(function UserMessageNodeView({
 })
 
 /** Injected-context keyed Chat renderer. */
-export const ContextMessageNodeView = memo(function ContextMessageNodeView({ node, thinkMode, t }: ChatNodeViewProps<'context'>) {
+export const ContextMessageNodeView = memo(function ContextMessageNodeView({ node, thinkMode, t: tRaw }: ChatNodeViewProps<'context'>) {
+  const t = forkT(tRaw)
   const data = node.data
   return (
     <ContextInjectionRow
@@ -311,28 +316,33 @@ export const ContextMessageNodeView = memo(function ContextMessageNodeView({ nod
 })
 
 /** Automatic compaction keyed Chat renderer. */
-export const CompactionNodeView = memo(function CompactionNodeView({ node, t }: ChatNodeViewProps<'compaction'>) {
+export const CompactionNodeView = memo(function CompactionNodeView({ node, t: tRaw }: ChatNodeViewProps<'compaction'>) {
+  const t = forkT(tRaw)
   return <CompactionItem node={node.data} t={t} />
 })
 
 /** Correlated retry-chain keyed Chat renderer. */
-export const RetryNodeView = memo(function RetryNodeView({ node, t }: ChatNodeViewProps<'model-retry'>) {
+export const RetryNodeView = memo(function RetryNodeView({ node, t: tRaw }: ChatNodeViewProps<'model-retry'>) {
+  const t = forkT(tRaw)
   const data = node.data
   return <ModelRetryItem node={data.current} active={data.current.retryState === 'scheduled'} t={t} />
 })
 
 /** Terminal turn-error keyed Chat renderer. */
-export const TurnErrorNodeView = memo(function TurnErrorNodeView({ node, t }: ChatNodeViewProps<'turn-error'>) {
+export const TurnErrorNodeView = memo(function TurnErrorNodeView({ node, t: tRaw }: ChatNodeViewProps<'turn-error'>) {
+  const t = forkT(tRaw)
   return <TurnErrorItem node={node.data} t={t} />
 })
 
 /** Max-tokens turn-end notice keyed Chat renderer. */
-export const TurnMaxTokensNodeView = memo(function TurnMaxTokensNodeView({ t }: ChatNodeViewProps<'turn-max-tokens'>) {
+export const TurnMaxTokensNodeView = memo(function TurnMaxTokensNodeView({ t: tRaw }: ChatNodeViewProps<'turn-max-tokens'>) {
+  const t = forkT(tRaw)
   return <TurnMaxTokensItem t={t} />
 })
 
 /** Explicit unknown-surface keyed Chat renderer. */
-export const UnknownNodeView = memo(function UnknownNodeView({ node, t }: ChatNodeViewProps<'unknown'>) {
+export const UnknownNodeView = memo(function UnknownNodeView({ node, t: tRaw }: ChatNodeViewProps<'unknown'>) {
+  const t = forkT(tRaw)
   const data = node.data
   return (
     <div className={css.contextRow}>
