@@ -115,11 +115,19 @@ export class AgentPresetSeatController {
    * @param id - the preset to stage.
    * @returns once the stage settled, and the apply too when one happened.
    */
-  async select(id: string): Promise<void> {
-    if (this.store.getSnapshot().busy) return
+  async select(id: string): Promise<string | undefined> {
+    if (this.store.getSnapshot().busy) return undefined
+    const before = this.refusal
+    this.refusal = undefined
     this.stage(id)
     await this.apply()
+    const refusal = this.refusal ?? undefined
+    this.refusal = before
+    return refusal
   }
+
+  /** The most recent apply's refusal reason, consumed by the next select(). */
+  private refusal: string | null | undefined = null
 
   /**
    * Stage a pick WITHOUT the immediate apply, for a flow that starts the
@@ -165,6 +173,7 @@ export class AgentPresetSeatController {
       const result = await this.ctx.remote.agentPresets.select(session.id, staged)
       this.staged = undefined
       if (!result.ok) {
+        this.refusal = result.error.message
         this.set({ busy: false, error: result.error.message, current: this.fallback })
         return
       }

@@ -22,6 +22,8 @@ import { PendingOutgoingBubble, PendingSteeringBubble } from './MessageItem.tsx'
 import { ChatNodeSeat } from './ChatNodeSeat.tsx'
 import { formatRunDuration } from './message-chrome.ts'
 import { useVisibleChatOutgoing } from './outgoing-handoff.ts'
+import { TurnNavigator } from './TurnNavigator.tsx'
+import { useTurnRail } from './use-turn-rail.ts'
 import css from './ChatView.module.css'
 import { flowTop, pagingAnchor, runningTurnStartTime, scrollPosition } from './scroll-anchor.ts'
 
@@ -90,7 +92,8 @@ function TurnStatus({ startTime, t }: {
  * keyed renderer seat.
  */
 export function ChatRenderStandard({
-  useSession, useSessions, useInput, useChat, sessionId, openFile, revealChange, loadOlder, loadImage, renderMessageImages, inspectCall, chatScroll, forkAt,
+  surfaceId = 'main',
+  useSession, useSessions, useInput, useChat, useProjection, sessionId, openFile, revealChange, loadOlder, loadThrough, loadImage, renderMessageImages, inspectCall, chatScroll, forkAt,
   acknowledgeOutgoing,
   fileMentions, renderSlot, t: tRaw,
 }: ChatRenderSlotProps) {
@@ -108,6 +111,10 @@ export function ChatRenderStandard({
   const loadingOlder = useSession(s => s.loadingOlder)
   const pendingOutgoing = useInput(s => s.pendingOutgoing)
   const listRef = useRef<HTMLDivElement | null>(null)
+  const turnRail = useTurnRail({
+    useChat, useProjection, listRef, loadThrough, hasMore,
+    enabled: openState === 'open' && surfaceId !== 'embed',
+  })
   const visibleOutgoing = useVisibleChatOutgoing(pendingOutgoing, listRef, acknowledgeOutgoing)
 
   // Once Host admission identifies the durable user row, keep the local echo
@@ -352,6 +359,13 @@ export function ChatRenderStandard({
   return (
     <div className={css.root}>
       <div ref={listRef} className={css.scroll}>
+        <TurnNavigator
+          items={turnRail.items}
+          activeTurn={turnRail.activeTurn}
+          busyTurn={turnRail.busyTurn}
+          onNavigate={turnRail.navigate}
+          t={t}
+        />
         <div ref={columnRef} className={css.column} data-chat-flow="">
           {openState === 'loading' && <div className={css.hint}>{t('chat.loadingHistory')}</div>}
           {openState === 'error' && openError !== null && (

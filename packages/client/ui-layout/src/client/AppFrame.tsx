@@ -16,6 +16,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { computeColumns, SIDEBAR_AUTO_COLLAPSE, SIDEBAR_DEFAULT } from './columns.ts'
 import { detectNativeWindowChrome } from './native-window-chrome.ts'
 import type { createLayoutStore } from './stores.ts'
+import { DocumentTitle } from './DocumentTitle.tsx'
 import css from './AppFrame.module.css'
 
 /** Zoom/fullscreen flags pushed by the macOS Electron main process. */
@@ -119,6 +120,13 @@ export function AppFrame({
   const detailsSession = useSessions((s) => {
     const current = s.current
     return current !== undefined && s.byId[current]?.blank === false ? current : undefined
+  })
+  // Session-aware browser title (official parity): the selected session's
+  // durable title rides ahead of the product title; the Windows strip's
+  // document.title mirror follows it for free.
+  const documentTitle = useSessions((s) => {
+    const current = s.current
+    return current === undefined ? undefined : s.byId[current]?.title
   })
   // The Windows title strip mirrors document.title (the same text the main
   // process projects onto the native window title) so the strip stays in
@@ -260,6 +268,11 @@ export function AppFrame({
   }, [])
 
   return (
+    <>
+    <DocumentTitle
+      productTitle="DeepCreator"
+      {...documentTitle === undefined ? {} : { title: documentTitle }}
+    />
     <div
       ref={frameRef}
       className={css.frame}
@@ -327,5 +340,6 @@ export function AppFrame({
         <DragHandle side="details" left={viewport - cols.details} onStart={onDetailsStart} onDrag={onDetailsDrag} onEnd={onDetailsEnd} />
       )}
     </div>
+    </>
   )
 }

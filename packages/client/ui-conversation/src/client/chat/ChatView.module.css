@@ -45,7 +45,9 @@
   /* Sides = composer clearance + 16px: on narrow viewports the transcript
      stays exactly 32px narrower than the input card (the shared width rule). */
   padding: 16px calc(var(--dsh-composer-side-clearance) + 16px);
-}
+
+  /* The turn rail's preview tooltip sizes against the scrollport (100cqw). */
+  container-type: inline-size;}
 
 @media (max-width: 640px) {
   .scroll {

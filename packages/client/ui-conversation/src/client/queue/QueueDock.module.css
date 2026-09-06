@@ -192,3 +192,18 @@
   cursor: default;
   opacity: 0.45;
 }
+
+/* Durable queued image thumbnails (official parity). */
+.thumbs {
+  display: flex;
+  flex: none;
+  gap: 4px;
+}
+
+.thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: var(--dsw-alias-bg-layer-2);
+}

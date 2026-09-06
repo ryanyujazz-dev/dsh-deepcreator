@@ -55,9 +55,12 @@ function heroDeclarations(selector: string): Map<string, string> | undefined {
 }
 
 describe('ConversationRoot.module.css', () => {
-  it('derives the chat column from the shared readable-content measure', () => {
-    expect(declarations('.root')?.get('--dsh-chat-content-width'))
-      .toBe('var(--dsh-reading-content-width, 748px)')
+  it('derives the chat column from the adaptive clamp or a dragged user width', () => {
+    // A dragged preference (--dsh-chat-user-width, published by the width
+    // handles) replaces the adaptive 64%-of-column clamp wholesale.
+    expect(css).toContain('--dsh-chat-user-width')
+    expect(declarations('.root')?.get('--dsh-chat-content-width')).toContain(
+      'clamp(680px, calc(var(--dsh-conversation-column-width, 0px) * 0.64), 920px)')
   })
 
   it('keeps the single header row at 48px without a divider', () => {

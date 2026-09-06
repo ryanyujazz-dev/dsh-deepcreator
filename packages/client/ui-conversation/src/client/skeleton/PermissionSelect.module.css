@@ -66,14 +66,9 @@
    starts squeezing labels; the container is the composer row (InputBar .row —
    anonymous query because CSS modules hash container-names per module). */
 @container (max-width: 460px) {
-  .trigger:has(.triggerIcon) {
-    justify-content: center;
-    width: 28px;
-    padding: 0;
-  }
-
-  .trigger:has(.triggerIcon) .triggerLabel,
-  .trigger:has(.triggerIcon) .chevron {
+  /* Official parity: narrow cards hide only the label — the glyph and the
+     chevron stay so the control still reads as a picker. */
+  .trigger:has(.triggerIcon) .triggerLabel {
     display: none;
   }
 }

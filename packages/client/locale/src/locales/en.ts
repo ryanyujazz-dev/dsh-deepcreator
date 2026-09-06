@@ -5,6 +5,8 @@ export const en = {
   'ok': 'OK',
   'cancel': 'Cancel',
   'close': 'Close',
+  'number.thousand': '{value}K',
+  'number.million': '{value}M',
   'copy': 'Copy',
   'copied': 'Copied',
   'retry': 'Retry',
