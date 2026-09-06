@@ -34,3 +34,12 @@ export {
 export { indexSubagentDescendants } from './legacy/subagent-lineage'
 export type { SubagentDescendantSummary } from './legacy/subagent-lineage'
 export { EMPTY_CONVERSATION_VIEWS } from './legacy/fixtures'
+export {
+  createSessionLeaseHub,
+} from './observation'
+export type {
+  ObservationLeaseSessions,
+  SessionLease,
+  SessionLeaseHub,
+  SessionLeaseSnapshot,
+} from './observation'

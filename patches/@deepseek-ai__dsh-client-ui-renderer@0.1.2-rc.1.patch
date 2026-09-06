@@ -1,8 +1,19 @@
 diff --git a/lib/client.js b/lib/client.js
-index 000000..000000 100644
+index 7c6da8fa63b7959f89e2603976c634ab57a8bc01..0715de68895a712cbbe7b041a111745261bd2e83 100644
 --- a/lib/client.js
 +++ b/lib/client.js
-@@ -1443,6 +1443,8 @@ window.__ModuleLoader__.load({
+@@ -1432,7 +1432,9 @@ window.__ModuleLoader__.load({
+ 		* @param ctx - Plugin context.
+ 		*/
+ 		function apply(ctx) {
+-			new SlotRegistry(ctx).install(createSlotRenderer());
++			const slotRegistry = new SlotRegistry(ctx);
++			slotRegistry.scopeBindingContext = ScopeBindingContext;
++			slotRegistry.install(createSlotRenderer());
+ 			ctx.reflect.provide("uiRenderer", { mount: (container) => {
+ 				const root = mountApp(container, buildRenderApp({ ctx }));
+ 				return () => {
+@@ -1443,6 +1445,8 @@ window.__ModuleLoader__.load({
  		//#endregion
  		exports.SlotRegistry = SlotRegistry;
  		exports.apply = apply;
@@ -12,7 +23,7 @@ index 000000..000000 100644
  		return module.exports;
  	}
 diff --git a/lib/types/client/index.d.ts b/lib/types/client/index.d.ts
-index 000000..000000 100644
+index a74a847342dc17cd165d3e6f7b6bd31377f9bb6f..fee44d0a6fc8efeb3a6eaa51a1db59ffa6d45c95 100644
 --- a/lib/types/client/index.d.ts
 +++ b/lib/types/client/index.d.ts
 @@ -2,6 +2,8 @@ import type { Context } from '@deepseek-ai/cordis';
@@ -24,3 +35,16 @@ index 000000..000000 100644
  export type { ChainRenderOpts, HostObservable, RenderOpts, SnapshotSelectorHook, SlotRenderer, ScopedStandardSourceBinding, SlotRendererHost, SlotScopeAdapter, StandardSourceBinding, StoreInstanceLike, } from '@deepseek-ai/dsh-client-ui-slots';
  /** Mount operation exposed to the framework-free boot kernel. */
  export interface UiRendererService {
+diff --git a/lib/types/client/registry.d.ts b/lib/types/client/registry.d.ts
+index a40f7caf7163c512ad0b4c56c9387ba53abc10c3..6dbc3a758dc8b5c46d8ad3c826b84f8a23b62b8d 100644
+--- a/lib/types/client/registry.d.ts
++++ b/lib/types/client/registry.d.ts
+@@ -45,6 +45,8 @@ type SlotInjectionEffect = (() => void) | Iterable<() => void, void, void>;
+ /** cordis Service layer of the slot system; see the module doc for the split with SlotCore. */
+ export declare class SlotRegistry extends Service {
+     private readonly _core;
++    /** The renderer's private scope binding seat; the fork embed overrides it to address explicit child sessions. */
++    scopeBindingContext: import('react').Context<import('@deepseek-ai/dsh-client-ui-slots').ScopedStandardSourceBinding | null>;
+     /** Store-instance axis: handle -> mounted scope, refcount, resolved instances. */
+     private readonly _stores;
+     /** Latest live Context generation for each scoped store key. */

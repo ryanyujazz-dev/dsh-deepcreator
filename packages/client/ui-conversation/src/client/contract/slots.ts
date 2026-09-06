@@ -73,15 +73,17 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     'conversation.activity.chip': { kind: 'list'; scope: 'session' }
     /**
      * Root adapter for an explicitly addressed, non-navigating child Session.
-     * It declares one strict-session surface so the framework supplies the
-     * same SessionProvider and standard kit as the main conversation.
+     * A lease keeps the child observable while mounted, and the adapter
+     * overrides the renderer's scope binding with the child's materialized
+     * standard kit binding — so its strict-session surface renders through
+     * the exact same session seat as the main conversation.
      */
     'deepcreator.conversation.embed': {
       kind: 'single'
       scope: 'root'
       owner: ConversationEmbedOwnerProps
     }
-    /** Strict child-session surface mounted under the explicit provider. */
+    /** Strict child-session surface mounted under the overridden scope binding. */
     'deepcreator.conversation.embed.surface': {
       kind: 'single'
       scope: 'session'

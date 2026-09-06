@@ -47,7 +47,7 @@ index 000000..000000 100644
  			/**
  			* @param ctx - client root context (scope fibers mount under it).
  			* @param remote - generated Remote namespaces shared with every Session.
-@@ -2519,6 +2543,15 @@ window.__ModuleLoader__.load({
+@@ -2519,6 +2543,19 @@ window.__ModuleLoader__.load({
  			binding(id) {
  				return this.resolve(id)?.binding;
  			}
@@ -59,6 +59,10 @@ index 000000..000000 100644
 +			/** Release a non-navigating lease; prune may then reclaim the scope. */
 +			releaseObservation(id) {
 +				this.observationRetained.delete(id);
++			}
++			/** Retain a catalog-derived address for a non-navigating lease without selecting it. */
++			retainNavigationAddress(id) {
++				return this.manager.retainNavigationAddress(id);
 +			}
  			/**
  			* Move the stage to the list's current session: sweep teardowns deferred
@@ -89,7 +93,7 @@ diff --git a/lib/types/client/sessions/service.d.ts b/lib/types/client/sessions/
 index 000000..000000 100644
 --- a/lib/types/client/sessions/service.d.ts
 +++ b/lib/types/client/sessions/service.d.ts
-@@ -310,6 +310,10 @@ export declare class ClientSessions implements ISessions {
+@@ -310,6 +310,12 @@ export declare class ClientSessions implements ISessions {
       * @returns binding, or undefined for a session neither listed nor already scoped.
       */
      binding(id: SessionId): SessionBinding | undefined;
@@ -97,6 +101,8 @@ index 000000..000000 100644
 +    retainObservation(id: SessionId): void;
 +    /** Release a non-navigating lease; prune may then reclaim the scope. */
 +    releaseObservation(id: SessionId): void;
++    /** Retain a catalog-derived address for a non-navigating lease without selecting it. */
++    retainNavigationAddress(id: SessionId): SubagentAddress | undefined;
      /**
       * Move the stage to the list's current session: sweep teardowns deferred
       * behind the previous occupant and pull the new occupant's history window.

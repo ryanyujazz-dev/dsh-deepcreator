@@ -34,6 +34,8 @@ import { UiConversation } from './conversation/assembly.ts'
 import { EMPTY_CHAT_SNAPSHOT } from './contract/empty-chat.ts'
 import type { ChatSnapshot } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
+import type { ScopedStandardSourceBinding } from '@deepseek-ai/dsh-client-ui-slots'
+import { createSessionLeaseHub } from '@ryanyujazz/dsh-client-compat'
 import type { ViewTab } from './contract/views.ts'
 import type {
   ApprovalWait, ChatNodeTurnDataInjected, ChatScrollPosition, ChatViewInjected, ComposerBarInjected,
@@ -56,7 +58,8 @@ import type { DefaultRenderModeRowInjected } from './settings/DefaultRenderModeR
 import { ChatView } from './chat/ChatView.tsx'
 import { ChatRenderStandard } from './chat/ChatRenderStandard.tsx'
 import {
-  ConversationEmbed, ConversationEmbedSurface, type ConversationEmbedSurfaceInjected,
+  ConversationEmbed, ConversationEmbedSurface,
+  type ConversationEmbedInjected, type ConversationEmbedSurfaceInjected,
 } from './chat/ConversationEmbed.tsx'
 import { ExecFlowBody, type ExecFlowBodyInjected } from './chat/ExecFlowBody.tsx'
 import { StatsLine } from './chat/StatsLine.tsx'
@@ -613,13 +616,29 @@ export function apply(ctx: Context): void {
   execflowMode('classic', 'compact', 10)
   execflowMode('think', 'inline', 20)
 
-  // Activity's root adapter mounts an explicit non-navigating SessionProvider.
-  // Its strict child surface then invokes the main conversation root's already
-  // authorized session outlet, so data, pagination and every downstream
+  // Activity's embed mounts an explicit non-navigating child session: a
+  // compat lease holds the child's scope and history window (opening it on
+  // acquire, cooling it on release), and the embed overrides the renderer's
+  // scope binding with the child's materialized standard binding so the
+  // strict child surface invokes the main conversation root's already
+  // authorized session outlet — data, pagination and every downstream
   // renderer are shared instead of mirrored.
+  const leaseHub = createSessionLeaseHub(sessions)
+  // `uiSession.resolve` materializes (and caches) the full standard-kit
+  // binding for any session id; it is renderer-private in the published
+  // types, so the embed seam is a localized cast.
+  const resolveSessionBinding = (sessionId: SessionId): ScopedStandardSourceBinding | undefined =>
+    (ctx.uiSession as unknown as {
+      resolve(sessionId: SessionId): ScopedStandardSourceBinding | undefined
+    }).resolve(sessionId)
   ctx.slots.inject('deepcreator.conversation.embed', () => {
     const disposeRoot = slots.register({
       name: 'deepcreator.conversation.embed',
+      inject: (): ConversationEmbedInjected => ({
+        leaseSession: (sessionId) => leaseHub.lease(sessionId),
+        resolveSessionBinding,
+        scopeContext: slots.scopeBindingContext,
+      }),
       children: {
         'deepcreator.conversation.embed.surface': { kind: 'single', scope: 'session' },
       },
