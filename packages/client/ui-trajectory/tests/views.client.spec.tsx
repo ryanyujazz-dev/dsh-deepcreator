@@ -7,7 +7,7 @@
  * event ledger with its timing overview, and fiber disposal removes the tab.
  * Timeline projection and inclusive focus edge cases ride along.
  */
-import { Context } from '@deepseek-ai/cordis'
+import { Context, Service } from '@deepseek-ai/cordis'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { createElement, type ComponentProps, type FC, type ReactNode } from 'react'
@@ -65,6 +65,41 @@ const SID = 's1' as SessionId
 const sessionSnapshots = new WeakMap<SlotRegistry, SnapshotStore<ConversationSnapshot>>()
 const tConversation: ConversationSessionHeaderProps['t'] =
   key => (conversationZh as Record<string, string>)[key] ?? key
+
+/**
+ * The 0.1.2 `uiConversation` face: a Service owning both registries, exactly
+ * as the ui-conversation assembly provides it, so rider registrations made
+ * through the accessor shadow into the applying fiber and unwind with it.
+ * `binding` serves the view-injection face; the bench wires it to the
+ * fixture store after mounting.
+ */
+class TestConversation extends Service {
+  readonly events: ConversationEventRegistry
+  readonly views: ConversationViewRegistry
+  binding: (sessionId: SessionId) => {
+    target: (target: string) => {
+      getSnapshot: () => unknown
+      subscribe: (listener: () => void) => () => void
+    }
+  }
+  constructor(ctx: Context) {
+    super(ctx, 'uiConversation')
+    this.events = new ConversationEventRegistry(ctx)
+    this.views = new ConversationViewRegistry(ctx)
+    this.binding = () => ({
+      target: () => ({ getSnapshot: () => undefined, subscribe: () => () => {} }),
+    })
+  }
+}
+
+/** Conversation snapshot fixture with the resident trajectory target active. */
+function emptyConversation(): ConversationSnapshot {
+  return { views: { get: () => undefined }, activeTargets: new Set(['trajectory']) }
+}
+
+function emptyUseConversation() {
+  return bindSnapshotSelector(createSnapshotStore(emptyConversation()))
+}
 
 afterEach(cleanup)
 // The chat store persists under its declared key; clear so one case's active
@@ -130,15 +165,24 @@ function historySnapshot(
   }
 }
 
+/** The per-target trajectory inspection hook served from one session store. */
+function trajectoryHook(store: SnapshotStore<ConversationSnapshot>) {
+  return bindSnapshotSelector({
+    getSnapshot: () => store.getSnapshot().views.get('trajectory'),
+    subscribe: (listener: () => void) => store.subscribe(listener),
+  })
+}
+
 function standaloneHistory(
   snapshot: ConversationSnapshot,
 ): Pick<
   ComponentProps<typeof TrajectoryView>,
-  'useSession' | 'loadOlder'
+  'useSession' | 'useTrajectory' | 'loadOlder'
 > {
   const store = createSnapshotStore(snapshot)
   return {
     useSession: bindSnapshotSelector(store),
+    useTrajectory: trajectoryHook(store),
     loadOlder: () => Promise.resolve(false),
   }
 }
@@ -198,8 +242,7 @@ async function bench(snapshot = historySnapshot(NODES)) {
     subscribe: (listener: () => void) => sessionStore.subscribe(listener),
     loadOlder,
   }
-  await ctx.plugin(ConversationEventRegistry).await()
-  await ctx.plugin(ConversationViewRegistry).await()
+  await ctx.plugin(TestConversation).await()
   ctx.provide('sessions', {
     binding: () => ({ session }),
   })
@@ -224,6 +267,13 @@ async function bench(snapshot = historySnapshot(NODES)) {
   ctx.plugin({ inject: [...localeInject], apply: localeApply })
   const fiber = ctx.plugin({ inject: [...inject], apply })
   await fiber.await()
+  // Serve the trajectory inject face from the fixture session store.
+  ;(ctx.get('uiConversation') as unknown as TestConversation).binding = (sessionId: SessionId) => ({
+    target: (target: string) => ({
+      getSnapshot: () => sessionStore.getSnapshot().views.get(target),
+      subscribe: (listener: () => void) => sessionStore.subscribe(listener),
+    }),
+  })
   return { ctx, slots, fiber, loadOlder, sessionStore }
 }
 
@@ -275,6 +325,12 @@ function mount(slots: SlotRegistry, nodes: ConversationSnapshot['nodes'] = NODES
         return {
           loadOlder: trajectory.loadOlder,
           useDuration: bindSnapshotSelector(trajectory.hooks.duration),
+          // The per-target trajectory inspection hook: served from the
+          // fixture session store's registered trajectory view.
+          useTrajectory: bindSnapshotSelector({
+            getSnapshot: () => sessionSnapshot.getSnapshot().views.get('trajectory'),
+            subscribe: (listener: () => void) => sessionSnapshot.subscribe(listener),
+          }),
           setDuration: trajectory.setDuration,
           t: (key: TrajectoryKey) => zh[key],
         }
@@ -296,6 +352,7 @@ function mount(slots: SlotRegistry, nodes: ConversationSnapshot['nodes'] = NODES
         useSession={useSession}
         useSessions={emptySessions()}
         useWorkspaces={emptyWorkspaces()}
+        useConversation={emptyUseConversation()}
         useProjection={(() => undefined)}
         useStore={bindSnapshotSelector(chat)}
         actions={chat.actions}
@@ -313,6 +370,7 @@ function mount(slots: SlotRegistry, nodes: ConversationSnapshot['nodes'] = NODES
         useSession={useSession}
         useSessions={emptySessions()}
         useWorkspaces={emptyWorkspaces()}
+        useConversation={emptyUseConversation()}
         useProjection={(() => undefined)}
         useStore={bindSnapshotSelector(chat)}
         actions={chat.actions}
@@ -339,8 +397,7 @@ describe('plugin registration', () => {
 
   it('fiber disposal removes the tab and leaves chat standing', async () => {
     const b = await bench()
-    const events = b.ctx.get('conversationEvents') as ConversationEventRegistry
-    const views = b.ctx.get('conversationViews') as ConversationViewRegistry
+    const { events, views } = b.ctx.get('uiConversation') as TestConversation
     expect(events.entries().length).toBeGreaterThan(0)
     expect(views.entries()).toHaveLength(1)
 
@@ -1212,6 +1269,7 @@ describe('TrajectoryView state', () => {
         {...standaloneProps([])}
         {...standaloneDuration()}
         useSession={bindSnapshotSelector(store)}
+        useTrajectory={trajectoryHook(store)}
         loadOlder={vi.fn(() => Promise.resolve(false))}
       />,
     )

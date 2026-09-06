@@ -71,18 +71,18 @@ describe('ConversationController', () => {
   it('treats strict-steer races as converged Queue delivery', async () => {
     const b = await bench()
     b.updateQueue.mockResolvedValueOnce({
-      ok: false, error: { code: 'steer-unavailable', message: 'closed', details: {} },
+      ok: false, error: { code: 'session/steer-unavailable', message: 'closed', details: {} },
     } as never)
     await expect(b.scoped.updateQueue('item-1' as never, { kind: 'steer' })).resolves.toBeUndefined()
     b.updateQueue.mockResolvedValueOnce({
-      ok: false, error: { code: 'queue-item-not-found', message: 'claimed', details: {} },
+      ok: false, error: { code: 'session/queue-item-not-found', message: 'claimed', details: {} },
     } as never)
     await expect(b.scoped.updateQueue('item-2' as never, { kind: 'steer' })).resolves.toBeUndefined()
     b.updateQueue.mockResolvedValueOnce({
-      ok: false, error: { code: 'queue-item-not-found', message: 'claimed', details: {} },
+      ok: false, error: { code: 'session/queue-item-not-found', message: 'claimed', details: {} },
     } as never)
     await expect(b.scoped.updateQueue('item-3' as never, { kind: 'remove' }))
-      .rejects.toThrow('conversation.updateQueue failed: queue-item-not-found: claimed')
+      .rejects.toThrow('conversation.updateQueue failed: session/queue-item-not-found: claimed')
     await b.runtime.dispose()
   })
 
@@ -189,7 +189,7 @@ describe('ConversationController', () => {
 describe('InputHub outgoing presentation', () => {
   it('waits for the official Host projection instead of publishing a local echo', async () => {
     const b = await bench()
-    await b.runtime.sessions.updateSnapshot('s1', (draft) => { draft.running = true })
+    await b.runtime.sessions.updateSessionSnapshot('s1', (draft) => { draft.running = true })
 
     b.shell.setDraft('hello now')
     b.shell.submit()
@@ -227,7 +227,7 @@ describe('InputHub queue steering (empty-draft accelerated Enter)', () => {
 
   it('steers every queued row in FIFO order and leaves steering rows alone', async () => {
     const b = await bench()
-    await b.runtime.sessions.updateSnapshot('s1', (draft) => {
+    await b.runtime.sessions.updateSessionSnapshot('s1', (draft) => {
       draft.queue = [row('q-1'), { ...row('q-2'), placement: 'steering' }, row('q-3')]
     })
     b.shell.steerQueue()
@@ -242,12 +242,12 @@ describe('InputHub queue steering (empty-draft accelerated Enter)', () => {
 
   it('converges silently when the turn closes or a row is claimed mid-steer', async () => {
     const b = await bench()
-    await b.runtime.sessions.updateSnapshot('s1', (draft) => {
+    await b.runtime.sessions.updateSessionSnapshot('s1', (draft) => {
       draft.queue = [row('q-1'), row('q-2')]
     })
     // The turn closes before the second row: the flush stops, silently.
     b.updateQueue.mockResolvedValueOnce({
-      ok: false, error: { code: 'steer-unavailable', message: 'closed', details: {} },
+      ok: false, error: { code: 'session/steer-unavailable', message: 'closed', details: {} },
     } as never)
     b.shell.steerQueue()
     await vi.waitFor(() => { expect(b.updateQueue).toHaveBeenCalledTimes(1) })
@@ -255,11 +255,11 @@ describe('InputHub queue steering (empty-draft accelerated Enter)', () => {
 
     // A row the host already claimed (e.g. a repeated empty-draft chord):
     // the duplicate strict steer is a silent no-op.
-    await b.runtime.sessions.updateSnapshot('s1', (draft) => {
+    await b.runtime.sessions.updateSessionSnapshot('s1', (draft) => {
       draft.queue = [row('q-3')]
     })
     b.updateQueue.mockResolvedValueOnce({
-      ok: false, error: { code: 'queue-item-not-found', message: 'claimed', details: {} },
+      ok: false, error: { code: 'session/queue-item-not-found', message: 'claimed', details: {} },
     } as never)
     b.shell.steerQueue()
     await vi.waitFor(() => { expect(b.updateQueue).toHaveBeenCalledTimes(2) })
@@ -269,7 +269,7 @@ describe('InputHub queue steering (empty-draft accelerated Enter)', () => {
 
   it('surfaces one notice on a genuine steer failure and stops', async () => {
     const b = await bench()
-    await b.runtime.sessions.updateSnapshot('s1', (draft) => {
+    await b.runtime.sessions.updateSessionSnapshot('s1', (draft) => {
       draft.queue = [row('q-1'), row('q-2')]
     })
     b.updateQueue.mockResolvedValueOnce({

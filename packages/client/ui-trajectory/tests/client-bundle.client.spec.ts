@@ -8,7 +8,7 @@
  */
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { Context } from '@deepseek-ai/cordis'
+import { Context, Service } from '@deepseek-ai/cordis'
 import { stubSettingsScope } from '@deepseek-ai/dsh-client-test-runtime'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
@@ -20,6 +20,21 @@ import {
 } from '@deepseek-ai/dsh-client-ui-renderer/client'
 
 const PLUGIN_ID = '@ryanyujazz/dsh-client-ui-trajectory'
+
+/**
+ * The 0.1.2 `uiConversation` face: a Service owning both registries, exactly
+ * as the ui-conversation assembly provides it, so rider registrations made
+ * through the accessor shadow into the applying fiber and unwind with it.
+ */
+class TestConversation extends Service {
+  readonly events: ConversationEventRegistry
+  readonly views: ConversationViewRegistry
+  constructor(ctx: Context) {
+    super(ctx, 'uiConversation')
+    this.events = new ConversationEventRegistry(ctx)
+    this.views = new ConversationViewRegistry(ctx)
+  }
+}
 
 interface Handoff { id: string; factory: (require: (spec: string) => unknown) => Record<string, unknown> }
 type Win = { __ModuleLoader__?: { load(h: Handoff): void } }
@@ -54,6 +69,7 @@ describe('tsdown client artifact', () => {
       ['react', await import('react')],
       ['react/jsx-runtime', await import('react/jsx-runtime')],
       ['react-dom', await import('react-dom')],
+      ['@deepseek-ai/dsh-client-store', await import('@deepseek-ai/dsh-client-store')],
       ['@deepseek-ai/dsh-client-ui-conversation/client', await import('@deepseek-ai/dsh-client-ui-conversation/client')],
       ['@ryanyujazz/dsh-client-ui-primitives', await import('@ryanyujazz/dsh-client-ui-primitives')],
     ])
@@ -69,7 +85,7 @@ describe('tsdown client artifact', () => {
     expect(handoff.id).toBe(PLUGIN_ID)
     expect(exports.apply).toBeTypeOf('function')
     expect(exports.inject).toEqual([
-      'slots', 'conversationEvents', 'conversationViews', 'sessions', 'locale',
+      'slots', 'sessions', 'uiConversation', 'locale',
     ])
   })
 
@@ -77,8 +93,7 @@ describe('tsdown client artifact', () => {
     const { exports } = await loadArtifact()
     const ctx = new Context()
     const slots = new SlotRegistry(ctx)
-    await ctx.plugin(ConversationEventRegistry).await()
-    await ctx.plugin(ConversationViewRegistry).await()
+    await ctx.plugin(TestConversation).await()
     // The conversation entry's role: the ring must be declared before riders land.
     slots.register({
       name: 'root',
@@ -96,8 +111,7 @@ describe('tsdown client artifact', () => {
     ctx.plugin({ inject: [...locale.inject], apply: locale.apply })
     const fiber = ctx.plugin(exports as { apply: (ctx: Context) => void })
     await fiber.await()
-    const events = ctx.get('conversationEvents') as ConversationEventRegistry
-    const views = ctx.get('conversationViews') as ConversationViewRegistry
+    const { events, views } = ctx.get('uiConversation') as TestConversation
     expect(slots.entries('conversation.view').map(e => e.options.id)).toEqual(['trajectory'])
     expect(events.entries().length).toBeGreaterThan(0)
     expect(views.entries()).toHaveLength(1)

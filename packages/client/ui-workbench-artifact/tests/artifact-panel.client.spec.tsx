@@ -43,7 +43,8 @@ function props(snapshot: ArtifactsSnapshot, read: ReturnType<typeof vi.fn> = vi.
   return {
     input: {
       artifacts: { read },
-      useSession: (selector: (state: never) => unknown) => selector({ views: new Map([['artifacts', snapshot], ['plans', plans]]) } as never),
+      useArtifacts: (selector: (s: ArtifactsSnapshot) => unknown) => selector(snapshot),
+      usePlans: (selector: (s: PlansSnapshot) => unknown) => selector(plans),
       sessionId: 'session-1',
       route: 'home',
       typeId: 'artifact',

@@ -2,6 +2,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
+import type {
+  SettingsDescribeFace, SettingsDescribeView, SettingsMirrorSnapshot,
+} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { GeneralSectionComponentProps } from '../src/client/GeneralSection.tsx'
 import { GeneralSection } from '../src/client/GeneralSection.tsx'
 import { CloseLabel, HeaderContent, TriggerContent } from '../src/client/chrome.tsx'
@@ -60,23 +63,49 @@ describe('GeneralSection', () => {
 })
 
 describe('SettingsDocumentAction', () => {
-  it('appears only for a file-backed provider and requests its Host-owned document', async () => {
-    const openDocument = vi.fn(() => Promise.resolve({
-      rpcId: 'document-open' as never,
-      result: { ok: true as const, value: { opened: true as const } },
-    }))
-    const controller = new SettingsDocumentStore({
-      settings: {
-        describe: vi.fn(() => Promise.resolve({
-          rpcId: 'document-action' as never,
-          result: {
-            ok: true as const,
-            value: { writable: true, hasDocument: true, namespaces: [] },
-          },
-        })),
-        openDocument,
+  /** A held `settings.describe` answer the mirror would serve. */
+  function view(hasDocument: boolean): SettingsDescribeView {
+    return { writable: true, hasDocument, namespaces: [] }
+  }
+
+  /** In-memory `SettingsDescribeFace` double with mirror-refresh controls. */
+  function stubDescribeFace(initial: Partial<SettingsMirrorSnapshot>): SettingsDescribeFace & {
+    publish(next: Partial<SettingsMirrorSnapshot>): void
+  } {
+    const listeners = new Set<() => void>()
+    let snapshot: SettingsMirrorSnapshot = { status: 'idle', view: undefined, error: null, ...initial }
+    return {
+      getSnapshot: () => snapshot,
+      subscribe(listener) {
+        listeners.add(listener)
+        return () => { listeners.delete(listener) }
       },
-    } as never)
+      ensure: () => Promise.resolve(),
+      acceptView: () => undefined,
+      publish(next) {
+        snapshot = { ...snapshot, ...next }
+        for (const listener of [...listeners]) listener()
+      },
+    }
+  }
+
+  /** The store wired over a face double and a stubbed `remote.settings` namespace. */
+  function storeOver(
+    face: SettingsDescribeFace,
+    openSettingsDocument: () => Promise<unknown>,
+  ): SettingsDocumentStore {
+    return new SettingsDocumentStore(
+      { remote: { settings: { openSettingsDocument } } } as never,
+      face,
+    )
+  }
+
+  it('appears only for a file-backed provider and requests its Host-owned document', async () => {
+    const openSettingsDocument = vi.fn(() => Promise.resolve({ ok: true as const, value: { opened: true as const } }))
+    const controller = storeOver(
+      stubDescribeFace({ status: 'ready', view: view(true) }),
+      openSettingsDocument,
+    )
     render(<SettingsDocumentAction
       {...kit}
       t={t}
@@ -85,25 +114,12 @@ describe('SettingsDocumentAction', () => {
     />)
     const action = await screen.findByRole('button', { name: 'Open configuration file' })
     fireEvent.click(action)
-    await waitFor(() => { expect(openDocument).toHaveBeenCalledWith({}) })
+    await waitFor(() => { expect(openSettingsDocument).toHaveBeenCalledOnce() })
   })
 
   it('stays absent without a document and retries availability after remount', async () => {
-    const describe = vi.fn()
-      .mockResolvedValueOnce({
-        rpcId: 'document-action-absent' as never,
-        result: { ok: true as const, value: { writable: true, hasDocument: false, namespaces: [] } },
-      })
-      .mockResolvedValueOnce({
-        rpcId: 'document-action-ready' as never,
-        result: { ok: true as const, value: { writable: true, hasDocument: true, namespaces: [] } },
-      })
-    const controller = new SettingsDocumentStore({
-      settings: {
-        describe,
-        openDocument: vi.fn(),
-      },
-    } as never)
+    const face = stubDescribeFace({ status: 'ready', view: view(false) })
+    const controller = storeOver(face, vi.fn())
     const first = render(<SettingsDocumentAction
       {...kit}
       t={t}
@@ -113,6 +129,8 @@ describe('SettingsDocumentAction', () => {
     await waitFor(() => { expect(controller.store.getSnapshot().status).toBe('unavailable') })
     expect(screen.queryByRole('button', { name: 'Open configuration file' })).toBeNull()
     first.unmount()
+    // The mirror refreshed while unmounted: a document appeared.
+    face.publish({ status: 'ready', view: view(true) })
     render(<SettingsDocumentAction
       {...kit}
       t={t}
@@ -120,25 +138,16 @@ describe('SettingsDocumentAction', () => {
       useSnapshot={bindSnapshotSelector(controller.store)}
     />)
     expect(await screen.findByRole('button', { name: 'Open configuration file' })).toBeTruthy()
-    expect(describe).toHaveBeenCalledTimes(2)
   })
 
   it('keeps the action available and reports a native-open failure', async () => {
-    const controller = new SettingsDocumentStore({
-      settings: {
-        describe: vi.fn(() => Promise.resolve({
-          rpcId: 'document-action' as never,
-          result: {
-            ok: true as const,
-            value: { writable: true, hasDocument: true, namespaces: [] },
-          },
-        })),
-        openDocument: vi.fn(() => Promise.resolve({
-          rpcId: 'document-open-failed' as never,
-          result: { ok: false as const, error: { code: 'internal' as const, message: 'xdg-open missing', details: {} } },
-        })),
-      },
-    } as never)
+    const controller = storeOver(
+      stubDescribeFace({ status: 'ready', view: view(true) }),
+      vi.fn(() => Promise.resolve({
+        ok: false as const,
+        error: { code: 'internal' as const, message: 'xdg-open missing', details: {} },
+      })),
+    )
     render(<SettingsDocumentAction
       {...kit}
       t={t}

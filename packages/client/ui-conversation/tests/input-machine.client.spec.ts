@@ -254,8 +254,10 @@ describe('input-machine: insert-ref and the occurrence table', () => {
     const fx = m.dispatch({ type: 'insert-ref', reference: refOf('worker-1', 'subagent'), span: spanOf(m, 4, 8) })
     expect(fx).toEqual([])
     expect(m.state.draft).toBe(`see ${P} now`)
+    // `length` is the clipboard-text span the chip represents (the official
+    // occurrence projection in 0.1.2).
     expect(m.state.occurrences).toEqual([{
-      occurrenceId: 1, source: 'subagent', ref: 'worker-1', offset: 4,
+      occurrenceId: 1, source: 'subagent', ref: 'worker-1', offset: 4, length: 9,
       label: 'worker-1', clipboardText: '/worker-1',
     }])
     expect(m.state.phase).toBe('plain')

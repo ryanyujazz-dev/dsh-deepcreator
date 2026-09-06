@@ -52,7 +52,8 @@ function makeAdmin(options: {
   ;(ctx as unknown as { sessions: unknown }).sessions = {
     get: (id: string) => {
       const entry = liveSessions[id]
-      return entry === undefined ? undefined : { events: entry.events }
+      // 0.1.2 live sessions expose their log as an immutable snapshot, not a bare array.
+      return entry === undefined ? undefined : { snapshotEvents: () => entry.events }
     },
   }
   ;(ctx as unknown as { subagents: unknown }).subagents = {

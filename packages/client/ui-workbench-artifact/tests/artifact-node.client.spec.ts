@@ -4,7 +4,6 @@ import {
   type ConversationMatch,
   type ConversationNodeContext,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
-import type { ToolCallView } from '@deepseek-ai/dsh-tools/presentation'
 import { artifactNodeDefinition, producedForClosing } from '../src/client/artifact-node-definition.ts'
 
 type NodeState = ReturnType<typeof artifactNodeDefinition.start>
@@ -17,8 +16,9 @@ function turnStart(turn: number, seq = turn * 10): SessionEvent {
   return event('turn/start', { turn }, seq)
 }
 
-function toolCall(turn: number, callId: string, seq = turn * 10 + 1): SessionEvent {
-  return event('tool/call', { turn, callId }, seq)
+/** The 0.1.2 wire call carries the tool name and model-produced JSON arguments. */
+function toolCall(turn: number, callId: string, seq = turn * 10 + 1, name = 'write', args = '{"file_path":"E:/repo/x.md","content":"x"}'): SessionEvent {
+  return event('tool/call', { turn, callId, name, arguments: args }, seq)
 }
 
 function toolResult(turn: number, callId: string, seq = turn * 10 + 2, isError = false): SessionEvent {
@@ -32,15 +32,14 @@ function toolResult(turn: number, callId: string, seq = turn * 10 + 2, isError =
   }, seq, 'append')
 }
 
-/** The engine wraps each match result with the raw event and the call view. */
-function matchOf(one: SessionEvent, view?: ConversationMatch['view']): ConversationMatch {
+/** The engine wraps each match result with the raw event. */
+function matchOf(one: SessionEvent): ConversationMatch {
   const turn = (one.data as { turn?: number }).turn
   if (turn === undefined) throw new Error('test event has no turn')
   return {
     id: String(turn),
     role: one.type === 'turn/start' ? 'start' : 'update',
     event: one,
-    view,
     location: { kind: 'session' },
   } as ConversationMatch
 }
@@ -50,18 +49,6 @@ function contextFor(state: NodeState | undefined, id = '1'): ConversationNodeCon
     key: `workbench-artifact:${id}`, kind: 'workbench-artifact', id,
     matches: [], start: undefined, state, current: new Map(),
   } as ConversationNodeContext<NodeState>
-}
-
-function diffView(path: string): ToolCallView {
-  return { card: 'diff', title: 'Write', diffs: [], locations: [{ path }] } as ToolCallView
-}
-
-function genericEditView(path: string): ToolCallView {
-  return { card: 'generic', title: 'Edit', kind: 'edit', locations: [{ path }] } as ToolCallView
-}
-
-function callView(view: ToolCallView) {
-  return { for: 'call', view } as const
 }
 
 describe('artifactNodeDefinition', () => {
@@ -80,10 +67,10 @@ describe('artifactNodeDefinition', () => {
     expect(artifactNodeDefinition.target).toBe('artifacts')
   })
 
-  it('collects produced paths from diff and generic-edit call views', () => {
+  it('collects produced paths from write and edit wire calls', () => {
     let current = artifactNodeDefinition.start(contextFor(undefined), matchOf(turnStart(1)))
-    current = artifactNodeDefinition.update(contextFor(current), matchOf(toolCall(1, 'write', 11), callView(diffView('E:/repo/a.md'))))
-    current = artifactNodeDefinition.update(contextFor(current), matchOf(toolCall(1, 'edit', 12), callView(genericEditView('E:/repo/b.md'))))
+    current = artifactNodeDefinition.update(contextFor(current), matchOf(toolCall(1, 'write', 11, 'write', '{"file_path":"E:/repo/a.md","content":"x"}')))
+    current = artifactNodeDefinition.update(contextFor(current), matchOf(toolCall(1, 'edit', 12, 'edit', '{"file_path":"E:/repo/b.md","old_string":"a","new_string":"b"}')))
     current = artifactNodeDefinition.update(contextFor(current), matchOf(toolResult(1, 'write', 13)))
     current = artifactNodeDefinition.update(contextFor(current), matchOf(toolResult(1, 'edit', 14)))
 
@@ -101,22 +88,21 @@ describe('artifactNodeDefinition', () => {
     }, 12)).toEqual(['a.md', 'b.ts'])
   })
 
-  it('ignores non-mutation views, failed results and unknown call ids', () => {
+  it('ignores non-mutation calls, failed results and unknown call ids', () => {
     let current = artifactNodeDefinition.start(contextFor(undefined), matchOf(turnStart(1)))
-    const terminal = { card: 'terminal', title: 'ls' } as ToolCallView
-    const read = { card: 'generic', title: 'Read', kind: 'read', locations: [{ path: 'E:/repo/a.md' }] } as ToolCallView
-    current = artifactNodeDefinition.update(contextFor(current), matchOf(toolCall(1, 'term', 11), callView(terminal)))
-    current = artifactNodeDefinition.update(contextFor(current), matchOf(toolCall(1, 'read', 12), callView(read)))
-    current = artifactNodeDefinition.update(contextFor(current), matchOf(toolResult(1, 'term', 13)))
-    current = artifactNodeDefinition.update(contextFor(current), matchOf(toolResult(1, 'ghost', 14)))
-    current = artifactNodeDefinition.update(contextFor(current), matchOf(toolResult(1, 'read', 15, true)))
+    current = artifactNodeDefinition.update(contextFor(current), matchOf(toolCall(1, 'term', 11, 'bash', '{"command":"ls"}')))
+    current = artifactNodeDefinition.update(contextFor(current), matchOf(toolCall(1, 'read', 12, 'read', '{"file_path":"E:/repo/a.md"}')))
+    current = artifactNodeDefinition.update(contextFor(current), matchOf(toolCall(1, 'failed', 13, 'write', '{"file_path":"E:/repo/c.md","content":"x"}')))
+    current = artifactNodeDefinition.update(contextFor(current), matchOf(toolResult(1, 'term', 14)))
+    current = artifactNodeDefinition.update(contextFor(current), matchOf(toolResult(1, 'ghost', 15)))
+    current = artifactNodeDefinition.update(contextFor(current), matchOf(toolResult(1, 'failed', 16, true)))
 
     expect(current.produced).toEqual([])
   })
 
   it('builds turn nodes with produced paths and anchor seq, null before materialization', () => {
     let current = artifactNodeDefinition.start(contextFor(undefined, '2'), matchOf(turnStart(2, 20)))
-    current = artifactNodeDefinition.update(contextFor(current, '2'), matchOf(toolCall(2, 'write', 21), callView(diffView('E:/repo/c.md'))))
+    current = artifactNodeDefinition.update(contextFor(current, '2'), matchOf(toolCall(2, 'write', 21, 'write', '{"file_path":"E:/repo/c.md","content":"x"}')))
     current = artifactNodeDefinition.update(contextFor(current, '2'), matchOf(toolResult(2, 'write', 22)))
     const node = artifactNodeDefinition.buildViewNode(contextFor(current, '2'))
     expect(node).toMatchObject({

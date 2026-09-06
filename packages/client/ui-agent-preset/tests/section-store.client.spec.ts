@@ -7,7 +7,6 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import type { IApiClient } from '@deepseek-ai/dsh-api-remotes/client'
 import { AgentPresetSectionController, draftBlocker } from '../src/client/section-store.ts'
 import type { CopyDraft, PresetRow } from '../src/client/section-store.ts'
 
@@ -17,57 +16,60 @@ interface Recorded { method: string; payload: unknown }
 interface FakeOptions {
   /** Every call the controller made, in order. */
   calls?: Recorded[]
-  /** Reject `list` with this message. */
+  /** Refuse `list` with this message. */
   failList?: string
-  /** Reject `read` with this message. */
+  /** Refuse `read` with this message. */
   failRead?: string
-  /** Reject `copy` with this message. */
+  /** Refuse `copy` with this message. */
   failCopy?: string
-  /** Reject `openDocument` with this message. */
+  /** Refuse `openAgentPresetDirectory` with this message. */
   failOpen?: string
-  /** Reject `remove` with this message. */
+  /** Refuse `deletePreset` with this message. */
   failRemove?: string
-  /** Reject `settings.update` with this message. */
+  /** Refuse `settings.update` with this message. */
   failSettings?: string
-  /** Throw from `list` rather than answering, as a dead transport does. */
+  /** Answer `list` with a carrier failure, as the Remote face folds one. */
   throwList?: boolean
-  /** Throw from `read`, as a dead transport does. */
+  /** Answer `read` with a carrier failure, as the Remote face folds one. */
   throwRead?: boolean
-  /** Throw from `copy`, as a dead transport does. */
+  /** Answer `copy` with a carrier failure, as the Remote face folds one. */
   throwCopy?: boolean
-  /** Throw from `openDocument`, as a dead transport does. */
+  /** Answer `openAgentPresetDirectory` with a carrier failure, as the Remote face folds one. */
   throwOpen?: boolean
   /** Whether the deployment configures a writable root. */
   authorable?: boolean
   /** Whether the host can open a preset directory on a desktop. */
   hasDocument?: boolean
-  /** Hold `remove` until this resolves, to observe the in-flight state. */
+  /** Hold `deletePreset` until this resolves, to observe the in-flight state. */
   holdRemove?: Promise<void>
 }
 
-const ok = (value: unknown) => Promise.resolve({ rpcId: 'r', result: { ok: true as const, value } })
+const ok = (value: unknown) => Promise.resolve({ ok: true as const, value })
 const fail = (message: string) =>
-  Promise.resolve({ rpcId: 'r', result: { ok: false as const, error: { code: 'internal', message, details: {} } } })
+  Promise.resolve({ ok: false as const, error: { code: 'internal', message, details: {} } })
+/** A carrier failure: the Remote face folds one into the error branch. */
+const gatewayFail = (message: string) =>
+  Promise.resolve({ ok: false as const, error: { code: 'gateway/internal', message, details: {} } })
 
 /**
- * A wire face over an in-memory preset store: copies land, so the roster the
- * controller re-reads after a copy is the one the copy produced.
+ * The Remote namespaces over an in-memory preset store: copies land, so the
+ * roster the controller re-reads after a copy is the one the copy produced.
  * @param presets - the starting compositions by id.
  * @param defaultId - the preset a session with no choice gets.
  * @param options - failure injection and call recording.
- * @returns the fake client.
+ * @returns the `ctx.remote` namespaces.
  */
-function fakeApi(
+function fakeRemote(
   presets: Map<string, FakePreset>,
   defaultId: { id: string },
   options: FakeOptions = {},
-): Pick<IApiClient, 'agentPresets' | 'settings'> {
+) {
   const record = (method: string, payload: unknown): void => { options.calls?.push({ method, payload }) }
   return {
     agentPresets: {
       list: () => {
         record('list', {})
-        if (options.throwList === true) return Promise.reject(new Error('socket closed'))
+        if (options.throwList === true) return gatewayFail('socket closed')
         if (options.failList !== undefined) return fail(options.failList)
         return ok({
           presets: [...presets].map(([id, preset]) => ({
@@ -75,63 +77,63 @@ function fakeApi(
             ...preset.name === undefined ? {} : { name: preset.name },
           })),
           authorable: options.authorable ?? true,
-          hasDocument: options.hasDocument ?? true,
         })
       },
-      read: (payload: { agentPreset: string }) => {
-        record('read', payload)
-        if (options.throwRead === true) return Promise.reject(new Error('socket closed'))
+      read: (agentPreset: string) => {
+        record('read', agentPreset)
+        if (options.throwRead === true) return gatewayFail('socket closed')
         if (options.failRead !== undefined) return fail(options.failRead)
-        const preset = presets.get(payload.agentPreset)
+        const preset = presets.get(agentPreset)
         /* v8 ignore next -- every test reads an id the fake store holds */
-        if (preset === undefined) return fail(`unknown preset ${payload.agentPreset}`)
+        if (preset === undefined) return fail(`unknown preset ${agentPreset}`)
         return ok({
-          agentPreset: payload.agentPreset,
+          agentPreset,
           trust: preset.trust,
           content: preset.content,
           ...preset.name === undefined ? {} : { name: preset.name },
         })
       },
-      copy: (payload: { from: string; agentPreset: string; name?: string }) => {
-        record('copy', payload)
-        if (options.throwCopy === true) return Promise.reject(new Error('socket closed'))
+      copy: (from: string, agentPreset: string, name?: string) => {
+        record('copy', { from, id: agentPreset, ...name === undefined ? {} : { name } })
+        if (options.throwCopy === true) return gatewayFail('socket closed')
         if (options.failCopy !== undefined) return fail(options.failCopy)
-        const source = presets.get(payload.from)
+        const source = presets.get(from)
         /* v8 ignore next -- every test copies a source the fake store holds */
-        if (source === undefined) return fail(`unknown preset ${payload.from}`)
-        presets.set(payload.agentPreset, {
+        if (source === undefined) return fail(`unknown preset ${from}`)
+        presets.set(agentPreset, {
           trust: 'user',
           content: source.content,
-          ...payload.name === undefined ? {} : { name: payload.name },
+          ...name === undefined ? {} : { name },
         })
-        return ok({ agentPreset: payload.agentPreset })
+        return ok(undefined)
       },
-      openDocument: (payload: { agentPreset: string }) => {
-        record('openDocument', payload)
-        if (options.throwOpen === true) return Promise.reject(new Error('socket closed'))
-        if (options.failOpen !== undefined) return fail(options.failOpen)
-        return (options.hasDocument ?? true)
-          ? ok({ opened: true })
-          : ok({ opened: false, path: `/presets/${payload.agentPreset}` })
-      },
-      remove: async (payload: { agentPreset: string }) => {
-        record('remove', payload)
+      deletePreset: async (agentPreset: string) => {
+        record('deletePreset', agentPreset)
         await options.holdRemove
         if (options.failRemove !== undefined) return await fail(options.failRemove)
-        presets.delete(payload.agentPreset)
-        return await ok({})
+        presets.delete(agentPreset)
+        return await ok(undefined)
       },
     },
     settings: {
-      update: (payload: { ns: string; patch: { default?: string } }) => {
-        record('settings.update', payload)
+      canOpenAgentPresetDirectory: () => ok(options.hasDocument ?? true),
+      openAgentPresetDirectory: (agentPreset: string) => {
+        record('openAgentPresetDirectory', agentPreset)
+        if (options.throwOpen === true) return gatewayFail('socket closed')
+        if (options.failOpen !== undefined) return fail(options.failOpen)
+        return (options.hasDocument ?? true)
+          ? ok({ opened: true })
+          : ok({ opened: false, path: `/presets/${agentPreset}` })
+      },
+      update: (ns: string, patch: { default?: string }) => {
+        record('settings.update', { ns, patch })
         if (options.failSettings !== undefined) return fail(options.failSettings)
         /* v8 ignore next -- the controller only ever patches `default` */
-        defaultId.id = payload.patch.default ?? defaultId.id
+        defaultId.id = patch.default ?? defaultId.id
         return ok({})
       },
     },
-  } as unknown as Pick<IApiClient, 'agentPresets' | 'settings'>
+  }
 }
 
 function seed(): Map<string, FakePreset> {
@@ -147,7 +149,7 @@ function harness(options: FakeOptions = {}) {
   const calls: Recorded[] = []
   let rosterChanges = 0
   const controller = new AgentPresetSectionController(
-    fakeApi(presets, defaultId, { ...options, calls: options.calls ?? calls }),
+    { remote: fakeRemote(presets, defaultId, { ...options, calls: options.calls ?? calls }) } as never,
     () => { rosterChanges += 1 },
   )
   return { controller, presets, defaultId, calls, rosterChanges: () => rosterChanges }
@@ -352,11 +354,11 @@ describe('submitting a copy', () => {
     expect(state.rows.map(row => row.id)).toContain('my-copy')
     expect(rosterChanges()).toBe(1)
     expect(calls.find(call => call.method === 'copy')?.payload)
-      .toEqual({ from: 'standard', agentPreset: 'my-copy', name: '我的模式' })
+      .toEqual({ from: 'standard', id: 'my-copy', name: '我的模式' })
     // A preset is its files from here on, so landing in them completes the
     // copy rather than following it.
-    expect(calls.find(call => call.method === 'openDocument')?.payload)
-      .toEqual({ agentPreset: 'my-copy' })
+    expect(calls.find(call => call.method === 'openAgentPresetDirectory')?.payload)
+      .toBe('my-copy')
   })
 
   it('omits an empty name so the copy falls back to its id', async () => {
@@ -369,7 +371,7 @@ describe('submitting a copy', () => {
     await controller.confirmCopy()
 
     expect(calls.find(call => call.method === 'copy')?.payload)
-      .toEqual({ from: 'standard', agentPreset: 'my-copy' })
+      .toEqual({ from: 'standard', id: 'my-copy' })
   })
 
   it('reveals the new directory as text where the host has no desktop', async () => {
@@ -425,7 +427,7 @@ describe('the location action', () => {
 
     await controller.openLocation('mine')
 
-    expect(calls.find(call => call.method === 'openDocument')?.payload).toEqual({ agentPreset: 'mine' })
+    expect(calls.find(call => call.method === 'openAgentPresetDirectory')?.payload).toBe('mine')
     expect(controller.store.getSnapshot().revealedPaths).toEqual({})
   })
 
@@ -492,7 +494,7 @@ describe('deleting', () => {
     await controller.remove()
 
     expect(controller.store.getSnapshot().rows.map(row => row.id)).toContain('mine')
-    expect(calls.some(call => call.method === 'remove')).toBe(false)
+    expect(calls.some(call => call.method === 'deletePreset')).toBe(false)
   })
 
   it('ignores a second confirmation while one delete is in flight', async () => {
@@ -508,7 +510,7 @@ describe('deleting', () => {
     release()
     await removal
 
-    expect(calls.filter(call => call.method === 'remove')).toHaveLength(1)
+    expect(calls.filter(call => call.method === 'deletePreset')).toHaveLength(1)
   })
 
   it('surfaces a refusal and clears the confirmation', async () => {
@@ -529,12 +531,14 @@ describe('deleting', () => {
     await controller.load()
     presets.clear()
     const broken = new AgentPresetSectionController({
-      agentPresets: {
-        list: () => Promise.reject(new Error('gone')),
-        remove: () => Promise.reject(new Error('socket closed')),
+      remote: {
+        agentPresets: {
+          list: () => gatewayFail('gone'),
+          deletePreset: () => gatewayFail('socket closed'),
+        },
+        settings: {},
       },
-      settings: {},
-    } as unknown as Pick<IApiClient, 'agentPresets' | 'settings'>)
+    } as never)
     broken.confirmDelete('mine')
 
     await broken.remove()
@@ -548,7 +552,9 @@ describe('a controller with no roster listener', () => {
     // The rosterChanged callback is optional wiring, not a requirement: a
     // page composed without sibling surfaces still deletes cleanly.
     const presets = seed()
-    const alone = new AgentPresetSectionController(fakeApi(presets, { id: 'standard' }))
+    const alone = new AgentPresetSectionController(
+      { remote: fakeRemote(presets, { id: 'standard' }) } as never,
+    )
     await alone.load()
     alone.confirmDelete('mine')
 

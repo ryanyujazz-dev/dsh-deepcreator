@@ -79,6 +79,9 @@ function assembler(entries: readonly SessionEventLikeEntry[] = [], hasMore = fal
   const value = new ConversationNodeAssembler(new TestEventDefinitions(), new TestViewDefinitions())
   value.replaceWindow(entries, hasMore)
   value.flush()
+  // View snapshots materialize only for activated targets (the binding mount
+  // path in production); activation flushes pending Context work itself.
+  value.activateTarget('chat')
   return value
 }
 

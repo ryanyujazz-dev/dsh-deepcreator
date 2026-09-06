@@ -5,8 +5,8 @@ import { resolve } from 'node:path'
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  type ConversationSnapshot,
-} from '@deepseek-ai/dsh-client-ui-conversation/client'
+  type ChatSnapshot,
+} from '@deepseek-ai/dsh-client-ui-chat/client'
 import {
   type SessionId,
 } from '@deepseek-ai/dsh-session/types'
@@ -61,9 +61,10 @@ const patches: Record<string, string> = {
   ].join('\n'),
 }
 
-const emptyChat = (): ConversationSnapshot => ({ nodes: [], turnEnds: new Map() }) as unknown as ConversationSnapshot
+const emptyChat = (): ChatSnapshot =>
+  ({ legacy: { nodes: [], turnEnds: new Map() } }) as unknown as ChatSnapshot
 
-function sessionStub(initial: ConversationSnapshot = emptyChat()) {
+function sessionStub(initial: ChatSnapshot = emptyChat()) {
   const listeners = new Set<() => void>()
   let current = initial
   return {

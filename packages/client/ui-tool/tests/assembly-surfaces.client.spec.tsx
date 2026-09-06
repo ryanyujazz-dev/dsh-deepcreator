@@ -19,7 +19,7 @@ import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import { SlotTestRuntime, usePinnedBrowserLanguages, stubSettingsScope } from '@deepseek-ai/dsh-client-test-runtime'
 import { apply as applyConversation, inject as injectConversation } from '@ryanyujazz/dsh-client-ui-conversation/client'
 import { apply as applyTool, inject as injectTool } from '../src/client/apply.ts'
-import { toolChatSnapshot } from './tool-details-render.client.tsx'
+import { toolCallEvents } from './tool-details-render.client.tsx'
 
 // The service reads its initial locale from the browser; these specs assert
 // the shipped Chinese copy, so they state the browser they assume.
@@ -78,17 +78,23 @@ const LAYOUT_CHILDREN = {
 
 async function bench(nodes: ToolResultNode[]) {
   const runtime = await SlotTestRuntime.create()
-  runtime.provide('connection', { api: { settings: {} }, isLoopback: false })
-  // ui-theme's Appearance row binds a durable scope through these two.
-  runtime.provide('remote', { $on: () => () => {} })
-  runtime.provide('settingsScope', { bind: () => stubSettingsScope().scope } as never)
+  runtime.ctx.provide('connection', { api: { settings: {} }, isLoopback: false })
+  // ui-theme's Appearance row binds a durable scope through these two. The
+  // conversation scope publishes the stock 'normal' flow: the shipped default
+  // ('classic') aggregates settled tool runs behind one morphing header.
+  const settings = stubSettingsScope<never>()
+  settings.publish({ value: { defaultRenderMode: 'normal' } } as never)
+  runtime.ctx.provide('remote', { $on: () => () => {} })
+  runtime.ctx.provide('settingsScope', { bind: () => settings.scope } as never)
   const locale = new LocaleRuntime(runtime.ctx)
-  runtime.provide('locale', locale)
+  runtime.ctx.provide('locale', locale)
   runtime.slots.installLocale(locale)
   await runtime.sessions.add({
     id: SID,
     summary: { title: 'S', displayTitle: 'S', cwd: '/proj' },
-    snapshot: { nodes, chat: toolChatSnapshot(nodes) },
+    // Conversation data arrives through the durable event feed (0.1.2):
+    // assembly materializes the Tool nodes the rows dispatch on.
+    events: toolCallEvents(nodes),
     session: {
       loadOlder: vi.fn<ISession['loadOlder']>(),
       prompt: vi.fn<ISession['prompt']>(async () => ({ ok: true, value: { accepted: true } })),

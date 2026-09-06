@@ -196,7 +196,14 @@ describe('StatsLine', () => {
     source: { getSnapshot(): ConversationSnapshot; subscribe(fn: () => void): () => void },
     values: Record<string, unknown> = { tokenUsage: USAGE },
   ): StatsLineProps {
-    return { useSession: bindSnapshotSelector(source), useProjection: projections(values), t: tEn }
+    return {
+      useChat: bindSnapshotSelector({
+        getSnapshot: () => source.getSnapshot().chat,
+        subscribe: source.subscribe,
+      }),
+      useProjection: projections(values),
+      t: tEn,
+    }
   }
 
   it('renders the grouped stats row and hides a brand-new empty session', () => {

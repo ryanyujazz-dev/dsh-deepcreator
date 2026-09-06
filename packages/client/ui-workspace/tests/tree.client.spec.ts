@@ -48,12 +48,18 @@ describe('deriveGroups', () => {
     expect(groups[0]!.sessions.map(session => session.id)).toEqual([sid('older'), sid('newer')])
   })
 
-  it('projects pending-interaction state into grouped and flat rows', () => {
+  it('keeps the pending-interaction fact off the derived rows (0.1.2 moved it to the projection feed)', () => {
+    // 0.1.2 dropped `pendingInteraction` from the SessionSummary contract
+    // (successor: the upstream `useSessionPendingInteraction` feed, not wired
+    // into this derivation yet), so even a summary still carrying the legacy
+    // field projects rows WITHOUT the dot; the running fact still flows.
     const awaiting = { ...summary('awaiting', 10), pendingInteraction: 'plan-review' as const, running: true }
     const sessions = list(awaiting)
     const grouped = deriveGroups(sessions, [workspace('project', ['awaiting'])], noArchive, view(['project']))
-    expect(grouped[0]!.sessions[0]).toMatchObject({ pendingInteraction: 'plan-review', running: true })
-    expect(deriveFlat(sessions, noArchive)[0]).toMatchObject({ pendingInteraction: 'plan-review', running: true })
+    expect(grouped[0]!.sessions[0]).toMatchObject({ running: true })
+    expect(grouped[0]!.sessions[0].pendingInteraction).toBeUndefined()
+    expect(deriveFlat(sessions, noArchive)[0]).toMatchObject({ running: true })
+    expect(deriveFlat(sessions, noArchive)[0]!.pendingInteraction).toBeUndefined()
   })
 
   it('moves pinned sessions out of ordinary groups and preserves the pin order', () => {
@@ -296,7 +302,6 @@ describe('deriveSearchResults', () => {
   it('merges local title/Workspace matches before ranked content hits and enriches duplicates', () => {
     const titleHit = summary('title-hit', 30, '/projects/a')
     titleHit.displayTitle = 'Needle title'
-    titleHit.pendingInteraction = 'plan-review'
     const workspaceHit = summary('workspace-hit', 20, '/projects/b')
     workspaceHit.displayTitle = 'Ordinary title'
     const contentHit = summary('content-hit', 10, '/projects/c')
@@ -330,7 +335,6 @@ describe('deriveSearchResults', () => {
           workspace: 'Alpha',
           running: false,
           runningSubagentCount: 0,
-          pendingInteraction: 'plan-review',
           completed: false,
           snippet: 'title session body excerpt',
         },

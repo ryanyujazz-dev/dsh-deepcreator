@@ -55,13 +55,13 @@ function WorkspaceProbe({ open }: EmptyWorkspaceOwnerProps) {
 
 async function bench(opts?: { blank?: boolean }) {
   const runtime = await SlotTestRuntime.create()
-  runtime.provide('connection', { api: { settings: {} }, isLoopback: false })
+  runtime.ctx.provide('connection', { api: { settings: {} }, isLoopback: false })
   // The plugin injects both; these specs exercise no settings path.
-  runtime.provide('remote', { $on: () => () => {} })
-  runtime.provide('settingsScope', { bind: () => stubSettingsScope().scope } as never)
-  runtime.provide('layout', { closeDetails: vi.fn() })
+  runtime.ctx.provide('remote', { $on: () => () => {} })
+  runtime.ctx.provide('settingsScope', { bind: () => stubSettingsScope().scope } as never)
+  runtime.ctx.provide('layout', { closeDetails: vi.fn() })
   const locale = new LocaleRuntime(runtime.ctx)
-  runtime.provide('locale', locale)
+  runtime.ctx.provide('locale', locale)
   runtime.slots.installLocale(locale)
   await runtime.sessions.add({
     id: SID,
@@ -83,13 +83,13 @@ async function bench(opts?: { blank?: boolean }) {
 describe('resident composer', () => {
   it('renders the locked view state while no session exists at all', async () => {
     const runtime = await SlotTestRuntime.create()
-    runtime.provide('connection', { api: { settings: {} }, isLoopback: false })
+    runtime.ctx.provide('connection', { api: { settings: {} }, isLoopback: false })
     // The plugin injects both; these specs exercise no settings path.
-    runtime.provide('remote', { $on: () => () => {} })
-    runtime.provide('settingsScope', { bind: () => stubSettingsScope().scope } as never)
-    runtime.provide('layout', { closeDetails: vi.fn() })
+    runtime.ctx.provide('remote', { $on: () => () => {} })
+    runtime.ctx.provide('settingsScope', { bind: () => stubSettingsScope().scope } as never)
+    runtime.ctx.provide('layout', { closeDetails: vi.fn() })
     const locale = new LocaleRuntime(runtime.ctx)
-    runtime.provide('locale', locale)
+    runtime.ctx.provide('locale', locale)
     runtime.slots.installLocale(locale)
     await runtime.root.declare(LAYOUT_CHILDREN, AppRoot)
     await runtime.mount({ inject: [...inject], apply })
@@ -113,13 +113,13 @@ describe('resident composer', () => {
 
   it('keeps the complete Hero tree mounted when the first Workspace session appears', async () => {
     const runtime = await SlotTestRuntime.create()
-    runtime.provide('connection', { api: { settings: {} }, isLoopback: false })
+    runtime.ctx.provide('connection', { api: { settings: {} }, isLoopback: false })
     // The plugin injects both; these specs exercise no settings path.
-    runtime.provide('remote', { $on: () => () => {} })
-    runtime.provide('settingsScope', { bind: () => stubSettingsScope().scope } as never)
-    runtime.provide('layout', { closeDetails: vi.fn() })
+    runtime.ctx.provide('remote', { $on: () => () => {} })
+    runtime.ctx.provide('settingsScope', { bind: () => stubSettingsScope().scope } as never)
+    runtime.ctx.provide('layout', { closeDetails: vi.fn() })
     const locale = new LocaleRuntime(runtime.ctx)
-    runtime.provide('locale', locale)
+    runtime.ctx.provide('locale', locale)
     runtime.slots.installLocale(locale)
     await runtime.workspaces.update((draft) => {
       draft.items = [{ workspaceId: 'w1', title: 'Proj', path: '/proj', sessionIds: [SID] }] as never
@@ -170,7 +170,7 @@ describe('resident composer', () => {
     expect(hero).not.toBeNull()
     expect(hero!.disabled).toBe(false)
 
-    await runtime.sessions.updateSnapshot(SID, (draft) => {
+    await runtime.sessions.updateSessionSnapshot(SID, (draft) => {
       draft.blank = false
       draft.composerPhase = 'active'
     })
@@ -182,13 +182,13 @@ describe('resident composer', () => {
 describe('prompt rejection through the assembled composer', () => {
   it('renders the promptError alert strip and keeps the draft in the machine', async () => {
     const runtime = await SlotTestRuntime.create()
-    runtime.provide('connection', { api: { settings: {} }, isLoopback: false })
+    runtime.ctx.provide('connection', { api: { settings: {} }, isLoopback: false })
     // The plugin injects both; these specs exercise no settings path.
-    runtime.provide('remote', { $on: () => () => {} })
-    runtime.provide('settingsScope', { bind: () => stubSettingsScope().scope } as never)
-    runtime.provide('layout', { closeDetails: vi.fn() })
+    runtime.ctx.provide('remote', { $on: () => () => {} })
+    runtime.ctx.provide('settingsScope', { bind: () => stubSettingsScope().scope } as never)
+    runtime.ctx.provide('layout', { closeDetails: vi.fn() })
     const locale = new LocaleRuntime(runtime.ctx)
-    runtime.provide('locale', locale)
+    runtime.ctx.provide('locale', locale)
     runtime.slots.installLocale(locale)
     const prompt = vi.fn<ISession['prompt']>(async () => ({
       ok: false, error: { code: 'agent-busy', message: 'prompt rejected before acceptance', details: { reason: 'busy' } },
@@ -207,7 +207,7 @@ describe('prompt rejection through the assembled composer', () => {
     fireEvent.keyDown(composer, { key: 'Enter' })
     await waitFor(() => { expect(prompt).toHaveBeenCalledOnce() })
 
-    await runtime.sessions.updateSnapshot(SID, (draft) => {
+    await runtime.sessions.updateSessionSnapshot(SID, (draft) => {
       draft.promptError = {
         op: 'send',
         error: { code: 'agent-busy', message: 'prompt rejected before acceptance', details: { reason: 'busy' } },

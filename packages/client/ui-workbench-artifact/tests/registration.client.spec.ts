@@ -26,6 +26,7 @@ describe('ui-workbench-artifact registration', () => {
     const localeNamespaces: string[] = []
     const disposed: string[] = []
     const provide = vi.fn()
+    const uiSessionProvide = vi.fn()
     const dispose = (tag: string) => () => { disposed.push(tag) }
 
     let teardown: (() => void) | undefined
@@ -33,6 +34,11 @@ describe('ui-workbench-artifact registration', () => {
       get: () => remote,
       provide,
       sessions: { list: { getSnapshot: () => ({ byId: {} }) } },
+      uiSession: { provide: uiSessionProvide },
+      uiConversation: {
+        events: { register: (definition: { kind?: string }) => { nodeDefinitions.push(definition); return dispose('node') } },
+        views: { register: (definition: { target?: string }) => { viewDefinitions.push(definition); return dispose('view') } },
+      },
       locale: {
         bind: () => (key: string) => key,
         register: (ns: string) => { localeNamespaces.push(ns); return dispose(`locale:${ns}`) },
@@ -48,11 +54,8 @@ describe('ui-workbench-artifact registration', () => {
           return dispose(`slot:${entry.name}:${entry.id ?? ''}`)
         },
       },
-      conversationEvents: { register: (definition: { kind?: string }) => { nodeDefinitions.push(definition); return dispose('node') } },
-      conversationViews: { register: (definition: { target?: string }) => { viewDefinitions.push(definition); return dispose('view') } },
       effect: (mount: () => (() => void) | void) => { teardown = mount() ?? (() => undefined); return teardown },
     } as unknown as Context
-
     apply(ctx)
 
     // Provider surface: type 'artifact' keeps the persisted field values.
@@ -76,7 +79,11 @@ describe('ui-workbench-artifact registration', () => {
     expect(viewDefinitions[0]).toMatchObject({ target: 'artifacts' })
     expect(viewDefinitions[1]).toMatchObject({ target: 'plans' })
     expect(localeNamespaces).toEqual(['workbench-artifact'])
+    // The plugin itself provides no Cordis service; its per-Session hook
+    // sources ride the 0.1.2 standard uiSession provider instead.
     expect(provide).not.toHaveBeenCalled()
+    expect(uiSessionProvide).toHaveBeenCalledTimes(1)
+    expect(uiSessionProvide.mock.calls[0]?.[0]).toMatchObject({ hooks: ['artifacts', 'plans'] })
 
     // The traced namespace is captured once, outside every React renderer.
     const render = panels.get('artifact')!

@@ -55,7 +55,25 @@ async function bench(isLoopback = true) {
     commands: { getSnapshot: () => ({ sequence: 0, request: null }), subscribe: () => () => undefined },
     open: vi.fn(), close: vi.fn(),
   })
-  return { ctx, slots: ctx.get('slots') as SlotRegistry, locale, settingsDescribe, settingsOpenDocument }
+  // The shared describe mirror's face: the document action follows it on the
+  // loopback bench, so it resolves to a document-backed provider. The `ensure`
+  // spy stands in for the mirror's wire read.
+  const describeEnsure = vi.fn(() => Promise.resolve())
+  const describeFace = {
+    getSnapshot: () => ({
+      status: 'ready',
+      view: { writable: true, hasDocument: true, namespaces: [] },
+      error: null,
+    }),
+    subscribe: vi.fn(() => () => undefined),
+    ensure: describeEnsure,
+    acceptView: () => undefined,
+  }
+  ctx.provide('settingsScope', { describe: () => describeFace } as never)
+  return {
+    ctx, slots: ctx.get('slots') as SlotRegistry, locale,
+    settingsDescribe, settingsOpenDocument, describeEnsure, describeFace,
+  }
 }
 
 /** Declare the shell's six child slots the way ui-settings' entry does. */
@@ -82,7 +100,7 @@ function generalEntry(slots: SlotRegistry) {
 
 describe('ui-settings-general apply', () => {
   it('declares the services it uses', () => {
-    expect(inject).toEqual(['slots', 'locale', 'connection', 'settingsNavigation'])
+    expect(inject).toEqual(['slots', 'locale', 'connection', 'settingsNavigation', 'settingsScope'])
   })
 
   it('fills all five seats for declarations before or after apply', async () => {
@@ -165,11 +183,15 @@ describe('ui-settings-general apply', () => {
     const entry = b.slots.entries('settings.action')[0]!
     const { controller } = (entry.inject as unknown as () => SettingsDocumentActionInjected)()
     b.ctx.emit('connection/reset')
-    expect(b.settingsDescribe).not.toHaveBeenCalled()
+    // A reconnect before any surface asked never touches the mirror.
+    expect(b.describeEnsure).not.toHaveBeenCalled()
     await controller.load()
-    expect(b.settingsDescribe).toHaveBeenCalledOnce()
+    expect(b.describeEnsure).toHaveBeenCalledOnce()
+    expect(b.describeFace.subscribe).toHaveBeenCalledOnce()
     b.ctx.emit('connection/reset')
-    await vi.waitFor(() => { expect(b.settingsDescribe).toHaveBeenCalledTimes(2) })
+    // The refresh re-derives through the face without re-subscribing it.
+    await vi.waitFor(() => { expect(b.describeEnsure).toHaveBeenCalledTimes(2) })
+    expect(b.describeFace.subscribe).toHaveBeenCalledOnce()
   })
 
   it('withholds the loopback-only document action off-loopback', async () => {

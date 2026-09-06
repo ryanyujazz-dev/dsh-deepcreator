@@ -1,6 +1,6 @@
 /**
  * ui-model-selection browser half on a real cordis Context with fake command/slots/
- * connection faces and real session scopes: the plugin mounts ModelDirectoryResolver
+ * remote.session faces and real session scopes: the plugin mounts ModelDirectoryResolver
  * as `models`, the /model contribution and the conversation.input.model
  * seat both register, and BOTH entries resolve the SAME per-session
  * directory through the service — a selection submitted through the seat's
@@ -58,33 +58,67 @@ const GROUPS = [{
   ],
 }]
 
-/** Boot the plugin over fake faces + a stateful fake host (current moves on selectModel). */
+/** Boot the plugin over fake faces + a stateful fake host (catalog + per-session durable projections). */
 async function bench() {
   const ctx = new Context()
-  let current: ModelSelection = { provider: 'deepseek-official', model: 'deepseek-v4-flash' }
-  const calls = { models: 0, select: 0 }
-  ctx.provide('connection', { api: { sessions: {
-    models: () => {
-      calls.models += 1
-      return Promise.resolve({
-        result: { ok: true as const, value: { current, routable, groups: GROUPS, failures: [] } },
-      })
-    },
-    selectModel: (payload: { provider: string; model: string; reasoningEffort?: string }) => {
-      calls.select += 1
-      current = {
-        provider: payload.provider,
-        model: payload.model,
-        ...payload.reasoningEffort === undefined
-          ? {}
-          : { reasoningEffort: payload.reasoningEffort },
-      }
-      return Promise.resolve({ result: { ok: true as const, value: { selected: current } } })
-    },
-  } } })
+  // Host-generation default (catalog.default): what a session without a
+  // durable selection shows. Only (re)read when the catalog is (re)loaded.
+  let hostDefault: ModelSelection = { provider: 'deepseek-official', model: 'deepseek-v4-flash' }
   // Whether the Host reports an adapter for the current route; the composer
   // block follows this, never catalog membership.
   let routable = true
+  const calls = { catalog: 0, select: 0 }
+  // Per-session durable model-selection projection. selectModel writes the
+  // frame the way the Host's session-history projection would ({} before any
+  // pick — `next` undefined means "follow the Host default").
+  const frames = new Map<SessionId, { value: { next?: ModelSelection }; listeners: Set<() => void> }>()
+  const durable = new Map<SessionId, ModelSelection>()
+  const frameOf = (id: SessionId) => {
+    let frame = frames.get(id)
+    if (frame === undefined) {
+      frame = { value: {}, listeners: new Set() }
+      frames.set(id, frame)
+    }
+    return frame
+  }
+  const projected = (id: SessionId) => ({
+    getSnapshot: () => frameOf(id).value,
+    subscribe: (listener: () => void) => {
+      frameOf(id).listeners.add(listener)
+      return () => { frameOf(id).listeners.delete(listener) }
+    },
+  })
+  new TestRemote(ctx, {
+    session: {
+      modelCatalog: () => {
+        calls.catalog += 1
+        return Promise.resolve({
+          ok: true as const,
+          value: {
+            default: hostDefault,
+            routableProviders: routable ? ['deepseek-official'] : [],
+            groups: GROUPS,
+            failures: [],
+          },
+        })
+      },
+      selectModel: (payload: { sessionId: SessionId; provider: string; model: string; reasoningEffort?: string }) => {
+        calls.select += 1
+        const selection: ModelSelection = {
+          provider: payload.provider,
+          model: payload.model,
+          ...(payload.reasoningEffort === undefined
+            ? {}
+            : { reasoningEffort: payload.reasoningEffort }),
+        }
+        durable.set(payload.sessionId, selection)
+        const frame = frameOf(payload.sessionId)
+        frame.value = { next: selection }
+        for (const listener of [...frame.listeners]) listener()
+        return Promise.resolve({ ok: true as const, value: { selected: selection } })
+      },
+    },
+  })
   const blocks = new Map<SessionId, { reason: string } | undefined>()
   ctx.provide('conversation', {
     blocks: {
@@ -114,11 +148,13 @@ async function bench() {
   const addressed = new Set<SessionId>()
   ctx.provide('sessions', {
     scope: (id: SessionId) => scopes.get(id),
+    binding: (id: SessionId) => ({
+      session: { projections: { faceOf: () => projected(id) } },
+    }),
     subagentAddress: (id: SessionId) => addressed.has(id)
       ? { parentSessionId: sid('parent'), childSessionId: id, mode: 'continuable' as const }
       : undefined,
   })
-  new TestRemote(ctx)
   const fiber = ctx.plugin({ inject: [...inject], apply })
   await fiber.await()
   await ctx.plugin(function probe() {}).await()
@@ -131,8 +167,14 @@ async function bench() {
     ctx, fiber, mint, calls,
     contribution: () => contribution!,
     seat: () => seats.get('conversation.input.model')!,
-    hostCurrent: () => current,
-    setHostCurrent: (selection: ModelSelection) => { current = selection },
+    hostDefault: () => hostDefault,
+    setHostDefault: (selection: ModelSelection) => { hostDefault = selection },
+    project: (key: string, selection: ModelSelection) => {
+      const frame = frameOf(sid(key))
+      frame.value = { next: selection }
+      for (const listener of [...frame.listeners]) listener()
+    },
+    durableOf: (key: string) => durable.get(sid(key)),
     address: (id: SessionId) => { addressed.add(id) },
     setRoutable: (next: boolean) => { routable = next },
     blockOf: (key: string) => blocks.get(sid(key)),
@@ -170,7 +212,8 @@ describe('ui-model-selection dual entry', () => {
       model: 'deepseek-v4-pro',
       reasoningEffort: 'max',
     })).toBe(true)
-    expect(b.hostCurrent()).toEqual({
+    // The selection landed on the session's durable projection, not the Host default.
+    expect(b.durableOf('s1')).toEqual({
       provider: 'deepseek-official',
       model: 'deepseek-v4-pro',
       reasoningEffort: 'max',
@@ -212,17 +255,29 @@ describe('ui-model-selection dual entry', () => {
     expect(b.ctx.modelDirectories.directoryFor(sid('a')).store).toBe(faceA.directory)
   })
 
-  it('drops an unconsumed local selection and restores the Host target after reconnect', async () => {
+  it('a reconnect reloads the catalog generation; the durable selection stays current and fresh sessions follow the moved Host default', async () => {
     const b = await bench()
     b.mint('s1')
+    b.mint('s2')
     const face = b.seat().inject!(sid('s1'))
     await face.select({ provider: 'deepseek-official', model: 'deepseek-v4-pro' })
-    b.setHostCurrent({ provider: 'deepseek-official', model: 'deepseek-v4-flash' })
-
+    // The Host default moves while the client is disconnected.
+    b.setHostDefault({ provider: 'deepseek-official', model: 'deepseek-v4-flash' })
     b.ctx.emit('connection/reset')
-    expect(face.directory.getSnapshot()).toMatchObject({ current: null, status: 'loading' })
-    await Promise.resolve()
+    // Resolved directories keep their stale-good content (no flash to loading).
     expect(face.directory.getSnapshot()).toMatchObject({
+      current: { provider: 'deepseek-official', model: 'deepseek-v4-pro' },
+      status: 'ready',
+    })
+    await Promise.resolve()
+    // The durable projection — not the moved Host default — stays current.
+    expect(face.directory.getSnapshot()).toMatchObject({
+      current: { provider: 'deepseek-official', model: 'deepseek-v4-pro' },
+      status: 'ready',
+    })
+    // A session with no durable selection follows the moved Host default.
+    const fresh = b.seat().inject!(sid('s2'))
+    expect(fresh.directory.getSnapshot()).toMatchObject({
       current: { provider: 'deepseek-official', model: 'deepseek-v4-flash' },
       status: 'ready',
     })
@@ -252,14 +307,14 @@ describe('ui-model-selection dual entry', () => {
     expect(b.blockOf('s1')).toBeUndefined()
 
     b.setRoutable(false)
-    b.ctx.remote.$dispatch('llm/adapters-updated', [])
+    b.ctx.remote.emit('llm/adapters-updated', [])
     await Promise.resolve()
     await Promise.resolve()
     expect(b.blockOf('s1')?.reason).toBe(zh['blocked.composer'])
 
     // Recovering clears it without a reload of the surface.
     b.setRoutable(true)
-    b.ctx.remote.$dispatch('settings/document-updated', ['llm-deepseek', 1])
+    b.ctx.remote.emit('settings/document-updated', ['llm-deepseek', 1])
     await Promise.resolve()
     await Promise.resolve()
     expect(b.blockOf('s1')).toBeUndefined()
@@ -272,11 +327,14 @@ describe('ui-model-selection dual entry', () => {
     // A model the route serves but no longer advertises: the seat prompts for
     // a selection, the composer stays usable. Blocking here would break a
     // supported configuration (a narrowed `models` list over a live route).
-    b.setHostCurrent({ provider: 'deepseek-official', model: 'unlisted' })
+    // 0.1.2: the off-catalog current is the session's durable projection
+    // (`projected.next`), which outranks the catalog default.
+    b.project('s1', { provider: 'deepseek-official', model: 'unlisted' })
     face.load()
     await Promise.resolve()
     await Promise.resolve()
     const snapshot = face.directory.getSnapshot()
+    expect(snapshot.current).toEqual({ provider: 'deepseek-official', model: 'unlisted' })
     expect(snapshot.groups.flatMap(group => group.models.map(model => model.id))).not.toContain('unlisted')
     expect(b.blockOf('s1')).toBeUndefined()
   })
@@ -284,11 +342,13 @@ describe('ui-model-selection dual entry', () => {
   it('clears its block when the session scope goes', async () => {
     const b = await bench()
     const scope = b.mint('s1')
+    // 0.1.2: routability rides the Host-generation catalog; the Host signals a
+    // route change with the forwarded llm/adapters-updated event (a refresh).
     b.setRoutable(false)
+    b.ctx.remote.emit('llm/adapters-updated', [])
+    await Promise.resolve()
+    await Promise.resolve()
     const face = b.seat().inject!(sid('s1'))
-    face.load()
-    await Promise.resolve()
-    await Promise.resolve()
     expect(b.blockOf('s1')).toBeDefined()
 
     await scope.fiber.dispose()
@@ -323,6 +383,8 @@ describe('ui-model-selection dual entry', () => {
     })).rejects.toThrow(/unavailable for addressed subagent/)
     b.ctx.emit('connection/reset')
     await Promise.resolve()
-    expect(b.calls).toEqual({ models: 0, select: 0 })
+    // Only the Host-generation catalog RPCs run: one at plugin mount, one for
+    // the reconnect reload. No session-scoped selectModel for the child.
+    expect(b.calls).toEqual({ catalog: 2, select: 0 })
   })
 })

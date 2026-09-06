@@ -25,15 +25,19 @@ vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: false, addEventLi
 describe('stage-mode store sharing', () => {
   it('resolves the root and stage-mode seats to one shared store instance', async () => {
     const runtime = await SlotTestRuntime.create()
-    runtime.provide('connection', { api: { settings: {} }, isLoopback: false } as never)
-    runtime.provide('remote', { $on: () => () => {} } as never)
-    runtime.provide('settingsScope', { bind: () => stubSettingsScope().scope } as never)
+    runtime.ctx.provide('connection', { api: { settings: {} }, isLoopback: false } as never)
+    runtime.ctx.provide('remote', { $on: () => () => {} } as never)
+    runtime.ctx.provide('settingsScope', { bind: () => stubSettingsScope().scope } as never)
     const locale = new LocaleRuntime(runtime.ctx)
-    runtime.provide('locale', locale)
+    runtime.ctx.provide('locale', locale)
     runtime.slots.installLocale(locale)
     await runtime.ctx.plugin({ inject: themeInject, apply: themeApply }).await()
 
     // ui-layout first: it provides ctx.layout which ui-sidebar's injects.
+    // ui-sidebar's inject face also consumes the ui-workspace navigation
+    // service (its New Session button); this spec's subject is store sharing,
+    // so the navigation face is a stub at the service boundary.
+    runtime.ctx.provide('uiWorkspace', { startSession: vi.fn() } as never)
     await runtime.mount({ inject: [...layoutInject], apply: layoutApply })
     await runtime.mount({ inject: [...sidebarInject], apply: sidebarApply })
     runtime.renderRoot()

@@ -144,6 +144,11 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
   const props: ExecFlowBodyProps = {
     sessionId: SID,
     useSession: bindSnapshotSelector(source),
+    // The 0.1.2 chat standard seat: the Chat target of the same session source.
+    useChat: bindSnapshotSelector({
+      getSnapshot: () => source.getSnapshot().chat,
+      subscribe: source.subscribe,
+    }),
     useSessions: emptySessions(),
     useWorkspaces: emptyWorkspaces(),
     useProjection: (() => undefined),

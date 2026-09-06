@@ -23,24 +23,39 @@ afterEach(cleanup)
 beforeEach(() => { localStorage.clear() })
 
 /** Runtime with locale and the connected-Host capability ui-workspace consumes. */
-async function createRuntime(): Promise<SlotTestRuntime> {
+async function createRuntime(): Promise<{ runtime: SlotTestRuntime; sessionRemote: object }> {
   const runtime = await SlotTestRuntime.create()
   const locale = new LocaleRuntime(runtime.ctx)
-  runtime.provide('locale', locale)
-  runtime.provide('connection', {
-    isLoopback: true,
-    hostDescription: {
-      getSnapshot: () => ({ canOpenPath: true }),
-      subscribe: () => () => {},
-    },
-  } as never)
+  runtime.ctx.provide('locale', locale)
+  runtime.ctx.provide('connection', { isLoopback: true } as never)
   const sessionAdminRemote = {
     delete: vi.fn(async () => ({ ok: true, value: { ok: true, deletedPath: '/x' } })),
   }
-  runtime.provide('remote', { 'session-admin': sessionAdminRemote } as never)
-  runtime.provide('remote.session-admin', sessionAdminRemote as never)
+  // Host-open and the canOpenPath capability ride the session remote
+  // namespace; the directory picker namespace backs the vendored service.
+  const sessionRemote = {
+    canOpenWorkspacePath: vi.fn(async () => ({ ok: true as const, value: true })),
+    openWorkspacePath: vi.fn(async () => ({ ok: true as const, value: { accepted: true } })),
+  }
+  const directoryPickerRemote = {
+    pick: vi.fn(async () => ({ ok: true as const, value: null })),
+    list: vi.fn(async () => ({ ok: true as const, value: { path: '/', entries: [], ancestry: [] } })),
+    createDirectory: vi.fn(async () => ({ ok: true as const, value: '/new' })),
+  }
+  runtime.ctx.provide('remote', {
+    'session-admin': sessionAdminRemote,
+    session: sessionRemote,
+    directoryPicker: directoryPickerRemote,
+  } as never)
+  runtime.ctx.provide('remote.session-admin', sessionAdminRemote as never)
+  runtime.ctx.provide('remote.session', sessionRemote as never)
+  runtime.ctx.provide('remote.directoryPicker', directoryPickerRemote as never)
   runtime.slots.installLocale(locale)
-  return runtime
+  // 0.1.2's ui-workspace apply contributes the root `workspaces` standard
+  // hook itself (from the same double list); drop the runtime's built-in
+  // source so the apply-owned one is the single provider.
+  ;(runtime as unknown as { disposeWorkspaceSource?: () => void }).disposeWorkspaceSource?.()
+  return { runtime, sessionRemote }
 }
 
 type FrameProps = PropsRenderSlots<'sidebar.workspaces'>
@@ -49,7 +64,7 @@ function SidebarFrame({ renderSlot }: FrameProps) {
 }
 
 async function assembledBrowser() {
-  const runtime = await createRuntime()
+  const { runtime, sessionRemote } = await createRuntime()
   await runtime.sessions.add({
     id: SID,
     summary: { title: '任务标题', displayTitle: '任务标题', cwd: '/w/alpha' },
@@ -66,7 +81,7 @@ async function assembledBrowser() {
   )
   await runtime.mount({ inject: [...inject], apply })
   const view = runtime.renderRoot()
-  return { runtime, view }
+  return { runtime, view, sessionRemote }
 }
 
 describe('session actions through the assembled browser', () => {
@@ -89,11 +104,13 @@ describe('session actions through the assembled browser', () => {
   })
 
   it('delegates native folder opening to the official Workspace path opener', async () => {
-    const { runtime, view } = await assembledBrowser()
-    const openPath = vi.spyOn(runtime.workspaces, 'openPath').mockResolvedValue(undefined)
+    const { runtime, view, sessionRemote } = await assembledBrowser()
+    // The open verb rides the session remote namespace's path opener.
     fireEvent.click(view.getByLabelText('会话“任务标题”的操作'))
     fireEvent.click(view.getByRole('menuitem', { name: '在文件管理器中打开', hidden: true }))
-    expect(openPath).toHaveBeenCalledWith('/w/alpha')
+    await vi.waitFor(() => {
+      expect(sessionRemote.openWorkspacePath).toHaveBeenCalledWith({ path: '/w/alpha' })
+    })
     await runtime.dispose()
   })
 })

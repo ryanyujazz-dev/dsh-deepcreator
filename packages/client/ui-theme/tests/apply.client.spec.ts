@@ -50,32 +50,40 @@ async function bench(isLoopback = true, initialPreference: string = 'system', de
       isInitialRead = false
       await initialReadGate
     }
+    // The shared mirror reads the whole document view; each bound scope
+    // derives its own namespace row from it.
     return {
-    rpcId: 'theme-describe' as never,
-    result: {
       ok: true as const,
       value: { writable: true, hasDocument: true, namespaces: [namespace()] },
-    },
     }
   })
-  const mutate = vi.fn((request: { ops: { path: string[]; value: string }[] }) => {
-    const op = request.ops[0]!
-    if (op.path[0] === 'preference') settings.preference = op.value as ThemeSettings['preference']
-    if (op.path[0] === 'transcriptTextSize') settings.transcriptTextSize = op.value as ThemeSettings['transcriptTextSize']
-    if (op.path[0] === 'lightCodeTheme') settings.lightCodeTheme = op.value as ThemeSettings['lightCodeTheme']
-    if (op.path[0] === 'darkCodeTheme') settings.darkCodeTheme = op.value as ThemeSettings['darkCodeTheme']
-    if (op.path[0] === 'codeFont') settings.codeFont = op.value as ThemeSettings['codeFont']
-    return Promise.resolve({
-      rpcId: 'theme-mutate' as never,
-      result: { ok: true as const, value: namespace() },
-    })
+  const mutate = vi.fn(async (
+    ns: string,
+    ops: { op: 'set' | 'unset'; path: string[]; value?: string }[],
+  ) => {
+    for (const op of ops) {
+      if (op.op !== 'set') continue
+      const field = op.path[0]
+      if (field === 'preference') settings.preference = op.value as ThemeSettings['preference']
+      if (field === 'transcriptTextSize') settings.transcriptTextSize = op.value as ThemeSettings['transcriptTextSize']
+      if (field === 'lightCodeTheme') settings.lightCodeTheme = op.value as ThemeSettings['lightCodeTheme']
+      if (field === 'darkCodeTheme') settings.darkCodeTheme = op.value as ThemeSettings['darkCodeTheme']
+      if (field === 'codeFont') settings.codeFont = op.value as ThemeSettings['codeFont']
+    }
+    // A Host commit forwards one invalidation for the touched namespace; the
+    // shared mirror re-reads, so a write that lands before the boot read
+    // still converges.
+    queueMicrotask(() => remote.emit('settings/document-updated', [ns, 1]))
+    return { ok: true as const, value: namespace() }
   })
-  ctx.provide('connection', { api: { settings: { describe, mutate } }, isLoopback } as never)
-  // The settings transport and the forwarded-event port the plugin injects.
-  new TestRemote(ctx)
+  ctx.provide('connection', { isLoopback } as never)
+  // The settings transport: the official mirror and every bound scope ride
+  // `remote.settings`; the double also provides the `remote.<name>` service.
+  const remote = new TestRemote(ctx, { settings: { describe, mutate } })
+  remote.$host.isLoopback = isLoopback
   await ctx.plugin({ inject: [...officialSettingsInject], apply: applyOfficialSettings }).await()
   return {
-    ctx, slots: ctx.get('slots') as SlotRegistry, locale, describe, mutate,
+    ctx, slots: ctx.get('slots') as SlotRegistry, locale, describe, mutate, remote,
     setHostPreference: (next: string) => { settings.preference = next },
     setHostTranscriptTextSize: (next: string) => { settings.transcriptTextSize = next },
     releaseInitialRead,
@@ -162,23 +170,28 @@ describe('ui-theme apply', () => {
     await b.ctx.plugin({ inject: [...inject], apply }).await()
     const theme = b.ctx.get('theme') as ThemeRuntime
     await vi.waitFor(() => { expect(theme.getTheme().preference).toBe('dark') })
-    b.ctx.remote.$dispatch('settings/document-updated', ['unrelated', 0])
-    expect(b.describe).toHaveBeenCalledOnce()
+    // The shared mirror re-reads on every forwarded invalidation; an
+    // unrelated namespace's refresh must not move the theme.
+    b.remote.emit('settings/document-updated', ['unrelated', 0])
+    await vi.waitFor(() => { expect(b.describe).toHaveBeenCalledTimes(2) })
+    expect(theme.getTheme().preference).toBe('dark')
     b.setHostPreference('light')
-    b.ctx.remote.$dispatch('settings/document-updated', [THEME_SETTINGS_NAMESPACE, 0])
+    b.remote.emit('settings/document-updated', [THEME_SETTINGS_NAMESPACE, 0])
     await vi.waitFor(() => { expect(theme.getTheme().preference).toBe('light') })
     b.setHostPreference('dark')
     b.ctx.emit('connection/reset')
     await vi.waitFor(() => { expect(theme.getTheme().preference).toBe('dark') })
 
-    const remote = await bench(false)
-    declareItems(remote.slots)
-    await remote.ctx.plugin({ inject: [...inject], apply }).await()
-    const remoteTheme = remote.ctx.get('theme') as ThemeRuntime
+    const away = await bench(false)
+    declareItems(away.slots)
+    await away.ctx.plugin({ inject: [...inject], apply }).await()
+    const remoteTheme = away.ctx.get('theme') as ThemeRuntime
     remoteTheme.setTheme('dark')
     await Promise.resolve()
-    expect(remote.describe).not.toHaveBeenCalled()
-    expect(remote.mutate).not.toHaveBeenCalled()
+    // A memory-persisted page is fully process-local: the shared mirror and
+    // the bound scope skip both reads and writes for memory persistence.
+    expect(away.describe).not.toHaveBeenCalled()
+    expect(away.mutate).not.toHaveBeenCalled()
   })
 
   it('activates before a slow initial settings read and converges when it settles', async () => {

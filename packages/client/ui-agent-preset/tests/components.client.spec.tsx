@@ -80,7 +80,12 @@ function renderLabel(
   const store = createSnapshotStore<AgentPresetSettingsState>({
     ...ROW_READY, options: SEAT_READY.options, ...roster,
   })
-  const sessions = createSnapshotStore({ byId: summary === undefined ? {} : { s1: summary } })
+  // 0.1.2: the session's composition rides the host-computed projection.
+  const sessions = createSnapshotStore({
+    byId: summary === undefined
+      ? {}
+      : { s1: { ...summary, projectionValues: { agentPreset: summary.agentPreset } } },
+  })
   const load = vi.fn(() => Promise.resolve())
   const view = render(<AgentPresetLabel {...({
     load,

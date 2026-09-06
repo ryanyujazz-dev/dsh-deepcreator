@@ -19,10 +19,12 @@ import { registerTrajectoryToolDefinition } from '../src/client/trajectory-tool-
 
 const DEFINITIONS: ConversationNodeDefinition[] = []
 const registrationContext = {
-  conversationEvents: {
-    register: (definition: ConversationNodeDefinition) => {
-      DEFINITIONS.push(definition)
-      return () => {}
+  uiConversation: {
+    events: {
+      register: (definition: ConversationNodeDefinition) => {
+        DEFINITIONS.push(definition)
+        return () => {}
+      },
     },
   },
 } as unknown as Context
@@ -72,6 +74,8 @@ function assembler(events: readonly SessionEventLikeEntry[]): ConversationNodeAs
     new TestEventDefinitions(),
     new TestViewDefinitions(),
   )
+  // 0.1.2 view builders only advance for activated targets.
+  value.activateTarget('trajectory')
   value.replaceWindow(events, false)
   value.flush()
   return value

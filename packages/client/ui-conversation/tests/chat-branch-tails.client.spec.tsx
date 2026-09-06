@@ -25,7 +25,7 @@ import {
   UserMessageNodeView,
 } from '../src/client/chat/MessageItem.tsx'
 import { AssistantMarkdown } from '../src/client/chat/AssistantMarkdown.tsx'
-import { StatsLine, type StatsLineProps } from '../src/client/chat/StatsLine.tsx'
+import { StatsLine } from '../src/client/chat/StatsLine.tsx'
 import { zh } from '../src/client/locales.ts'
 import { chatSnapshotFixture } from './chat-snapshot-fixture.client.ts'
 
@@ -968,7 +968,10 @@ describe('small branch tails', () => {
     const view = render(
       <StatsLine
         t={t}
-        useSession={bindSnapshotSelector(source) as unknown as StatsLineProps['useSession']}
+        useChat={bindSnapshotSelector({
+          getSnapshot: () => source.getSnapshot().chat,
+          subscribe: source.subscribe,
+        })}
         useProjection={(key: string) => key === 'tokenUsage'
           ? { uncachedInputTokens: 0, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 }
           : undefined}

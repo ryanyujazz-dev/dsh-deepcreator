@@ -15,7 +15,6 @@ import {
 import {
   type SessionId,
 } from '@deepseek-ai/dsh-session/types'
-import type { UseSession } from '@deepseek-ai/dsh-client-test-runtime'
 
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@ryanyujazz/dsh-client-locale/src/locales/zh.ts'
@@ -85,7 +84,10 @@ describe('render branch tails', () => {
     const view = render(
       <StatsLine
         t={t}
-        useSession={bindSnapshotSelector(source) as unknown as UseSession<ConversationSnapshot>}
+        useChat={bindSnapshotSelector({
+          getSnapshot: () => source.getSnapshot().chat,
+          subscribe: source.subscribe,
+        })}
         useProjection={() => undefined}
       />,
     )

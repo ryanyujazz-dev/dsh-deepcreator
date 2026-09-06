@@ -28,7 +28,7 @@ function view(defaultPreset: string, revision = 0, schema: SettingsNamespaceView
 }
 
 function ok<T>(value: T) {
-  return { rpcId: 'test', result: { ok: true as const, value } }
+  return { ok: true as const, value }
 }
 
 describe('permission settings store', () => {
@@ -104,11 +104,11 @@ describe('permission settings store', () => {
       revision: 4,
     })
     await controller.select('workspace-write')
-    expect(mutate).toHaveBeenCalledWith({
-      ns: 'permission',
-      ops: [{ op: 'set', path: ['defaultPreset'], value: 'workspace-write' }],
-      expectedRevision: 4,
-    })
+    expect(mutate).toHaveBeenCalledWith(
+      'permission',
+      [{ op: 'set', path: ['defaultPreset'], value: 'workspace-write' }],
+      4,
+    )
     expect(controller.store.getSnapshot()).toMatchObject({
       status: 'ready',
       currentValue: 'workspace-write',
@@ -128,11 +128,8 @@ describe('permission settings store', () => {
       settings: {
         describe: () => Promise.resolve(ok({ writable: true, hasDocument: false, namespaces: [view('read-only')] })),
         mutate: () => Promise.resolve({
-          rpcId: 'test',
-          result: {
-            ok: false as const,
-            error: { code: 'settings-conflict', message: 'stale', details: {} },
-          },
+          ok: false as const,
+          error: { code: 'settings-conflict', message: 'stale', details: {} },
         }),
       } as never,
     }, SETTINGS_SCHEMA)
@@ -168,8 +165,8 @@ describe('permission settings store', () => {
     const rejected = new PermissionPresetSettingsController({
       settings: {
         describe: () => Promise.resolve({
-          rpcId: 'test',
-          result: { ok: false as const, error: { code: 'internal', message: 'offline', details: {} } },
+          ok: false as const,
+          error: { code: 'internal', message: 'offline', details: {} },
         }),
         mutate,
       } as never,

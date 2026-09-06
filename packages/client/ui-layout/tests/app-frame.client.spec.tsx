@@ -33,12 +33,13 @@ const selectedSessionBlank = { current: false }
 const baselinesReady = { current: true }
 
 // Render-prop contract stub fed through the standard seat prop (the renderer
-// injects the real one in production): session mode runs children(id), empty
-// mode runs the empty branch — the frame must work against exactly this
-// shape. Typed as the seat's own component type so the branded sessionId
-// parameter stays contract-checked.
+// injects the real one in production): session mode renders the session body
+// node, empty mode runs the empty branch — the frame must work against
+// exactly this shape. (0.1.2 hands the session body as a plain node; the
+// framework remounts it per session identity outside the seat.) Typed as the
+// seat's own component type so the contract stays checked.
 const SessionProviderStub: AppFrameProps['SessionProvider'] = ({ children, empty }) =>
-  selectedSession.current === undefined ? <>{empty?.() ?? null}</> : <>{children(selectedSession.current)}</>
+  selectedSession.current === undefined ? <>{empty?.() ?? null}</> : <>{children}</>
 
 /** Observer stub: captures the callback so tests can fire resizes manually. */
 let fireResize: (() => void) | null = null
