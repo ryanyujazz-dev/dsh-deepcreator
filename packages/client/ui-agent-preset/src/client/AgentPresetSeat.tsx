@@ -12,12 +12,12 @@
  * Picking stages; the choice reaches a session when one becomes current.
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   type SnapshotStore,
 } from '@deepseek-ai/dsh-client-store'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import { IconAgentPresetOutline16, IconChevronDownOutline14, Menu } from '@ryanyujazz/dsh-client-ui-primitives'
+import { IconAgentPresetOutline16, IconChevronDownOutline14, IconWarningOutline16, Menu, Toast } from '@ryanyujazz/dsh-client-ui-primitives'
 // Type-only: pulls the ui-conversation SlotMap merge (the hero seat).
 import type {} from '@ryanyujazz/dsh-client-ui-conversation/client'
 import type { AgentPresetSeatState } from './seat-store.ts'
@@ -33,7 +33,7 @@ export interface AgentPresetSeatInjected {
   /** Read the roster when the chip first renders. */
   load: () => Promise<void>
   /** Stage one preset for the next session. */
-  select: (id: string) => Promise<void>
+  select: (id: string) => Promise<string | undefined>
   /** Clear the one-shot introduce cue once the chip has played it. */
   introduced: () => void
 }
@@ -73,6 +73,8 @@ export type AgentPresetSeatProps =
 export function AgentPresetSeat({ load, select, introduced, useAgentPresetSeat, t }: AgentPresetSeatProps) {
   const state = useAgentPresetSeat(snapshot => snapshot)
   const [open, setOpen] = useState(false)
+  const [toast, setToast] = useState<{ seq: number; text: string } | null>(null)
+  const toastSeq = useRef(0)
 
   useEffect(() => {
     void load()
@@ -128,6 +130,7 @@ export function AgentPresetSeat({ load, select, introduced, useAgentPresetSeat, 
     : label
 
   return (
+    <>
     <Menu
       open={open}
       onClose={() => { setOpen(false) }}
@@ -148,7 +151,19 @@ export function AgentPresetSeat({ load, select, introduced, useAgentPresetSeat, 
       selectedId={state.current}
       onSelect={(id) => {
         setOpen(false)
-        void select(id)
+        const picked = state.options.find(option => option.id === id)
+        // The fallback is for the row shape `find` cannot promise; the menu's
+        // items ARE `state.options`, so an emitted id is always one of them.
+        /* v8 ignore next */
+        const name = picked === undefined ? id : presetDisplayText(picked, t).name
+        void select(id).then((refusal) => {
+          // Announced only for a pick a person just made: `apply()` also runs
+          // when a session becomes current, and a banner over that would
+          // report a refusal nobody asked for.
+          if (refusal === undefined) return
+          toastSeq.current += 1
+          setToast({ seq: toastSeq.current, text: t('switchRefused', { name, reason: refusal }) })
+        })
       }}
       align="start"
       portal
@@ -168,5 +183,15 @@ export function AgentPresetSeat({ load, select, introduced, useAgentPresetSeat, 
         </button>
       )}
     />
+      {toast !== null && (
+        <Toast
+          key={toast.seq}
+          text={toast.text}
+          icon={<IconWarningOutline16 />}
+          anchor={document.querySelector<HTMLElement>('[data-composer-card]')}
+          onDone={() => { setToast(null) }}
+        />
+      )}
+    </>
   )
 }

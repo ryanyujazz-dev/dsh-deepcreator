@@ -17,7 +17,7 @@ import css from './ChatView.module.css'
  */
 export function ChatView({
   surfaceId = 'main', useStore, modes, renderSlot,
-  openFile, revealChange, loadOlder, loadImage, inspectCall, chatScrollFor, forkAt, fileMentions,
+  openFile, revealChange, loadOlder, loadThrough, loadImage, inspectCall, chatScrollFor, forkAt, fileMentions,
   acknowledgeOutgoing,
 }: ChatViewSlotProps) {
   useSyncExternalStore(modes.subscribe, modes.version)
@@ -39,6 +39,7 @@ export function ChatView({
         openFile,
         revealChange,
         loadOlder,
+        loadThrough,
         loadImage,
         renderMessageImages,
         inspectCall,

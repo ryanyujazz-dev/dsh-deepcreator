@@ -26,9 +26,9 @@ import { CONVERSATION_NS as NS } from '../../locale.ts'
 /** Full row props: the toolview runtime share plus the standard locale seat. */
 type SearchRowProps = ToolCallViewProps & PropsLocale<'conversation'>
 
-const SEARCH_TITLES: Record<string, string> = {
-  grep: 'Grep',
-  glob: 'Glob',
+const SEARCH_TITLE_KEYS: Partial<Record<string, `tool.title.grep` | `tool.title.glob`>> = {
+  grep: 'tool.title.grep',
+  glob: 'tool.title.glob',
 }
 
 /**
@@ -48,7 +48,7 @@ export function SearchRow({ toolName, block, inspect, execflow, t }: SearchRowPr
       variant={model.variant}
       toolName={toolName}
       icon={<IconSearchOutline16 size={14} />}
-      title={SEARCH_TITLES[toolName] ?? model.title}
+      title={t(SEARCH_TITLE_KEYS[toolName] ?? model.titleKey)}
       // The result view's replacement title outranks the args-derived summary,
       // matching the terminal card's description precedence.
       summary={search?.title ?? model.summary}

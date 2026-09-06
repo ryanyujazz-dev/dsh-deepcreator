@@ -14,7 +14,8 @@
     "start:desktop": "pnpm run profile:ensure && pnpm --filter @ryanyujazz/dsh-deepcreator-desktop start",
     "test": "node scripts/run-tests.mjs",
     "verify:harness": "node scripts/verify-harness/index.mjs",
-    "typecheck": "pnpm -r --if-present typecheck"
+    "typecheck": "pnpm -r --if-present typecheck",
+    "postinstall": "node scripts/fix-node-pty.mjs"
   },
   "devDependencies": {
     "@deepseek-ai/dsh-typert-generator": "0.1.2-rc.1",

@@ -254,6 +254,17 @@ const warmupTimer = setTimeout(() => { highlighter() }, 0)
  * @param lang - the language hint (a markdown fence info string or a fixed caller id).
  * @returns the highlighted HTML, or `undefined` for unknown or not-yet-loaded languages.
  */
+/**
+ * Whether a language hint maps to a known grammar alias — the cheap predicate
+ * viewport-activated surfaces use to decide whether observing an element can
+ * ever pay off, without touching the engine.
+ * @param lang - the language hint (a fence info string or a file-extension id).
+ * @returns whether the alias table knows the language.
+ */
+export function supportsHighlighting(lang: string | undefined): boolean {
+  return lang !== undefined && LANG_ALIASES.has(lang.toLowerCase())
+}
+
 export function highlightToHtml(code: string, lang: string | undefined): string | undefined {
   const resolved = lang === undefined ? undefined : LANG_ALIASES.get(lang.toLowerCase())
   if (resolved === undefined) return undefined

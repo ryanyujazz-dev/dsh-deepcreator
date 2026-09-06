@@ -8,8 +8,16 @@ export const zh = {
   'openDocument': '打开配置文件',
   'openDocument.error': '无法打开配置文件',
   'general.nav': '通用设置',
-  'general.preferences': '偏好',
-} satisfies Record<string, string>
+  'connection.error': '连接异常',
+  'connection.retry': '立即重连',
+  'connection.connecting': '连接中',
+  'connection.connected': '连接成功',
+  'connection.reconnect': '连接异常，点击立即重连',
+  'connection.restart': '连接中，点击立即重连',
+
+  // fork-only strings (preserved through the rc.1 sync)
+'general.preferences': '偏好',
+  } satisfies Record<string, string>
 
 /** The settings namespace key union. */
 export type SettingsKey = keyof typeof zh
@@ -22,5 +30,13 @@ export const en = {
   'openDocument': 'Open configuration file',
   'openDocument.error': 'Could not open configuration file',
   'general.nav': 'General',
-  'general.preferences': 'Preferences',
-} satisfies Record<SettingsKey, string>
+  'connection.error': 'Disconnected',
+  'connection.retry': 'Reconnect now',
+  'connection.connecting': 'Connecting',
+  'connection.connected': 'Connected',
+  'connection.reconnect': 'Disconnected, reconnect now',
+  'connection.restart': 'Connecting, restart now',
+
+  // fork-only strings (preserved through the rc.1 sync)
+'general.preferences': 'Preferences',
+  } satisfies Record<SettingsKey, string>

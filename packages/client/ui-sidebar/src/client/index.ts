@@ -4,6 +4,8 @@ import type { ClientContext } from '@ryanyujazz/dsh-client-compat'
 import type {} from '@ryanyujazz/dsh-client-locale/client'
 // Type-only: pulls the SlotRegistry service merge (ctx.slots).
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+// Type-only: pulls the Session root standard-props merge.
+import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type { SidebarClosedToggleInjected, SidebarRootInjected } from './contract/slots.ts'
 import { SidebarClosedToggle, SidebarRoot } from './SidebarRoot.tsx'
 import { en, zh, type SidebarKey } from './locales.ts'
@@ -11,7 +13,7 @@ import { en, zh, type SidebarKey } from './locales.ts'
 export type {
   SidebarClosedToggleComponentProps, SidebarClosedToggleInjected,
   SidebarFooterActionOwnerProps, SidebarPrimaryActionOwnerProps, SidebarRootComponentProps, SidebarRootInjected,
-  SidebarSectionOwnerProps, SidebarSettingsOwnerProps, SidebarStageModeOwnerProps,
+  SidebarSectionOwnerProps, SidebarSettingsOwnerProps,
 } from './contract/slots.ts'
 export type { SidebarKey } from './locales.ts'
 
@@ -54,7 +56,6 @@ export function apply(ctx: ClientContext): void {
       // region (header, search, session list, workspace dialogs), ui-settings
       // registers the foot trigger + settings panel.
       children: {
-        'sidebar.stage-mode': { kind: 'single', scope: 'root' },
         'sidebar.primary.action': { kind: 'list', scope: 'root' },
         'sidebar.workspaces': { kind: 'single', scope: 'root' },
         'sidebar.settings': { kind: 'single', scope: 'root' },

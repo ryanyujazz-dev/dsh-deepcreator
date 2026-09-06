@@ -26,6 +26,8 @@ import { ChatNodeSeat } from './ChatNodeSeat.tsx'
 import { ReasoningRow } from './ReasoningRow.tsx'
 import { ExecutionSlot, type SlotDrafting, type SlotMember } from './ExecutionSlot.tsx'
 import { formatRunDuration } from './message-chrome.ts'
+import { TurnNavigator } from './TurnNavigator.tsx'
+import { useTurnRail } from './use-turn-rail.ts'
 import css from './ChatView.module.css'
 import { flowTop, pagingAnchor, runningTurnStartTime, scrollPosition } from './scroll-anchor.ts'
 import { useVisibleChatOutgoing } from './outgoing-handoff.ts'
@@ -110,7 +112,7 @@ function TurnStatus({ startTime, t, thinkingText, onShowThinking }: {
   return (
     <div className={css.turnStatus}>
       <span className={css.turnStatusStatus} role="status" aria-live="polite">
-        <span className={css.turnStatusLabel}>Deep diving...</span>
+        <span className={css.turnStatusLabel}>{t('chat.deepDiving')}</span>
         {showClock && (
           <span className={css.turnStatusClock} aria-hidden>
             {formatRunDuration(elapsedMs, t)}
@@ -150,7 +152,8 @@ export type ExecFlowBodyProps = ChatRenderSlotProps & ExecFlowBodyInjected
  * delegated keyed seat) or an aggregated tool run (through ExecutionSlot).
  */
 export function ExecFlowBody({
-  useSession, useSessions, useInput, useChat, sessionId, openFile, revealChange, loadOlder, loadImage, renderMessageImages, inspectCall, chatScroll, forkAt,
+  surfaceId = 'main',
+  useSession, useSessions, useInput, useChat, useProjection, sessionId, openFile, revealChange, loadOlder, loadThrough, loadImage, renderMessageImages, inspectCall, chatScroll, forkAt,
   fileMentions, selectRenderMode, acknowledgeOutgoing, renderSlot, t: tRaw, actions, thinkForm, siblingId,
 }: ExecFlowBodyProps) {
   const t = forkT(tRaw)
@@ -173,6 +176,10 @@ export function ExecFlowBody({
   const loadingOlder = useSession(s => s.loadingOlder)
   const pendingOutgoing = useInput(s => s.pendingOutgoing)
   const listRef = useRef<HTMLDivElement | null>(null)
+  const turnRail = useTurnRail({
+    useChat, useProjection, listRef, loadThrough, hasMore,
+    enabled: openState === 'open' && surfaceId !== 'embed',
+  })
   const visibleOutgoing = useVisibleChatOutgoing(pendingOutgoing, listRef, acknowledgeOutgoing)
 
   // Anchor a paired local echo beside its durable user/steering entry. Later
@@ -567,6 +574,13 @@ export function ExecFlowBody({
   return (
     <div className={css.root}>
       <div ref={listRef} className={css.scroll}>
+        <TurnNavigator
+          items={turnRail.items}
+          activeTurn={turnRail.activeTurn}
+          busyTurn={turnRail.busyTurn}
+          onNavigate={turnRail.navigate}
+          t={t}
+        />
         <div ref={columnRef} className={css.column} data-chat-flow="">
           {openState === 'loading' && <div className={css.hint}>{t('chat.loadingHistory')}</div>}
           {openState === 'error' && openError !== null && (

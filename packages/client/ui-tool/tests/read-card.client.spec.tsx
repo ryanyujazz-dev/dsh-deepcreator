@@ -88,7 +88,7 @@ const settled = (over?: Partial<ToolResultNode>): ToolResultNode => ({
 describe('readCardModel', () => {
   it('derives the card from a settled read result view', () => {
     expect(readCardModel(settled())).toEqual({
-      label: 'src/a.ts', filePath: 'src/a.ts', lines: sampleLines, totalLines: 180, lang: 'ts',
+      label: 'src/a.ts', lines: sampleLines, totalLines: 180, lang: 'ts',
     })
   })
 
@@ -203,7 +203,7 @@ describe('ReadRow keyed toolview', () => {
 
   it('collapses to the file-name summary; the whole row toggles the read card', () => {
     const view = render(<ReadRow {...rowProps(settled())} />)
-    expect(view.getByText('Read')).toBeTruthy()
+    expect(view.getByText('读取')).toBeTruthy()
     // Collapsed: the file NAME is the summary link alone (the path only
     // appears inside the card), and the card is absent.
     expect(view.getAllByText('a.ts').length).toBe(1)

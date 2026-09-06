@@ -17,10 +17,22 @@ import {
   type SessionFace,
 } from '@deepseek-ai/dsh-api-session-controller/client'
 import {
-  type SessionId,
+  type SessionId, type SessionSeq,
 } from '@deepseek-ai/dsh-session/types'
 import type { ImageAttachmentRef, ImageMediaType } from '@deepseek-ai/dsh-attachment'
 import type { IConversation } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { SessionSeq as WireSeq } from '@deepseek-ai/dsh-session/types'
+
+// The fork's controller carries the official 0.1.2 jump loader (the turn
+// rail's unloaded-jump transport) on the conversation service face.
+declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
+  interface IConversation {
+    /** Page history back until the scoped Session's window covers `seq`. */
+    loadThrough(seq: WireSeq): Promise<void>
+    /** Resolve one durable image into a session-authorized browser URL. */
+    resolveImage(sessionId: import('@deepseek-ai/dsh-session/types').SessionId, attachment: import('@deepseek-ai/dsh-attachment').ImageAttachmentRef): Promise<string>
+  }
+}
 import type { ComposerAttachment } from './contract/slots.ts'
 import type { QueueAction, QueueItemId } from './contract/queue.ts'
 import type { ComposerBlocks } from './input/blocks.ts'
@@ -302,6 +314,11 @@ export class ConversationController extends Service implements IConversation {
   /** Pull one older history page for the scoped Session. */
   async loadOlder(): Promise<void> {
     await this.scopedSession('loadOlder').loadOlder()
+  }
+
+  /** Page history back until the scoped Session's window covers `seq` (turn-rail jumps). */
+  async loadThrough(seq: SessionSeq): Promise<void> {
+    await this.scopedSession('loadThrough').loadThrough(seq)
   }
 
   /** Resolve the caller scope's session face or throw on root contexts. */

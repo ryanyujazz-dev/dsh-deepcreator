@@ -33,7 +33,7 @@ export function Modal({
   open: boolean
   onClose: () => void
   title: string
-  closeLabel?: string
+  closeLabel?: string | undefined
   description?: string
   children?: ReactNode
   footer?: ReactNode

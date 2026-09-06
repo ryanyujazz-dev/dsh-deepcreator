@@ -20,12 +20,6 @@
       "@ryanyujazz/dsh-client-ui-agent-preset/*": [
         "./packages/client/ui-agent-preset/src/*"
       ],
-      "@ryanyujazz/dsh-client-ui-app-stage": [
-        "./packages/client/ui-app-stage/src/index.ts"
-      ],
-      "@ryanyujazz/dsh-client-ui-app-stage/*": [
-        "./packages/client/ui-app-stage/src/*"
-      ],
       "@ryanyujazz/dsh-client-ui-conversation": [
         "./packages/client/ui-conversation/src/index.ts"
       ],

@@ -62,9 +62,9 @@ describe('tool-call-model', () => {
     // Every define/run pair the model makes puts a row in the flow, so the
     // generic "Tool call · cordis_run · dyn-1" fallback is user-visible slop.
     const titleOf = (name: string) => toolRowModel(name, running({ name, argsRaw: '{"id":"dyn-1"}' }))
-    expect(titleOf('cordis_run').title).toBe('Run Cordis Plugin')
-    expect(titleOf('cordis_stop').title).toBe('Stop Cordis Plugin')
-    expect(titleOf('cordis_undefine').title).toBe('Remove Cordis Plugin')
+    expect(titleOf('cordis_run').titleKey).toBe('tool.title.runCordis')
+    expect(titleOf('cordis_stop').titleKey).toBe('tool.title.stopCordis')
+    expect(titleOf('cordis_undefine').titleKey).toBe('tool.title.removeCordis')
     // An owned title takes the tool name out of the summary slot, leaving the
     // package id as the only mutable text.
     expect(titleOf('cordis_run').summary).toBe('dyn-1')
@@ -77,20 +77,20 @@ describe('tool-call-model', () => {
     // title here would be a second answer to what the card already renders.
     const model = toolRowModel('cordis_define', running({ name: 'cordis_define', argsRaw: '{"name":"clock"}' }))
     expect(model.variant).toBe('others')
-    expect(model.title).toBe('Tool call')
+    expect(model.titleKey).toBe('tool.title.generic')
   })
 
   it('has dropped the v2 mount verbs that no longer exist', () => {
     // Keeping them would be a mapping for a tool nothing can call.
     expect(classifyTool('cordis_mount')).toBe('others')
-    expect(toolRowModel('cordis_mount', running({ name: 'cordis_mount', argsRaw: '{}' })).title).toBe('Tool call')
-    expect(toolRowModel('cordis_unmount', running({ name: 'cordis_unmount', argsRaw: '{}' })).title).toBe('Tool call')
+    expect(toolRowModel('cordis_mount', running({ name: 'cordis_mount', argsRaw: '{}' })).titleKey).toBe('tool.title.generic')
+    expect(toolRowModel('cordis_unmount', running({ name: 'cordis_unmount', argsRaw: '{}' })).titleKey).toBe('tool.title.generic')
   })
 
   it('gives the pwsh shell row the bash family treatment with its own title', () => {
     const m = toolRowModel('pwsh', running())
     expect(m.variant).toBe('bash')
-    expect(m.title).toBe('Pwsh')
+    expect(m.titleKey).toBe('tool.title.pwsh')
   })
 
   it('derives state across running/ok/error/interrupted', () => {
@@ -102,7 +102,7 @@ describe('tool-call-model', () => {
 
   it('derives the bash summary from description over command', () => {
     const m = toolRowModel('bash', running())
-    expect(m.title).toBe('Bash')
+    expect(m.titleKey).toBe('tool.title.bash')
     expect(m.summary).toBe('List files')
     expect(toolRowModel('bash', running({ argsRaw: '{"command":"pwd"}' })).summary).toBe('pwd')
   })
@@ -187,7 +187,7 @@ describe('tool-call-model', () => {
       argsRaw: '{"what":"api","name":"tools"}',
     }))).toMatchObject({
       variant: 'read',
-      title: 'Inspect',
+      titleKey: 'tool.title.inspect',
       summary: 'api',
     })
     expect(toolRowModel('cordis_run', running({
@@ -195,14 +195,14 @@ describe('tool-call-model', () => {
       argsRaw: '{"id":"dyn-2"}',
     }))).toMatchObject({
       variant: 'others',
-      title: 'Run Cordis Plugin',
+      titleKey: 'tool.title.runCordis',
       summary: 'dyn-2',
     })
     expect(toolRowModel('cordis_undefine', result({
       call: { name: 'cordis_undefine', argsRaw: '{"id":"dyn-2"}' },
     }))).toMatchObject({
       variant: 'others',
-      title: 'Remove Cordis Plugin',
+      titleKey: 'tool.title.removeCordis',
       summary: 'dyn-2',
     })
   })
@@ -436,15 +436,15 @@ describe('GenericToolCard', () => {
     expect(view.container.querySelector('[class*="media"]')).not.toBeNull()
     expect(view.container.querySelector('[data-execflow]')).not.toBeNull()
     // The row stays expandable through its text body/output, not the media.
-    fireEvent.click(view.getByRole('button', { name: /Tool call/ }))
+    fireEvent.click(view.getByRole('button', { name: /工具调用/ }))
     expect(view.container.querySelector('[data-tool-image]')).not.toBeNull()
   })
 
-  it('unknown tools land on the others variant titled Tool call', () => {
+  it('unknown tools land on the others variant titled 工具调用', () => {
     const view = render(
       <GenericToolCard {...props('todo_write', running({ name: 'todo_write', argsRaw: '{"note":"x"}' }))} />,
     )
-    expect(view.getByText('Tool call')).toBeTruthy()
+    expect(view.getByText('工具调用')).toBeTruthy()
     expect(view.container.querySelector('[data-variant="others"]')).not.toBeNull()
     expect(view.container.querySelector('[data-state="running"]')).not.toBeNull()
   })
@@ -456,7 +456,7 @@ describe('GenericToolCard', () => {
         argsRaw: '{"file_path":"src/x.ts","old_string":"before","new_string":"after"}',
       }))} />,
     )
-    expect(view.getByText('Edit')).toBeTruthy()
+    expect(view.getByText('编辑')).toBeTruthy()
     expect(view.getByText('x.ts')).toBeTruthy()
     expect(view.container.querySelector('[data-variant="edit"]')).not.toBeNull()
     expect(view.container.querySelector('svg')).not.toBeNull()
@@ -469,7 +469,7 @@ describe('GenericToolCard', () => {
         argsRaw: '{"file_path":"src/x.ts","content":"hello"}',
       }))} />,
     )
-    expect(view.getByText('Write')).toBeTruthy()
+    expect(view.getByText('写入')).toBeTruthy()
     expect(view.getByText('x.ts')).toBeTruthy()
     expect(view.container.querySelector('[data-variant="write"]')).not.toBeNull()
     expect(view.container.querySelector('svg')).not.toBeNull()

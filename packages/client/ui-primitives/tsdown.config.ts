@@ -15,6 +15,6 @@ const cssStub = {
 
 export default clientBundle(
   '@ryanyujazz/dsh-client-ui-primitives',
-  ['lib/types/index.js', 'lib/types/invariant.js'],
+  ['lib/types/index.js'],
   { lib: { platform: 'neutral', plugins: [cssStub] } },
 )

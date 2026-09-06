@@ -13,6 +13,8 @@ export interface RiskConfirmationProps {
   description: string
   acknowledgeLabel: string
   cancelLabel: string
+  /** Accessible label for the modal's close button; omitted keeps the Modal default. */
+  closeLabel?: string | undefined
   confirmLabel: string
   acknowledged: boolean
   disabled?: boolean
@@ -31,6 +33,7 @@ export function RiskConfirmation({
   description,
   acknowledgeLabel,
   cancelLabel,
+  closeLabel,
   confirmLabel,
   acknowledged,
   disabled = false,
@@ -43,6 +46,7 @@ export function RiskConfirmation({
       open={open}
       onClose={onCancel}
       title={title}
+      closeLabel={closeLabel}
       className={css.confirmation ?? ''}
       contentClassName={css.confirmationContent ?? ''}
       footer={(

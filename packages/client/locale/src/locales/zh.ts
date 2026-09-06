@@ -3,6 +3,8 @@ export const zh = {
   'ok': '确定',
   'cancel': '取消',
   'close': '关闭',
+  'number.thousand': '{value}K',
+  'number.million': '{value}M',
   'copy': '复制',
   'copied': '复制成功',
   'retry': '重试',

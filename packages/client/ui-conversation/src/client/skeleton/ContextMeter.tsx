@@ -12,7 +12,8 @@ import {
 import type {} from '@deepseek-ai/dsh-token-meter/client'
 import { Tooltip } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { ComposerBarProps } from '../contract/slots.ts'
-import { contextOccupancy, formatTokens } from '../chat/StatsLine.tsx'
+import { contextOccupancy } from '../chat/StatsLine.tsx'
+import { forkT, type ForkTranslate } from '../locales.ts'
 import css from './ContextMeter.module.css'
 
 /** Ring geometry: 14px viewBox, 2px stroke. */
@@ -33,13 +34,27 @@ const ROWS = [
   { key: 'messageTokens', label: 'context.messages', color: css.colorMessages },
 ] as const
 
+/**
+ * Format a token count for the compact context panel through the locale's
+ * compact-number templates (official parity: `number.thousand`/`million`).
+ */
+function formatTokens(value: number, t: ForkTranslate): string {
+  const scaled = (candidate: number): string => candidate >= 100
+    ? String(Math.round(candidate))
+    : String(Math.round(candidate * 10) / 10)
+  if (value < 1_000) return String(value)
+  if (value < 1_000_000) return t('number.thousand', { value: scaled(value / 1_000) })
+  return t('number.million', { value: scaled(value / 1_000_000) })
+}
+
 export interface ContextMeterProps {
   useProjection: UseProjection
   /** The owning bar's locale seat, passed down as a plain prop. */
   t: ComposerBarProps['t']
 }
 
-export function ContextMeter({ useProjection, t }: ContextMeterProps) {
+export function ContextMeter({ useProjection, t: tRaw }: ContextMeterProps) {
+  const t = forkT(tRaw)
   const pressure = useProjection('contextPressure')
   const breakdown = useProjection('contextBreakdown')
   const [open, setOpen] = useState(false)
@@ -123,7 +138,7 @@ export function ContextMeter({ useProjection, t }: ContextMeterProps) {
             <span className={css.percent}>{reading}</span>
             <span className={css.headline}>{headAfter}</span>
             <span className={css.figures}>
-              {`~${formatTokens(context.usedTokens)} / ${formatTokens(context.contextWindow)}`}
+              {`~${formatTokens(context.usedTokens, t)} / ${formatTokens(context.contextWindow, t)}`}
             </span>
           </div>
           <div className={css.bar}>
@@ -143,7 +158,7 @@ export function ContextMeter({ useProjection, t }: ContextMeterProps) {
                     <span className={`${css.swatch} ${row.color}`} aria-hidden />
                     {t(row.label)}
                   </dt>
-                  <dd>{`~${formatTokens(breakdown[row.key])}`}</dd>
+                  <dd>{`~${formatTokens(breakdown[row.key], t)}`}</dd>
                 </div>
               ))}
             </dl>

@@ -10,7 +10,7 @@ import type {
 import type {
   PendingWait,
 } from '@ryanyujazz/dsh-client-compat'
-import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { SessionId, SessionSeq } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type {
   ChatNodeKind, TurnTailOwnerProps,
@@ -602,6 +602,11 @@ export interface ChatRenderOwnerProps {
    */
   revealChange?: ((path: string, turn?: number) => void) | undefined
   loadOlder: () => void
+  /**
+   * Page history back until the loaded window covers `seq` (the turn rail's
+   * unloaded-jump transport); undefined when the session face lacks it.
+   */
+  loadThrough: ((seq: SessionSeq) => Promise<void>) | undefined
   /** Resolve a session-authorized historical image for inline display. */
   loadImage: (attachment: ImageAttachmentRef) => Promise<string>
   /** Render historical images through the attachment slot implementation. */
@@ -658,6 +663,8 @@ export interface ChatViewInjected {
    */
   revealChange?: ((path: string, turn?: number) => void) | undefined
   loadOlder: () => void
+  /** Page history back until the loaded window covers `seq` (turn-rail jumps). */
+  loadThrough: ((seq: SessionSeq) => Promise<void>) | undefined
   /** Resolve a session-authorized historical image for inline display. */
   loadImage: (attachment: ImageAttachmentRef) => Promise<string>
   /** Hand a call off to the trajectory view: write the one-shot inspect target and switch tabs. */

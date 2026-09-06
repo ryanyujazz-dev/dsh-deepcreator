@@ -70,6 +70,8 @@
   border-radius: 22px;
   background: var(--dsw-specific-input-major);
   box-shadow: var(--dsw-shadow-lv2);
+  /* The token itself resolves through --dsh-content-font-size (ui-theme),
+     so the composer already follows the Appearance font-size preference. */
   font: var(--dsw-font-markdown-base);
   /* Elevated surface in dark, same as the menus: the draft scrollport inside
      scrolls once the composer hits its height cap, so the thumb takes the l2
@@ -286,6 +288,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
   /* 2px moved from the bottom pad to the top: the whole control row sits 2px
      lower in the card (it read too high against the textarea) while the card

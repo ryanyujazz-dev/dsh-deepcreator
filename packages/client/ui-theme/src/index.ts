@@ -3,47 +3,42 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-settings'
-import { injectBootTheme } from './boot-theme.ts'
+import { bootThemeInjection } from './boot-theme.ts'
 import {
-  DEFAULT_PREFERENCE, THEME_SETTINGS_NAMESPACE, ThemeSettingsSchema,
+  DEFAULT_FONT_SIZE, DEFAULT_PREFERENCE, THEME_SETTINGS_NAMESPACE, ThemeSettingsSchema,
   type ThemePreference, type ThemeSettings,
 } from './theme-settings.ts'
 
 export {
-  CODE_FONT_FIELD, CODE_FONTS, DARK_CODE_THEME_FIELD, DARK_CODE_THEMES,
-  DEFAULT_CODE_FONT, DEFAULT_DARK_CODE_THEME, DEFAULT_LIGHT_CODE_THEME,
-  DEFAULT_PREFERENCE, DEFAULT_TRANSCRIPT_TEXT_SIZE,
-  LIGHT_CODE_THEME_FIELD, LIGHT_CODE_THEMES,
+  DEFAULT_FONT_SIZE, DEFAULT_PREFERENCE, FONT_SIZE_FIELD, FONT_SIZE_MAX, FONT_SIZE_MIN,
   THEME_PREFERENCE_FIELD, THEME_PREFERENCES, THEME_SETTINGS_NAMESPACE,
-  TRANSCRIPT_TEXT_SIZE_FIELD, TRANSCRIPT_TEXT_SIZES,
-  type CodeFont, type DarkCodeTheme, type LightCodeTheme,
-  type ThemePreference, type ThemeSettings, type TranscriptTextSize,
+  type ThemePreference, type ThemeSettings,
 } from './theme-settings.ts'
 
 const THEME_NAMESPACE = THEME_SETTINGS_NAMESPACE
 
-/** Read the registered preference or use the schema default without a settings provider. */
-function readPreference(ctx: Context): ThemePreference {
+/** Read the registered theme section or the schema defaults without a settings provider. */
+function readSection(ctx: Context): { preference: ThemePreference; fontSize: number } {
+  const fallback = { preference: DEFAULT_PREFERENCE, fontSize: DEFAULT_FONT_SIZE }
   const settings = ctx.get('settings')
-  if (settings === undefined) return DEFAULT_PREFERENCE
+  if (settings === undefined) return fallback
   const section = settings.get(THEME_NAMESPACE) as ThemeSettings | undefined
-  if (section === undefined) return DEFAULT_PREFERENCE
-  return section.preference
+  if (section === undefined) return fallback
+  return section
 }
 
 /**
- * Register the durable theme section and initial-theme index transform when
- * their optional Host services are composed.
- * @param ctx - Host context that may acquire settings and HTTP services.
+ * Register the durable theme section when the optional settings service is
+ * composed, and answer every index injection collection with the current
+ * theme bootstrap row.
+ * @param ctx - Host context that may acquire the settings service.
  */
 export function apply(ctx: Context): void {
   ctx.inject(['settings'], (settingsCtx) => {
     settingsCtx.settings.register(THEME_NAMESPACE, ThemeSettingsSchema)
   })
-  ctx.inject(['webServer'], (httpCtx) => {
-    httpCtx.effect(
-      () => httpCtx.webServer.tapIndex(html => injectBootTheme(html, readPreference(ctx))),
-      'client-ui-theme: initial theme bootstrap',
-    )
+  ctx.on('webserver/index-inject', (table) => {
+    const section = readSection(ctx)
+    table.push(bootThemeInjection(section.preference, section.fontSize))
   })
 }

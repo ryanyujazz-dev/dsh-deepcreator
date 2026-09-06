@@ -19,7 +19,7 @@ export const zh = {
   'menu.aria': '模型与推理等级',
   'menu.model': '模型',
   'menu.effort': '推理等级',
-  'effort.providerDefault': 'Default',
+  'effort.providerDefault': '默认',
   'status.loading': '正在刷新模型列表…',
   'error.action': '模型操作失败：{message}',
   'action.reload': '重新加载',
@@ -27,6 +27,7 @@ export const zh = {
   'empty.models': '没有可用的模型。',
   'blocked.composer': '当前模型不可用，请先选择模型',
   'empty.efforts': '当前模型未提供推理等级。',
+  'trigger.loading': '正在加载模型…',
 } satisfies Record<string, string>
 
 /** The model namespace key union. */
@@ -51,4 +52,5 @@ export const en = {
   'empty.models': 'No models available.',
   'blocked.composer': 'This model is unavailable — select one to continue',
   'empty.efforts': 'This model provides no reasoning effort levels.',
+  'trigger.loading': 'Loading models…',
 } satisfies Record<ModelKey, string>

@@ -13,7 +13,8 @@
  * until the result arrives.
  * @module
  */
-import type { ReadBlockLine, ReadBlockProps } from '@ryanyujazz/dsh-client-ui-primitives'
+import type { ReadBlockLabels, ReadBlockLine, ReadBlockProps } from '@ryanyujazz/dsh-client-ui-primitives'
+import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import { relativizeToCwd, type ToolCallBlock } from './tool-call-model.ts'
 
 /**
@@ -29,11 +30,31 @@ import { relativizeToCwd, type ToolCallBlock } from './tool-call-model.ts'
 export const CHAT_READ_MAX_LINES = 8
 
 /**
+ * Build the ReadBlock display copy from the conversation locale seat — the one
+ * place the primitive's label surface pairs with this package's dictionary,
+ * shared by every read render site (chat row, details panel), mirroring
+ * [`terminalBlockLabels`](./terminal-card-model.ts).
+ * @param t - the render site's conversation locale seat.
+ * @returns the full label set for {@link ReadBlockProps}'s `labels`.
+ */
+export function readBlockLabels(t: TranslateNS<'conversation'>): ReadBlockLabels {
+  return {
+    window: (shown, total) => t('read.window', { shown, total }),
+    copy: t('copy'),
+    copied: t('copied'),
+    collapseAria: t('read.collapseAria'),
+    expandAria: count => t('read.expandAria', { count }),
+    collapse: t('collapse'),
+    expand: count => t('read.expandRest', { count }),
+  }
+}
+
+/**
  * The {@link ReadBlock} props this derivation owns. Picked off the primitive's
  * props so the two stay in step; `maxLines`/`className` belong to each render
  * site.
  */
-export type ReadCardModel = Pick<ReadBlockProps, 'label' | 'filePath' | 'lines' | 'totalLines' | 'lang'>
+export type ReadCardModel = Pick<ReadBlockProps, 'label' | 'lines' | 'totalLines' | 'lang'>
 
 /**
  * Derive the read-card props for a tool call, or null when this call is not a
@@ -69,7 +90,6 @@ export function readCardModel(block: ToolCallBlock, sessionCwd?: string): ReadCa
   const lines: ReadBlockLine[] = result.lines.map(line => ({ number: line.number, text: line.text }))
   return {
     label: result.title ?? relativizeToCwd(result.path, sessionCwd),
-    filePath: result.path,
     lines,
     totalLines: result.totalLines,
     lang: result.lang,

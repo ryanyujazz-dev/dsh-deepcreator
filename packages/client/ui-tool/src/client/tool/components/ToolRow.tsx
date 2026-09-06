@@ -31,7 +31,7 @@ import type { WebBlockProps } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import { type ToolTranslate } from '../../locale.ts'
 import type { DiffCardModel } from '../models/diff-card-model.ts'
-import { CHAT_READ_MAX_LINES, type ReadCardModel } from '../models/read-card-model.ts'
+import { CHAT_READ_MAX_LINES, readBlockLabels, type ReadCardModel } from '../models/read-card-model.ts'
 import { CHAT_SEARCH_MAX_LINES, type SearchCardModel } from '../models/search-card-model.ts'
 import { terminalBlockLabels, type TerminalCardModel } from '../models/terminal-card-model.ts'
 import type { ToolRowState, ToolRowVariant } from '../models/tool-call-model.ts'
@@ -305,7 +305,7 @@ export function ToolRow({
             : diffBody !== null
               ? <DiffBlock {...diffBody.card} className={css.diffBody} showFooter={variant !== 'edit' && variant !== 'write'} />
               : readBody !== null
-                ? <ReadBlock {...readBody} maxLines={CHAT_READ_MAX_LINES} className={css.readBody} />
+                ? <ReadBlock {...readBody} maxLines={CHAT_READ_MAX_LINES} labels={readBlockLabels(t)} className={css.readBody} />
                 : searchBody !== null
                   ? (
                     <>
