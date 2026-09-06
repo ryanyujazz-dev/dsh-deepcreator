@@ -39,7 +39,7 @@ async function bench() {
 
 describe('ui-layout client apply', () => {
   it('declares its service dependencies', () => {
-    expect(inject).toEqual(['slots', 'theme', 'locale'])
+    expect(inject).toEqual(['slots', 'theme'])
   })
 
   it('provides ctx.layout and registers AppFrame into root with its child declarations', async () => {
@@ -53,33 +53,7 @@ describe('ui-layout client apply', () => {
     expect(slots.spec('sidebar')).toEqual({ kind: 'single', scope: 'root' })
     expect(slots.spec('conversation')).toEqual({ kind: 'single', scope: 'session-maybe' })
     expect(slots.spec('details')).toEqual({ kind: 'single', scope: 'session' })
-    expect(slots.spec('deepcreator.stage.apps')).toEqual({ kind: 'single', scope: 'root' })
     expect(slots.spec('deepcreator.shell.sidebar-toggle')).toEqual({ kind: 'single', scope: 'root' })
-  })
-
-  it('seats the stage-mode control into the sidebar seat once that declaration exists', async () => {
-    const { ctx, slots } = await bench()
-    const fiber = ctx.plugin({ inject: [...inject], apply })
-    await fiber.await()
-    // ui-sidebar is absent from this bench: the injection stays pending and
-    // contributes nothing (the S3 wait form — an undeclared seat is not an error).
-    expect(slots.entries('sidebar.stage-mode')).toHaveLength(0)
-    // The sidebar shell's own declaration releases the waiting entry.
-    const sidebar = ctx.plugin({
-      inject: ['slots'],
-      apply(sidebarCtx: Context) {
-        sidebarCtx.slots.register({
-          name: 'sidebar',
-          children: { 'sidebar.stage-mode': { kind: 'single', scope: 'root' } },
-        }, () => null)
-      },
-    })
-    await sidebar.await()
-    expect(slots.entries('sidebar.stage-mode')).toHaveLength(1)
-    // Disabling the sidebar row withdraws the contributed entry with it.
-    await sidebar.dispose()
-    expect(slots.entries('sidebar.stage-mode')).toHaveLength(0)
-    await fiber.dispose()
   })
 
   it('injects no business face and attaches the layout actions', async () => {

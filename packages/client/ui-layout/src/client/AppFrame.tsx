@@ -11,7 +11,7 @@
  * zero self-made hooks.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { computeColumns, SIDEBAR_AUTO_COLLAPSE, SIDEBAR_DEFAULT } from './columns.ts'
 import { detectNativeWindowChrome } from './native-window-chrome.ts'
@@ -36,9 +36,8 @@ function stripTitle(title: string): string {
 /** Full composed props: runtime share + child-slot render share + store share. */
 export type AppFrameProps =
   & PropsRuntime<'root'>
-  & PropsRenderSlots<'sidebar' | 'conversation' | 'details' | 'deepcreator.stage.apps' | 'deepcreator.shell.sidebar-toggle' | 'shell.overlay'>
+  & PropsRenderSlots<'sidebar' | 'conversation' | 'details' | 'deepcreator.shell.sidebar-toggle' | 'shell.overlay'>
   & PropsStore<ReturnType<typeof createLayoutStore>>
-  & PropsLocale<'layout'>
 
 /**
  * One drag handle: pointer capture, rAF-throttled dx reports against the drag-start origin.
@@ -97,7 +96,6 @@ export function AppFrame({
   actions,
   renderSlot,
   SessionProvider,
-  t,
 }: AppFrameProps) {
   const panels = useStore(s => s)
   const nativeWindowChrome = detectNativeWindowChrome(window.navigator.userAgent)
@@ -167,14 +165,6 @@ export function AppFrame({
   const narrow = viewport < SIDEBAR_AUTO_COLLAPSE
   const phone = viewport <= 640
   useEffect(() => { actions.setNarrow(narrow) }, [actions, narrow])
-  // Stage mode is root-scope transient (the App Stage is a person-scoped
-  // desktop): session/workspace switches never leave apps mode and the
-  // breakpoint never collapses the dock back to conversation.
-  const stageMode = useStore(s => s.stageMode)
-  const stageActivity = useStore(s => s.stageActivity)
-  const dockOpen = useStore(s => s.dockOpen)
-  const dockWidth = useStore(s => s.dockWidth)
-  const appsActive = stageMode === 'apps'
   const sidebarCollapsed = narrow ? !panels.narrowExpanded : panels.sidebar === 0
   const sidebarPreference = sidebarCollapsed
     ? 0
@@ -183,22 +173,13 @@ export function AppFrame({
   // The desktop concession solver must not decide whether the phone's
   // full-stage Workbench is open: at phone widths it necessarily concedes the
   // third track to zero. The stored preference is the source of truth while
-  // the same details subtree is projected over the stage. Apps mode owns the
-  // full-stage projection instead (later layer wins), so the phone's own
-  // full-stage variant suspends while apps is active.
-  const mobileDetailsOpen = phone && !appsActive && detailsSession !== undefined && panels.details > 0
-  // Inside apps mode with the dock open, an open details track projects into
-  // the dock band (the phone's full-stage projection of the same subtree,
-  // shrunk to the band); the Workbench keeps its own open/close semantics.
-  const dockDetailsOpen = appsActive && dockOpen && detailsSession !== undefined && panels.details > 0
+  // the same details subtree is projected over the stage.
+  const mobileDetailsOpen = phone && detailsSession !== undefined && panels.details > 0
   const mobileHistoryArmed = useRef(false)
-  const appsHistoryArmed = useRef(false)
   const renderedSidebar = phone ? 0 : cols.sidebar
   const renderedDetails = phone ? 0 : cols.details
   const colsRef = useRef(cols)
   colsRef.current = cols
-  const centerRef = useRef<HTMLDivElement | null>(null)
-  const detailsRef = useRef<HTMLDivElement | null>(null)
 
   // A phone drawer is navigation chrome, so committing a different Session
   // returns the user to the unchanged Conversation occupant. Desktop keeps
@@ -211,50 +192,28 @@ export function AppFrame({
     if (phone && changed && !sidebarCollapsed) actions.toggleSidebar()
   }, [actions, currentSession, phone, sidebarCollapsed])
 
-  // Both Stage takeovers (the phone's full-stage Workbench and apps mode)
-  // participate in one browser-history ledger. Entering pushes a marked
-  // entry; the platform back gesture pops back to the previous entry and the
-  // popstate listener closes exactly the layer whose marker left the top.
-  // A programmatic exit consumes its own top entry with history.back() only
-  // when that entry is still on top — another layer pushed later (e.g. the
-  // mobile Workbench over apps mode) owns the stack top, and popping it here
-  // would close the wrong layer. A leftover buried entry stays harmless: the
-  // armed flag is already down, so passing it later triggers nothing.
+  // The phone's full-stage Workbench participates in a browser-history
+  // ledger. Entering pushes a marked entry; the platform back gesture pops
+  // back to the previous entry and the popstate listener closes exactly the
+  // layer whose marker left the top. A programmatic exit consumes its own
+  // top entry with history.back() only when that entry is still on top. A
+  // leftover buried entry stays harmless: the armed flag is already down, so
+  // passing it later triggers nothing.
   useEffect(() => {
     const onPopState = (event: PopStateEvent): void => {
       // The event carries the DESTINATION entry's state (standard popstate
       // semantics); reading window.history.state here would be equivalent in
       // a real browser but wrong for synthetic events, which express "we left
       // the marked entry" with a null state.
-      const state = event.state as { deepcreatorMobileWorkbench?: boolean; deepcreatorStageApps?: boolean } | null
+      const state = event.state as { deepcreatorMobileWorkbench?: boolean } | null
       if (mobileHistoryArmed.current && state?.deepcreatorMobileWorkbench !== true) {
         mobileHistoryArmed.current = false
         actions.closeDetails()
-      }
-      if (appsHistoryArmed.current && state?.deepcreatorStageApps !== true) {
-        appsHistoryArmed.current = false
-        actions.setStageMode('conversation')
       }
     }
     window.addEventListener('popstate', onPopState)
     return () => { window.removeEventListener('popstate', onPopState) }
   }, [actions])
-  // Declared BEFORE the mobile-details effect: entering apps mode suspends the
-  // phone's full-stage projection, and this ordering pushes the apps entry
-  // first, so the mobile effect's stack-top check sees the apps marker (not
-  // its own) and leaves its buried entry for the popstate ledger instead of
-  // firing a back() that would asynchronously pop the fresh apps entry.
-  useEffect(() => {
-    if (appsActive && !appsHistoryArmed.current) {
-      window.history.pushState({ deepcreatorStageApps: true }, '')
-      appsHistoryArmed.current = true
-      return
-    }
-    if (!appsActive && appsHistoryArmed.current) {
-      appsHistoryArmed.current = false
-      if ((window.history.state as { deepcreatorStageApps?: boolean } | null)?.deepcreatorStageApps === true) window.history.back()
-    }
-  }, [appsActive])
   useEffect(() => {
     if (mobileDetailsOpen && !mobileHistoryArmed.current) {
       window.history.pushState({ deepcreatorMobileWorkbench: true }, '')
@@ -266,27 +225,12 @@ export function AppFrame({
       if ((window.history.state as { deepcreatorMobileWorkbench?: boolean } | null)?.deepcreatorMobileWorkbench === true) window.history.back()
     }
   }, [mobileDetailsOpen])
-  // Unmount reconciliation: the surfaces disappear with the frame, so a live
+  // Unmount reconciliation: the surface disappears with the frame, so a live
   // marked entry must not outlive its layer (a stale top entry would swallow
   // the next back gesture). Buried entries again stay harmless.
   useEffect(() => () => {
-    if (appsHistoryArmed.current && (window.history.state as { deepcreatorStageApps?: boolean } | null)?.deepcreatorStageApps === true) window.history.back()
     if (mobileHistoryArmed.current && (window.history.state as { deepcreatorMobileWorkbench?: boolean } | null)?.deepcreatorMobileWorkbench === true) window.history.back()
   }, [])
-
-  // Apps mode covers the Stage above both columns: keep the conversation and
-  // the details subtree out of keyboard navigation while they are covered
-  // (they stay mounted — state survives, only interaction is suspended). The
-  // docked conversation and the dock-band details projection stay reachable.
-  useEffect(() => {
-    const covered = (element: HTMLDivElement | null, isCovered: boolean): void => {
-      if (element === null) return
-      if (isCovered) element.setAttribute('inert', '')
-      else element.removeAttribute('inert')
-    }
-    covered(centerRef.current, appsActive && !dockOpen)
-    covered(detailsRef.current, appsActive && !dockDetailsOpen)
-  }, [appsActive, dockOpen, dockDetailsOpen])
 
   // The drag base is the rendered width captured at drag start (grabbing a
   // concession-clamped panel must not jump back to the stored preference);
@@ -322,15 +266,11 @@ export function AppFrame({
       style={{
         gridTemplateColumns: `${renderedSidebar}px minmax(0, 1fr) ${renderedDetails}px`,
         '--dsh-stage-left': `${phone ? 0 : cols.sidebar}px`,
-        '--dsh-dock-width': `${dockWidth}px`,
       } as React.CSSProperties}
       data-sidebar-collapsed={sidebarCollapsed || undefined}
-      data-details-collapsed={(phone ? !mobileDetailsOpen && !dockDetailsOpen : cols.details === 0) || undefined}
+      data-details-collapsed={(phone ? !mobileDetailsOpen : cols.details === 0) || undefined}
       data-dragging={dragging || undefined}
       data-details-focused={panels.detailsFocused || undefined}
-      data-stage-mode={stageMode}
-      data-dock-open={appsActive && dockOpen || undefined}
-      data-dock-details={dockDetailsOpen || undefined}
       data-phone={phone || undefined}
       data-mobile-sidebar-open={phone && !sidebarCollapsed || undefined}
       data-mobile-details-open={mobileDetailsOpen || undefined}
@@ -364,8 +304,8 @@ export function AppFrame({
             the shell's own pending rendering. The conversation
             is session-maybe; SessionProvider withholds the strict details
             entry while no session is current. */}
-        <div ref={centerRef} className={css.centerCol}>{renderSlot('conversation', {})}</div>
-        <div ref={detailsRef} className={css.detailsCol}><SessionProvider>{renderSlot('details', {
+        <div className={css.centerCol}>{renderSlot('conversation', {})}</div>
+        <div className={css.detailsCol}><SessionProvider>{renderSlot('details', {
           width: phone ? viewport : cols.details,
           stageWidth: phone ? viewport : Math.max(0, viewport - cols.sidebar),
           resizeGesture: detailsResizeStart === null
@@ -373,36 +313,6 @@ export function AppFrame({
             : { active: true, startWidth: detailsResizeStart },
         })}</SessionProvider></div>
       </>
-      {/* Conversation-mode activity chip (M4): while an agent drives an app
-          from the conversation, one visible affordance names the app and
-          carries the user straight to the desktop on click. */}
-      {stageMode === 'conversation' && stageActivity !== undefined && (
-        <button
-          type="button"
-          className={css.activityChip}
-          onClick={() => { actions.setStageMode('apps') }}
-          title={t('stage-mode.activity').replace('{name}', stageActivity.name)}
-        >
-          <span className={css.activityChipDot} aria-hidden="true" />
-          {t('stage-mode.activity').replace('{name}', stageActivity.name)}
-        </button>
-      )}
-      {/* The App Stage seat: mounted permanently (root scope), hidden while
-          conversation mode owns the Stage. Covering geometry follows the
-          details-Focus family — the layer insets over the Stage past the
-          Sidebar — and yields its right band to the docked conversation. */}
-      <div className={css.appsLayer} data-stage-apps>
-        {renderSlot('deepcreator.stage.apps', {
-          phone,
-          stageWidth: Math.max(0, viewport - (phone ? 0 : cols.sidebar) - (dockOpen ? dockWidth : 0)),
-          dockOpen,
-        })}
-      </div>
-      {phone && appsActive && dockOpen && (
-        /* Phone dock is an overlay drawer: the mask closes it (the same
-           back-gesture-safe close as the sidebar drawer). */
-        <button type="button" className={css.dockMask} aria-label="Close conversation dock" onClick={() => { actions.setDockOpen(false) }} />
-      )}
       <div className={css.overlayLayer} data-shell-overlay>
         {renderSlot('shell.overlay', {})}
       </div>

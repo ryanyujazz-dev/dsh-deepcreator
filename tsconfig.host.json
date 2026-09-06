@@ -18,12 +18,6 @@
       "path": "./packages/host/artifacts"
     },
     {
-      "path": "./packages/host/app-stage"
-    },
-    {
-      "path": "./packages/host/app-stage-agent"
-    },
-    {
       "path": "./packages/host/remote-access"
     },
     {
