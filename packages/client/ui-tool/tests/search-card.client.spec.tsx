@@ -175,15 +175,18 @@ describe('searchCardModel', () => {
     expect(searchCardModel(settledGlob({ resultView: badPaths }))).toBeNull()
   })
 
-  it('surfaces the recovery text only when the result was capped', () => {
+  it('surfaces the recovery text only when the result was capped, stripped of rows the card already shows', () => {
     const recovery = 'a.ts\n  12: const foo = 1\n\n(Full grep result stored at: spill://grep-1. Read it to see every match.)'
     // The recovery locator lives in the raw tool/result content (the view carries
-    // no text), surfaced only when the card capped the result.
+    // no text), surfaced only when the card capped the result. The raw text
+    // repeats the card's own rows (the path header and the numbered match
+    // line); only the card-absent remainder — here the locator — renders
+    // below the card, so the expansion never shows the same rows twice.
     const capped = searchCardModel(settledGrep({
       content: [{ type: 'text', text: recovery }],
       resultView: resultMatches({ truncated: true, total: 42 }),
     }))
-    expect(capped?.recovery).toBe(recovery)
+    expect(capped?.recovery).toBe('(Full grep result stored at: spill://grep-1. Read it to see every match.)')
     // Not capped: the card holds every match, so the raw content adds nothing and
     // is dropped.
     const whole = searchCardModel(settledGrep({
@@ -194,6 +197,19 @@ describe('searchCardModel', () => {
     // Capped but the block carries no text: nothing to surface.
     const noText = searchCardModel(settledGrep({ content: [], resultView: resultMatches({ truncated: true, total: 42 }) }))
     expect(noText?.recovery).toBeUndefined()
+    // glob: the capped raw text repeats the card's path rows verbatim; the
+    // strip leaves only the locator (the reported card-then-duplicate bug).
+    const cappedGlob = searchCardModel(settledGlob({
+      content: [{ type: 'text', text: 'src/a.ts\nsrc/b.ts\n(Full glob result stored at: spill://glob-1.)' }],
+      resultView: resultPaths({ truncated: true, total: 40 }),
+    }))
+    expect(cappedGlob?.recovery).toBe('(Full glob result stored at: spill://glob-1.)')
+    // A capped result whose raw text the card fully covers leaves no footer at all.
+    const fullyCovered = searchCardModel(settledGlob({
+      content: [{ type: 'text', text: 'src/a.ts\nsrc/b.ts' }],
+      resultView: resultPaths({ truncated: true, total: 40 }),
+    }))
+    expect(fullyCovered?.recovery).toBeUndefined()
   })
 })
 

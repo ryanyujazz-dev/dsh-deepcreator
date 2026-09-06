@@ -113,6 +113,43 @@ function flattenContent(content: readonly { type: string; text?: string }[]): st
 }
 
 /**
+ * Strip from a capped result's raw text every line the card already shows —
+ * path headers and matched lines for a matches card, the path rows for a paths
+ * card — so the recovery text rendered below the card carries only what the
+ * card does not: the retrieval locator and anything else the cap dropped. A
+ * raw line may carry a leading `12:`-style line number the card drops, so both
+ * the trimmed line and its prefix-stripped form count as shown. Blank lines
+ * never survive; a remainder of nothing (the card already holds every line)
+ * resolves to undefined so no empty footer renders.
+ * @param flattened - the raw `tool/result` text, already flattened.
+ * @param card - the search-card props about to render.
+ * @returns the non-duplicate remainder, or undefined when nothing new survives.
+ */
+function stripShownRows(flattened: string | undefined, card: SearchBlockModelProps): string | undefined {
+  if (flattened === undefined) return undefined
+  const shown = new Set<string>()
+  const mark = (line: string): void => {
+    const trimmed = line.trim()
+    if (trimmed !== '') shown.add(trimmed)
+  }
+  if (card.kind === 'paths') {
+    for (const path of card.paths) mark(path)
+  } else {
+    for (const file of card.files) {
+      mark(file.path)
+      for (const match of file.matches) mark(match.line)
+    }
+  }
+  const strippedOfLineNumber = (line: string): string => line.replace(/^\s*\d+\s*[:|\-]\s*/, '').trim()
+  const kept = flattened
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line !== '')
+    .filter(line => !shown.has(line) && !shown.has(strippedOfLineNumber(line)))
+  return kept.length === 0 ? undefined : kept.join('\n')
+}
+
+/**
  * Derive the search-card props for a tool call, or null when this call is not a
  * search card and belongs on the generic path.
  *
@@ -136,15 +173,18 @@ export function searchCardModel(block: ToolCallBlock): SearchCardModel | null {
   // The recovery footer only matters when the tool capped the result: an
   // uncapped card holds every match/path, so the raw text adds nothing the card
   // does not already show. When capped, the raw result's `Full … stored at …`
-  // locator is the only way to retrieve the omitted rows, so include it.
-  const recovery = result.truncated ? flattenContent(block.content) : undefined
+  // locator is the only way to retrieve the omitted rows — and the raw text
+  // ALSO repeats every row the card kept, so only the card-absent remainder
+  // (see {@link stripShownRows}) renders below it.
+  const flattened = result.truncated ? flattenContent(block.content) : undefined
   if (result.shape === 'matches') {
     // `files` rides the untrusted wire frame: the host schema checks `card`/`shape`
     // strings but not the grouped `files` fields, so validate them before
     // SearchBlock, which would crash on a missing or malformed `files`.
     // Invalid fields select the generic view.
     if (!isValidFiles(result.files)) return null
-    return { title: result.title, recovery, card: { kind: 'matches', files: result.files, ...common } }
+    const card = { kind: 'matches' as const, files: result.files, ...common }
+    return { title: result.title, recovery: stripShownRows(flattened, card), card }
   }
   // `shape` rides the same untrusted wire frame as `card`, so a version mismatch
   // or a loose protocol producer could deliver a `card: 'search'` subtype this
@@ -156,5 +196,6 @@ export function searchCardModel(block: ToolCallBlock): SearchCardModel | null {
   // `paths` is likewise unchecked by the wire schema; a known shape with a
   // missing/malformed array would crash the paths card at `.map`.
   if (!Array.isArray(result.paths) || !result.paths.every((path): path is string => typeof path === 'string')) return null
-  return { title: result.title, recovery, card: { kind: 'paths', paths: result.paths, ...common } }
+  const card = { kind: 'paths' as const, paths: result.paths, ...common }
+  return { title: result.title, recovery: stripShownRows(flattened, card), card }
 }
