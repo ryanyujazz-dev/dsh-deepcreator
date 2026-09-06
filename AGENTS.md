@@ -35,6 +35,27 @@ pnpm run verify:harness
 
 Run the narrowest relevant check while iterating, then run all affected package checks before handoff. Rebuild Client packages before browser or Desktop validation because the Host serves `lib/client.js`.
 
+## Syncing official upstream releases
+
+Folding an official DeepSeek Harness release into this fork follows
+[`docs/official-sync-workflow.md`](docs/official-sync-workflow.md) — read it
+before touching vendored packages. Its non-negotiables:
+
+- The recorded sync baseline is `packages/client/compat/compatibility.json`
+  (`harnessVersion` + `harnessGitSha`); update it in the sync commit.
+- Scope discipline: vendored client packages import as `@ryanyujazz/*`
+  (workspace), npm-only surfaces as `@deepseek-ai/*` (pinned). Fork files that
+  deliberately import official type names from npm stay as they are.
+- Fork-keeper disposition per subsystem (fork wins / official wins / hybrid)
+  is mapped in the workflow doc; never leave a franken file between the two.
+- `packages/bundle/deepcreator-web/cordis.patch.yml` must not re-register any
+  plugin id the official base profile already ships — duplicate ids kill host
+  boot with no window.
+- Any package whose `src/` changed gets its bundle rebuilt before runtime
+  validation; a source-only fix is invisible to the app.
+- Network operations (git, gh, pnpm install) run behind the local proxy
+  (`http://127.0.0.1:7890`).
+
 ## Change discipline
 
 - Preserve ESM, strict TypeScript, explicit public types, and package-boundary imports.
