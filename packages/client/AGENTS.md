@@ -11,3 +11,15 @@ This tree owns DeepCreator browser features and the compatibility/type packages 
 - UI stores contain drafts, selection, panel dimensions, tabs, and other presentation state only.
 - Keep browser CSS in the owning feature or shared semantic tokens in `ui-theme`; controls shared by multiple domains belong in `ui-primitives`.
 - Every package must typecheck, test, and emit the declared Host and browser artifacts. Verify disposal and remount behavior when changing registration code.
+
+## Vendored packages (official upstream sync)
+
+The sixteen vendored client packages track official releases by copy/merge,
+not git ancestry. Before syncing one, read
+[`../../docs/official-sync-workflow.md`](../../docs/official-sync-workflow.md):
+it owns the lineage classification (fork / official / fork-only /
+official-new / franken), the fork-keeper map per subsystem, the scope rules
+(`@ryanyujazz` workspace vs `@deepseek-ai` pinned — including the
+deliberate type-only npm imports some fork files carry), the locale-merge and
+package.json-delta rules, and the verification ladder that ends with a
+rebuilt bundle and a CDP smoke test.
