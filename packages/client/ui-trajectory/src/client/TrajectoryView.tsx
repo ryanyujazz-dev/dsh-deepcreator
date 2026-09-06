@@ -127,7 +127,7 @@ function addUsage(
 
 export function TrajectoryView({
   useSession, useTrajectory, useDuration, setDuration, loadOlder,
-  viewRequest, completeViewRequest, t,
+  inspect, onInspectDone, t,
 }: ConvViewProps & InjectFace<TrajectoryViewInjected> & PropsLocale<'trajectory'>) {
   const [collapsedTurns, setCollapsedTurns] = useState<ReadonlySet<number>>(EMPTY_TURN_IDS)
   const [collapsedAssistants, setCollapsedAssistants] =
@@ -504,8 +504,10 @@ export function TrajectoryView({
           onToggleTurn={toggleTurn}
           collapsedAssistants={collapsedAssistants}
           onToggleAssistant={toggleAssistant}
-          inspectCallId={viewRequest?.view === 'trajectory' ? viewRequest.focus : null}
-          onInspectApplied={completeViewRequest}
+          /* The fork's cross-view handoff (chat's Inspect button) rides the
+             ConvViewOwnerProps inspect share, not the official viewRequest. */
+          inspectCallId={inspect?.callId ?? null}
+          onInspectApplied={onInspectDone}
         />
       </div>
     </div>
