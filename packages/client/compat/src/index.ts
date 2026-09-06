@@ -43,3 +43,9 @@ export type {
   SessionLeaseHub,
   SessionLeaseSnapshot,
 } from './observation'
+export {
+  parseToolArgs,
+  presentToolCall,
+  presentToolResult,
+  type ToolResultProjection,
+} from './presenters'

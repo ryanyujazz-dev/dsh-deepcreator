@@ -1,6 +1,8 @@
 # 官方 DSH 0.1.2 线升级调研（0.1.1-rc.2 → 0.1.2-rc.1）
 
 > 调研日期：2026-09-06。结论：**0.1.2-rc.1 是破坏性重构，不可常规升级**；本文记录变更全貌、patch 命运、可回植的性能技术与后续迁移路径。当前项目保持 0.1.1-rc.2。
+>
+> **【状态更新 · 迁移已完成】** 本文的迁移建议已按 §6 中期路径执行完毕：分支 `feat/upgrade-dsh-0.1.2-rc.1` 全量升级到 `0.1.2-rc.1`（compatibility.json 锁定 SHA `a66e4702`），Phase 1–5 全部落地 —— 版本面重 pin、5 个官方 patch 重建（含 session-controller 新增 retainNavigationAddress + scope-binding 接缝两个 hunk）、378 处 import 重映射、provideInfoFor 以自有租约服务（compat `createSessionLeaseHub`）+ renderer scope 绑定覆盖重实现、Activity 面板子代理嵌入五项语义桌面端实测通过。调研时未预见的一项补充工作：0.1.2 删除了 wire 视图（改为主机侧工具 presenter），而官方客户端尚无消费者，为保住终端/diff/搜索/读取/网页富卡片，compat 新增 presenter 复刻层（`presenters.ts`）并在会话组装器挂回 `callView`/`resultView`。验证基线：`pnpm install` / `verify:harness` / `typecheck`（46 包）/ `pnpm test`（2676）/ desktop 构建全绿。§4 的性能回植**不在本次迁移范围**，留作后续独立提交。
 
 ## 1. 版本事实
 
@@ -56,6 +58,8 @@
 意义：用户跨大版本升级 DeepCreator 桌面端时，旧缓存不再导致 boot 失败。**只有完成 0.1.2 迁移才能获得**，是未来升级的主要理由之一。
 
 ## 6. 建议路径
+
+> 【已执行】以下中期路径即本次迁移的实际分解（1↔Phase 3、2↔Phase 4、3/4↔Phase 2、5↔Phase 5），见文首状态更新。
 
 - **短期（现在）**：保持 0.1.1-rc.2。将 §4 的 1–3 项性能技术移植进自有 ui-conversation fork，独立提交（不与功能分支混淆）。
 - **中期**：等 0.1.2 线稳定（0.1.3-alpha 已开线）后启动迁移专项，工程分解：
