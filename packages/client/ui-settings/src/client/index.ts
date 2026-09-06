@@ -14,6 +14,7 @@ export {
   type SettingsNavigationRequest,
   type SettingsNavigationSnapshot,
 } from './navigation.ts'
+export type { SettingsScope, SettingsScopeSnapshot, SettingsScopeSpec } from './settings-contract.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {

@@ -6,7 +6,7 @@ import type {} from '@ryanyujazz/dsh-client-locale/client'
 import type {} from '@ryanyujazz/dsh-client-ui-settings/client'
 import type {} from '@ryanyujazz/dsh-client-ui-sidebar/client'
 import { TYPERT_REMOTE as SKILL_ADMIN_REMOTE } from '@ryanyujazz/dsh-skill-admin/remote'
-import type { SkillAdminDetail, SkillAdminItem, SkillAdminTarget, SkillInstallKind } from '@ryanyujazz/dsh-skill-admin/types'
+import type { SkillAdminDetail, SkillAdminItem, SkillAdminTarget, SkillInstallKind, SkillLocalizedDescriptions } from '@ryanyujazz/dsh-skill-admin/types'
 import { SkillsSection } from './SkillsSection.tsx'
 import type { SkillsSectionInjected } from './SkillsSection.tsx'
 import { SkillsShortcut } from './SkillsShortcut.tsx'
@@ -66,7 +66,8 @@ function applyFeature(ctx: ClientContext): void {
       if (!result.ok) throw new Error(`path open failed: ${result.error.message}`)
     },
     openPlugins: () => { ctx.settingsNavigation.open('plugins') },
-    description: item => item.localizedDescriptions?.[ctx.locale.getSnapshot().active] ?? item.description,
+    // LocaleId widened to string (dynamic locales); unknown ids fall through to the base description.
+    description: item => item.localizedDescriptions?.[ctx.locale.getSnapshot().active as keyof SkillLocalizedDescriptions] ?? item.description,
   })
   const shortcutInjected = (): SkillsShortcutInjected => ({
     open: () => { ctx.settingsNavigation.open('skills') },

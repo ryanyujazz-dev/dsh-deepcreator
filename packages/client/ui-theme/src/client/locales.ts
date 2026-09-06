@@ -47,7 +47,14 @@ export const zh = {
   'appearance.transcript.small': '小',
   'appearance.transcript.standard': '标准',
   'appearance.transcript.large': '大',
-} satisfies Record<string, string>
+
+  // official rc.1 font-size strings
+'fontSize.title': '字号大小',
+'fontSize.description': '仅影响会话内容的字号',
+'fontSize.increase': '增大字号',
+'fontSize.decrease': '减小字号',
+'fontSize.unit': 'px',
+  } satisfies Record<string, string>
 
 /** The settings.theme namespace key union. */
 export type ThemeKey = keyof typeof zh
@@ -99,4 +106,11 @@ export const en = {
   'appearance.transcript.small': 'Small',
   'appearance.transcript.standard': 'Standard',
   'appearance.transcript.large': 'Large',
-} satisfies Record<ThemeKey, string>
+
+  // official rc.1 font-size strings
+'fontSize.title': 'Font size',
+'fontSize.description': 'Only affects conversation content',
+'fontSize.increase': 'Increase font size',
+'fontSize.decrease': 'Decrease font size',
+'fontSize.unit': 'px',
+  } satisfies Record<ThemeKey, string>

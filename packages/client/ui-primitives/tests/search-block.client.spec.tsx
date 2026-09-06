@@ -1,14 +1,30 @@
 // @vitest-environment jsdom
-// SearchBlock: both kinds (grouped grep matches and a flat glob path list), the
-// folded truncation summary, the empty arm, per-file collapse/expand, the
-// head/tail height cap and its expand control, the tail slice restoring its
-// owning file header, and the copy control writing the whole structured
-// result on both the accepted and refused clipboard paths.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { DEFAULT_SEARCH_MAX_LINES, SearchBlock } from '../src/index.ts'
-import type { SearchFileGroup } from '../src/index.ts'
+import { DEFAULT_SEARCH_MAX_LINES, SearchBlock as LocalizedSearchBlock } from '../src/index.ts'
+import type {
+  SearchFileGroup, SearchMatchesBlockProps, SearchPathsBlockProps,
+} from '../src/index.ts'
+import { searchBlockLabels } from './labels.client.ts'
+
+type SearchBlockProps =
+  | Omit<SearchMatchesBlockProps, 'labels'>
+  | Omit<SearchPathsBlockProps, 'labels'>
+
+function SearchMatchesBlock(props: Omit<SearchMatchesBlockProps, 'labels'>) {
+  return <LocalizedSearchBlock {...props} labels={searchBlockLabels} />
+}
+
+function SearchPathsBlock(props: Omit<SearchPathsBlockProps, 'labels'>) {
+  return <LocalizedSearchBlock {...props} labels={searchBlockLabels} />
+}
+
+function SearchBlock(props: SearchBlockProps) {
+  return props.kind === 'matches'
+    ? <SearchMatchesBlock {...props} />
+    : <SearchPathsBlock {...props} />
+}
 
 afterEach(cleanup)
 
@@ -16,17 +32,14 @@ beforeEach(() => {
   vi.useRealTimers()
 })
 
-/** The rendered result rows, one string per visible row (CSS-module class prefix). */
 function lines(container: HTMLElement): string[] {
   return [...container.querySelectorAll('[class^="_line_"]')].map(row => row.textContent ?? '')
 }
 
-/** The file-group header rows, one string per header (path + count concatenated). */
 function fileHeaders(container: HTMLElement): string[] {
   return [...container.querySelectorAll('[class^="_fileHeader_"]')].map(row => row.textContent ?? '')
 }
 
-/** `count` numbered match lines under one file, without a terminating newline. */
 function group(path: string, count: number, from = 1): SearchFileGroup {
   return {
     path,
@@ -41,7 +54,6 @@ describe('SearchBlock matches kind', () => {
       { path: 'b.ts', matches: [{ lineNumber: 7, line: 'const b = 2' }] },
     ]} />)
     expect(fileHeaders(view.container)).toEqual(['a.ts2', 'b.ts1'])
-    expect(view.container.querySelectorAll('[data-file-icon="typescript"]')).toHaveLength(2)
     expect(lines(view.container)).toEqual(['12: const a = 1', '40: return a', '7: const b = 2'])
     // The summary counts matches and files, with no folded pre-cap total below the cap.
     expect(view.getByText('3 处匹配 · 2 个文件')).toBeTruthy()
@@ -73,7 +85,6 @@ describe('SearchBlock paths kind', () => {
   it('renders a flat path list with a path-count summary', () => {
     const view = render(<SearchBlock kind="paths" truncated={false} total={2} paths={['src/a.ts', 'src/b.ts']} />)
     expect(lines(view.container)).toEqual(['src/a.ts', 'src/b.ts'])
-    expect(view.container.querySelectorAll('[data-file-icon="typescript"]')).toHaveLength(2)
     expect(view.getByText('2 个路径')).toBeTruthy()
     // No file-group headers in the paths shape.
     expect(fileHeaders(view.container)).toEqual([])

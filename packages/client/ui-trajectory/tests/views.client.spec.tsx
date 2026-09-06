@@ -429,7 +429,7 @@ describe('plugin registration', () => {
     const view = mount(b.slots)
     fireEvent.click(screen.getByRole('tab', { name: 'Trajectory' }))
     const toggle = view.container.querySelector(
-      'button[aria-label="Use actual duration"]',
+      'button[aria-label="使用实际时长"]',
     ) as HTMLButtonElement | null
     expect(toggle).not.toBeNull()
     expect(toggle.getAttribute('aria-pressed')).toBe('false')
@@ -480,9 +480,9 @@ describe('tab switching in ConversationRoot', () => {
     expect(screen.getByRole('toolbar', { name: '轨迹工具栏' })).toBeTruthy()
     expect(screen.getByRole('region', { name: 'Trajectory timeline' })).toBeTruthy()
     expect(view.container.querySelector('[data-conversation-composer-overlay]')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse turns' }))
+    fireEvent.click(screen.getByRole('button', { name: '收起所有轮次' }))
     expect(view.container.querySelector('[data-collapsed-summary="turn"]')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Expand turns' }))
+    fireEvent.click(screen.getByRole('button', { name: '展开所有轮次' }))
     expect(screen.getByRole('row', { name: /USER/ })).toBeTruthy()
     expect(screen.queryByTestId('chat-body')).toBeNull()
     expect(b.loadOlder).not.toHaveBeenCalled()
@@ -692,10 +692,10 @@ describe('tab switching in ConversationRoot', () => {
     expect(screen.getByRole('toolbar', { name: '轨迹工具栏' })).toBeTruthy()
     expect(screen.getByText('No timing data')).toBeTruthy()
     expect(screen.getByRole<HTMLButtonElement>('button', {
-      name: 'Collapse turns',
+      name: '收起所有轮次',
     }).disabled).toBe(false)
     expect(screen.getByRole<HTMLButtonElement>('button', {
-      name: 'Collapse calls',
+      name: '收起所有调用',
     }).disabled).toBe(false)
     expect(screen.queryByRole('row')).toBeNull()
     expect(screen.queryByText(/turns ·/)).toBeNull()

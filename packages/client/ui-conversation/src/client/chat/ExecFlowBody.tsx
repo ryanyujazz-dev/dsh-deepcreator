@@ -110,7 +110,7 @@ function TurnStatus({ startTime, t, thinkingText, onShowThinking }: {
   return (
     <div className={css.turnStatus}>
       <span className={css.turnStatusStatus} role="status" aria-live="polite">
-        <span className={css.turnStatusLabel}>Deep diving...</span>
+        <span className={css.turnStatusLabel}>{t('chat.deepDiving')}</span>
         {showClock && (
           <span className={css.turnStatusClock} aria-hidden>
             {formatRunDuration(elapsedMs, t)}

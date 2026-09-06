@@ -25,10 +25,10 @@ import { CONVERSATION_NS as NS } from '../../locale.ts'
 type WebRowProps = ToolCallViewProps & PropsLocale<'conversation'>
 
 /** web_fetch reads one URL; web_search queries. Titles are figma literals. */
-const WEB_TITLES: Record<string, string> = {
-  web_search: 'Search',
-  web_fetch: 'Fetch',
-}
+const WEB_TITLE_KEYS = {
+  web_search: 'tool.title.webSearch',
+  web_fetch: 'tool.title.webFetch',
+} as const
 
 /**
  * Web row: icon + Search/Fetch · {summary} in the shared ToolRow chrome, with
@@ -46,7 +46,7 @@ export function WebRow({ toolName, block, inspect, execflow, t }: WebRowProps) {
       variant={model.variant}
       toolName={toolName}
       icon={icon}
-      title={WEB_TITLES[toolName] ?? model.title}
+      title={t(WEB_TITLE_KEYS[toolName as keyof typeof WEB_TITLE_KEYS] ?? model.titleKey)}
       summary={model.summary}
       body={null}
       output={model.output}

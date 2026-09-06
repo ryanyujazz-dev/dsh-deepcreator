@@ -4,8 +4,9 @@
  * `prefers-color-scheme`, and publishes immutable snapshots; it never touches
  * the DOM — ui-layout's presenter consumes the resolved snapshot. The Host
  * settings scope loads and stores the preference in the user-settings
- * document. The plugin also registers the Appearance preference row into the
- * settings General section — the theme feature owns its own settings surface.
+ * document. The plugin also registers the Appearance preference row and the
+ * content font-size row (official rc.1) into the settings surfaces — the
+ * theme feature owns its own settings surface.
  */
 import type { Context } from '@deepseek-ai/cordis'
 // Own the complete global palette entry explicitly. rc.1 and earlier happened
@@ -34,12 +35,15 @@ import type {} from '@ryanyujazz/dsh-client-ui-settings/client'
 import type {} from '@ryanyujazz/dsh-client-locale/client'
 import type { AppearanceRowInjected } from './AppearanceRow.tsx'
 import { AppearanceRow } from './AppearanceRow.tsx'
-import { createAppearanceRowStore } from './settings-store.ts'
+import type { FontSizeRowInjected } from './FontSizeRow.tsx'
+import { FontSizeRow } from './FontSizeRow.tsx'
+import { createAppearanceRowStore, createFontSizeRowStore } from './settings-store.ts'
 import { en, zh, type ThemeKey } from './locales.ts'
 import {
   CODE_FONT_FIELD, DARK_CODE_THEME_FIELD,
-  DEFAULT_CODE_FONT, DEFAULT_DARK_CODE_THEME, DEFAULT_LIGHT_CODE_THEME,
+  DEFAULT_CODE_FONT, DEFAULT_DARK_CODE_THEME, DEFAULT_FONT_SIZE, DEFAULT_LIGHT_CODE_THEME,
   DEFAULT_PREFERENCE, DEFAULT_TRANSCRIPT_TEXT_SIZE,
+  FONT_SIZE_FIELD, FONT_SIZE_MAX, FONT_SIZE_MIN,
   isCodeFont, isDarkCodeTheme, isLightCodeTheme, isThemePreference,
   LIGHT_CODE_THEME_FIELD, THEME_PREFERENCE_FIELD, THEME_SETTINGS_NAMESPACE, TRANSCRIPT_TEXT_SIZE_FIELD,
   TRANSCRIPT_TEXT_SIZES,
@@ -48,7 +52,8 @@ import {
 } from '../theme-settings.ts'
 
 export type { AppearanceRowComponentProps, AppearanceRowInjected } from './AppearanceRow.tsx'
-export type { AppearanceRowState } from './settings-store.ts'
+export type { FontSizeRowComponentProps, FontSizeRowInjected } from './FontSizeRow.tsx'
+export type { AppearanceRowState, FontSizeRowState } from './settings-store.ts'
 export type { ThemeKey } from './locales.ts'
 export type { CodeFont, DarkCodeTheme, LightCodeTheme, ThemePreference, ThemeSettings, TranscriptTextSize } from '../theme-settings.ts'
 
@@ -97,6 +102,8 @@ export interface ThemeDefinition {
 export interface ThemeSnapshot {
   /** The persisted preference (may be `system`). */
   preference: ThemePreference
+  /** Conversation content font size in px (integer within FONT_SIZE_MIN..FONT_SIZE_MAX). */
+  fontSize: number
   /** Persisted transcript typography size. */
   transcriptTextSize: TranscriptTextSize
   /** Resolved syntax theme and the two durable per-scheme selections. */
@@ -246,6 +253,7 @@ export class ThemeRuntime {
   private readonly host: SettingsScope<ThemeSettings>
   private themes: ThemeDefinition[] = [...BUILTIN_THEMES]
   private preference: ThemePreference
+  private fontSize: number = bootstrapFontSize()
   private transcriptTextSize: TranscriptTextSize
   private lightCodeTheme: LightCodeTheme
   private darkCodeTheme: DarkCodeTheme
@@ -335,6 +343,22 @@ export class ThemeRuntime {
   }
 
   /**
+   * Change the conversation content font size — the only font-size write
+   * entry (official rc.1). Accepted values are written through the settings
+   * scope and emit `theme/change`.
+   * @param px - integer px within FONT_SIZE_MIN..FONT_SIZE_MAX; out-of-range or fractional values throw.
+   */
+  setFontSize(px: number): void {
+    if (!Number.isInteger(px) || px < FONT_SIZE_MIN || px > FONT_SIZE_MAX) {
+      throw new Error(`font size ${px} is outside ${FONT_SIZE_MIN}..${FONT_SIZE_MAX}`)
+    }
+    if (this.fontSize === px) return
+    this.fontSize = px
+    void this.host.set(FONT_SIZE_FIELD, px)
+    this.publish()
+  }
+
+  /**
    * Switch the transcript typography preference and persist it through the
    * settings scope. The published theme snapshot carries concrete font tokens
    * so consumers render the new size without page or subtree scaling.
@@ -376,11 +400,13 @@ export class ThemeRuntime {
     const section = this.host.getSnapshot().value
     if (section === undefined
       || (this.preference === section.preference
+        && this.fontSize === section.fontSize
         && this.transcriptTextSize === section.transcriptTextSize
         && this.lightCodeTheme === section.lightCodeTheme
         && this.darkCodeTheme === section.darkCodeTheme
         && this.codeFont === section.codeFont)) return
     this.preference = section.preference
+    this.fontSize = section.fontSize
     this.transcriptTextSize = section.transcriptTextSize
     this.lightCodeTheme = section.lightCodeTheme
     this.darkCodeTheme = section.darkCodeTheme
@@ -451,6 +477,7 @@ export class ThemeRuntime {
     if (active === undefined) throw new Error(`theme registry lost "${resolvedId}"`)
     return Object.freeze({
       preference: this.preference,
+      fontSize: this.fontSize,
       transcriptTextSize: this.transcriptTextSize,
       codeAppearance: Object.freeze({
         activeThemeId: active.colorScheme === 'dark' ? this.darkCodeTheme : this.lightCodeTheme,
@@ -489,6 +516,24 @@ export class ThemeRuntime {
     this.snapshot = this.buildSnapshot()
     this.ctx.emit('theme/change', this.snapshot)
   }
+}
+
+/**
+ * Read the font size the Host boot script wrote on `body` before any plugin
+ * ran (official rc.1), so the initial snapshot matches first paint and
+ * ui-layout's presenter does not flash the schema default while the settings
+ * read is in flight. Non-browser runs and mounts without the boot script fall
+ * back to the schema default; the durable settings adoption still lands
+ * afterwards.
+ */
+function bootstrapFontSize(): number {
+  /* v8 ignore next -- needs a documentless run (node e2e booting the client tree), not constructible under jsdom */
+  if (typeof document === 'undefined') return DEFAULT_FONT_SIZE
+  const raw = document.body.style.getPropertyValue('--dsh-content-font-size')
+  const parsed = Number.parseInt(raw, 10)
+  return Number.isInteger(parsed) && parsed >= FONT_SIZE_MIN && parsed <= FONT_SIZE_MAX
+    ? parsed
+    : DEFAULT_FONT_SIZE
 }
 
 /**
@@ -553,7 +598,16 @@ export function apply(ctx: ClientContext): void {
         || !isLightCodeTheme(candidate.lightCodeTheme)
         || !isDarkCodeTheme(candidate.darkCodeTheme)
         || !isCodeFont(candidate.codeFont)) return undefined
-      return candidate as ThemeSettings
+      // Documents persisted before the font-size axis carry no field; an
+      // out-of-range one is treated the same as absent (schema default).
+      const fontSize = candidate.fontSize
+      return {
+        ...candidate,
+        fontSize: typeof fontSize === 'number' && Number.isInteger(fontSize)
+          && fontSize >= FONT_SIZE_MIN && fontSize <= FONT_SIZE_MAX
+          ? fontSize
+          : DEFAULT_FONT_SIZE,
+      } as ThemeSettings
     },
   })
   const theme = new ThemeRuntime(ctx, host)
@@ -563,6 +617,8 @@ export function apply(ctx: ClientContext): void {
 
   const store = createAppearanceRowStore()
   let bound: BoundActions<typeof store> | undefined
+  const fontSizeStore = createFontSizeRowStore()
+  let fontSizeBound: BoundActions<typeof fontSizeStore> | undefined
   const sync = (snapshot: ThemeSnapshot): void => {
     bound?.sync(
       snapshot.preference,
@@ -572,6 +628,7 @@ export function apply(ctx: ClientContext): void {
       snapshot.codeAppearance.fontId,
       snapshot.revision,
     )
+    fontSizeBound?.sync(snapshot.fontSize, snapshot.revision)
   }
   ctx.on('theme/change', sync)
   const injected = (actions: BoundActions<typeof store>): AppearanceRowInjected => {
@@ -595,4 +652,20 @@ export function apply(ctx: ClientContext): void {
     locale: SETTINGS_NS,
     inject: injected,
   }, AppearanceRow))
+
+  const fontSizeInjected = (actions: BoundActions<typeof fontSizeStore>): FontSizeRowInjected => {
+    fontSizeBound = actions
+    sync(theme.getTheme())
+    return {
+      setFontSize: (px) => { theme.setFontSize(px) },
+    }
+  }
+  ctx.slots.inject('settings.general.item', () => ctx.slots.register({
+    name: 'settings.general.item',
+    id: 'font-size',
+    order: 11,
+    store: fontSizeStore,
+    locale: SETTINGS_NS,
+    inject: fontSizeInjected,
+  }, FontSizeRow))
 }

@@ -55,7 +55,7 @@ export function GenericToolCard({ toolName, block, cwd, openFile, revealChange, 
       variant={model.variant}
       toolName={toolName}
       icon={VARIANT_ICONS[model.variant]}
-      title={model.title}
+      title={t(model.titleKey)}
       // A terminal presenter's description names both this row and the terminal
       // card title, so it outranks the args-derived summary here exactly as it
       // does in BashRow; a search result view's replacement title does likewise.

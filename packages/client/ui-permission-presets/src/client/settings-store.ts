@@ -1,19 +1,19 @@
 /**
- * Permission default-settings controller. The host descriptor supplies the
- * current value and the dynamic preset enum; writes target only
- * `defaultPreset` and carry the descriptor revision.
+ * Permission default-settings controller. The permission descriptor comes
+ * from the shared describe mirror (the dynamic preset enum lives in the
+ * namespace schema, which per-namespace scopes do not carry); writes target
+ * only `defaultPreset`, carry the descriptor revision, and fold their answer
+ * back into the mirror.
  */
 
-import type {
-  ClientRemote, SettingsNamespaceView,
-} from '@deepseek-ai/dsh-api-remotes/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type { SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
 import {
-  createSnapshotStore,
-  type SnapshotStore,
+  createSnapshotStore, type SnapshotStore,
 } from '@deepseek-ai/dsh-client-store'
 import type {
-  SchemaNode, SettingsSchemaService,
-} from '@ryanyujazz/dsh-client-ui-settings/client'
+  SchemaNode, SettingsDescribeFace, SettingsSchemaService,
+} from '@deepseek-ai/dsh-client-ui-settings/client'
 import { displayPermissionPreset } from './presentation.ts'
 
 /** Permission's settings namespace on the host wire. */
@@ -46,12 +46,10 @@ interface ConstChoice {
 /**
  * Read the dynamic preset enum encoded by the host's `defaultPreset` schema.
  * @param view - permission namespace descriptor.
+ * @param schema - settings schema operations.
  * @returns current value and selectable options.
  */
-export function permissionDefaultOf(
-  view: SettingsNamespaceView,
-  schema: Pick<SettingsSchemaService, 'rehydrate' | 'nodeAtPath'>,
-): {
+export function permissionDefaultOf(view: SettingsNamespaceView, schema: SettingsSchemaService): {
   currentValue: string
   options: PermissionDefaultOption[]
 } {
@@ -79,7 +77,7 @@ export function permissionDefaultOf(
   return { currentValue: value, options }
 }
 
-/** Controller joining Settings reads, writes, and pushed invalidations. */
+/** Controller deriving the row from the shared mirror and writing the default through it. */
 export class PermissionPresetSettingsController {
   /** Row snapshot consumed through a bound selector hook. */
   readonly store: SnapshotStore<PermissionSettingsState> = createSnapshotStore({
@@ -91,93 +89,128 @@ export class PermissionPresetSettingsController {
     revision: 0,
   })
 
-  private generation = 0
-  private view: SettingsNamespaceView | undefined
+  private following: (() => void) | undefined
+  private saving = false
+  private disposed = false
 
-  /** @param remote - Generated Remote namespaces (the `settings` face). */
+  /**
+   * @param describeFace - the shared mirror's read/fold face (descriptor and schema source).
+   * @param ctx - the row plugin's context, whose `remote.settings` namespace
+   * carries the `defaultPreset` write.
+   * @param schema - settings-owned schema operations.
+   */
   constructor(
-    private readonly remote: Pick<ClientRemote, 'settings'>,
-    private readonly schema: Pick<SettingsSchemaService, 'rehydrate' | 'nodeAtPath'>,
+    private readonly describeFace: SettingsDescribeFace,
+    private readonly ctx: ClientContext,
+    private readonly schema: SettingsSchemaService,
   ) {}
 
   /**
-   * Refresh the permission descriptor. Latest request wins.
-   * @returns nothing; {@link store} carries success or failure.
+   * Begin following the mirror (idempotent) and reflect its current answer.
+   * @returns settlement once the snapshot reflects the mirror.
    */
   async load(): Promise<void> {
-    const generation = ++this.generation
+    if (this.disposed) return
+    this.following ??= this.describeFace.subscribe(() => { this.derive() })
     this.store.update((state) => {
       state.status = 'loading'
       state.error = null
     })
-    try {
-      const response = await this.remote.settings.describe()
-      if (!response.ok) throw new Error(response.error.message)
-      if (generation !== this.generation) return
-      const view = response.value.namespaces.find(entry => entry.ns === PERMISSION_SETTINGS_NS)
-      if (view === undefined) {
-        this.view = undefined
-        this.store.update((state) => {
-          state.status = 'unavailable'
-          state.writable = false
-          state.currentValue = ''
-          state.options = []
-        })
-        return
-      }
-      this.accept(view, response.value.writable)
-    } catch (error) {
-      if (generation !== this.generation) return
-      this.fail(error)
-    }
+    await this.describeFace.ensure()
+    this.derive()
   }
 
   /**
    * Persist one preset as the default for subsequently created sessions.
+   * A selection made while one is already saving is ignored — the row's
+   * control is disabled during the save, so this only drops programmatic
+   * double-submits rather than user intent.
    * @param preset - advertised preset key.
    * @returns nothing; {@link store} carries success or failure.
    */
   async select(preset: string): Promise<void> {
-    const view = this.view
     const state = this.store.getSnapshot()
-    if (view === undefined || !state.writable) return
-    const generation = ++this.generation
+    const view = this.describeFace.getSnapshot().view?.namespaces
+      .find(entry => entry.ns === PERMISSION_SETTINGS_NS)
+    if (view === undefined || !state.writable || this.saving) return
+    this.saving = true
     this.store.update((draft) => {
       draft.status = 'saving'
       draft.error = null
     })
+    let response
     try {
-      const response = await this.remote.settings.mutate(
+      response = await this.ctx.remote.settings.mutate(
         PERMISSION_SETTINGS_NS,
         [{ op: 'set', path: ['defaultPreset'], value: preset }],
         view.revision,
       )
-      if (generation !== this.generation) return
-      if (!response.ok) throw new Error(response.error.message)
-      this.accept(response.value, true)
+    } finally {
+      // Cleared before the fold below, whose publish reaches `derive` through
+      // this row's own subscription and is skipped while a save is pending.
+      this.saving = false
+    }
+    if (this.disposed) return
+    if (!response.ok) {
+      this.fail(response.error)
+      return
+    }
+    // The mirror publish reaches this row's own subscription, so the fold
+    // is also what republishes the accepted value here.
+    this.describeFace.acceptView(response.value)
+  }
+
+  /** Stop following the mirror; later publishes leave the snapshot alone. */
+  dispose(): void {
+    this.disposed = true
+    this.following?.()
+    this.following = undefined
+  }
+
+  private derive(): void {
+    if (this.disposed || this.saving) return
+    const mirrored = this.describeFace.getSnapshot()
+    if (mirrored.status === 'unavailable') {
+      // The terminal non-loopback state: this client keeps Host persistence disabled, so
+      // the row hides itself exactly like an unserved namespace.
+      this.store.update((state) => {
+        state.status = 'unavailable'
+        state.writable = false
+        state.currentValue = ''
+        state.options = []
+      })
+      return
+    }
+    if (mirrored.view === undefined) {
+      // A held failure with no answer is a failed row; without one the read
+      // is still in flight and the row keeps its loading state.
+      if (mirrored.error !== null) this.fail(new Error(mirrored.error))
+      return
+    }
+    const view = mirrored.view.namespaces.find(entry => entry.ns === PERMISSION_SETTINGS_NS)
+    if (view === undefined) {
+      this.store.update((state) => {
+        state.status = 'unavailable'
+        state.writable = false
+        state.currentValue = ''
+        state.options = []
+      })
+      return
+    }
+    try {
+      const resolved = permissionDefaultOf(view, this.schema)
+      const { writable } = mirrored.view
+      this.store.update((state) => {
+        state.status = 'ready'
+        state.error = null
+        state.writable = writable
+        state.currentValue = resolved.currentValue
+        state.options = resolved.options
+        state.revision = view.revision
+      })
     } catch (error) {
-      if (generation !== this.generation) return
       this.fail(error)
     }
-  }
-
-  /** Stop in-flight responses from publishing after plugin disposal. */
-  dispose(): void {
-    this.generation += 1
-    this.view = undefined
-  }
-
-  private accept(view: SettingsNamespaceView, writable: boolean): void {
-    const resolved = permissionDefaultOf(view, this.schema)
-    this.view = view
-    this.store.update((state) => {
-      state.status = 'ready'
-      state.error = null
-      state.writable = writable
-      state.currentValue = resolved.currentValue
-      state.options = resolved.options
-      state.revision = view.revision
-    })
   }
 
   private fail(error: unknown): void {
@@ -186,13 +219,4 @@ export class PermissionPresetSettingsController {
       state.error = error instanceof Error ? error.message : String(error)
     })
   }
-}
-
-/**
- * Refetch only after the row has opened once.
- * @param controller - permission settings controller.
- */
-export function refreshPermissionIfLoaded(controller: PermissionPresetSettingsController): void {
-  if (controller.store.getSnapshot().status === 'idle') return
-  void controller.load()
 }

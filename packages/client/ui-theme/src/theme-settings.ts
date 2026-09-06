@@ -16,6 +16,14 @@ export const DARK_CODE_THEMES = [
   'catppuccin-dark', 'rose-pine-dark', 'vitesse-dark', 'kanagawa-dark', 'everforest-dark', 'tokyo-night-dark',
 ] as const
 export const CODE_FONTS = ['system', 'jetbrains-mono', 'fira-code', 'source-code-pro'] as const
+/** Field carrying the conversation content font size. */
+export const FONT_SIZE_FIELD = 'fontSize'
+/** Smallest accepted content font size (px). */
+export const FONT_SIZE_MIN = 12
+/** Largest accepted content font size (px). */
+export const FONT_SIZE_MAX = 17
+/** Content font size when the user-settings document has no override (px). */
+export const DEFAULT_FONT_SIZE = 14
 
 /** Settings namespace owned by the theme plugin. */
 export const THEME_SETTINGS_NAMESPACE = 'ui-theme'
@@ -56,6 +64,8 @@ export interface ThemeSettings {
   lightCodeTheme: LightCodeTheme
   darkCodeTheme: DarkCodeTheme
   codeFont: CodeFont
+  /** Conversation content font size in px (integer within FONT_SIZE_MIN..FONT_SIZE_MAX). */
+  fontSize: number
 }
 
 /** Durable theme schema; also the wire envelope the browser scope validates against. */
@@ -65,6 +75,7 @@ export const ThemeSettingsSchema: z<ThemeSettings> = z.object({
   [LIGHT_CODE_THEME_FIELD]: z.union([...LIGHT_CODE_THEMES]).default(DEFAULT_LIGHT_CODE_THEME),
   [DARK_CODE_THEME_FIELD]: z.union([...DARK_CODE_THEMES]).default(DEFAULT_DARK_CODE_THEME),
   [CODE_FONT_FIELD]: z.union([...CODE_FONTS]).default(DEFAULT_CODE_FONT),
+  [FONT_SIZE_FIELD]: z.number().step(1).min(FONT_SIZE_MIN).max(FONT_SIZE_MAX).default(DEFAULT_FONT_SIZE),
 })
 
 /**

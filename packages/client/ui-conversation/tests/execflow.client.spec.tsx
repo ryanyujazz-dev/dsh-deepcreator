@@ -242,7 +242,7 @@ describe('ExecFlow partition and slot forms', () => {
     expect(link.querySelector('svg')).not.toBeNull()
     expect(link.getAttribute('data-hover-chevron')).toBe('up')
     expect(view.getByText('streaming tail')).toBeTruthy()
-    expect(view.getByRole('status').textContent).toBe('Deep diving...')
+    expect(view.getByRole('status').textContent).toBe('深度求索中...')
 
     fireEvent.click(link)
     expect(h.selectRenderMode).toHaveBeenCalledWith(SID, 'think', h.props.actions.setRenderMode)
