@@ -1,12 +1,15 @@
 import type { Context } from '@deepseek-ai/cordis'
-import type {
-  ConversationLocation, ConversationNodeDefinition, ModelRetryNode,
-} from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type ConversationLocation,
+  type ConversationMatch,
+  type ConversationNodeDefinition,
+  type ModelRetryNode,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-llm-retry/types'
 import type { RetryChatData } from '../contract/chat-nodes.ts'
 import { chatNode } from './common.ts'
 
-declare module '@ryanyujazz/dsh-client-ui-conversation/client' {
+declare module '@deepseek-ai/dsh-client-ui-chat/client' {
   interface ChatNodeDataMap {
     /** Producer-correlated model retry chain. */
     'model-retry': RetryChatData
@@ -20,7 +23,7 @@ export interface RetryState {
   readonly attempts: readonly ModelRetryNode[]
 }
 
-function scheduledNode(match: Parameters<ConversationNodeDefinition['start']>[1]): ModelRetryNode | undefined {
+function scheduledNode(match: ConversationMatch): ModelRetryNode | undefined {
   if (match.event.type !== 'llm/retry') return undefined
   return {
     kind: 'model-retry',
@@ -93,5 +96,5 @@ export const retryDefinition: ConversationNodeDefinition<RetryState> = {
  * @param ctx - owning UI Conversation context.
  */
 export function registerRetryConversationNode(ctx: Context): void {
-  ctx.conversationEvents.register(retryDefinition)
+  ctx.uiConversation.events.register(retryDefinition)
 }

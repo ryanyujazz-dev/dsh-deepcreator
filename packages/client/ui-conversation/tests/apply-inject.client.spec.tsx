@@ -16,8 +16,14 @@
 import { describe, expect, it, vi } from 'vitest'
 import { SlotTestRuntime, usePinnedBrowserLanguages, stubSettingsScope } from '@deepseek-ai/dsh-client-test-runtime'
 import type { SessionBehaviorOverrides } from '@deepseek-ai/dsh-client-test-runtime'
+import type { WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import { LocaleRuntime } from '@ryanyujazz/dsh-client-locale/client'
-import type { ISession, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type ISession,
+} from '@deepseek-ai/dsh-api-session-controller/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
 import { apply, inject } from '@ryanyujazz/dsh-client-ui-conversation/client'
 import type {
   ChatViewInjected, ComposerBarInjected, ConversationInjected, ConversationSessionHeaderInjected,
@@ -44,22 +50,38 @@ function sessionFakeFor() {
   } satisfies SessionBehaviorOverrides
 }
 
+/** Seed one Workspace row into the runtime's list store (selectWorkspace's pick source). */
+function seedWorkspace(
+  runtime: SlotTestRuntime,
+  workspaceId: string,
+  path: string,
+  sessionIds: readonly SessionId[],
+): Promise<void> {
+  return runtime.workspaces.update((draft) => {
+    draft.items = [...draft.items, {
+      workspaceId, path, title: workspaceId, sessionIds,
+      createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z',
+    } as WorkspaceView]
+  })
+}
+
 async function bench(isLoopback = false) {
   const runtime = await SlotTestRuntime.create()
-  runtime.provide('connection', { api: { settings: {} }, isLoopback })
+  runtime.ctx.provide('connection', { api: { settings: {} }, isLoopback })
   // The plugin injects both; these specs exercise no settings path.
-  runtime.provide('remote', { $on: () => () => {} })
-  runtime.provide('settingsScope', { bind: () => stubSettingsScope().scope } as never)
+  const remoteOpenPath = vi.fn(() => Promise.resolve())
+  runtime.ctx.provide('remote', { $on: () => () => {}, session: { openWorkspacePath: remoteOpenPath } })
+  runtime.ctx.provide('settingsScope', { bind: () => stubSettingsScope().scope } as never)
   const sessionFake = sessionFakeFor()
   await runtime.sessions.add({
     id: ROOT,
-    summary: { title: 'R', displayTitle: 'R', cwd: '/proj' },
+    summary: { title: 'R', displayTitle: 'R', cwd: '/proj', blank: true },
     session: sessionFake,
   })
   const layoutFake = { closeDetails: vi.fn() }
-  runtime.provide('layout', layoutFake)
+  runtime.ctx.provide('layout', layoutFake)
   const locale = new LocaleRuntime(runtime.ctx)
-  runtime.provide('locale', locale)
+  runtime.ctx.provide('locale', locale)
   runtime.slots.installLocale(locale)
 
   // The AppFrame role: the conversation-package slots must be declared by a
@@ -71,15 +93,20 @@ async function bench(isLoopback = false) {
 
   const feature = await runtime.mount({ inject: [...inject], apply })
 
+  // The resident shell declared the per-session activity-chip seat (an empty
+  // seat renders nothing — the App Stage fills it in M4).
+  expect(runtime.slots.spec('conversation.activity.chip')).toEqual({ kind: 'list', scope: 'session' })
+  expect(runtime.slots.entries('conversation.activity.chip')).toHaveLength(0)
+
   // The host face (store resolution) exists only inside the installed
   // renderer, so materialize it the way the shell does.
   runtime.renderRoot()
-  const entryOf = (key: 'conversation' | 'conversation.session' | 'conversation.session.header' | 'conversation.composer.bar' | 'conversation.view' | 'details') =>
+  const entryOf = (key: 'conversation' | 'deepcreator.conversation.session' | 'conversation.session.header' | 'conversation.composer.bar' | 'conversation.view' | 'details') =>
     runtime.slots.entries(key)[0]!
   /** Resolve store instance + call the inject the way the outlet would. */
   const conversationApi = (id: SessionId) => {
-    const entry = entryOf('conversation.session')
-    const instance = runtime.storeOf('conversation.session', id) as ChatInstance
+    const entry = entryOf('deepcreator.conversation.session')
+    const instance = runtime.storeOf('deepcreator.conversation.session', id) as ChatInstance
     const injected = (entry.inject as unknown as (sessionId: SessionId, actions: ChatActions) => ConversationSessionInjected)(
       id, instance.actions)
     return { instance, injected }
@@ -107,9 +134,14 @@ async function bench(isLoopback = false) {
       id, instance.actions)
     return { instance, injected }
   }
-  /** Materialize the input provide contribution the way the runtime does. */
+  /** Materialize the input provide contribution the way the runtime does:
+   * ui-session owns standard-source materialization in 0.1.2, and its
+   * per-session resolve is the same renderer-private seam production's
+   * embed uses (apply.ts). */
   const inputApi = (id: SessionId) => {
-    const info = runtime.sessions.provideInfo(id)!
+    const info = (runtime.ctx.uiSession as unknown as {
+      resolve(sessionId: SessionId): { hooks: Record<string, unknown>; props: Record<string, unknown> } | undefined
+    }).resolve(id)!
     const state = info.hooks['input'] as {
       getSnapshot: () => { draft: string }
       subscribe: (fn: () => void) => () => void
@@ -123,7 +155,7 @@ async function bench(isLoopback = false) {
   return {
     runtime, feature, slots: runtime.slots, entryOf,
     conversationApi, conversationHeaderApi, residentApi, composerApi, chatViewApi, inputApi,
-    sessionFake,
+    sessionFake, remoteOpenPath,
   }
 }
 
@@ -219,7 +251,7 @@ describe('conversation slot inject API', () => {
   it('openFile resolves against session cwd and activates an Artifact tab when composed', async () => {
     const b = await bench()
     const activate = vi.fn()
-    b.runtime.provide('workbench', { types: { list: () => [{ id: 'artifact' }] }, activate })
+    b.runtime.ctx.provide('workbench', { types: { list: () => [{ id: 'artifact' }] }, activate })
     const { injected } = b.chatViewApi(ROOT)
     injected.openFile('src/a.ts')
     expect(activate).toHaveBeenCalledWith('artifact', '/proj/src/a.ts')
@@ -227,44 +259,47 @@ describe('conversation slot inject API', () => {
     await b.runtime.dispose()
   })
 
-  it('openFile falls back to workspaces.openPath when Artifact is not composed', async () => {
+  it('openFile falls back to the host path opener when Artifact is not composed', async () => {
     const b = await bench(true)
     expect((b.runtime.ctx.get('connection') as { isLoopback: boolean }).isLoopback).toBe(true)
     const { injected } = b.chatViewApi(ROOT)
     injected.openFile('src/a.ts')
     await vi.waitFor(() => {
-      expect(b.runtime.workspaces.calls).toContainEqual({ method: 'openPath', args: ['/proj/src/a.ts'] })
+      expect(b.remoteOpenPath).toHaveBeenCalledWith({ path: '/proj/src/a.ts' })
     })
     await b.runtime.dispose()
   })
 
-  it('does not fall back to a native path opener on a remote connection', async () => {
+  it('does not fall back to a host path opener on a remote connection', async () => {
     const b = await bench(false)
     const { injected } = b.chatViewApi(ROOT)
     injected.openFile('src/a.ts')
-    expect(b.runtime.workspaces.calls.some(call => call.method === 'openPath')).toBe(false)
+    expect(b.remoteOpenPath).not.toHaveBeenCalled()
     await b.runtime.dispose()
   })
 
   it('routes workspace switching through the runtime owner, carrying the draft', async () => {
     const b = await bench()
     const resident = b.residentApi(ROOT)
-    // Same-session connect (the picked workspace resolves to this session):
-    // no draft movement, plain re-open.
-    b.runtime.workspaces.stub('connectWorkspace', () => Promise.resolve(ROOT))
+    // Same-workspace pick (the Workspace's reuse rule resolves to this
+    // session): no draft movement, plain re-open.
+    await seedWorkspace(b.runtime, 'workspace-1', '/proj', [ROOT])
     const { state, actions } = b.inputApi(ROOT)
     actions.setDraft('carry me')
     void resident.selectWorkspace('workspace-1' as never)
     await vi.waitFor(() => {
       expect(b.runtime.sessions.calls.filter(c => c.method === 'open')).toHaveLength(1)
     })
-    expect(b.runtime.workspaces.calls).toContainEqual({ method: 'connectWorkspace', args: ['workspace-1'] })
     expect(state.getSnapshot().draft).toBe('carry me')
-    // Cross-session connect: the draft MOVES — the old machine empties, the
-    // new session's machine receives the text, then navigation lands there.
+    // Cross-workspace pick: the reuse rule resolves the picked Workspace's own
+    // blank session, so the draft MOVES — the old machine empties, the new
+    // session's machine receives the text, then navigation lands there.
     const OTHER = 'other-1' as SessionId
-    await b.runtime.sessions.add({ id: OTHER }, { current: false })
-    b.runtime.workspaces.stub('connectWorkspace', () => Promise.resolve(OTHER))
+    await b.runtime.sessions.add({
+      id: OTHER,
+      summary: { cwd: '/other', blank: true },
+    }, { current: false })
+    await seedWorkspace(b.runtime, 'workspace-2', '/other', [OTHER])
     void resident.selectWorkspace('workspace-2' as never)
     await vi.waitFor(() => {
       expect(b.runtime.sessions.calls).toContainEqual({ method: 'open', args: [OTHER] })
@@ -274,35 +309,37 @@ describe('conversation slot inject API', () => {
     await b.runtime.dispose()
   })
 
-  it('selectWorkspace edge arms: no-session resident, empty-draft move, connect failure retryable', async () => {
+  it('selectWorkspace edge arms: no-session resident, empty-draft move, unknown-workspace rejection', async () => {
     const b = await bench()
-    // No-session resident (hero before any session): connect resolves and
-    // navigation proceeds without any draft choreography.
+    // No-session resident (hero before any session): the reuse rule still
+    // resolves and navigation proceeds without any draft choreography.
+    await seedWorkspace(b.runtime, 'workspace-0', '/proj', [ROOT])
     const noSession = b.residentApi(undefined)
-    b.runtime.workspaces.stub('connectWorkspace', () => Promise.resolve(ROOT))
     void noSession.selectWorkspace('workspace-0' as never)
     await vi.waitFor(() => {
       expect(b.runtime.sessions.calls).toContainEqual({ method: 'open', args: [ROOT] })
     })
 
-    // Cross-session connect with an EMPTY draft: no move, no clearing.
+    // Cross-workspace pick with an EMPTY draft: no move, no clearing.
     const OTHER = 'b9-other' as SessionId
-    await b.runtime.sessions.add({ id: OTHER }, { current: false })
+    await b.runtime.sessions.add({
+      id: OTHER,
+      summary: { cwd: '/proj3', blank: true },
+    }, { current: false })
+    await seedWorkspace(b.runtime, 'workspace-3', '/proj3', [OTHER])
     const resident = b.residentApi(ROOT)
     const { state } = b.inputApi(ROOT)
     expect(state.getSnapshot().draft).toBe('')
-    b.runtime.workspaces.stub('connectWorkspace', () => Promise.resolve(OTHER))
     void resident.selectWorkspace('workspace-3' as never)
     await vi.waitFor(() => {
       expect(b.runtime.sessions.calls).toContainEqual({ method: 'open', args: [OTHER] })
     })
     expect(b.inputApi(OTHER).state.getSnapshot().draft).toBe('')
 
-    // Connect failure: the rejection propagates to the caller (the view owns
+    // Unknown workspace: the rejection propagates to the caller (the view owns
     // the rollback) and no further navigation happens.
     const opens = b.runtime.sessions.calls.filter(c => c.method === 'open').length
-    b.runtime.workspaces.stub('connectWorkspace', () => Promise.reject(new Error('offline')))
-    await expect(resident.selectWorkspace('workspace-4' as never)).rejects.toThrow('offline')
+    await expect(resident.selectWorkspace('workspace-4' as never)).rejects.toThrow('unknown workspace')
     expect(b.runtime.sessions.calls.filter(c => c.method === 'open')).toHaveLength(opens)
     await b.runtime.dispose()
   })

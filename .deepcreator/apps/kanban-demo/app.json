@@ -1,0 +1,12 @@
+{
+  "id": "kanban-demo",
+  "platform": "app-stage-v1",
+  "name": "看板演示",
+  "version": "0.2.1",
+  "description": "M1/M4 验收用的最小看板应用",
+  "entry": "index.html",
+  "dataVersion": "1",
+  "actions": [
+    { "name": "createTask", "description": "在指定列新建卡片", "params": { "title": "string", "column": "string?" }, "persist": ["board.items"] }
+  ]
+}

@@ -1,7 +1,17 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { JobView, SessionId, SessionSummary, SubagentAddress, SubagentCatalogSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type SessionJob,
+  type SessionSummary,
+  type SubagentCatalogSnapshot,
+} from '@deepseek-ai/dsh-api-session-controller/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
+import {
+  type SubagentAddress,
+} from '@deepseek-ai/dsh-subagent/client'
 import {
   ActivityPanel, deriveOpenLevels, formatDuration, groupSubagents, isLive, jobIdFromInstance, jobInstanceId,
   subagentRows, type SubagentRow,
@@ -19,7 +29,7 @@ const t = (key: ActivityKey | string, values?: Record<string, unknown>): string 
 interface ListState {
   byId: Record<string, SessionSummary>
   currentAddress: SubagentAddress | undefined
-  jobsBySession: Record<string, readonly JobView[]>
+  jobsBySession: Record<string, readonly SessionJob[]>
   subagentsByParent: Record<string, SubagentCatalogSnapshot>
 }
 
@@ -27,7 +37,7 @@ function makeUseSessions(state: ListState) {
   return (selector: (snapshot: ListState) => unknown) => selector(state)
 }
 
-function job(overrides: Partial<JobView> & Pick<JobView, 'id' | 'status' | 'startedAt'>): JobView {
+function job(overrides: Partial<SessionJob> & Pick<SessionJob, 'id' | 'status' | 'startedAt'>): SessionJob {
   return { kind: 'bash', label: `label-${overrides.id}`, detail: undefined, finishedAt: undefined, ...overrides }
 }
 

@@ -17,6 +17,7 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { IconChevronDownOutline14 } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { ChatRenderSlotProps } from '../contract/slots.ts'
+import { forkT, type ForkTranslate } from '../locales.ts'
 import { PendingOutgoingBubble, PendingSteeringBubble } from './MessageItem.tsx'
 import { ChatNodeSeat } from './ChatNodeSeat.tsx'
 import { formatRunDuration } from './message-chrome.ts'
@@ -53,7 +54,7 @@ function TurnStatus({ startTime, t }: {
    *  time when that boundary is outside the window. */
   startTime: number | null
   /** The owning mode body's locale seat. */
-  t: ChatRenderSlotProps['t']
+  t: ForkTranslate
 }) {
   const [mountedAt] = useState(() => Date.now())
   // Anchored to turn/start so a mid-turn reload keeps the real
@@ -89,13 +90,14 @@ function TurnStatus({ startTime, t }: {
  * keyed renderer seat.
  */
 export function ChatRenderStandard({
-  useSession, useSessions, useInput, sessionId, openFile, revealChange, loadOlder, loadImage, renderMessageImages, inspectCall, chatScroll, forkAt,
+  useSession, useSessions, useInput, useChat, sessionId, openFile, revealChange, loadOlder, loadImage, renderMessageImages, inspectCall, chatScroll, forkAt,
   acknowledgeOutgoing,
-  fileMentions, renderSlot, t,
+  fileMentions, renderSlot, t: tRaw,
 }: ChatRenderSlotProps) {
-  const order = useSession(s => s.chat.order)
-  const nodeStore = useSession(s => s.chat.nodes)
-  const timeline = useSession(s => s.chat.timeline)
+  const t = forkT(tRaw)
+  const order = useChat(s => s.order)
+  const nodeStore = useChat(s => s.nodes)
+  const timeline = useChat(s => s.timeline)
   const inbox = useSession(s => s.queue)
   // Workspace root off the session list row: path summaries display relative to it.
   const cwd = useSessions(s => s.byId[sessionId]?.cwd)
@@ -368,7 +370,7 @@ export function ChatRenderStandard({
             <Fragment key={nodeKey}>
               <ChatNodeSeat
                 nodeKey={nodeKey}
-                useSession={useSession}
+                useChat={useChat}
                 cwd={cwd}
                 openFile={openFile}
                 revealChange={revealChange}

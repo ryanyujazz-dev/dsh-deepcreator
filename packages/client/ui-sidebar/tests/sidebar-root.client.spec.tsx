@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type {
   SidebarFooterActionOwnerProps, SidebarRootComponentProps, SidebarSectionOwnerProps,
-  SidebarPrimaryActionOwnerProps, SidebarSettingsOwnerProps,
+  SidebarPrimaryActionOwnerProps, SidebarSettingsOwnerProps, SidebarStageModeOwnerProps,
 } from '../src/client/contract/slots.ts'
 import { SidebarClosedToggle, SidebarRoot } from '../src/client/SidebarRoot.tsx'
 import { en } from '../src/client/locales.ts'
@@ -28,6 +28,7 @@ function mountShell({ collapsed = false, width = 300 }: { collapsed?: boolean; w
   let settingsOwner: SidebarSettingsOwnerProps | undefined
   let footerActionOwner: SidebarFooterActionOwnerProps | undefined
   let primaryActionOwner: SidebarPrimaryActionOwnerProps | undefined
+  let stageModeOwner: SidebarStageModeOwnerProps | undefined
   let current = { collapsed, width }
   const root = () => (
     <SidebarRoot
@@ -36,8 +37,13 @@ function mountShell({ collapsed = false, width = 300 }: { collapsed?: boolean; w
       startSession={startSession} toggleSidebar={toggleSidebar} t={t}
       renderSlot={((
         key: string,
-        owner: SidebarFooterActionOwnerProps | SidebarPrimaryActionOwnerProps | SidebarSectionOwnerProps | SidebarSettingsOwnerProps,
+        owner: SidebarFooterActionOwnerProps | SidebarPrimaryActionOwnerProps | SidebarSectionOwnerProps | SidebarSettingsOwnerProps | SidebarStageModeOwnerProps,
       ) => {
+        if (key === 'sidebar.stage-mode') {
+          stageModeOwner = owner
+          // An empty seat renders nothing at all (zero-change placeholder).
+          return null
+        }
         if (key === 'sidebar.primary.action') {
           primaryActionOwner = owner
           return <li data-testid="primary-action-seat" data-wide={owner.wide} />
@@ -62,6 +68,10 @@ function mountShell({ collapsed = false, width = 300 }: { collapsed?: boolean; w
     regionOwner: () => {
       if (regionOwner === undefined) throw new Error('region owner not rendered')
       return regionOwner
+    },
+    stageModeOwner: () => {
+      if (stageModeOwner === undefined) throw new Error('stage-mode owner not rendered')
+      return stageModeOwner
     },
     settingsOwner: () => {
       if (settingsOwner === undefined) throw new Error('settings owner not rendered')
@@ -103,6 +113,8 @@ describe('SidebarRoot shell', () => {
     expect(b.settingsOwner().wide).toBe(true)
     expect(b.footerActionOwner().wide).toBe(true)
     expect(b.primaryActionOwner().wide).toBe(true)
+    // The stage-mode seat (between Brand and the primary list) gets the flag too.
+    expect(b.stageModeOwner().wide).toBe(true)
     // Expanded: the request is a no-op (no accidental collapse).
     b.regionOwner().expandSidebar()
     expect(b.toggleSidebar).not.toHaveBeenCalled()

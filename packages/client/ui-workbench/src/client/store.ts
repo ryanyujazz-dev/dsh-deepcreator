@@ -1,4 +1,7 @@
-import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  defineStore,
+  type EngineStoreHandle,
+} from '@deepseek-ai/dsh-client-store'
 import type { PanelRoute } from './contract.ts'
 import {
   MIN_PANEL_COLUMN_WIDTH, fitWorkbenchWidth, initialWorkbenchWidth, oddTrackWorkbenchWidth,

@@ -2,7 +2,9 @@
 
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { SettingsScope } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type SettingsScope,
+} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { ImageGenerationSettings } from '@ryanyujazz/dsh-image-generation/types'
 import { ImageGenerationSettingsCard } from '../src/client/ImageGenerationSettingsCard.tsx'
 import { en } from '../src/client/locales.ts'
@@ -40,13 +42,12 @@ function createSettings() {
 }
 
 const api = {
-  credentials: {
-    describe: vi.fn(async ({ refs }: { refs: string[] }) => ({
-      result: { ok: true, value: { credentials: Object.fromEntries(refs.map(ref => [ref, { configured: false }])) } },
-    })),
-    set: vi.fn(),
-    unset: vi.fn(async () => ({ result: { ok: true, value: undefined } })),
-  },
+  describe: vi.fn(async (refs: string[]) => ({
+    ok: true as const,
+    value: Object.fromEntries(refs.map(ref => [ref, { configured: false }])),
+  })),
+  set: vi.fn(),
+  unset: vi.fn(async () => ({ ok: true as const, value: undefined })),
 }
 const t = ((key: keyof typeof en) => en[key]) as never
 

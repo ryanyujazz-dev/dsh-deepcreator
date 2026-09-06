@@ -4,10 +4,18 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
-import type {
-  AssistantMessageNode, ConversationSnapshot, SessionId, ToolResultNode,
-} from '@deepseek-ai/dsh-client-runtime/client'
-import { EMPTY_CONVERSATION_VIEWS } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type AssistantMessageNode,
+  type ConversationSnapshot,
+  type ToolResultNode,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
+import {
+  EMPTY_CONVERSATION_VIEWS,
+} from '@ryanyujazz/dsh-client-compat'
+
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { en as commonEn } from '@ryanyujazz/dsh-client-locale/src/locales/en.ts'
@@ -188,7 +196,14 @@ describe('StatsLine', () => {
     source: { getSnapshot(): ConversationSnapshot; subscribe(fn: () => void): () => void },
     values: Record<string, unknown> = { tokenUsage: USAGE },
   ): StatsLineProps {
-    return { useSession: bindSnapshotSelector(source), useProjection: projections(values), t: tEn }
+    return {
+      useChat: bindSnapshotSelector({
+        getSnapshot: () => source.getSnapshot().chat,
+        subscribe: source.subscribe,
+      }),
+      useProjection: projections(values),
+      t: tEn,
+    }
   }
 
   it('renders the grouped stats row and hides a brand-new empty session', () => {

@@ -1,21 +1,36 @@
 // @vitest-environment jsdom
 /**
  * Scenario-chain integration (scenarios A/C/D/H/I): the real per-session
- * InputTriggerController pipeline over a real session scope (SessionRuntime over
- * a listed host session) + a command source implementing the decision
+ * InputTriggerController pipeline over a real session scope (an Agent scope
+ * minted through the official createScope, the same seam the 0.1.2 session
+ * object layer owns) + a command source implementing the decision
  * table's relevant cells + the real SessionInput machine (scoped-event
  * listeners wired the way the hub does) + the real InputBar. ui-commands
  * itself is not a dependency of this package; the source below is the
  * decision-table contract at the `InputTriggerSource` boundary.
  */
 import { Context } from '@deepseek-ai/cordis'
-import type { IApiClient } from '@deepseek-ai/dsh-api-remotes/client'
-import { RpcId } from '@deepseek-ai/dsh-client-connection/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import {
-  EMPTY_CHAT_SNAPSHOT, EMPTY_CONVERSATION_VIEWS, SessionRuntime,
-} from '@deepseek-ai/dsh-client-runtime/client'
+  EMPTY_CHAT_SNAPSHOT,
+} from '@deepseek-ai/dsh-client-ui-chat/client'
+import {
+  EMPTY_CONVERSATION_VIEWS,
+} from '@ryanyujazz/dsh-client-compat'
+import {
+  createScope,
+  scopeOf,
+} from '@deepseek-ai/dsh-api-session-controller/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
+import {
+  createSnapshotStore,
+} from '@deepseek-ai/dsh-client-store'
+import {
+  type ConversationSnapshot,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { InputTriggerService } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import type { ClientSessionContext, CommandClaim, PickOutcome, SubmitOutcome } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
@@ -25,8 +40,6 @@ import { InputBar } from '../src/client/skeleton/InputBar.tsx'
 import type { InputBarProps } from '../src/client/skeleton/InputBar.tsx'
 import { zh } from '../src/client/locales.ts'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
-import { createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
-import type { ConversationSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
 
 afterEach(cleanup)
 
@@ -90,49 +103,18 @@ const COMMANDS: FakeCommand[] = [
   { name: 'compact', description: '压缩上下文' },
 ]
 
-let nextRpcId = 0
-
-/** Minimal successful carrier response for this scenario's list baseline. */
-function ok<T>(value: T) {
-  return {
-    rpcId: RpcId(`input-scenario-${String(nextRpcId++)}`),
-    result: { ok: true as const, value },
-  }
-}
-
-/** Only the API surface exercised before the scenario obtains its session scope. */
-function fakeApi(sessionId: Parameters<SessionRuntime['open']>[0]): IApiClient {
-  return {
-    sessions: {
-      list: () => Promise.resolve(ok({
-        items: [{ sessionId, updatedAt: 1, running: false, blank: false, cwd: '/w/a' }],
-      })),
-    },
-  } as unknown as IApiClient
-}
-
-/** Command Remote defaults used by the real input-trigger controller. */
-function fakeRemote(): ConstructorParameters<typeof SessionRuntime>[2] {
-  return {
-    commands: {
-      list: () => Promise.resolve({ ok: true, value: [] }),
-      execute: () => Promise.resolve({ ok: true, value: undefined }),
-    },
-  }
-}
-
-/** Real scope bench: SessionRuntime over one listed session + InputTriggerController + shell listeners (the hub wiring shape). */
+/** Real scope bench: one minted Agent scope + InputTriggerController + shell listeners (the hub wiring shape).
+ * The 0.1.2 session object layer is the production ClientSessions service; this
+ * bench mints the identical Agent scope through the official createScope and
+ * serves the scope-tag mirror the trigger pipeline reads off `ctx.sessions`. */
 async function scopedBench(register?: (inputTriggers: InputTriggerService) => void) {
   const ctx = new Context()
-  const sessionId = 'scenario-s1' as Parameters<SessionRuntime['open']>[0]
-  const api = fakeApi(sessionId)
-  const sessions = new SessionRuntime(ctx, api, fakeRemote()) // provides 'sessions' itself
-  await sessions.refresh()
-  await Promise.resolve() // manager notifier flush
+  const sessionId = 'scenario-s1' as SessionId
+  const { ctx: actx } = createScope(ctx, sessionId)
+  ctx.provide('sessions', { scopeOf: (subject: Context) => scopeOf(subject) } as never)
   await ctx.plugin(InputTriggerService).await()
   const inputTriggers = ctx.get('inputTriggers') as InputTriggerService
   register?.(inputTriggers)
-  const actx = sessions.scope(sessionId)!
   const controller = inputTriggers.sessionOf(actx)
   const sink = vi.fn()
   const shell = new SessionInputShell({ actx, inputTriggers: () => controller, defaultSink: sink })

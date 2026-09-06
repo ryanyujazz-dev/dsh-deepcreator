@@ -7,11 +7,28 @@
  * `terminalCardModel` in terminal-card-model.ts.
  */
 // The block union's defining home is runtime (fold-product types); this
-// contract only forwards it (type-definition authority stays with the layer
-// that produces the values).
-import type { ToolCallBlock, ToolResultNode } from '@deepseek-ai/dsh-client-runtime/client'
+// contract forwards it widened with the fork's render-intent views (the
+// official 0.1.2 record types no longer declare the views the fork
+// conversation attaches at runtime; the vocabulary lives in
+// `@deepseek-ai/dsh-tools/presentation`).
+import {
+  type ToolCallBlock as ConversationToolCallBlock,
+  type ToolResultNode,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { ToolCallView, ToolResultView } from '@deepseek-ai/dsh-tools/presentation'
 
-export type { ToolCallBlock } from '@deepseek-ai/dsh-client-runtime/client'
+/**
+ * The conversation block records widened with the fork's tool render-intent
+ * views. The fork conversation attaches `callView`/`resultView` to the records
+ * at runtime, so the card models read them through these optional shares —
+ * absent-safe (`?.`), since an official producer supplies neither.
+ */
+export type ToolCallBlock = ConversationToolCallBlock & {
+  /** Pending-call render intent attached by the fork conversation. */
+  callView?: ToolCallView | null
+  /** Settled-result render intent attached by the fork conversation. */
+  resultView?: ToolResultView | null
+}
 
 /** Tool-call row variants selected by the generic atomic renderer. */
 export type ToolRowVariant = 'search' | 'read' | 'bash' | 'write' | 'edit' | 'code' | 'others'

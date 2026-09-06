@@ -1,4 +1,6 @@
-import type { ConversationViewNode } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type ConversationViewNode,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 
 /** One file a turn produced, with the event time that introduced it. */
 export interface ProducedPath {
@@ -72,7 +74,7 @@ export const EMPTY_PLANS_SNAPSHOT: PlansSnapshot = {
   records: [],
 }
 
-declare module '@deepseek-ai/dsh-client-runtime/client' {
+declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
   interface ConversationTurnDataMap {
     /** Successful mutation paths accumulated for Artifact/mention consumers. */
     'workbench-artifact': ArtifactTurnData

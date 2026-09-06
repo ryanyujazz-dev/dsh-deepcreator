@@ -1,72 +1,61 @@
+/**
+ * Chat node payload contracts. The official `dsh-client-ui-chat` package owns
+ * the merge-extensible `ChatNodeDataMap` registry and every shipped payload;
+ * this package contributes renderers for the shipped kinds (fork-customized
+ * presentation, same node vocabulary) and re-exports the currency under the
+ * historical fork import path.
+ */
+import {
+  type RunningToolCall,
+  type ToolCallBlock,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {
-  AssistantBlock, AssistantMessageNode, ChatConversationViewNode, CommandNode,
-  CompactionSummaryNode, ModelRetryNode, RunningToolCall, ToolCallBlock,
-} from '@deepseek-ai/dsh-client-runtime/client'
+  AssistantChatData,
+  ChatConversationViewNode,
+  ChatNode,
+  ChatNodeDataMap,
+  ChatNodeKind,
+  FinalAssistantChatData,
+  ManualCompactionChatData,
+  RetryChatData,
+  ToolChatData,
+  TurnProcessChatData,
+  TurnTailChatData,
+} from '@deepseek-ai/dsh-client-ui-chat/client'
 
-/** Merge-extensible payload registry keyed by final Chat renderer kind. */
-export interface ChatNodeDataMap {}
+export type {
+  AssistantChatData,
+  ChatConversationViewNode,
+  ChatNode,
+  ChatNodeDataMap,
+  ChatNodeKind,
+  FinalAssistantChatData,
+  ManualCompactionChatData,
+  RetryChatData,
+  ToolChatData,
+  TurnProcessChatData,
+  TurnTailChatData,
+}
 
-/** Renderer kinds contributed by the currently installed Chat business modules. */
-export type ChatNodeKind = Extract<keyof ChatNodeDataMap, string>
-
-/** Final Chat Node narrowed to one registered renderer kind and payload. */
-export type ChatNode<Kind extends ChatNodeKind = ChatNodeKind> = {
-  [RegisteredKind in Kind]: ChatConversationViewNode & {
-    readonly kind: RegisteredKind
-    readonly data: ChatNodeDataMap[RegisteredKind]
+// The official public merge surface (`index`) only flows into the contract
+// registry through an `extends`; the two official kinds declared directly on
+// the contract registry (system prompt, turn process) never appear on the
+// public surface, leaving `ChatNodeKind` wider than the public map. Surface
+// them here so the fork's payload map covers every official renderer kind.
+declare module '@deepseek-ai/dsh-client-ui-chat/client' {
+  interface ChatNodeDataMap {
+    /** Complete system prompt rendered for one model request. */
+    'system-prompt': { readonly text: string }
+    /** Turn-level disclosure controlling process rows before the finalized answer. */
+    'turn-process': TurnProcessChatData
   }
-}[Kind]
-
-/** Final Assistant row payload shared by streaming and settled states. */
-export interface AssistantChatData {
-  readonly status: 'running' | 'settled' | 'interrupted'
-  readonly turn: number
-  readonly step: number
-  readonly blocks: readonly AssistantBlock[]
-  readonly time: number
-  readonly usage?: unknown
-  readonly finalNode?: AssistantMessageNode
-}
-
-/** Settled or interrupted Assistant payload with its durable presentation node. */
-export type FinalAssistantChatData = AssistantChatData & {
-  readonly finalNode: AssistantMessageNode
-}
-
-/** Root Tool row payload; the root lifecycle owns all recursive subcalls. */
-export interface ToolChatData {
-  readonly root: ToolCallBlock
-}
-
-/** One manual command and its correlated compaction transaction. */
-export interface ManualCompactionChatData {
-  readonly command: CommandNode
-  readonly compaction: CompactionSummaryNode | null
-}
-
-/** One durable retry chain rendered as a single row. */
-export interface RetryChatData {
-  readonly attempts: readonly ModelRetryNode[]
-  readonly current: ModelRetryNode
-}
-
-/** Turn-local footer row that owns actions and optional feature contributions. */
-export interface TurnTailChatData {
-  readonly turn: number
-  readonly seq: number
-  readonly time: number
-  /** Last finalized content-bearing Assistant in this Turn. */
-  readonly closing: FinalAssistantChatData | null
-  /** Whether non-rendered later evidence makes the closing seq non-tail. */
-  readonly branchUnavailable: boolean
-  readonly ttftMs?: number
-  readonly tokensPerSecond?: number
 }
 
 /**
- * Test whether a Tool root has settled.
- * @param block - Tool root lifecycle value.
- * @returns whether the root carries its final result.
+ * Tool-root lifecycle predicates, vendored from `dsh-client-ui-chat` (the
+ * official package owns them, but a value import would cross the plugin
+ * bundle boundary): a settled tool root carries its final result under
+ * `kind`.
  */
 export function isSettledTool(block: ToolCallBlock): block is Extract<ToolCallBlock, { kind: 'tool-result' }> {
   return 'kind' in block

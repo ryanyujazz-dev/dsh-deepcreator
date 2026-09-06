@@ -3,8 +3,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import {
-  createSnapshotStore, type SessionListState, type WorkspaceListState,
-} from '@deepseek-ai/dsh-client-runtime/client'
+  createSnapshotStore,
+} from '@deepseek-ai/dsh-client-store'
+import {
+  type SessionListState,
+} from '@deepseek-ai/dsh-api-session-controller/client'
+import {
+  type WorkspaceSnapshot,
+} from '@deepseek-ai/dsh-api-workspace-controller/client'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { DefaultRenderModeRow } from '../src/client/settings/DefaultRenderModeRow.tsx'
 import type { DefaultRenderModeRowProps } from '../src/client/settings/DefaultRenderModeRow.tsx'
@@ -20,7 +26,7 @@ function emptySessions() {
 }
 
 function emptyWorkspaces() {
-  return bindSnapshotSelector(createSnapshotStore<WorkspaceListState>({
+  return bindSnapshotSelector(createSnapshotStore<WorkspaceSnapshot>({
     items: [], archivedSessionIds: [], state: 'idle', phase: 'ready', error: null,
     baselinesReady: true, recentWorkspaceId: undefined,
   }))

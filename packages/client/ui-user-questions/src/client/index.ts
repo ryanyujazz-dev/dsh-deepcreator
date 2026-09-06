@@ -12,12 +12,16 @@
  * separate chain entry per shape would race the same carrier, so the shape
  * choice lives inside this entry — see QuestionComposer.
  */
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
-import type { ComposerChainProps } from '@ryanyujazz/dsh-client-ui-conversation/client'
+import type { ClientContext } from '@ryanyujazz/dsh-client-compat'
+// The SlotMap merge resolves the chain owner to the official ComposerChainProps;
+// the fork conversation owner additionally carries `interactions` (read defensively).
+import type { ComposerChainProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { WorkbenchService } from '@ryanyujazz/dsh-client-ui-workbench/client'
 import type {} from '@ryanyujazz/dsh-client-ui-workbench/client'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@ryanyujazz/dsh-client-locale/client'
+// Type-only: pulls the SlotRegistry service merge (ctx.slots).
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { QuestionWait } from './contract/slots.ts'
 import { QuestionComposer } from './QuestionComposer.tsx'
 import { en, zh, type QuestionKey } from './locales.ts'
@@ -42,8 +46,9 @@ const NS = 'question'
 export const inject = ['slots', 'locale']
 
 /** Chain routing: claim the composer while a question wait is pending (pure — owner props only). */
-function selectQuestion({ interactions }: ComposerChainProps): QuestionWait | null {
-  return interactions.find((i): i is QuestionWait => i.kind === 'question') ?? null
+function selectQuestion(owner: ComposerChainProps): QuestionWait | null {
+  const { interactions } = owner as ComposerChainProps & { interactions?: readonly QuestionWait[] }
+  return interactions?.find((i): i is QuestionWait => i.kind === 'question') ?? null
 }
 
 /**

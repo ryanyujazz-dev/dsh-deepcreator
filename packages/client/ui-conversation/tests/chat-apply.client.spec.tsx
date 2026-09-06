@@ -9,7 +9,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { SlotTestRuntime, usePinnedBrowserLanguages, stubSettingsScope } from '@deepseek-ai/dsh-client-test-runtime'
 import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
 import { LocaleRuntime } from '@ryanyujazz/dsh-client-locale/client'
-import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
 import { apply, inject } from '@ryanyujazz/dsh-client-ui-conversation/client'
 
 // The service reads its initial locale from the browser; these specs assert
@@ -21,16 +23,16 @@ const CHILD = 'child-1' as SessionId
 
 async function bench() {
   const runtime = await SlotTestRuntime.create()
-  runtime.provide('connection', { api: { settings: {} }, isLoopback: false })
+  runtime.ctx.provide('connection', { api: { settings: {} }, isLoopback: false })
   // The plugin injects both; these specs exercise no settings path.
-  runtime.provide('remote', { $on: () => () => {} })
-  runtime.provide('settingsScope', { bind: () => stubSettingsScope().scope } as never)
+  runtime.ctx.provide('remote', { $on: () => () => {} })
+  runtime.ctx.provide('settingsScope', { bind: () => stubSettingsScope().scope } as never)
   await runtime.sessions.add({ id: ROOT, summary: { title: 'R', displayTitle: 'R' } }, { current: false })
   await runtime.sessions.add(
     { id: CHILD, summary: { title: 'C', displayTitle: 'C', parentId: ROOT } }, { current: false })
-  runtime.provide('layout', { closeDetails: vi.fn() })
+  runtime.ctx.provide('layout', { closeDetails: vi.fn() })
   const locale = new LocaleRuntime(runtime.ctx)
-  runtime.provide('locale', locale)
+  runtime.ctx.provide('locale', locale)
   runtime.slots.installLocale(locale)
 
   // Declared by ui-layout's root entry in production; the test root declares
@@ -47,7 +49,7 @@ async function bench() {
 }
 
 /** First stored entry for a key (inject/store live directly on StoredEntry). */
-function renderEntryOf(slots: Awaited<ReturnType<typeof bench>>['slots'], key: 'conversation' | 'conversation.session' | 'conversation.session.header' | 'conversation.view' | 'details') {
+function renderEntryOf(slots: Awaited<ReturnType<typeof bench>>['slots'], key: 'conversation' | 'deepcreator.conversation.session' | 'conversation.session.header' | 'conversation.view' | 'details') {
   return slots.entries(key)[0] as undefined | { inject?: unknown; store?: unknown }
 }
 
@@ -79,7 +81,7 @@ describe('apply wiring', () => {
   it('occupies the slots + the ring; session entries share one store handle', async () => {
     const b = await bench()
     const conversation = renderEntryOf(b.slots, 'conversation')
-    const conversationSession = renderEntryOf(b.slots, 'conversation.session')
+    const conversationSession = renderEntryOf(b.slots, 'deepcreator.conversation.session')
     const conversationHeader = renderEntryOf(b.slots, 'conversation.session.header')
     const chatView = renderEntryOf(b.slots, 'conversation.view')
     expect(conversation?.inject).toBeTypeOf('function')

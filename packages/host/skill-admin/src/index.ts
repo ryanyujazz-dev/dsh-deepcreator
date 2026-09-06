@@ -11,7 +11,7 @@ import {
   isSkillName, type SkillCandidate, type SkillDefinition, type SkillProvider,
   type SkillProviderControl, type SkillResourceBase, type SkillSummary, type SkillViewOptions,
 } from '@deepseek-ai/dsh-skill'
-import { settingsNamespace, type SettingsScope } from '@deepseek-ai/dsh-settings'
+import type { SettingsScope } from '@deepseek-ai/dsh-settings'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import z from '@deepseek-ai/schemastery'
 import { parse as parseYaml } from 'yaml'
@@ -27,7 +27,8 @@ export type {
 
 const execFileAsync = promisify(execFile)
 const POLICY_PROVIDER = 'deepcreator-skill-policy'
-const SETTINGS_KEY = settingsNamespace('skill-management')
+// 0.1.2 registers namespaces by their plain string id (settingsNamespace() is gone).
+const SETTINGS_KEY = 'skill-management'
 const MAX_FILES = 200
 
 interface DisabledSkill {

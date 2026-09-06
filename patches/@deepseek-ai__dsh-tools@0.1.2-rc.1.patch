@@ -1,0 +1,15 @@
+diff --git a/lib/types/presentation.d.ts b/lib/types/presentation.d.ts
+index 000000..000000 100644
+--- a/lib/types/presentation.d.ts
++++ b/lib/types/presentation.d.ts
+@@ -33,6 +33,10 @@ export interface FileDiff {
+     oldText: string | null;
+     /** Content after the change. */
+     newText: string;
++    /** Absolute first old-file line represented by this contextual hunk. */
++    oldStart?: number;
++    /** Absolute first new-file line represented by this contextual hunk. */
++    newStart?: number;
+ }
+ /**
+  * Provider-neutral pending-call presentation. Tools declare one tagged intent;

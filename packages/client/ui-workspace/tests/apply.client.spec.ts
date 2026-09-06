@@ -1,6 +1,11 @@
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
-import { SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  SlotRegistry,
+} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import { LocaleRuntime } from '@ryanyujazz/dsh-client-locale/client'
 import { usePinnedBrowserLanguages } from '@deepseek-ai/dsh-client-test-runtime'
 import { apply, inject } from '@ryanyujazz/dsh-client-ui-workspace/client'
@@ -15,15 +20,41 @@ usePinnedBrowserLanguages('zh-CN')
 async function bench() {
   const ctx = new Context()
   await ctx.plugin(SlotRegistry).await()
+  // 0.1.2: the UiWorkspaceService watches both controller list stores
+  // (initial-selection policy), and New Session reuse resolves the reusable
+  // blank Session of the target Workspace through them.
+  const workspacesList = createSnapshotStore<{
+    items: {
+      workspaceId: WorkspaceId; path: string; title: string; sessionIds: SessionId[];
+      createdAt: string; updatedAt: string;
+    }[]
+    archivedSessionIds: SessionId[]
+    phase: 'ready'
+  }>({
+    items: [{
+      workspaceId: 'ws' as never, path: '/projects/ws', title: 'WS',
+      sessionIds: ['session' as never], createdAt: '0', updatedAt: '0',
+    }],
+    archivedSessionIds: [], phase: 'ready',
+  })
+  const sessionsList = createSnapshotStore<{
+    ids: SessionId[]
+    byId: Record<string, { id: SessionId; blank: boolean; cwd: string; updatedAt: number }>
+    current: SessionId | undefined
+    phase: 'ready'
+  }>({
+    ids: ['session' as never],
+    byId: { session: { id: 'session' as never, blank: true, cwd: '/projects/ws', updatedAt: 1 } },
+    current: 'session' as never,
+    phase: 'ready',
+  })
   const create = vi.fn(async (input: { name: string } | { path: string }) => ({
     workspaceId: 'ws-new' as never,
     path: 'name' in input ? `/projects/${input.name}` : input.path,
     title: 'new', sessionIds: [], createdAt: '0', updatedAt: '0',
   }))
-  const startSession = vi.fn()
   const rename = vi.fn(async () => ({}))
   const insertSessionBefore = vi.fn(async () => ({}))
-  const openPath = vi.fn(async () => {})
   const open = vi.fn()
   const clear = vi.fn()
   const refresh = vi.fn(async () => {})
@@ -31,34 +62,49 @@ async function bench() {
     ok: true as const,
     value: { items: [{ sessionId: 'session' as never, snippet: 'match' }], hasMore: false },
   }))
+  const createSession = vi.fn(async () => 'created-session' as never)
   const renameSession = vi.fn(async (title: string) => ({ ok: true, value: { title, seq: 1 } }))
   const binding = vi.fn(() => ({ session: { rename: renameSession } }))
   const fork = vi.fn(async () => 'forked' as never)
   ctx.provide('workspaces', {
-    create, startSession, rename, insertSessionBefore, openPath,
+    list: workspacesList, create, rename, insertSessionBefore,
   } as never)
-  ctx.provide('sessions', { open, clear, refresh, search, searchResultLimit: 20, binding, fork } as never)
-  ctx.provide('connection', {
-    isLoopback: true,
-    hostDescription: {
-      getSnapshot: () => ({ canOpenPath: true }),
-      subscribe: () => () => {},
-    },
+  ctx.provide('sessions', {
+    list: sessionsList, open, clear, refresh, search, searchResultLimit: 20, binding, fork, create: createSession,
   } as never)
+  ctx.provide('connection', { isLoopback: true } as never)
   const locale = new LocaleRuntime(ctx)
   ctx.provide('locale', locale)
   const sessionAdminRemote = {
     delete: vi.fn(async () => ({ ok: true, value: { ok: true, deletedPath: '/x' } })),
   }
+  // 0.1.2: host-open and the canOpenPath capability ride the session remote
+  // namespace; the directory picker rides its own namespace (the vendored
+  // UiWorkspaceService consumes it for the directory UI).
+  const sessionRemote = {
+    canOpenWorkspacePath: vi.fn(async () => ({ ok: true as const, value: true })),
+    openWorkspacePath: vi.fn(async () => ({ ok: true as const, value: { accepted: true } })),
+  }
+  const directoryPickerRemote = {
+    pick: vi.fn(async () => ({ ok: true as const, value: null })),
+    list: vi.fn(async () => ({ ok: true as const, value: { path: '/', entries: [], ancestry: [] } })),
+    createDirectory: vi.fn(async () => ({ ok: true as const, value: '/new' })),
+  }
   // The traced namespace object and the Cordis store entry both resolve:
-  // plugins associate `remote.session-admin` through the store, while apply
-  // reads the namespace off the mounted remote object.
-  ctx.provide('remote', { 'session-admin': sessionAdminRemote } as never)
+  // plugins associate `remote.<ns>` through the store, while apply reads the
+  // namespaces off the mounted remote object.
+  ctx.provide('remote', {
+    'session-admin': sessionAdminRemote,
+    session: sessionRemote,
+    directoryPicker: directoryPickerRemote,
+  } as never)
   ctx.provide('remote.session-admin', sessionAdminRemote as never)
+  ctx.provide('remote.session', sessionRemote as never)
+  ctx.provide('remote.directoryPicker', directoryPickerRemote as never)
   return {
-    ctx, slots: ctx.get('slots') as SlotRegistry, locale, create, startSession, rename,
-    insertSessionBefore, openPath, open, clear, refresh, search, renameSession, binding, fork,
-    sessionAdminRemote,
+    ctx, slots: ctx.get('slots') as SlotRegistry, locale, create, rename,
+    insertSessionBefore, open, clear, refresh, search, createSession, renameSession, binding, fork,
+    sessionAdminRemote, sessionRemote, directoryPickerRemote,
   }
 }
 
@@ -72,7 +118,7 @@ function declare(slots: SlotRegistry, ...names: HoleName[]): () => void {
 
 describe('ui-workspace apply', () => {
   it('declares the services it drives', () => {
-    expect(inject).toEqual(['slots', 'sessions', 'workspaces', 'locale', 'connection', 'remote', 'remote.session-admin'])
+    expect(inject).toEqual(['slots', 'sessions', 'workspaces', 'locale', 'connection', 'remote', 'remote.session', 'remote.session-admin', 'remote.directoryPicker'])
   })
 
   it('registers browser and pickers for declarations arriving before or after apply', async () => {
@@ -99,16 +145,27 @@ describe('ui-workspace apply', () => {
     await b.ctx.plugin({ inject: [...inject], apply }).await()
 
     const browser = (b.slots.entries('sidebar.workspaces')[0]!.inject as () => WorkspaceBrowserInjected)()
-    // Both arms delegate to the runtime's shared New Session action.
+    // Both New Session arms ride the shared reuse-or-create policy: the
+    // explicit workspace targets it directly; the unscoped call inherits the
+    // current Session's Workspace. Both resolve the Workspace's reusable
+    // blank Session and open it.
     browser.startSession('ws' as never)
-    expect(b.startSession).toHaveBeenCalledWith('ws')
     browser.startSession()
-    expect(b.startSession).toHaveBeenLastCalledWith(undefined)
+    await vi.waitFor(() => {
+      expect(b.open).toHaveBeenLastCalledWith('session')
+    })
+    expect(b.open).toHaveBeenCalledTimes(2)
     browser.open('session' as never)
     expect(b.open).toHaveBeenCalledWith('session')
+    // Host-open rides the session remote namespace on loopback builds.
     browser.openWorkspaceLocation('/projects/demo')
-    expect(b.openPath).toHaveBeenCalledWith('/projects/demo')
-    expect(browser.hooks.canOpenPath.getSnapshot()).toBe(true)
+    await vi.waitFor(() => {
+      expect(b.sessionRemote.openWorkspacePath).toHaveBeenCalledWith({ path: '/projects/demo' })
+    })
+    // The capability feed queries the session remote (request-scoped verb).
+    await vi.waitFor(() => {
+      expect(browser.hooks.canOpenPath.getSnapshot()).toBe(true)
+    })
     const signal = new AbortController().signal
     await expect(browser.searchSessions('match', signal)).resolves.toEqual({
       items: [{ sessionId: 'session', snippet: 'match' }],

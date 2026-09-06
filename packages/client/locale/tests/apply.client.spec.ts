@@ -3,7 +3,9 @@
  * recovery after an HMR collapse of the declaring entry. */
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  SlotRegistry,
+} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import {
   apply as applyOfficialSettings, inject as officialSettingsInject,
 } from '@deepseek-ai/dsh-client-ui-settings/client'
@@ -32,26 +34,30 @@ async function bench(initialPreference?: string) {
     revision,
   })
   const describe = vi.fn(async () => ({
-    rpcId: 'locale-describe' as never,
-    result: {
-      ok: true as const,
-      value: { writable: true, hasDocument: true, namespaces: [namespace()] },
-    },
+    // The shared mirror reads the whole document view; the bound scope
+    // derives its own namespace row from it.
+    ok: true as const,
+    value: { writable: true, hasDocument: true, namespaces: [namespace()] },
   }))
-  const mutate = vi.fn(async (request: { ops: { value: string }[] }) => {
-    preference = request.ops[0]!.value
-    revision += 1
-    return {
-      rpcId: 'locale-mutate' as never,
-      result: { ok: true as const, value: namespace() },
+  const mutate = vi.fn(async (
+    ns: string,
+    ops: { op: 'set' | 'unset'; path: string[]; value?: string }[],
+  ) => {
+    for (const op of ops) {
+      if (op.op === 'set' && op.path[0] === 'preference') preference = op.value
     }
+    revision += 1
+    // A Host commit forwards one invalidation for the touched namespace.
+    queueMicrotask(() => remote.emit('settings/document-updated', [ns, revision]))
+    return { ok: true as const, value: namespace() }
   })
-  ctx.provide('connection', { api: { settings: { describe, mutate } }, isLoopback: true } as never)
-  // The settings transport and the forwarded-event port the plugin injects.
-  new TestRemote(ctx)
+  ctx.provide('connection', {} as never)
+  // The settings transport: the official mirror and the bound scope ride
+  // `remote.settings`; the double also provides the `remote.<name>` service.
+  const remote = new TestRemote(ctx, { settings: { describe, mutate } })
   await ctx.plugin({ inject: [...officialSettingsInject], apply: applyOfficialSettings }).await()
   return {
-    ctx, slots: ctx.get('slots') as SlotRegistry, describe, mutate,
+    ctx, slots: ctx.get('slots') as SlotRegistry, describe, mutate, remote,
     setHostPreference: (next: string | undefined) => { preference = next; revision += 1 },
   }
 }
@@ -140,10 +146,10 @@ describe('locale apply', () => {
     const locale = b.ctx.get('locale') as LocaleRuntime
     await vi.waitFor(() => { expect(locale.getSnapshot().active).toBe('en') })
     b.setHostPreference(undefined)
-    b.ctx.remote.$dispatch('settings/document-updated', [LOCALE_SETTINGS_NAMESPACE, 0])
+    b.remote.emit('settings/document-updated', [LOCALE_SETTINGS_NAMESPACE, 0])
     await vi.waitFor(() => { expect(locale.getSnapshot().active).toBe('zh') })
     b.setHostPreference('en')
-    b.ctx.remote.$dispatch('settings/document-updated', [LOCALE_SETTINGS_NAMESPACE, 0])
+    b.remote.emit('settings/document-updated', [LOCALE_SETTINGS_NAMESPACE, 0])
     await vi.waitFor(() => { expect(locale.getSnapshot().active).toBe('en') })
     expect(b.describe).toHaveBeenCalledTimes(3)
   })

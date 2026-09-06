@@ -1,16 +1,22 @@
 import type { Context } from '@deepseek-ai/cordis'
-import type {
-  CommandNode, CompactionSummaryNode, ConversationMatch, ConversationNodeContext,
-  ConversationNodeDefinition,
-} from '@deepseek-ai/dsh-client-runtime/client'
-import { isReplacementSurfaceEvent } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type CommandNode,
+  type CompactionSummaryNode,
+  type ConversationMatch,
+  type ConversationNodeContext,
+  type ConversationNodeDefinition,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import {
+  isReplacementSurfaceEvent,
+} from '@deepseek-ai/dsh-session/surface'
+
 import type { CompactionCheckpointSource } from '@deepseek-ai/dsh-compaction/checkpoint'
 import type {} from '@deepseek-ai/dsh-compaction/types'
 import type {} from '@deepseek-ai/dsh-commands/types'
 import type { ManualCompactionChatData } from '../contract/chat-nodes.ts'
 import { chatNode } from './common.ts'
 
-declare module '@ryanyujazz/dsh-client-ui-conversation/client' {
+declare module '@deepseek-ai/dsh-client-ui-chat/client' {
   interface ChatNodeDataMap {
     /** Ordinary slash-command lifecycle. */
     command: CommandNode
@@ -222,7 +228,7 @@ export const commandDefinition: ConversationNodeDefinition<CommandState> = {
  * @param ctx - owning UI Conversation context.
  */
 export function registerCommandConversationNode(ctx: Context): void {
-  ctx.conversationEvents.register(commandDefinition)
+  ctx.uiConversation.events.register(commandDefinition)
 }
 
 /** Shared structural checkpoint recognizer for automatic compaction. */

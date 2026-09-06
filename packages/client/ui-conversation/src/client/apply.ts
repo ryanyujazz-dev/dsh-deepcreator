@@ -1,10 +1,22 @@
 /** Registers the conversation components, shared store, and service callbacks. */
 import type { Context } from '@deepseek-ai/cordis'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
-import { resolveSlotLabel, type BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
+import { resolveSlotLabel, type BoundActions, type Translate } from '@deepseek-ai/dsh-client-ui-slots'
 import {
-  resolveWorkspacePath, type ISessions, type SessionId,
-} from '@deepseek-ai/dsh-client-runtime/client'
+  resolveWorkspacePath,
+} from '@deepseek-ai/dsh-util-workspace-path'
+import {
+  type ISessions,
+} from '@deepseek-ai/dsh-api-session-controller/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
+// Type-only: the ctx.uiSession Context merge arrives through the official
+// conversation contract graph (its slots contract imports the session kit).
+// Type-only: the ctx.remote Context merge (the generated Host Remote namespaces).
+import type {} from '@deepseek-ai/dsh-api-remotes/client'
+// Type-only: the ctx.slots Context merge (the slot registry service face).
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 // Type-only: the ctx.settingsScope Context merge. Cross-plugin collaboration
 // goes through the service, never a value import (client bundle purity gate).
 import type {} from '@ryanyujazz/dsh-client-ui-settings/client'
@@ -13,6 +25,17 @@ import type {} from '@ryanyujazz/dsh-client-locale/client'
 // Type-only: the ctx.workbench Context merge — file opening and change reveal
 // read the optional service; ui-workbench stays an undirected collaborator.
 import type {} from '@ryanyujazz/dsh-client-ui-workbench/client'
+// Value import (in-package): the official Conversation assembly service,
+// vendored at ./conversation/ — the npm /client entry ships its runtime in
+// loader format invisible to static imports, so the fork carries the source.
+// Constructing it registers `uiConversation`, the per-Session binding face
+// the standard-kit provider below mounts through.
+import { UiConversation } from './conversation/assembly.ts'
+import { EMPTY_CHAT_SNAPSHOT } from './contract/empty-chat.ts'
+import type { ChatSnapshot } from '@deepseek-ai/dsh-client-ui-chat/client'
+import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
+import type { ScopedStandardSourceBinding } from '@deepseek-ai/dsh-client-ui-slots'
+import { createSessionLeaseHub } from '@ryanyujazz/dsh-client-compat'
 import type { ViewTab } from './contract/views.ts'
 import type {
   ApprovalWait, ChatNodeTurnDataInjected, ChatScrollPosition, ChatViewInjected, ComposerBarInjected,
@@ -35,7 +58,8 @@ import type { DefaultRenderModeRowInjected } from './settings/DefaultRenderModeR
 import { ChatView } from './chat/ChatView.tsx'
 import { ChatRenderStandard } from './chat/ChatRenderStandard.tsx'
 import {
-  ConversationEmbed, ConversationEmbedSurface, type ConversationEmbedSurfaceInjected,
+  ConversationEmbed, ConversationEmbedSurface,
+  type ConversationEmbedInjected, type ConversationEmbedSurfaceInjected,
 } from './chat/ConversationEmbed.tsx'
 import { ExecFlowBody, type ExecFlowBodyInjected } from './chat/ExecFlowBody.tsx'
 import { StatsLine } from './chat/StatsLine.tsx'
@@ -53,17 +77,9 @@ import {
   type ConversationSettings,
 } from '../submission-settings.ts'
 
-declare module '@deepseek-ai/dsh-client-ui-slots' {
-  interface LocaleNamespaceMap {
-    /** The conversation skeleton, chat flow, commands, details, and docks copy. */
-    conversation: ConversationKey
-  }
-}
-
 /** Services required by the conversation plugin. */
 export const inject = [
-  'slots', 'sessions', 'workspaces', 'locale', 'connection', 'remote', 'settingsScope',
-  'conversationEvents', 'conversationViews',
+  'slots', 'sessions', 'uiSession', 'workspaces', 'locale', 'connection', 'remote', 'settingsScope',
 ]
 
 // Static no-session sources for the composer-bar hooks compartment: module
@@ -90,13 +106,8 @@ const ABSENT_MENU_LAUNCHER = {
 
 const CHAT_NODE_INJECT: ChatNodeTurnDataInjected = {
   hooks: {
-    turnData: ({ useSession }, nodeKey) => function useTurnData(key) {
-      return useSession((snapshot) => {
-        const location = snapshot.chat.nodes.get(nodeKey)?.location
-        return location?.kind === 'turn' || location?.kind === 'step'
-          ? location.turn.data.get(key)
-          : undefined
-      })
+    turnData: ({ useSession }, locationData) => function useTurnData(key) {
+      return useSession(() => locationData?.get(key))
     },
   },
 }
@@ -118,8 +129,10 @@ function concreteConversation(ctx: Context): ConversationController {
 }
 
 /** Chain routing: claim the composer while an approval wait is pending (pure — owner props only). */
-function selectApproval({ interactions }: ComposerChainProps): ApprovalWait | null {
-  return interactions.find((i): i is ApprovalWait => i.kind === 'approval') ?? null
+function selectApproval({ pendingInteraction }: ComposerChainProps): ApprovalWait | null {
+  return pendingInteraction !== undefined && pendingInteraction.kind === 'approval'
+    ? pendingInteraction as ApprovalWait
+    : null
 }
 
 /** Mounts the conversation plugin.
@@ -131,15 +144,33 @@ export function apply(ctx: Context): void {
   const slots = ctx.slots
   const loopback = (ctx.get('connection') as ConnectionHandle).isLoopback
 
+  // The official Conversation assembly (registries + per-Session bindings +
+  // durable image cache). Construction registers the `uiConversation` service;
+  // business Definitions and View builders mount through it below.
+  const uiConversation = new UiConversation(ctx, sessions)
+
   registerConversationNodes(ctx)
   registerChatNodeRenderers(ctx)
 
-  ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-conversation: dictionaries')
+  // The official `conversation` namespace keys its dictionary union on the
+  // official ConversationKey; this fork's dictionary is a superset with its
+  // own presentation vocabulary, so it registers through the untyped
+  // single-locale form (the slot `t` seat reads it at runtime).
+  ctx.effect(() => {
+    const disposeZh = ctx.locale.register(NS, 'zh', zh)
+    const disposeEn = ctx.locale.register(NS, 'en', en)
+    return () => {
+      disposeEn()
+      disposeZh()
+    }
+  }, 'ui-conversation: dictionaries')
 
   // Registration-time text (the view tab label) reads through the bound
   // translate as a thunk, so it follows the active locale without
-  // re-registration; components read the standard `t` seat instead.
-  const t = ctx.locale.bind(NS)
+  // re-registration; components read the standard `t` seat instead. The
+  // fork dictionary is a superset of the official conversation namespace,
+  // so the bind result is widened to the fork's key union.
+  const t = ctx.locale.bind(NS) as Translate<ConversationKey>
 
   // Apply-time construction keeps store identity bound to this fiber.
   const chatStore = createChatStore()
@@ -238,20 +269,34 @@ export function apply(ctx: Context): void {
   const composerBlocks = new ComposerBlockRegistry()
 
   // The input machine feeds every session-scope slot
-  // component through the standard provide channel — the 'input' hook plus
-  // the two public actions. Materialization is the shell creation trigger
-  // (per-session lazy; scope disposer tears down).
-  ctx.effect(() => sessions.provide({
-    hooks: ['input'],
+  // component through the standard provide channel — the assembled
+  // conversation snapshot plus the input hook and the public actions.
+  // Materialization is the shell creation trigger (per-session lazy; scope
+  // disposer tears down). The 'chat' hook is the 0.1.2 Chat standard seat
+  // (official ui-chat owns it there; this package owns the flow here), so
+  // every strict session entry receives `useChat` from the framework kit.
+  const chatSources = new WeakMap<object, ObservableSnapshot<ChatSnapshot>>()
+  ctx.effect(() => ctx.uiSession.provide({
+    hooks: ['conversation', 'input', 'chat'],
     props: ['inputActions'],
     resolve: (binding) => {
-      const shell = inputHub.shellFor(binding)
+      const conversation = uiConversation.binding(binding)
+      const chatTarget = conversation.target('chat')
+      let chat = chatSources.get(binding)
+      if (chat === undefined) {
+        chat = {
+          getSnapshot: () => chatTarget.getSnapshot() ?? EMPTY_CHAT_SNAPSHOT,
+          subscribe: (listener: () => void) => chatTarget.subscribe(listener),
+        }
+        chatSources.set(binding, chat)
+      }
+      const shell = inputHub.shellFor(binding, chatTarget)
       return {
-        hooks: { input: shell.state },
+        hooks: { conversation: conversation.snapshot, input: shell.state, chat },
         props: { inputActions: shell.actions },
       }
     },
-  }), 'ui-conversation: input standard-kit provider')
+  }), 'ui-conversation: conversation and input standard-kit provider')
 
   // Resident current-session-optional shell. It owns the stable Hero/composer
   // frame while strict session slots fill only their session-bound regions.
@@ -259,8 +304,9 @@ export function apply(ctx: Context): void {
     name: 'conversation',
     locale: NS,
     children: {
-      'conversation.session': { kind: 'single', scope: 'session' },
+      'deepcreator.conversation.session': { kind: 'single', scope: 'session' },
       'conversation.session.header': { kind: 'single', scope: 'session' },
+      'conversation.activity.chip': { kind: 'list', scope: 'session' },
       'conversation.composer': { kind: 'chain', scope: 'session' },
       'conversation.composer.bar': { kind: 'single', scope: 'session-maybe' },
       'conversation.input.overlay': { kind: 'list', scope: 'session' },
@@ -275,7 +321,24 @@ export function apply(ctx: Context): void {
       hooks: { composerBlock: sessionId === undefined ? ABSENT_BLOCK : composerBlocks.storeFor(sessionId) },
       publishSessionRenderer: renderer => surfaces.register(renderer),
       selectWorkspace: async (workspaceId) => {
-        const nextId = await workspaces.connectWorkspace(workspaceId)
+        // Reuse-or-create the Workspace's blank Session (the Host's own
+        // membership rule: blank + cwd match + accounted + not archived),
+        // then select it and carry the composer draft across.
+        const snapshot = workspaces.list.getSnapshot()
+        const workspace = snapshot.items.find(item => item.workspaceId === workspaceId)
+        if (workspace === undefined) throw new Error(`unknown workspace ${workspaceId}`)
+        const archived = new Set(snapshot.archivedSessionIds)
+        const list = sessions.list.getSnapshot()
+        let nextId: SessionId | undefined
+        for (const id of list.ids) {
+          const summary = list.byId[id]
+          if (summary !== undefined && summary.blank && summary.cwd === workspace.path
+            && workspace.sessionIds.includes(summary.id) && !archived.has(summary.id)) {
+            nextId = summary.id
+            break
+          }
+        }
+        nextId ??= await sessions.create({ workspaceId })
         if (sessionId !== undefined && nextId !== sessionId) {
           const from = inputHub.shell(sessionId)
           const draft = from.snapshot.draft
@@ -300,7 +363,7 @@ export function apply(ctx: Context): void {
   // the Hero/composer path therefore stays fixed while the first blank
   // session appears after a Workspace pick.
   slots.register({
-    name: 'conversation.session',
+    name: 'deepcreator.conversation.session',
     children: {
       'conversation.view': { kind: 'list', scope: 'session' },
     },
@@ -465,10 +528,11 @@ export function apply(ctx: Context): void {
             workbench.activate('artifact', resolved)
             return
           }
-          if (loopback) void workspaces.openPath(resolved).catch(() => {
-            // Host/OS open failures stay silent in the chat row; the native
-            // app surfaces its own error dialog when the path is unusable.
-          })
+          if (loopback) void ctx.remote.session.openWorkspacePath({ path: resolved })
+            .catch(() => {
+              // Host/OS open failures stay silent in the chat row; the native
+              // app surfaces its own error dialog when the path is unusable.
+            })
         },
         // The mutation rows' path link: focus the file's change in the review
         // panel when the Workbench and its review type are composed, and keep
@@ -482,7 +546,7 @@ export function apply(ctx: Context): void {
             workbench.reveal('review', resolved)
             return
           }
-          if (loopback) void workspaces.openPath(resolved).catch(() => { })
+          if (loopback) void ctx.remote.session.openWorkspacePath({ path: resolved }).catch(() => { })
         },
         loadOlder: () => { void scoped.loadOlder() },
         loadImage: attachment => conversation.resolveImage(sessionId, attachment),
@@ -552,13 +616,29 @@ export function apply(ctx: Context): void {
   execflowMode('classic', 'compact', 10)
   execflowMode('think', 'inline', 20)
 
-  // Activity's root adapter mounts an explicit non-navigating SessionProvider.
-  // Its strict child surface then invokes the main conversation root's already
-  // authorized session outlet, so data, pagination and every downstream
+  // Activity's embed mounts an explicit non-navigating child session: a
+  // compat lease holds the child's scope and history window (opening it on
+  // acquire, cooling it on release), and the embed overrides the renderer's
+  // scope binding with the child's materialized standard binding so the
+  // strict child surface invokes the main conversation root's already
+  // authorized session outlet — data, pagination and every downstream
   // renderer are shared instead of mirrored.
+  const leaseHub = createSessionLeaseHub(sessions)
+  // `uiSession.resolve` materializes (and caches) the full standard-kit
+  // binding for any session id; it is renderer-private in the published
+  // types, so the embed seam is a localized cast.
+  const resolveSessionBinding = (sessionId: SessionId): ScopedStandardSourceBinding | undefined =>
+    (ctx.uiSession as unknown as {
+      resolve(sessionId: SessionId): ScopedStandardSourceBinding | undefined
+    }).resolve(sessionId)
   ctx.slots.inject('deepcreator.conversation.embed', () => {
     const disposeRoot = slots.register({
       name: 'deepcreator.conversation.embed',
+      inject: (): ConversationEmbedInjected => ({
+        leaseSession: (sessionId) => leaseHub.lease(sessionId),
+        resolveSessionBinding,
+        scopeContext: slots.scopeBindingContext,
+      }),
       children: {
         'deepcreator.conversation.embed.surface': { kind: 'single', scope: 'session' },
       },

@@ -1,7 +1,9 @@
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext } from '@ryanyujazz/dsh-client-compat'
 import type {} from '@ryanyujazz/dsh-client-locale/client'
 import type {} from '@ryanyujazz/dsh-client-ui-conversation/client'
 import type {} from '@ryanyujazz/dsh-client-ui-layout/client'
+// Type-only: pulls the ctx.slots merge (SlotRegistry service) into this program.
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { ILayout } from '@ryanyujazz/dsh-client-ui-layout/client'
 import type { WorkbenchPanelIconOwnerProps, WorkbenchPanelOwnerProps, ArtifactRendererOwnerProps } from './contract.ts'
 import { WorkbenchController } from './service.ts'

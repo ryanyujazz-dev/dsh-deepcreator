@@ -1,11 +1,15 @@
 import type { Context } from '@deepseek-ai/cordis'
-import type {
-  ConversationNodeDefinition, UnknownSurfaceNode,
-} from '@deepseek-ai/dsh-client-runtime/client'
-import { isAppendSurfaceEvent } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type ConversationNodeDefinition,
+  type UnknownSurfaceNode,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import {
+  isAppendSurfaceEvent,
+} from '@deepseek-ai/dsh-session/surface'
+
 import { chatNode } from './common.ts'
 
-declare module '@ryanyujazz/dsh-client-ui-conversation/client' {
+declare module '@deepseek-ai/dsh-client-ui-chat/client' {
   interface ChatNodeDataMap {
     /** Generic presentation of an unclaimed append-surface event. */
     unknown: UnknownSurfaceNode
@@ -16,9 +20,12 @@ declare module '@ryanyujazz/dsh-client-ui-conversation/client' {
 export const unknownFallbackDefinition: ConversationNodeDefinition<UnknownSurfaceNode> = {
   kind: 'unknown-surface',
   target: 'chat',
-  match: event => isAppendSurfaceEvent(event)
-    ? { id: String(event.seq), role: 'start' }
-    : null,
+  match: event => {
+    if (event.type === 'chunkrow/text-chunks'
+      || event.type === 'chunkrow/reasoning-chunks'
+      || event.type === 'chunkrow/tool-call-chunks') return null
+    return isAppendSurfaceEvent(event) ? { id: String(event.seq), role: 'start' } : null
+  },
   start: (_context, match) => ({
     kind: 'unknown',
     seq: match.event.seq,
@@ -37,5 +44,5 @@ export const unknownFallbackDefinition: ConversationNodeDefinition<UnknownSurfac
  * @param ctx - owning UI Conversation context.
  */
 export function registerUnknownConversationFallback(ctx: Context): void {
-  ctx.conversationEvents.registerFallback(unknownFallbackDefinition)
+  ctx.uiConversation.events.registerFallback(unknownFallbackDefinition)
 }

@@ -4,9 +4,11 @@
  * group wall-span descriptions, in-flight rows.
  */
 import { describe, expect, it } from 'vitest'
-import type {
-  ConversationLocation, ConversationSnapshot, RequestView,
-} from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type ConversationLocation,
+  type ConversationSnapshot,
+  type RequestView,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import {
   appendTrajectoryPartialLayout, deriveTrajectoryLayout,
 } from '../src/client/layout.ts'

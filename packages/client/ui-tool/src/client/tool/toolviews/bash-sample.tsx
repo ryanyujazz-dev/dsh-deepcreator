@@ -15,6 +15,8 @@
 
 import { useState, type KeyboardEvent } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
+// Type-only: pulls the ctx.slots merge (SlotRegistry service) into this program.
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import clsx from 'clsx'
 import {
   DeepCreatorIconInspectOutline12, IconApiOutline14, IconChevronDownOutline14, StateDot, TerminalBlock, Tooltip,
@@ -24,7 +26,7 @@ import type { ToolCallViewProps } from '../../contract/slots.ts'
 import { TOOLVIEW_SEATS } from '../../contract/slots.ts'
 import { terminalBlockLabels, terminalCardModel, terminalFailed } from '../models/terminal-card-model.ts'
 import { toolRowModel, type ToolRowState } from '../models/tool-call-model.ts'
-import { CONVERSATION_NS as NS } from '../../locale.ts'
+import { CONVERSATION_NS as NS, type ToolTranslate } from '../../locale.ts'
 import css from './bash-sample.module.css'
 
 /** Bash row props: the toolview runtime share plus the standard locale seat. */
@@ -55,6 +57,9 @@ function stateStatus(state: ToolRowState, t: BashRowProps['t']): string | null {
  * expand interaction, replicated locally per the registrant posture).
  */
 export function BashRow({ toolName, block, sessionId, useSessions, inspect, execflow, t }: BashRowProps) {
+  // The fork dictionary serves the execflow keys through this same translate;
+  // the official seat merge just hides them (ToolConversationKey).
+  const tt = t as ToolTranslate
   const model = toolRowModel(toolName, block)
   // Session workspace root: the terminal view's cwd resolves against it (an
   // omitted workdir IS the workspace), which the pure presenter cannot do.
@@ -154,11 +159,11 @@ export function BashRow({ toolName, block, sessionId, useSessions, inspect, exec
               </div>
             )}
           {inspect !== undefined && (
-            <Tooltip label={t('execflow.inspect')} side="bottom">
+            <Tooltip label={tt('execflow.inspect')} side="bottom">
               <button
                 type="button"
                 className={css.inspectButton}
-                aria-label={t('execflow.inspect')}
+                aria-label={tt('execflow.inspect')}
                 onClick={inspect}
               >
                 <DeepCreatorIconInspectOutline12 />

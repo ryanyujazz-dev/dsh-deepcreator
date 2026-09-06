@@ -1,67 +1,88 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { RpcResponse } from '@deepseek-ai/dsh-api-remotes/client'
+import type {
+  SettingsDescribeFace, SettingsDescribeView, SettingsMirrorSnapshot,
+} from '@deepseek-ai/dsh-client-ui-settings/client'
 import { SettingsDocumentStore } from '../src/client/settings-document-store.ts'
 
-function response(hasDocument = false): RpcResponse<{
-  writable: boolean
-  hasDocument: boolean
-  namespaces: []
-}> {
+/** A held `settings.describe` answer the mirror would serve. */
+function view(hasDocument: boolean): SettingsDescribeView {
+  return { writable: true, hasDocument, namespaces: [] }
+}
+
+/** The store's remote face: only the settings namespace's open operation. */
+type StoreCtx = { remote: { settings: { openSettingsDocument: (...args: never[]) => Promise<unknown> } } }
+
+/**
+ * In-memory `SettingsDescribeFace` double: starts from `initial`, lets the
+ * test replace part of the mirror snapshot and notify subscribers the way a
+ * mirror refresh would, and counts `subscribe`/`ensure` calls.
+ */
+function stubDescribeFace(initial: Partial<SettingsMirrorSnapshot> = {}): SettingsDescribeFace & {
+  publish(next: Partial<SettingsMirrorSnapshot>): void
+  subscribeCalls(): number
+  ensureCalls(): number
+} {
+  const listeners = new Set<() => void>()
+  let snapshot: SettingsMirrorSnapshot = { status: 'idle', view: undefined, error: null, ...initial }
+  let subscribes = 0
+  let ensures = 0
   return {
-    rpcId: 'settings-document' as never,
-    result: {
-      ok: true,
-      value: { writable: true, hasDocument, namespaces: [] },
+    getSnapshot: () => snapshot,
+    subscribe(listener) {
+      subscribes += 1
+      listeners.add(listener)
+      return () => { listeners.delete(listener) }
     },
+    ensure() {
+      ensures += 1
+      return Promise.resolve()
+    },
+    acceptView: () => undefined,
+    publish(next) {
+      snapshot = { ...snapshot, ...next }
+      for (const listener of [...listeners]) listener()
+    },
+    subscribeCalls: () => subscribes,
+    ensureCalls: () => ensures,
   }
 }
 
-function opened(): RpcResponse<{ opened: true }> {
-  return {
-    rpcId: 'settings-open' as never,
-    result: { ok: true, value: { opened: true } },
-  }
-}
-
-function describeFailed(message: string): RpcResponse<never> {
-  return {
-    rpcId: 'settings-document-failed' as never,
-    result: { ok: false, error: { code: 'internal', message, details: {} } },
-  }
+function storeOver(
+  face: SettingsDescribeFace,
+  openSettingsDocument: StoreCtx['remote']['settings']['openSettingsDocument'],
+): SettingsDocumentStore {
+  return new SettingsDocumentStore({ remote: { settings: { openSettingsDocument } } } as never, face)
 }
 
 describe('SettingsDocumentStore', () => {
   it('loads provider metadata and asks the settings domain to open its document', async () => {
-    const describe = vi.fn(() => Promise.resolve(response(true)))
-    const openDocument = vi.fn(() => Promise.resolve(opened()))
-    const controller = new SettingsDocumentStore({ settings: { describe, openDocument } } as never)
+    const face = stubDescribeFace({ status: 'ready', view: view(true) })
+    const openSettingsDocument = vi.fn(() => Promise.resolve({ ok: true as const, value: { opened: true as const } }))
+    const controller = storeOver(face, openSettingsDocument)
     await controller.load()
     expect(controller.store.getSnapshot()).toEqual({
       status: 'ready', opening: false, error: null,
     })
     await controller.open()
-    expect(openDocument).toHaveBeenCalledWith({})
+    expect(openSettingsDocument).toHaveBeenCalledOnce()
   })
 
   it('marks absent or failed metadata unavailable without opening anything', async () => {
-    const openDocument = vi.fn(() => Promise.resolve(opened()))
-    const absent = new SettingsDocumentStore({
-      settings: { describe: () => Promise.resolve(response()), openDocument },
-    } as never)
+    const openSettingsDocument = vi.fn(() => Promise.resolve({ ok: true as const, value: { opened: true as const } }))
+    const absent = storeOver(stubDescribeFace({ status: 'ready', view: view(false) }), openSettingsDocument)
     await absent.load()
     await absent.open()
     expect(absent.store.getSnapshot().status).toBe('unavailable')
-    expect(openDocument).not.toHaveBeenCalled()
+    expect(openSettingsDocument).not.toHaveBeenCalled()
 
-    const failed = new SettingsDocumentStore({
-      settings: { describe: () => Promise.reject(new Error('offline')), openDocument },
-    } as never)
+    const failed = storeOver(stubDescribeFace({ status: 'unavailable', error: 'offline' }), openSettingsDocument)
     await failed.load()
     expect(failed.store.getSnapshot()).toMatchObject({ status: 'unavailable', error: 'offline' })
 
-    const rejected = new SettingsDocumentStore({
-      settings: { describe: () => Promise.resolve(describeFailed('provider failed')), openDocument },
-    } as never)
+    const rejected = storeOver(
+      stubDescribeFace({ status: 'unavailable', error: 'provider failed' }),
+      openSettingsDocument,
+    )
     await rejected.load()
     expect(rejected.store.getSnapshot()).toMatchObject({
       status: 'unavailable', error: 'provider failed',
@@ -69,64 +90,48 @@ describe('SettingsDocumentStore', () => {
   })
 
   it('collapses concurrent open gestures and recovers after a failure', async () => {
-    let resolveOpen!: (response: RpcResponse<{ opened: true }>) => void
-    const openDocument = vi.fn(() => new Promise<RpcResponse<{ opened: true }>>((resolve) => { resolveOpen = resolve }))
-    const controller = new SettingsDocumentStore({
-      settings: { describe: () => Promise.resolve(response(true)), openDocument },
-    } as never)
+    let resolveOpen!: (answer: { ok: false; error: { code: string; message: string; details: Record<string, never> } }) => void
+    const openSettingsDocument = vi.fn(() => new Promise<typeof resolveOpen extends (a: infer A) => void ? A : never>(
+      (resolve) => { resolveOpen = resolve },
+    ))
+    const controller = storeOver(
+      stubDescribeFace({ status: 'ready', view: view(true) }),
+      openSettingsDocument as never,
+    )
     await controller.load()
     const first = controller.open()
     const second = controller.open()
-    expect(openDocument).toHaveBeenCalledOnce()
-    resolveOpen({
-      rpcId: 'settings-open-failed' as never,
-      result: { ok: false, error: { code: 'internal', message: 'no default editor', details: {} } },
-    })
+    expect(openSettingsDocument).toHaveBeenCalledOnce()
+    resolveOpen({ ok: false, error: { code: 'internal', message: 'no default editor', details: {} } })
     await Promise.all([first, second])
     expect(controller.store.getSnapshot()).toMatchObject({
       status: 'ready', opening: false, error: 'no default editor',
     })
   })
 
-  it('ignores stale metadata completions and reports non-Error native failures', async () => {
-    let resolveFirst!: (value: ReturnType<typeof response>) => void
-    const first = new Promise<ReturnType<typeof response>>((resolve) => { resolveFirst = resolve })
-    const describe = vi.fn()
-      .mockReturnValueOnce(first)
-      .mockResolvedValueOnce(response(true))
-    let rejectOpen!: (reason?: unknown) => void
-    const controller = new SettingsDocumentStore({
-      settings: {
-        describe,
-        openDocument: () => new Promise((_, reject) => { rejectOpen = reject }),
-      },
-    } as never)
-    const stale = controller.load()
+  it('follows the shared mirror once across loads, re-deriving on its updates, and resets opening when the open transport rejects', async () => {
+    const face = stubDescribeFace({ status: 'ready', view: view(true) })
+    const controller = storeOver(face, vi.fn())
     await controller.load()
-    resolveFirst(response())
-    await stale
+    await controller.load()
+    // Idempotent following: repeated loads never re-subscribe the mirror.
+    expect(face.subscribeCalls()).toBe(1)
+    face.publish({ status: 'ready', view: view(false) })
+    expect(controller.store.getSnapshot().status).toBe('unavailable')
+    face.publish({ status: 'ready', view: view(true) })
     expect(controller.store.getSnapshot().status).toBe('ready')
-    const opening = controller.open()
-    rejectOpen('native unavailable')
-    await opening
-    expect(controller.store.getSnapshot()).toMatchObject({
-      status: 'ready', opening: false, error: 'native unavailable',
-    })
 
-    let rejectFirst!: (error: Error) => void
-    const rejectedFirst = new Promise<ReturnType<typeof response>>((_, reject) => { rejectFirst = reject })
-    const caught = new SettingsDocumentStore({
-      settings: {
-        describe: vi.fn()
-          .mockReturnValueOnce(rejectedFirst)
-          .mockResolvedValueOnce(response(true)),
-        openDocument: vi.fn(),
-      },
-    } as never)
-    const staleRejection = caught.load()
-    await caught.load()
-    rejectFirst(new Error('stale offline'))
-    await staleRejection
-    expect(caught.store.getSnapshot()).toMatchObject({ status: 'ready', error: null })
+    let rejectOpen!: (reason?: unknown) => void
+    const failing = storeOver(
+      stubDescribeFace({ status: 'ready', view: view(true) }),
+      (() => new Promise((_, reject) => { rejectOpen = reject })) as never,
+    )
+    await failing.load()
+    const opening = failing.open()
+    rejectOpen(new Error('transport down'))
+    await expect(opening).rejects.toThrow('transport down')
+    expect(failing.store.getSnapshot()).toMatchObject({
+      status: 'ready', opening: false,
+    })
   })
 })

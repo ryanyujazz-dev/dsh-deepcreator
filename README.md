@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <code>DeepSeek Harness 0.1.1-rc.2</code> · <code>Development runtime</code> · <code>#dsh-plugin</code>
+  <code>DeepSeek Harness 0.1.2-rc.1</code> · <code>Development runtime</code> · <code>#dsh-plugin</code>
 </p>
 
 <p align="center">
@@ -151,7 +151,7 @@ The original `web` profile remains the rollback path.
 DeepCreator keeps the official Host and Agent plugin seams open. Install the package version matching the pinned Harness runtime, add its documented Cordis row to `$DSH_HOME/profiles/deepcreator/cordis.patch.yml`, inspect the complete composition, then restart:
 
 ```sh
-pnpm --filter @ryanyujazz/dsh-deepcreator-desktop exec dsh plugin --profile deepcreator add @deepseek-ai/dsh-mcp-client@0.1.1-rc.2
+pnpm --filter @ryanyujazz/dsh-deepcreator-desktop exec dsh plugin --profile deepcreator add @deepseek-ai/dsh-mcp-client@0.1.2-rc.1
 pnpm --filter @ryanyujazz/dsh-deepcreator-desktop exec dsh --profile deepcreator --dump-config
 ```
 
@@ -200,7 +200,7 @@ Read [the architecture reference](./docs/architecture/deepcreator.md) for owners
 
 ## Compatibility and current scope
 
-The compatibility declaration targets DeepSeek Harness `0.1.1-rc.2` at Git SHA `b150a551b8d465e31e418e1b2eaf5e79bbb7d28e`.
+The compatibility declaration targets DeepSeek Harness `0.1.2-rc.1` at Git SHA `a66e4702047846cdaa10c66c9d3df3951f5ea70d`.
 
 > [!IMPORTANT]
 > DeepCreator currently ships as a **development runtime**. Signing, notarization, installers, auto-update, tray integration, and native credential storage are intentionally outside the current Desktop release. Review does not provide stage, unstage, or commit actions; trusted-LAN access is not a TLS or PWA deployment.

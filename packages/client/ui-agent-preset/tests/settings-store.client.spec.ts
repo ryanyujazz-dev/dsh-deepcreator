@@ -6,7 +6,6 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import type { IApiClient } from '@deepseek-ai/dsh-api-remotes/client'
 import {
   AGENT_PRESET_SETTINGS_NS, AgentPresetSettingsController, messageOf,
 } from '../src/client/settings-store.ts'
@@ -16,7 +15,7 @@ import type { SeatSessionSummary } from '../src/client/seat-store.ts'
 interface Recorded { ns: string; patch: unknown }
 
 /** A client whose roster and write outcome the test controls. */
-function fakeApi(
+function fakeCtx(
   presets: { id: string; trust: 'system' | 'user'; isDefault: boolean }[],
   options: {
     writes?: Recorded[]
@@ -25,42 +24,41 @@ function fakeApi(
     failWriteWith?: Error
     readOnly?: boolean
   } = {},
-): IApiClient {
+) {
   return {
-    agentPresets: {
-      list: () => Promise.resolve(options.failList === undefined
-        ? { rpcId: 'r', result: { ok: true as const, value: { presets } } }
-        : { rpcId: 'r', result: { ok: false as const, error: { code: 'internal', message: options.failList, details: {} } } }),
-    },
-    settings: {
-      // Loopback-only in production; a read-only provider answers writable:false
-      // and the row disables its control instead of offering a refused write.
-      describe: () => Promise.resolve({
-        rpcId: 'r',
-        result: {
+    remote: {
+      agentPresets: {
+        list: () => Promise.resolve(options.failList === undefined
+          ? { ok: true as const, value: { presets } }
+          : { ok: false as const, error: { code: 'internal', message: options.failList, details: {} } }),
+      },
+      settings: {
+        // Loopback-only in production; a read-only provider answers writable:false
+        // and the row disables its control instead of offering a refused write.
+        describe: () => Promise.resolve({
           ok: true as const,
           value: { writable: options.readOnly !== true, hasDocument: true, namespaces: [] },
+        }),
+        update: (ns: string, patch: { default?: string }) => {
+          options.writes?.push({ ns, patch })
+          if (options.failWriteWith !== undefined) return Promise.reject(options.failWriteWith)
+          if (options.failWrite !== undefined) {
+            return Promise.resolve({ ok: false as const, error: { code: 'internal', message: options.failWrite, details: {} } })
+          }
+          // A committed write moves the roster's default, exactly as the host does.
+          for (const preset of presets) {
+            preset.isDefault = preset.id === patch.default
+          }
+          return Promise.resolve({ ok: true as const, value: {} })
         },
-      }),
-      update: (payload: { ns: string; patch: unknown }) => {
-        options.writes?.push({ ns: payload.ns, patch: payload.patch })
-        if (options.failWriteWith !== undefined) return Promise.reject(options.failWriteWith)
-        if (options.failWrite !== undefined) {
-          return Promise.resolve({ rpcId: 'r', result: { ok: false as const, error: { code: 'internal', message: options.failWrite, details: {} } } })
-        }
-        // A committed write moves the roster's default, exactly as the host does.
-        for (const preset of presets) {
-          preset.isDefault = preset.id === (payload.patch as { default?: string }).default
-        }
-        return Promise.resolve({ rpcId: 'r', result: { ok: true as const, value: {} } })
       },
     },
-  } as unknown as IApiClient
+  } as never
 }
 
 describe('the agent-preset settings controller', () => {
   it('disables the control when this browser may not write settings', async () => {
-    const controller = new AgentPresetSettingsController(fakeApi([
+    const controller = new AgentPresetSettingsController(fakeCtx([
       { id: 'standard', trust: 'system', isDefault: true },
     ], { readOnly: true }))
 
@@ -74,7 +72,7 @@ describe('the agent-preset settings controller', () => {
   })
 
   it('derives options and the current default from one roster call', async () => {
-    const controller = new AgentPresetSettingsController(fakeApi([
+    const controller = new AgentPresetSettingsController(fakeCtx([
       { id: 'standard', trust: 'system', isDefault: true },
       { id: 'mine', trust: 'user', isDefault: false },
     ]))
@@ -91,7 +89,7 @@ describe('the agent-preset settings controller', () => {
   })
 
   it('offers no broken preset: the pickers choose the NEXT session\'s composition', async () => {
-    const controller = new AgentPresetSettingsController(fakeApi([
+    const controller = new AgentPresetSettingsController(fakeCtx([
       { id: 'standard', trust: 'system', isDefault: true },
       { id: 'damaged', trust: 'user', isDefault: false, broken: 'the composition is not valid YAML' },
     ] as never))
@@ -105,7 +103,7 @@ describe('the agent-preset settings controller', () => {
   })
 
   it('carries the display metadata a preset published', async () => {
-    const controller = new AgentPresetSettingsController(fakeApi([
+    const controller = new AgentPresetSettingsController(fakeCtx([
       { id: 'standard', trust: 'system', isDefault: true, name: '标准模式', description: '完整的编码 agent。' },
     ] as never))
 
@@ -119,7 +117,7 @@ describe('the agent-preset settings controller', () => {
   })
 
   it('reports an empty roster as unavailable, not as an error', async () => {
-    const controller = new AgentPresetSettingsController(fakeApi([]))
+    const controller = new AgentPresetSettingsController(fakeCtx([]))
 
     await controller.load()
 
@@ -131,7 +129,7 @@ describe('the agent-preset settings controller', () => {
 
   it('writes only the default field, into the agent-presets namespace', async () => {
     const writes: Recorded[] = []
-    const controller = new AgentPresetSettingsController(fakeApi([
+    const controller = new AgentPresetSettingsController(fakeCtx([
       { id: 'standard', trust: 'system', isDefault: true },
       { id: 'minimal', trust: 'system', isDefault: false },
     ], { writes }))
@@ -144,7 +142,7 @@ describe('the agent-preset settings controller', () => {
   })
 
   it('restores the previous value and surfaces the message when the write fails', async () => {
-    const controller = new AgentPresetSettingsController(fakeApi([
+    const controller = new AgentPresetSettingsController(fakeCtx([
       { id: 'standard', trust: 'system', isDefault: true },
       { id: 'minimal', trust: 'system', isDefault: false },
     ], { failWrite: 'read-only settings' }))
@@ -160,7 +158,7 @@ describe('the agent-preset settings controller', () => {
 
   it('ignores a pick that is already the default', async () => {
     const writes: Recorded[] = []
-    const controller = new AgentPresetSettingsController(fakeApi([
+    const controller = new AgentPresetSettingsController(fakeCtx([
       { id: 'standard', trust: 'system', isDefault: true },
     ], { writes }))
     await controller.load()
@@ -171,7 +169,7 @@ describe('the agent-preset settings controller', () => {
   })
 
   it('surfaces a roster failure without claiming the deployment has no presets', async () => {
-    const controller = new AgentPresetSettingsController(fakeApi([], { failList: 'host down' }))
+    const controller = new AgentPresetSettingsController(fakeCtx([], { failList: 'host down' }))
 
     await controller.load()
 
@@ -183,7 +181,7 @@ describe('the agent-preset settings controller', () => {
   it('shows the first preset when the roster marks none default', async () => {
     // Settings can name a preset that was since deleted; the picker still has
     // to show something rather than an empty control.
-    const controller = new AgentPresetSettingsController(fakeApi([
+    const controller = new AgentPresetSettingsController(fakeCtx([
       { id: 'standard', trust: 'system', isDefault: false },
       { id: 'mine', trust: 'user', isDefault: false },
     ]))
@@ -195,7 +193,7 @@ describe('the agent-preset settings controller', () => {
 
   it('ignores a load while one is already in flight', async () => {
     const writes: Recorded[] = []
-    const controller = new AgentPresetSettingsController(fakeApi(
+    const controller = new AgentPresetSettingsController(fakeCtx(
       [{ id: 'standard', trust: 'system', isDefault: true }], { writes }))
 
     await Promise.all([controller.load(), controller.load()])
@@ -210,10 +208,15 @@ describe('the agent-preset settings controller', () => {
     expect(messageOf({ code: 7 })).toBe('[object Object]')
   })
 
-  it('reports a transport that rejects rather than answering', async () => {
+  it('reports a carrier failure on the roster read without emptying the chip', async () => {
     const controller = new AgentPresetSettingsController({
-      agentPresets: { list: () => Promise.reject(new Error('socket closed')) },
-    } as unknown as IApiClient)
+      remote: {
+        agentPresets: {
+          // The Remote face folds a carrier failure into the error branch.
+          list: () => Promise.resolve({ ok: false as const, error: { code: 'gateway/internal', message: 'socket closed', details: {} } }),
+        },
+      },
+    } as never)
 
     await controller.load()
 
@@ -221,7 +224,7 @@ describe('the agent-preset settings controller', () => {
   })
 
   it('reports a transport that rejects mid-write and keeps the old default showing', async () => {
-    const controller = new AgentPresetSettingsController(fakeApi([
+    const controller = new AgentPresetSettingsController(fakeCtx([
       { id: 'standard', trust: 'system', isDefault: true },
       { id: 'mine', trust: 'user', isDefault: false },
     ], { failWriteWith: new Error('socket closed') }))
@@ -242,24 +245,27 @@ describe('the new-session chip controller', () => {
     current: { id: string; blank: boolean; agentPreset?: string } | undefined,
     options: { writes?: Recorded[]; failSelect?: string; failList?: string; throwOn?: 'list' | 'select' } = {},
   ): AgentPresetSeatController {
-    const api = {
+    const remote = {
       agentPresets: {
         list: () => {
-          if (options.throwOn === 'list') return Promise.reject(new Error('socket closed'))
+          if (options.throwOn === 'list') {
+            // A carrier failure: the Remote face folds one into the error branch.
+            return Promise.resolve({ ok: false as const, error: { code: 'gateway/internal', message: 'socket closed', details: {} } })
+          }
           return Promise.resolve(options.failList === undefined
-            ? { rpcId: 'r', result: { ok: true as const, value: { presets } } }
-            : { rpcId: 'r', result: { ok: false as const, error: { code: 'internal', message: options.failList, details: {} } } })
+            ? { ok: true as const, value: { presets } }
+            : { ok: false as const, error: { code: 'internal', message: options.failList, details: {} } })
         },
-        select: (payload: { agentPreset: string }) => {
+        select: (_agentId: string, agentPreset: string) => {
           if (options.throwOn === 'select') return Promise.reject(new Error('socket closed'))
-          options.writes?.push({ ns: 'select', patch: payload.agentPreset })
+          options.writes?.push({ ns: 'select', patch: agentPreset })
           return Promise.resolve(options.failSelect === undefined
-            ? { rpcId: 'r', result: { ok: true as const, value: { agentPreset: payload.agentPreset } } }
-            : { rpcId: 'r', result: { ok: false as const, error: { code: 'agent-preset-locked', message: options.failSelect, details: {} } } })
+            ? { ok: true as const, value: agentPreset }
+            : { ok: false as const, error: { code: 'agent-preset-locked', message: options.failSelect, details: {} } })
         },
       },
-    } as unknown as IApiClient
-    return new AgentPresetSeatController(api, () => current as SeatSessionSummary | undefined)
+    }
+    return new AgentPresetSeatController({ remote } as never, () => current as SeatSessionSummary | undefined)
   }
 
   const ROSTER: { id: string; trust: 'system' | 'user'; isDefault: boolean }[] = [
@@ -435,18 +441,19 @@ describe('the new-session chip controller', () => {
   })
 
   it('reports a refused describe as a failure rather than a half-read row', async () => {
-    const api = {
-      agentPresets: {
-        list: () => Promise.resolve({
-          rpcId: 'r',
-          result: { ok: true as const, value: { presets: [{ id: 'standard', trust: 'system', isDefault: true }], authorable: true } },
-        }),
+    const controller = new AgentPresetSettingsController({
+      remote: {
+        agentPresets: {
+          list: () => Promise.resolve({
+            ok: true as const,
+            value: { presets: [{ id: 'standard', trust: 'system', isDefault: true }], authorable: true },
+          }),
+        },
+        // The roster answered; `settings.describe` is what rejected, and the row
+        // cannot claim a writable default it never confirmed.
+        settings: { describe: () => Promise.reject(new Error('socket closed')) },
       },
-      // The roster answered; `settings.describe` is what rejected, and the row
-      // cannot claim a writable default it never confirmed.
-      settings: { describe: () => Promise.reject(new Error('socket closed')) },
-    } as unknown as IApiClient
-    const controller = new AgentPresetSettingsController(api)
+    } as never)
 
     await controller.load()
 

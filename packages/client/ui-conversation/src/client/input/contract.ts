@@ -4,9 +4,12 @@
  * InputZone currency; the scoped input events carry the mutation verbs; the
  * conversation wiring layer alone sees the full SessionInput. InputMachine
  * (machine.ts) is package-private and never exported.
+ *
+ * `InputState` / `InputActions` / `SessionInput` are the OFFICIAL 0.1.2
+ * contracts (the session standard kit types them); the fork-only members
+ * (paste matching, local outgoing echoes, echo acknowledgement) are merged
+ * into the official interfaces below.
  */
-import type { ClientContext, SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
-import type { Branded } from '@deepseek-ai/dsh-brand'
 import type {
   ArbitrateKey, ArbitrateOutcome, CommandClaim, ConsumeTokenRequest, PickOutcome,
   ReferenceInsert, SubmitOutcome, TokenSpan,
@@ -14,8 +17,12 @@ import type {
 import type { QueueRow } from '../contract/queue.ts'
 import type { InputSubmitMode } from '../contract/composer-submission.ts'
 
+/** The official InputState contract (official Occurrence shape included). */
+type OfficialInputState = import('@deepseek-ai/dsh-client-ui-conversation/client').InputState
+
 /** Browser-runtime identity of one unsent image draft. */
-export type DraftAttachmentId = Branded<'DraftAttachmentId'>
+export type DraftAttachmentId =
+  import('@deepseek-ai/dsh-client-ui-conversation/client').DraftAttachmentId
 
 /**
  * Browser-local presentation of one ordinary message between the submit
@@ -43,54 +50,88 @@ export interface PendingOutgoingMessage {
   }
 }
 
+/** One sync-matched paste component; start/end are relative to the pasted text. */
+export interface PasteComponent extends EditSelection {
+  readonly reference: ReferenceInsert
+}
+
+/**
+ * Live paste-match attempt published while async matching may still upgrade
+ * pasted tokens (the clipboard round-trip). Any non-paste transaction,
+ * submit start, invalidate-paste, or release ends it; a paste-upgrade keeps
+ * it current (later tokens re-CAS against the advanced draftRev).
+ */
+export interface PasteAttemptState {
+  /** Machine-minted attempt identity (paste-upgrade must match it). */
+  readonly attemptId: number
+  /** Pasted range in the draft as of the paste transaction. */
+  readonly insertedRange: EditSelection
+  /** Caller-supplied projection generation echoed back (the controller drops cross-generation results). */
+  readonly generation: number
+}
+
+/**
+ * Fork-only members merged into the official published input state: the
+ * live paste-match attempt and the ephemeral local outgoing echoes.
+ */
+declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
+  interface InputState {
+    /** Live paste-match attempt (absent when no paste is matchable). */
+    paste?: PasteAttemptState
+    /**
+     * Ephemeral local echoes awaiting an authoritative queue row or durable
+     * user message. Absent on older/input-machine-only snapshots.
+     */
+    pendingOutgoing?: readonly PendingOutgoingMessage[]
+  }
+}
+
+/** Published input state (the currency; per-session). */
+export type InputState = OfficialInputState
+
+/**
+ * One reference chip occurrence, backing exactly one U+FFFC placeholder in
+ * the draft (the official occurrence projection; `length` is the
+ * clipboard-text span the chip represents).
+ */
+export type Occurrence = OfficialInputState['occurrences'][number]
+
+/**
+ * One independently addressable row projected from the transient queue snapshot.
+ */
+export type QueuedMessage = QueueRow
+
 /**
  * The scoped-event application verbs: the hub's bail listeners call these,
  * and the boolean answer IS the event's bail value (true ⟺ the machine
- * accepted after phase and span/bare-token guards).
+ * accepted after phase and span/bare-token guards). Officially declared as
+ * the base of `SessionInput` but not re-exported through the official client
+ * index, so the face is recovered structurally.
  */
-export interface InputTarget {
-  /** Replace the trigger span with claim.token and enter claimed (span-CAS'd). */
-  beginCommand(claim: CommandClaim, span: TokenSpan): boolean
-  /** Replace the trigger span with one reference occurrence (span-CAS'd). */
-  insertReference(ref: ReferenceInsert, span: TokenSpan): boolean
+export type InputTarget =
+  Pick<
+    import('@deepseek-ai/dsh-client-ui-conversation/client').SessionInput,
+    'beginCommand' | 'insertReference'
+  >
+
+/**
+ * Fork-only member merged into the official per-session input facade: local
+ * echo retirement stays under the fork composer's control.
+ */
+declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
+  interface SessionInput {
+    /** Retire local echoes only after their authoritative presentation committed. */
+    acknowledgeOutgoing(ids: readonly number[]): void
+  }
 }
 
 /** Per-session input facade owned by the conversation wiring layer. */
-export interface SessionInput extends InputTarget {
-  /** Single write path for draft text (all mutation rides machine events). */
-  setDraft(text: string): void
-  /** Append ordered browser-owned image ids; busy admission phases refuse. */
-  addImages(ids: readonly DraftAttachmentId[]): boolean
-  /** Remove one browser-owned image id. */
-  removeImage(id: DraftAttachmentId): void
-  /** Drop ids whose browser-owned objects no longer exist. */
-  pruneImages(ids: readonly DraftAttachmentId[]): void
-  /**
-   * THE complexity sink: enter adjudication, submit transaction, and the default sink live inside.
-   * @param mode - delivery intent retained through asynchronous adjudication and serialization.
-   */
-  submit(mode?: InputSubmitMode): void
-  /**
-   * Surface a notice outside the machine's own effect stream: detached
-   * command results and business notifications render through here.
-   * Session-routed — resolving the facade via SessionInputResolver.for(actx) lands
-   * the notice on that session's composer, so a result arriving after a
-   * session switch still reaches its own session.
-   * @param level - severity tier.
-   * @param text - notice body.
-   */
-  notify(level: 'info' | 'error', text: string): void
-  /** Retire local echoes only after their authoritative presentation committed. */
-  acknowledgeOutgoing(ids: readonly number[]): void
-  /** Input state store (InputZone currency + decorations read here). */
-  readonly state: SnapshotStore<InputState>
-}
+export type SessionInput =
+  import('@deepseek-ai/dsh-client-ui-conversation/client').SessionInput
 
 /** Session-addressed access to the per-session input facade. */
-export interface SessionInputResolver {
-  /** Resolve the facade for one session-scope ctx. */
-  for(actx: ClientContext): SessionInput
-}
+export type SessionInputResolver =
+  import('@deepseek-ai/dsh-client-ui-conversation/client').SessionInputResolver
 
 /**
  * The public input action face provided to every session-scope slot
@@ -98,18 +139,8 @@ export interface SessionInputResolver {
  * useStore+actions convention. Command-style handles (track/arbitrate/space/
  * undo/paste/…) stay InputBar-private and never ride this face.
  */
-export interface InputActions {
-  /** Single public draft write path (full next draft; occurrence math via diff scan). */
-  setDraft(text: string): void
-  /** Append ordered browser-owned image ids; busy admission phases refuse. */
-  addImages(ids: readonly DraftAttachmentId[]): boolean
-  /** Remove one browser-owned image id. */
-  removeImage(id: DraftAttachmentId): void
-  /** Drop ids whose browser-owned objects no longer exist. */
-  pruneImages(ids: readonly DraftAttachmentId[]): void
-  /** Enter submission (adjudication / claim transaction / default sink inside). */
-  submit(): void
-}
+export type InputActions =
+  import('@deepseek-ai/dsh-client-ui-conversation/client').InputActions
 
 /** One surfaced notice (command results, adjudication failures). seq keys re-render of repeats. */
 export interface InputNotice {
@@ -154,9 +185,6 @@ export interface ComposerKeyboard {
   dismissPopup(): void
 }
 
-/** One independently addressable row projected from the transient queue snapshot. */
-export type QueuedMessage = QueueRow
-
 /** Guard union of the scoped consume-token event, checked by the machine. */
 export type ConsumeTokenGuard = ConsumeTokenRequest['guard']
 
@@ -177,50 +205,6 @@ export interface EditRange extends EditSelection {
 }
 
 /**
- * One reference chip occurrence, backing exactly one U+FFFC placeholder in
- * the draft. Identity is occurrenceId — same-named
- * references stay independently addressable. label/clipboardText are the
- * owner's insert-time projections, cached so the chip survives owner loss
- * (invalid flips instead of dropping the occurrence).
- */
-export interface Occurrence {
-  /** Machine-minted stable identity (monotonic per machine). */
-  readonly occurrenceId: number
-  /** Owning source name (serializer routing key). */
-  readonly source: string
-  /** Owner-scoped reference id. */
-  readonly ref: string
-  /** Placeholder offset in the draft; the occurrence occupies exactly [offset, offset+1). */
-  readonly offset: number
-  /** Chip display label (insert-time cache). */
-  readonly label: string
-  /** Clipboard / persistence projection, e.g. `/name` (insert-time cache, never the model form). */
-  readonly clipboardText: string
-  /** Owner-resolution failure flag: chip renders invalid; serialization must fail. */
-  readonly invalid?: boolean
-}
-
-/** One sync-matched paste component; start/end are relative to the pasted text. */
-export interface PasteComponent extends EditSelection {
-  readonly reference: ReferenceInsert
-}
-
-/**
- * Live paste-match attempt published while async matching may still upgrade
- * pasted tokens (the clipboard round-trip). Any non-paste transaction,
- * submit start, invalidate-paste, or release ends it; a paste-upgrade keeps
- * it current (later tokens re-CAS against the advanced draftRev).
- */
-export interface PasteAttemptState {
-  /** Machine-minted attempt identity (paste-upgrade must match it). */
-  readonly attemptId: number
-  /** Pasted range in the draft as of the paste transaction. */
-  readonly insertedRange: EditSelection
-  /** Caller-supplied projection generation echoed back (the controller drops cross-generation results). */
-  readonly generation: number
-}
-
-/**
  * InputMachine construction knobs. The machine never reads an ambient clock:
  * `now` is the only time source, injected by the shell (tests inject a
  * fake). The default clock is constant, i.e. consecutive single-char typing
@@ -231,29 +215,6 @@ export interface InputMachineOptions {
   readonly mergeWindowMs?: number
   /** Monotonic clock for typing-merge decisions (default: constant 0). */
   readonly now?: () => number
-}
-
-/** Published input state (the currency; per-session). */
-export interface InputState {
-  readonly draft: string
-  /** Ordered runtime-only image ids; bytes and URLs stay in ConversationController. */
-  readonly imageIds: readonly DraftAttachmentId[]
-  /** Monotonic draft revision (span CAS compares against this). */
-  readonly draftRev: number
-  readonly phase: 'plain' | 'adjudicating' | 'claimed' | 'submitting'
-  /** Present exactly while claimed/submitting (claim snapshot during flight; submit closure withheld). */
-  readonly claim?: { readonly token: string; readonly hint?: string }
-  /** Chip occurrence table, sorted by offset (one U+FFFC per entry). */
-  readonly occurrences: readonly Occurrence[]
-  /** Live paste-match attempt (absent when no paste is matchable). */
-  readonly paste?: PasteAttemptState
-  /** Read-only transient inbox projection (`session/queue`, including pending steering). */
-  readonly queue: readonly QueuedMessage[]
-  /**
-   * Ephemeral local echoes awaiting an authoritative queue row or durable
-   * user message. Absent on older/input-machine-only snapshots.
-   */
-  readonly pendingOutgoing?: readonly PendingOutgoingMessage[]
 }
 
 /**

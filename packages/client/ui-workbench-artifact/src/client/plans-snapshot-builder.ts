@@ -1,6 +1,9 @@
-import type {
-  ConversationTimelineSnapshot, ConversationViewBuilder, ConversationViewDefinition, ConversationViewNode,
-} from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type ConversationTimelineSnapshot,
+  type ConversationViewBuilder,
+  type ConversationViewDefinition,
+  type ConversationViewNode,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { Context } from '@deepseek-ai/cordis'
 import type { PlanArtifactRecord, PlanConversationNode, PlansSnapshot } from './artifact-contract.ts'
 
@@ -33,5 +36,5 @@ export const plansViewDefinition: ConversationViewDefinition<PlanConversationNod
 }
 
 export function registerPlansConversationView(ctx: Context): () => void {
-  return ctx.conversationViews.register(plansViewDefinition)
+  return ctx.uiConversation.views.register(plansViewDefinition)
 }

@@ -12,14 +12,14 @@ import {
   IconApiOutline14, IconBrowseOutline16, IconChevronDownOutline14, IconChevronRightOutline14, IconCodeOutline16,
   DeepCreatorIconSkillOutline16, DeepCreatorIconSparkle16, IconEditOutline16, IconSearchOutline16, IconStopFill16, IconTrashOutline16,
 } from '@ryanyujazz/dsh-client-ui-primitives'
-import type { ChatViewSlotProps } from '../contract/slots.ts'
-
-type Translate = ChatViewSlotProps['t']
-type ConversationKey = Parameters<Translate>[0]
+import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
+import type { ConversationKey } from '../locales.ts'
 import { draftingEntry } from './DraftingToolRow.tsx'
 import { useHeaderTransition, type HeaderForm } from './header-transition.ts'
 import { DraftingToolRow } from './DraftingToolRow.tsx'
 import css from './ExecutionSlot.module.css'
+
+type ForkTranslate = Translate<ConversationKey>
 
 /** One run member: a landed tool node key + its live state facts. */
 export interface SlotMember {
@@ -60,7 +60,7 @@ function toolIcon(name: string): ReactNode {
  * One mapped tool's aggregate phrase: locale key + count params (the `.one`
  * keys carry no params). Returns null for tools without a dedicated phrase.
  */
-function mappedActionPhrase(name: string, count: number, t: Translate): string | null {
+function mappedActionPhrase(name: string, count: number, t: ForkTranslate): string | null {
   const pair = (one: ConversationKey, many: ConversationKey): string =>
     count === 1 ? t(one) : t(many, { count })
   switch (name) {
@@ -85,7 +85,7 @@ function mappedActionPhrase(name: string, count: number, t: Translate): string |
  * "executed N times" phrase instead of one entry per wire name — the count
  * is the total across every unmapped member of the run.
  */
-function aggregateText(members: readonly SlotMember[], t: Translate): string {
+function aggregateText(members: readonly SlotMember[], t: ForkTranslate): string {
   const order: string[] = []
   const counts = new Map<string, number>()
   for (const member of members) {
@@ -116,7 +116,7 @@ interface ExecutionSlotProps {
   /** Renders one member's full row (running or settled) inside the slot. */
   readonly renderMember: (nodeKey: string) => ReactNode
   /** The owning view's locale seat. */
-  readonly t: ChatViewSlotProps['t']
+  readonly t: ForkTranslate
 }
 
 /** Derive the header form from members + drafting. */

@@ -7,14 +7,16 @@
 // non-expandable rather than empty.
 
 import { memo, useState } from 'react'
-import type { CompactionSummaryNode } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type CompactionSummaryNode,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import {
   IconApiOutline14,
   IconChevronDownOutline14,
   IconChevronRightOutline14,
   MarkdownText,
 } from '@ryanyujazz/dsh-client-ui-primitives'
-import type { ChatViewSlotProps } from '../contract/slots.ts'
+import type { ForkTranslate } from '../locales.ts'
 import css from './MessageItem.module.css'
 
 interface CompactionItemProps {
@@ -24,7 +26,7 @@ interface CompactionItemProps {
   /** Command settlement text used when structured compaction counts are unavailable. */
   fallbackSummary?: string | null
   /** The owning view's locale seat. */
-  t: ChatViewSlotProps['t']
+  t: ForkTranslate
 }
 
 /**

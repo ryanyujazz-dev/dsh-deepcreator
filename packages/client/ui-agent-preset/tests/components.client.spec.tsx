@@ -10,7 +10,9 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
-import { createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  createSnapshotStore,
+} from '@deepseek-ai/dsh-client-store'
 import { AgentPresetLabel } from '../src/client/AgentPresetLabel.tsx'
 import type { AgentPresetLabelProps } from '../src/client/AgentPresetLabel.tsx'
 import { AgentPresetRow } from '../src/client/AgentPresetRow.tsx'
@@ -78,7 +80,12 @@ function renderLabel(
   const store = createSnapshotStore<AgentPresetSettingsState>({
     ...ROW_READY, options: SEAT_READY.options, ...roster,
   })
-  const sessions = createSnapshotStore({ byId: summary === undefined ? {} : { s1: summary } })
+  // 0.1.2: the session's composition rides the host-computed projection.
+  const sessions = createSnapshotStore({
+    byId: summary === undefined
+      ? {}
+      : { s1: { ...summary, projectionValues: { agentPreset: summary.agentPreset } } },
+  })
   const load = vi.fn(() => Promise.resolve())
   const view = render(<AgentPresetLabel {...({
     load,

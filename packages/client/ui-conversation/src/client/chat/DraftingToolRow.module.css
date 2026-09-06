@@ -70,7 +70,14 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font: inherit;
+  /* Same split-token pin as .label: during the drafting header's layered
+   * transition the inherited font shorthand falls back to the exported 16px
+   * body, so the streamed filename must carry the transcript tokens itself. */
+  font-family: var(--dsw-font-family);
+  font-size: var(--dsw-font-markdown-base-font-size, 14px);
+  line-height: var(--dsw-font-markdown-base-line-height, 22px);
+  font-weight: 400;
+  font-style: normal;
   color: var(--dsw-alias-label-tertiary);
 }
 
@@ -79,4 +86,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: inherit;
+  font-style: inherit;
 }

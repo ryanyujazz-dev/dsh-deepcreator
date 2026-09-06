@@ -1,8 +1,7 @@
 import z from '@deepseek-ai/schemastery'
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 
 export const BROWSER_SETTINGS_NAMESPACE = 'browser'
-export const BROWSER_SETTINGS_KEY = settingsNamespace(BROWSER_SETTINGS_NAMESPACE)
+export const BROWSER_SETTINGS_KEY = BROWSER_SETTINGS_NAMESPACE
 export const DEFAULT_VISIBLE_PROVIDER_ORDER = ['iab', 'chrome', 'playwright-chromium'] as const
 export interface BrowserSettings {
   defaultAutomation: 'semantic' | 'playwright'

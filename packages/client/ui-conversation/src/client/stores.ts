@@ -2,7 +2,10 @@
  * Per-session chat store shared by the conversation registrations.
  * The plugin creates its handle at apply time so identity follows the fiber.
  */
-import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  defineStore,
+  type EngineStoreHandle,
+} from '@deepseek-ai/dsh-client-store'
 import type { CallId, ChatStoreState } from './contract/views.ts'
 
 /** Declared action shape used to give the exported factory a stable return type. */

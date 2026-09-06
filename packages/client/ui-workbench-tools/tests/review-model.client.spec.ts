@@ -4,7 +4,11 @@
 // mutation digests.
 
 import { beforeEach, describe, expect, it } from 'vitest'
-import type { ConversationNode, RunningToolCall, ToolResultNode } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type ConversationNode,
+  type RunningToolCall,
+  type ToolResultNode,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ReviewDiffResult, ReviewFileStatus } from '@ryanyujazz/dsh-review/types'
 import {
   REVIEW_CACHE_LIMIT, decodeMutationSignal, encodeMutationSignal, evictCollapsedCaches, markStale,

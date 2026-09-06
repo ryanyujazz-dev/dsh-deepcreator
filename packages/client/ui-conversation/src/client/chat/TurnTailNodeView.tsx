@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ChatNodeViewProps, TurnMediaOwnerProps, TurnTailOwnerProps } from '../contract/slots.ts'
+import { forkT } from '../locales.ts'
 import { MessageIconActions } from './MessageIconActions.tsx'
 import { assistantText } from './turn-assistant.ts'
 import css from './TurnTailNodeView.module.css'
@@ -16,11 +17,12 @@ type TurnTailNodeViewProps = ChatNodeViewProps<'turn-tail'>
 
 /** Turn-local actions and feature tail over the Location index, independent of Assistant placement. */
 export const TurnTailNodeView = memo(function TurnTailNodeView({
-  node, openFile, forkAt, renderSlot, renderSlotChain, renderMessageImages, t, useSession,
+  node, openFile, forkAt, renderSlot, renderSlotChain, renderMessageImages, t: tRaw, useChat,
 }: TurnTailNodeViewProps) {
+  const t = forkT(tRaw)
   const data = node.data
-  const hasLaterChatNode = useSession(snapshot =>
-    snapshot.chat.locations.getTurn(data.turn).at(-1) !== node.key)
+  const hasLaterChatNode = useChat(snapshot =>
+    snapshot.locations.getTurn(data.turn).at(-1) !== node.key)
   const turn = node.location.kind === 'turn' || node.location.kind === 'step'
     ? node.location.turn
     : undefined

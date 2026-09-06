@@ -3,12 +3,16 @@
  * slot without defining a service.
  */
 import type { Context } from '@deepseek-ai/cordis'
-import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@ryanyujazz/dsh-client-locale/client'
 // Type-only: the 'conversation.view' SlotMap row (declared by the slot's
 // owning package) must be in the program for the register calls to type.
 import type {} from '@ryanyujazz/dsh-client-ui-conversation/client'
+// Type-only: pulls the renderer package's Context merge (ctx.slots).
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { createTrajectoryDurationStore } from './duration-store.ts'
 import { en, NS, zh } from './locales.ts'
 import { registerTrajectoryAssistantDefinition } from './trajectory-assistant-definition.ts'
@@ -19,8 +23,8 @@ import { registerTrajectoryConversationView } from './trajectory-snapshot-builde
 import { registerTrajectoryToolDefinition } from './trajectory-tool-definition.ts'
 import { TrajectoryView, type TrajectoryViewInjected } from './TrajectoryView.tsx'
 
-/** Required services: the conversation slot, registries, ordinary Session paging, and the locale service. */
-export const inject = ['slots', 'conversationEvents', 'conversationViews', 'sessions', 'locale']
+/** Required services: the conversation slot, ordinary Session paging, the Conversation registries, and the locale service. */
+export const inject = ['slots', 'sessions', 'uiConversation', 'locale']
 
 /**
  * Client plugin body: register the trajectory view tab. The registration
@@ -51,13 +55,14 @@ export function apply(ctx: Context): void {
       if (session === undefined) {
         throw new Error(`ui-trajectory: session "${sessionId}" is unavailable`)
       }
+      const trajectory = ctx.uiConversation.binding(sessionId).target('trajectory')
       return {
-        hooks: { duration },
+        hooks: { duration, trajectory },
         setDuration: (value: boolean) => { duration.set(value) },
         loadOlder: async () => {
-          const before = session.getSnapshot().views.get('trajectory')
+          const before = trajectory.getSnapshot()
           await session.loadOlder()
-          return session.getSnapshot().views.get('trajectory') !== before
+          return trajectory.getSnapshot() !== before
         },
       }
     },

@@ -1,8 +1,15 @@
 /** Host-backed default for sessions without a session-specific render-mode choice. */
 
 import {
-  createSnapshotStore, type SessionId, type SettingsScope, type SnapshotStore,
-} from '@deepseek-ai/dsh-client-runtime/client'
+  createSnapshotStore,
+  type SnapshotStore,
+} from '@deepseek-ai/dsh-client-store'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
+import {
+  type SettingsScope,
+} from '@deepseek-ai/dsh-client-ui-settings/client'
 import {
   DEFAULT_RENDER_MODE, DEFAULT_RENDER_MODE_FIELD,
   type ConversationRenderMode, type ConversationSettings,

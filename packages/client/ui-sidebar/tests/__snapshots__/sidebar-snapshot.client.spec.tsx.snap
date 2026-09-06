@@ -42,6 +42,10 @@ exports[`sidebar shell snapshots > renders the expanded column (wordmark, capsul
         />
       </button>
     </div>
+    <div
+      data-slot="sidebar.stage-mode"
+      style="display: contents;"
+    />
     <ul
       aria-label="Primary actions"
       class="primaryList"
@@ -173,6 +177,10 @@ exports[`sidebar shell snapshots > renders the expanded column in the default lo
         />
       </button>
     </div>
+    <div
+      data-slot="sidebar.stage-mode"
+      style="display: contents;"
+    />
     <ul
       aria-label="主要操作"
       class="primaryList"

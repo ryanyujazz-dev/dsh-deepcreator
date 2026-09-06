@@ -12,8 +12,13 @@
  * route regardless of what any client disables.
  */
 
-import { createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
-import type { SessionId, SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  createSnapshotStore,
+  type SnapshotStore,
+} from '@deepseek-ai/dsh-client-store'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
 
 /** Why one session's composer is inert. */
 export interface ComposerBlock {

@@ -10,7 +10,12 @@
  */
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it } from 'vitest'
-import { SlotRegistry, type SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  SlotRegistry,
+} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
 import { LocaleRuntime } from '@ryanyujazz/dsh-client-locale/client'
 import { TestRemote } from '@deepseek-ai/dsh-client-test-runtime'
 import type { CommandDecoration } from '@deepseek-ai/dsh-client-ui-commands/client'
@@ -39,9 +44,20 @@ async function bench() {
   const locale = new LocaleRuntime(ctx)
   locale.setLocale('en')
   ctx.provide('locale', locale)
-  // The plugin injects `remote`; forwarded events reach it through the same
-  // `$dispatch` handoff the connection sink makes.
-  new TestRemote(ctx)
+  // The plugin injects `remote`: forwarded events ride the TestRemote emit
+  // driver, and the settings row controller reads the scripted namespace.
+  const remote = new TestRemote(ctx, {
+    settings: {
+      describe: () => Promise.resolve({
+        ok: true as const,
+        value: { writable: true, hasDocument: false, namespaces: [] },
+      }),
+      mutate: () => Promise.resolve({
+        ok: false as const,
+        error: { code: 'internal', message: 'settings mutation is not exercised', details: {} },
+      }),
+    },
+  })
   ctx.provide('settingsSchema', SETTINGS_SCHEMA)
   ctx.slots.register({
     name: 'root',
@@ -49,17 +65,7 @@ async function bench() {
       'settings.general.item': { kind: 'list', scope: 'root' },
     },
   } as never, () => null)
-  ctx.provide('connection', {
-    api: {
-      settings: {
-        describe: () => Promise.resolve({
-          rpcId: 'describe',
-          result: { ok: true as const, value: { writable: true, hasDocument: false, namespaces: [] } },
-        }),
-        mutate: () => Promise.reject(new Error('settings mutation is not exercised')),
-      },
-    },
-  } as never)
+  ctx.provide('connection', {} as never)
   let decoration: CommandDecoration | undefined
   ctx.provide('commandUi', {
     decorate(c: CommandDecoration) {
@@ -90,7 +96,7 @@ async function bench() {
   const fiber = ctx.plugin({ inject: [...inject], apply })
   await fiber.await()
   return {
-    ctx, fiber, values, commands,
+    ctx, fiber, values, commands, remote,
     setResult: (r: { ok: boolean; matched?: boolean }) => { commandResult = r },
     decoration: () => decoration,
     permissionRow: () => ctx.slots.entries('settings.general.item')
@@ -164,8 +170,8 @@ describe('ui-permission browser plugin', () => {
   it('disposal removes the decoration (HMR safety)', async () => {
     const b = await bench()
     expect(b.decoration()).toBeDefined()
-    b.ctx.remote.$dispatch('settings/document-updated', ['another', 1])
-    b.ctx.remote.$dispatch('settings/document-updated', ['permission', 1])
+    b.remote.emit('settings/document-updated', ['another', 1])
+    b.remote.emit('settings/document-updated', ['permission', 1])
     b.ctx.emit('connection/reset')
     await b.fiber.dispose()
     expect(b.decoration()).toBeUndefined()

@@ -17,6 +17,11 @@
   disabled: true
 - id: ui-conversation
   disabled: true
+# 0.1.2 split the official chat view out of ui-conversation into this package.
+# The fork ships its own conversation plugin (deepcreator-conversation), so
+# the official chat row would double-register Definitions (inbox-next-step).
+- id: ui-chat
+  disabled: true
 - id: ui-tool
   disabled: true
 - id: ui-trajectory
@@ -75,6 +80,9 @@
     - id: deepcreator-artifacts
       name: '@ryanyujazz/dsh-artifacts'
 
+    - id: deepcreator-app-stage
+      name: '@ryanyujazz/dsh-app-stage'
+
     - id: deepcreator-remote-access
       name: '@ryanyujazz/dsh-remote-access'
 
@@ -119,6 +127,9 @@
 
     - id: deepcreator-conversation
       name: '@ryanyujazz/dsh-client-ui-conversation'
+
+    - id: deepcreator-app-stage-ui
+      name: '@ryanyujazz/dsh-client-ui-app-stage'
 
     - id: deepcreator-workbench
       name: '@ryanyujazz/dsh-client-ui-workbench'

@@ -1,5 +1,7 @@
 import type { RemoteResult, TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { WorkspaceView } from '@deepseek-ai/dsh-api-remotes/client'
+import type { ClientContext } from '@ryanyujazz/dsh-client-compat'
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@ryanyujazz/dsh-client-locale/client'
 import type {} from '@ryanyujazz/dsh-client-ui-settings/client'
 import type {} from '@ryanyujazz/dsh-client-ui-sidebar/client'
@@ -27,6 +29,13 @@ function unwrap<T>(wire: RemoteResult<T>): T {
   return wire.value
 }
 
+/** The most recently mutated Workspace (ISO instants compare lexicographically). */
+function recentWorkspace(items: readonly WorkspaceView[]): WorkspaceView | undefined {
+  let recent: WorkspaceView | undefined
+  for (const item of items) if (recent === undefined || item.updatedAt > recent.updatedAt) recent = item
+  return recent
+}
+
 function applyFeature(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-skills: dictionaries')
   const remote = (ctx.get('remote') as TypertClientRemote)['skill-admin']
@@ -34,7 +43,7 @@ function applyFeature(ctx: ClientContext): void {
     const sessions = ctx.sessions.list.getSnapshot()
     const workspaces = ctx.workspaces.list.getSnapshot()
     const workspace = sessions.current === undefined
-      ? workspaces.items.find(item => item.workspaceId === workspaces.recentWorkspaceId)
+      ? recentWorkspace(workspaces.items)
       : workspaces.items.find(item => item.sessionIds.includes(sessions.current!))
     return {
       ...(workspace?.path === undefined ? {} : { cwd: workspace.path }),
@@ -46,9 +55,16 @@ function applyFeature(ctx: ClientContext): void {
     detail: async (name): Promise<SkillAdminDetail> => unwrap(await remote.detail(name, target())),
     setEnabled: async (name, enabled): Promise<void> => { unwrap(await remote.setEnabled(name, enabled, target())) },
     install: async (kind: SkillInstallKind, value): Promise<void> => { unwrap(await remote.installSkill({ kind, value })) },
-    pickDirectory: () => ctx.workspaces.pickDirectory(),
+    pickDirectory: async (): Promise<string | null> => {
+      const result = await ctx.remote.directoryPicker.pick()
+      if (!result.ok) throw new Error(`directory picker failed: ${result.error.message}`)
+      return result.value
+    },
     remove: async (name): Promise<void> => { unwrap(await remote.removeSkill(name, target())) },
-    openLocation: async (path): Promise<void> => { await ctx.workspaces.openPath(path) },
+    openLocation: async (path): Promise<void> => {
+      const result = await ctx.remote.session.openWorkspacePath({ path })
+      if (!result.ok) throw new Error(`path open failed: ${result.error.message}`)
+    },
     openPlugins: () => { ctx.settingsNavigation.open('plugins') },
     description: item => item.localizedDescriptions?.[ctx.locale.getSnapshot().active] ?? item.description,
   })

@@ -57,6 +57,7 @@ export const en = {
   protocolSeedream: 'Seedream (Ark)',
   protocolGemini: 'Gemini',
   created: 'Created image',
+  inspect: 'Inspect',
 } as const
 
 export type ImageGenerationLocaleKey = keyof typeof en
@@ -117,4 +118,5 @@ export const zh: Record<ImageGenerationLocaleKey, string> = {
   protocolSeedream: 'Seedream（火山方舟）',
   protocolGemini: 'Gemini',
   created: '已生成图片',
+  inspect: '检查',
 }

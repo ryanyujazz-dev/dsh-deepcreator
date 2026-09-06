@@ -1,7 +1,9 @@
 /** Registers the sidebar shell into the layout-owned slot. */
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext } from '@ryanyujazz/dsh-client-compat'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@ryanyujazz/dsh-client-locale/client'
+// Type-only: pulls the SlotRegistry service merge (ctx.slots).
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { SidebarClosedToggleInjected, SidebarRootInjected } from './contract/slots.ts'
 import { SidebarClosedToggle, SidebarRoot } from './SidebarRoot.tsx'
 import { en, zh, type SidebarKey } from './locales.ts'
@@ -9,7 +11,7 @@ import { en, zh, type SidebarKey } from './locales.ts'
 export type {
   SidebarClosedToggleComponentProps, SidebarClosedToggleInjected,
   SidebarFooterActionOwnerProps, SidebarPrimaryActionOwnerProps, SidebarRootComponentProps, SidebarRootInjected,
-  SidebarSectionOwnerProps, SidebarSettingsOwnerProps,
+  SidebarSectionOwnerProps, SidebarSettingsOwnerProps, SidebarStageModeOwnerProps,
 } from './contract/slots.ts'
 export type { SidebarKey } from './locales.ts'
 
@@ -23,19 +25,25 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 /** Dictionary namespace owned by this plugin (shell controls copy). */
 const NS = 'sidebar'
 
+/** The ui-workspace plugin's navigation face (provided as the `uiWorkspace` service). */
+interface WorkspaceNavigation {
+  startSession(workspaceId?: Parameters<SidebarRootInjected['startSession']>[0]): void
+}
+
 /** Services required by the sidebar plugin. */
-export const inject = ['slots', 'layout', 'sessions', 'workspaces', 'locale']
+export const inject = ['slots', 'layout', 'uiWorkspace', 'locale']
 
 /** Registers the sidebar shell and its service callbacks.
  * @param ctx - Client root context.
  */
 export function apply(ctx: ClientContext): void {
+  const workspaceNavigation = ctx.get('uiWorkspace') as unknown as WorkspaceNavigation
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-sidebar: dictionaries')
 
   const injectProps = (): SidebarRootInjected => ({
-    // The shell's New Session button rides the runtime's shared action
+    // The shell's New Session button rides the Workspace UI's shared action
     // (current Session Workspace, then recent Workspace).
-    startSession: (workspaceId) => { ctx.workspaces.startSession(workspaceId) },
+    startSession: (workspaceId) => { workspaceNavigation.startSession(workspaceId) },
     toggleSidebar: () => { ctx.layout.toggleSidebar() },
   })
   ctx.effect(
@@ -46,6 +54,7 @@ export function apply(ctx: ClientContext): void {
       // region (header, search, session list, workspace dialogs), ui-settings
       // registers the foot trigger + settings panel.
       children: {
+        'sidebar.stage-mode': { kind: 'single', scope: 'root' },
         'sidebar.primary.action': { kind: 'list', scope: 'root' },
         'sidebar.workspaces': { kind: 'single', scope: 'root' },
         'sidebar.settings': { kind: 'single', scope: 'root' },

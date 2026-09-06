@@ -7,7 +7,7 @@
  * Feature-owned rows and sections stay with their features.
  * Export discipline: packages/client/AGENTS.md.
  */
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext } from '@ryanyujazz/dsh-client-compat'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-api-remotes/client'
 import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
 import { bindSnapshotSelector } from './snapshot-selector.ts'
@@ -17,6 +17,8 @@ import { bindSnapshotSelector } from './snapshot-selector.ts'
 import type {} from '@ryanyujazz/dsh-client-ui-settings/client'
 // Type-only: pulls ctx.locale into this program.
 import type {} from '@ryanyujazz/dsh-client-locale/client'
+// Type-only: pulls ctx.slots into this program.
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {
   SettingsOnboardingStep, SettingsRootInjected, SettingsSectionRow,
 } from './shell-contract.ts'
@@ -55,7 +57,7 @@ const NS = 'settings'
  * ui-settings' apply, whose activation order relative to this one is NOT
  * constrained; registrations depend on their slots through `slots.inject()`.
  */
-export const inject = ['slots', 'locale', 'connection', 'settingsNavigation']
+export const inject = ['slots', 'locale', 'connection', 'settingsNavigation', 'settingsScope']
 
 /**
  * Register the `settings` dictionaries, the chrome content, and the General
@@ -71,7 +73,7 @@ export function apply(ctx: ClientContext): void {
   const t = ctx.locale.bind(NS)
   const connection = ctx.get('connection') as ConnectionHandle
   const documentController = connection.isLoopback
-    ? new SettingsDocumentStore(connection.api)
+    ? new SettingsDocumentStore(ctx, ctx.settingsScope.describe())
     : undefined
   const documentInjected = documentController === undefined
     ? undefined
@@ -79,6 +81,7 @@ export function apply(ctx: ClientContext): void {
       const useSnapshot = bindSnapshotSelector(documentController.store)
       return (): SettingsDocumentActionInjected => ({ controller: documentController, useSnapshot })
     })()
+  ctx.effect(() => () => { documentController?.dispose() }, 'ui-settings-general: document action directory')
   ctx.effect(() => ctx.on('connection/reset', () => {
     refreshDocumentIfLoaded(documentController)
   }), 'ui-settings-general: metadata invalidations')

@@ -1,9 +1,9 @@
 import z from '@deepseek-ai/schemastery'
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import type { ImageGenerationSettings } from './types.ts'
 
 export const IMAGE_GENERATION_SETTINGS_NAMESPACE = 'image-generation'
-export const IMAGE_GENERATION_SETTINGS_KEY = settingsNamespace(IMAGE_GENERATION_SETTINGS_NAMESPACE)
+// 0.1.2 registers namespaces by their plain string id (settingsNamespace() is gone).
+export const IMAGE_GENERATION_SETTINGS_KEY = IMAGE_GENERATION_SETTINGS_NAMESPACE
 
 const aspectRatio = z.union(['source', '1:1', '3:2', '2:3', '4:3', '3:4', '16:9', '9:16'])
 const resolution = z.union(['1K', '2K', '4K'])

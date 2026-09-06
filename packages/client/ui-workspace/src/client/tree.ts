@@ -4,10 +4,20 @@
  * remains visible.
  */
 import {
-  indexSubagentDescendants, type PendingInteractionStatus, type SessionId, type SessionListState,
-  type SessionSearchResultItem, type SessionSummary, type SubagentDescendantSummary,
-  type WorkspaceId, type WorkspaceView,
-} from '@deepseek-ai/dsh-client-runtime/client'
+  indexSubagentDescendants,
+  type PendingInteractionStatus,
+  type SubagentDescendantSummary,
+} from '@ryanyujazz/dsh-client-compat'
+import { type SessionId } from '@deepseek-ai/dsh-session/types'
+import {
+  type SessionListState,
+  type SessionSearchResultItem,
+  type SessionSummary,
+} from '@deepseek-ai/dsh-api-session-controller/client'
+import {
+  type WorkspaceId,
+  type WorkspaceView,
+} from '@deepseek-ai/dsh-api-workspace-controller/client'
 
 /** Group key for Sessions outside every Workspace. */
 export const UNGROUPED_KEY = ''
@@ -236,8 +246,10 @@ function sessionNode(
     runningSubagentCount: descendants.get(s.id)?.runningCount ?? 0,
     completed: s.completed === true,
     updatedAt: s.updatedAt,
+    // The list summary no longer carries the pending-interaction fact in
+    // 0.1.2: the successor source is the upstream `useSessionPendingInteraction`
+    // feed, which this package does not wire yet — rows render without a dot.
     ...(cwd === undefined ? {} : { cwd }),
-    ...(s.pendingInteraction === undefined ? {} : { pendingInteraction: s.pendingInteraction }),
   }
 }
 
@@ -419,9 +431,9 @@ export function deriveSearchResults(
         workspace: labelOf(summary),
         running: summary.running,
         runningSubagentCount: descendants.get(summary.id)?.runningCount ?? 0,
-        ...(summary.pendingInteraction === undefined
-          ? {}
-          : { pendingInteraction: summary.pendingInteraction }),
+        // Pending-interaction facts left the list summary in 0.1.2 (see the
+        // sessionNode note): search rows render without a dot until the
+        // upstream pending-interaction feed is wired in.
         completed: summary.completed === true,
         ...match === undefined ? {} : { snippet: match.snippet },
       }

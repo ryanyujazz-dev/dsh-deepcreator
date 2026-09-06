@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <code>DeepSeek Harness 0.1.1-rc.2</code> · <code>开发运行时</code> · <code>#dsh-plugin</code>
+  <code>DeepSeek Harness 0.1.2-rc.1</code> · <code>开发运行时</code> · <code>#dsh-plugin</code>
 </p>
 
 <p align="center">
@@ -149,7 +149,7 @@ pnpm run dev:desktop
 DeepCreator 保持官方 Host 与 Agent 插件缝开放。请安装与锁定 Harness 运行时一致的版本，把插件文档中的 Cordis row 加入 `$DSH_HOME/profiles/deepcreator/cordis.patch.yml`，检查完整组合后再重启：
 
 ```sh
-pnpm --filter @ryanyujazz/dsh-deepcreator-desktop exec dsh plugin --profile deepcreator add @deepseek-ai/dsh-mcp-client@0.1.1-rc.2
+pnpm --filter @ryanyujazz/dsh-deepcreator-desktop exec dsh plugin --profile deepcreator add @deepseek-ai/dsh-mcp-client@0.1.2-rc.1
 pnpm --filter @ryanyujazz/dsh-deepcreator-desktop exec dsh --profile deepcreator --dump-config
 ```
 
@@ -198,7 +198,7 @@ DeepCreator 改变展示层和产品工作流，但不 fork Harness 业务状态
 
 ## 兼容性与当前范围
 
-当前兼容声明面向 DeepSeek Harness `0.1.1-rc.2`，Git SHA 为 `b150a551b8d465e31e418e1b2eaf5e79bbb7d28e`。
+当前兼容声明面向 DeepSeek Harness `0.1.2-rc.1`，Git SHA 为 `a66e4702047846cdaa10c66c9d3df3951f5ea70d`。
 
 > [!IMPORTANT]
 > DeepCreator 当前提供的是**开发运行时**。签名、公证、安装包、自动更新、托盘集成和原生凭据存储仍不在当前桌面版范围内。Review 不提供 stage、unstage 或 commit 操作；可信局域网访问也不是 TLS 或 PWA 部署方案。

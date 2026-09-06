@@ -132,7 +132,11 @@ export function QuestionComposer(props: QuestionComposerProps) {
   // select/render dispatch — per-dispatch minting would churn memo identity).
   const question = useMemo(() => new PendingQuestion(props.matched), [props.matched])
   const review = useMemo(() => planReviewOf(question.questions), [question])
-  const planCallId = props.useSession(snapshot => runningPlanCallId(snapshot.runningCalls, review?.plan))
+  // 0.1.2 re-platform: the Session snapshot no longer projects runningCalls
+  // (they moved into the chat view builder), so the deep link to the in-flight
+  // plan call degrades to the injected route:'home' fallback until the
+  // planned Phase-4 rewrite of this package restores the lookup.
+  const planCallId = undefined
   return review === undefined
     ? <QuestionFlow key={question.key} pending={question} t={props.t} />
     : <PlanReviewPanel

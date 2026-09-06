@@ -4,12 +4,21 @@
 
 import { Fragment, memo, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Tooltip } from '@ryanyujazz/dsh-client-ui-primitives'
-import type { ConversationSnapshot, UseProjection } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type LegacyConversationSlice,
+} from '@deepseek-ai/dsh-client-ui-chat/client'
+import {
+  type ChatSnapshot,
+} from '@deepseek-ai/dsh-client-ui-chat/client'
+import {
+  type UseProjection,
+} from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: merges the sessionStats key into SessionProjectionMap for useProjection.
 import type {} from '@deepseek-ai/dsh-session-stats/client'
 import type { ContextPressureProjection, TokenUsageProjection } from '@deepseek-ai/dsh-token-meter/client'
 import type { ComposerBarProps } from '../contract/slots.ts'
+import { forkT } from '../locales.ts'
 import { formatTokensPerSecond } from './message-chrome.ts'
 import { assistantStepReading } from './turn-metrics.ts'
 import css from './StatsLine.module.css'
@@ -43,7 +52,7 @@ interface WindowStats {
  * @param nodes - snapshot nodes.
  * @returns fallback counts and summed wall times.
  */
-export function deriveStats(nodes: ConversationSnapshot['nodes']): WindowStats {
+export function deriveStats(nodes: LegacyConversationSlice['nodes']): WindowStats {
   const turns = new Set<number>()
   let steps = 0
   let llmMs = 0
@@ -152,16 +161,17 @@ export function contextOccupancy(
   }
 }
 
-/** Props: the conversation-snapshot selector plus the projection read seat. */
+/** Props: the chat-snapshot selector plus the projection read seat. */
 export interface StatsLineProps {
-  useSession: SnapshotSelectorHook<ConversationSnapshot>
+  useChat: SnapshotSelectorHook<ChatSnapshot>
   useProjection: UseProjection
   /** The owning dock's locale seat. */
   t: ComposerBarProps['t']
 }
 
-export const StatsLine = memo(function StatsLine({ useSession, useProjection, t }: StatsLineProps) {
-  const settledNodes = useSession(s => s.chat.legacy.nodes)
+export const StatsLine = memo(function StatsLine({ useChat, useProjection, t: tRaw }: StatsLineProps) {
+  const t = forkT(tRaw)
+  const settledNodes = useChat(s => s.legacy.nodes)
   const usage = useProjection('tokenUsage')
   // Every figure rides the durable sessionStats projection, so paging and
   // compaction cannot change any of them; an assembly without the unit falls

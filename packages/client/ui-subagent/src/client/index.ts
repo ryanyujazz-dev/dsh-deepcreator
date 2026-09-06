@@ -16,15 +16,14 @@
  * home per fact), which also carries the official jump into the conversation
  * area.
  */
-import type {
-  ClientContext,
-} from '@deepseek-ai/dsh-client-runtime/client'
-import type { ComposerChainProps } from '@ryanyujazz/dsh-client-ui-conversation/client'
+import type { ClientContext } from '@ryanyujazz/dsh-client-compat'
+import type { ComposerChainProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ClientSessionContext, InputTriggerServiceContract, InputTriggerSource } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import {
   SubagentReadOnlyComposer, type SubagentReadOnlyMatch,
 } from './SubagentReadOnlyComposer.tsx'
 import type {} from '@ryanyujazz/dsh-client-locale/client'
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { en, NS, zh, type SubagentKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -46,7 +45,10 @@ function selectReadOnlySubagent(owner: ComposerChainProps): SubagentReadOnlyMatc
   const subagent = owner.session?.subagent
   if (subagent === undefined || subagent === null) return null
   if (subagent.address.mode === 'one-shot') return { reason: 'one-shot' }
-  if (subagent.parentAvailable) return null
+  // The parent catalog is fetched ahead of the selected Session. Until it
+  // resolves, leave the normal disabled composer in place instead of briefly
+  // claiming that the parent is offline.
+  if (subagent.parentAvailable !== false) return null
   // A RUNNING parent-offline continuable child keeps the default composer:
   // its input is disabled there, but the same primary Stop stays available so
   // the child can be interrupted. Once it stops, this takeover returns.

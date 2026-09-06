@@ -1,8 +1,17 @@
 import type { Context } from '@deepseek-ai/cordis'
-import type {
-  ConversationMatch, ConversationNodeContext, ConversationNodeDefinition, TurnLocation,
-} from '@deepseek-ai/dsh-client-runtime/client'
-import { isAppendSurfaceEvent, toAssistantBlocks } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type ConversationMatch,
+  type ConversationNodeContext,
+  type ConversationNodeDefinition,
+  type TurnLocation,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import {
+  isAppendSurfaceEvent,
+} from '@deepseek-ai/dsh-session/surface'
+import {
+  toAssistantBlocks,
+} from '@ryanyujazz/dsh-client-compat'
+
 import type {} from '@deepseek-ai/dsh-llm-retry/types'
 import type {
   AssistantChatData, FinalAssistantChatData, TurnTailChatData,
@@ -10,14 +19,14 @@ import type {
 import { deriveTurnMetrics } from '../chat/turn-metrics.ts'
 import { CHAT_SYNTHETIC_SEQ_OFFSETS, chatNode } from './common.ts'
 
-declare module '@ryanyujazz/dsh-client-ui-conversation/client' {
+declare module '@deepseek-ai/dsh-client-ui-chat/client' {
   interface ChatNodeDataMap {
     /** Completed-turn actions and extension tail. */
     'turn-tail': TurnTailChatData
   }
 }
 
-declare module '@deepseek-ai/dsh-client-runtime/client' {
+declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
   interface ConversationTurnDataMap {
     /** Closing Assistant and footer facts derived for this completed Turn. */
     'turn-tail': TurnTailChatData
@@ -192,5 +201,5 @@ export const turnTailDefinition: ConversationNodeDefinition<TurnTailState> = {
  * @param ctx - owning UI Conversation context.
  */
 export function registerTurnTailConversationNode(ctx: Context): void {
-  ctx.conversationEvents.register(turnTailDefinition)
+  ctx.uiConversation.events.register(turnTailDefinition)
 }

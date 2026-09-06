@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
+import type { SettingsScope } from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-storage'
 import type {} from '@deepseek-ai/dsh-storage-domain'
 import z from '@deepseek-ai/schemastery'
@@ -15,7 +15,8 @@ export * from './types.ts'
 declare module '@deepseek-ai/cordis' { interface Context { remoteAccess: RemoteAccessService } }
 
 interface RemoteAccessSettings { enabled: boolean; port: number }
-const SETTINGS_NS = settingsNamespace('remote-access')
+// 0.1.2 registers namespaces by their plain string id (settingsNamespace() is gone).
+const SETTINGS_NS = 'remote-access'
 const settingsSchema = z.object({
   enabled: z.boolean().default(false),
   port: z.natural().min(1).max(65_535).default(REMOTE_ACCESS_PORT),
@@ -27,7 +28,7 @@ function failure<T>(code: 'DISABLED' | 'NOT_FOUND' | 'EXPIRED' | 'INVALID_STATE'
 
 export class RemoteAccessService extends TypertRemoteService {
   static inject = ['webServer', 'settings', 'storage', 'storageDomain']
-  private readonly settingsScope
+  private readonly settingsScope: SettingsScope<RemoteAccessSettings>
   private readonly domainPromise: Promise<RemoteAccessDomain>
   private gateway: LanGateway | undefined
   private gatewayStatus: GatewayStatus | undefined
@@ -37,7 +38,7 @@ export class RemoteAccessService extends TypertRemoteService {
 
   constructor(ctx: Context) {
     super(ctx, 'remoteAccess', { namespace: 'remote-access' })
-    this.settingsScope = ctx.settings.register<RemoteAccessSettings>(SETTINGS_NS, settingsSchema)
+    this.settingsScope = ctx.settings.register(SETTINGS_NS, settingsSchema)
     this.domainPromise = ctx.storage.domain.open(REMOTE_ACCESS_DOMAIN)
     ctx.effect(() => {
       const unwatch = this.settingsScope.watch(async next => { await this.reconcile(next) })

@@ -1,16 +1,25 @@
 import type { Context } from '@deepseek-ai/cordis'
-import type {
-  ContextMessageNode, ConversationNodeDefinition, SteeringMessageNode, UserMessageNode,
-} from '@deepseek-ai/dsh-client-runtime/client'
 import {
-  contextForm, contextProvenance, isAppendSurfaceEvent, isReplacementSurfaceEvent,
-} from '@deepseek-ai/dsh-client-runtime/client'
+  type ContextMessageNode,
+  type ConversationNodeDefinition,
+  type SteeringMessageNode,
+  type UserMessageNode,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import {
+  contextForm,
+  contextProvenance,
+} from '@ryanyujazz/dsh-client-compat'
+import {
+  isAppendSurfaceEvent,
+  isReplacementSurfaceEvent,
+} from '@deepseek-ai/dsh-session/surface'
+
 import type { InboxState } from './inbox.ts'
 import { chatNode } from './common.ts'
 
 type MessageNode = UserMessageNode | SteeringMessageNode | ContextMessageNode
 
-declare module '@ryanyujazz/dsh-client-ui-conversation/client' {
+declare module '@deepseek-ai/dsh-client-ui-chat/client' {
   interface ChatNodeDataMap {
     /** Ordinary turn-opening user message. */
     user: UserMessageNode
@@ -80,5 +89,5 @@ export const messageDefinition: ConversationNodeDefinition<MessageNode> = {
  * @param ctx - owning UI Conversation context.
  */
 export function registerMessageConversationNode(ctx: Context): void {
-  ctx.conversationEvents.register(messageDefinition)
+  ctx.uiConversation.events.register(messageDefinition)
 }

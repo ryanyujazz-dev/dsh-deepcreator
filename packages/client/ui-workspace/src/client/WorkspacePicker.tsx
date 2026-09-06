@@ -13,9 +13,11 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   Button, DeepCreatorIconAnimatedFolder16, IconPlusOutline16, Menu, Modal, type MenuEntry,
 } from '@ryanyujazz/dsh-client-ui-primitives'
-import type {
-  WorkspaceId, WorkspaceListState, WorkspaceView,
-} from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type WorkspaceId,
+  type WorkspaceSnapshot,
+  type WorkspaceView,
+} from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 import type { DirectoryFlowOwnerProps, WorkspacePickerProps } from './contract/slots.ts'
 import css from './WorkspacePicker.module.css'
@@ -31,7 +33,7 @@ export interface WorkspacePickFlowProps {
   /** The anchor button element — the popover's placement anchor. */
   anchorRef?: RefObject<HTMLElement | null> | undefined
   /** Selector hook over the workspace list (framework standard hook). */
-  useWorkspaces: <S>(selector: (state: WorkspaceListState) => S) => S
+  useWorkspaces: <S>(selector: (state: WorkspaceSnapshot) => S) => S
   /** Adopt a picked host directory as a real Workspace. */
   createWorkspace: (input: { path: string }) => Promise<WorkspaceView>
   /** Bound occupancy selector hook for this surface's directory-flow hole (empty leaves the surface with no add action). */

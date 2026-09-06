@@ -1,5 +1,6 @@
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { defineTool, type JsonValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+import { defineTool, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { ApprovalService } from '@deepseek-ai/dsh-user-approval'
 import {
   BrowserRuntimeError, sanitizeBrowserModelValue, type BrowserRuntime, type BrowserTabState,

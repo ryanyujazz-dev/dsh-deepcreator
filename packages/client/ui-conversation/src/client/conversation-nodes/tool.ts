@@ -1,33 +1,62 @@
 import type { Context } from '@deepseek-ai/cordis'
-import type {
-  ConversationMatch, ConversationNodeContext, ConversationNodeDefinition,
-  RunningToolCall, ToolCallBlock, ToolResultNode,
-} from '@deepseek-ai/dsh-client-runtime/client'
-import { isAppendSurfaceEvent } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type ConversationMatch,
+  type ConversationNodeContext,
+  type ConversationNodeDefinition,
+  type RunningToolCall,
+  type ToolCallBlock,
+  type ToolResultNode,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import {
+  isAppendSurfaceEvent,
+} from '@deepseek-ai/dsh-session/surface'
+import type { ToolCallView, ToolResultView } from '@deepseek-ai/dsh-tools/presentation'
+
+import { parseToolArgs, presentToolCall, presentToolResult } from '@ryanyujazz/dsh-client-compat'
+
 import type {} from '@deepseek-ai/dsh-tools/types'
 import type { ToolChatData } from '../contract/chat-nodes.ts'
 import { CHAT_SYNTHETIC_SEQ_OFFSETS, chatNode } from './common.ts'
 
-declare module '@ryanyujazz/dsh-client-ui-conversation/client' {
+declare module '@deepseek-ai/dsh-client-ui-chat/client' {
   interface ChatNodeDataMap {
     /** Root Tool lifecycle with recursively nested subcalls. */
     'tool-call': ToolChatData
   }
 }
 
+/**
+ * The fork's render-intent views attached to the official record vocabulary.
+ * 0.1.1 carried them on the wire; 0.1.2 dropped wire views for host-side tool
+ * presenters no official client consumes yet, so the assembler derives the
+ * same projections client-side (the compat replicas) and attaches them here.
+ * Both stay optional: absent or null means the documented generic-card path.
+ */
+export type ViewRunningToolCall = RunningToolCall & {
+  /** How the running call presents (terminal command head, pending diff, …). */
+  readonly callView?: ToolCallView | null
+}
+export type ViewToolResultNode = ToolResultNode & {
+  /** The settled result's presentation (terminal output, applied hunks, …). */
+  readonly resultView?: ToolResultView | null
+  /** The paired call's view, carried over so settled cards keep command/cwd. */
+  readonly callView?: ToolCallView | null
+}
+export type ViewToolCallBlock = ViewRunningToolCall | ViewToolResultNode
+
 const MAX_DEPTH = 256
 
 interface ToolState {
-  readonly root: ToolCallBlock
-  readonly children: ReadonlyMap<string, readonly ToolCallBlock[]>
+  readonly root: ViewToolCallBlock
+  readonly children: ReadonlyMap<string, readonly ViewToolCallBlock[]>
   readonly parents: ReadonlyMap<string, string>
 }
 
 interface ProjectedBlockCache {
-  readonly children: readonly ToolCallBlock[]
+  readonly children: readonly ViewToolCallBlock[]
   readonly interruptionSeq: number | undefined
   readonly interruptionTime: number | undefined
-  readonly value: ToolCallBlock
+  readonly value: ViewToolCallBlock
 }
 
 const projectedBlocks = new WeakMap<ToolCallBlock, ProjectedBlockCache>()
@@ -36,7 +65,7 @@ function jsonArguments(value: unknown): string {
   return JSON.stringify(value)
 }
 
-function rootCall(match: ConversationMatch): RunningToolCall {
+function rootCall(match: ConversationMatch): ViewRunningToolCall {
   if (match.event.type !== 'tool/call') throw new Error('tool-call start requires tool/call')
   return {
     callId: String(match.event.data.callId),
@@ -45,14 +74,28 @@ function rootCall(match: ConversationMatch): RunningToolCall {
     turn: match.event.data.turn,
     step: match.event.data.step,
     time: match.event.time,
-    callView: match.view?.for === 'call' ? match.view.view : null,
     subCalls: [],
+    callView: presentToolCall(match.event.data.name, parseToolArgs(match.event.data.arguments)) ?? null,
   }
 }
 
-function rootResult(match: ConversationMatch, previous?: RunningToolCall): ToolResultNode | undefined {
+function rootResult(match: ConversationMatch, previous?: ViewRunningToolCall): ViewToolResultNode | undefined {
   if (match.event.type !== 'tool/result') return undefined
-  const result = match.event.data.message.content[0]
+  const block = match.event.data.message.content[0]
+  const isError = block.isError === true
+  // The harness persists the presentation payload on the model-facing
+  // tool-result block; the event-level `meta` is the other alignment.
+  const meta = (block as { meta?: unknown }).meta ?? match.event.data.meta
+  // Without the call head (window truncation left the tool/call outside)
+  // neither the tool name nor its parsed args exist, so the presenters stay
+  // out and the generic path renders the raw result.
+  const resultView = previous === undefined
+    ? null
+    : presentToolResult(previous.name, parseToolArgs(previous.argsRaw), {
+      content: block.content,
+      isError,
+      meta,
+    }) ?? null
   return {
     kind: 'tool-result',
     seq: match.event.seq,
@@ -60,13 +103,13 @@ function rootResult(match: ConversationMatch, previous?: RunningToolCall): ToolR
     callId: String(match.event.data.message.source.callId),
     call: previous === undefined ? null : { name: previous.name, argsRaw: previous.argsRaw },
     callTime: previous?.time ?? null,
-    content: result.content,
-    isError: result.isError === true,
+    content: block.content,
+    isError,
     ...match.event.data.error === undefined ? {} : { error: match.event.data.error },
-    meta: match.event.data.meta,
-    callView: previous?.callView ?? null,
-    resultView: match.view?.for === 'result' ? match.view.view : null,
+    meta,
     subCalls: [],
+    callView: previous?.callView ?? null,
+    resultView,
   }
 }
 
@@ -79,7 +122,7 @@ interface DispatchData {
   readonly content?: ToolResultNode['content']
 }
 
-function childCall(match: ConversationMatch, data: DispatchData): RunningToolCall {
+function childCall(match: ConversationMatch, data: DispatchData): ViewRunningToolCall {
   return {
     callId: data.subCallId,
     name: data.name,
@@ -87,12 +130,16 @@ function childCall(match: ConversationMatch, data: DispatchData): RunningToolCal
     turn: locationTurn(match),
     step: locationStep(match),
     time: match.event.time,
-    callView: null,
     subCalls: [],
+    callView: presentToolCall(data.name, data.arguments) ?? null,
   }
 }
 
-function childResult(match: ConversationMatch, data: DispatchData, previous?: ToolCallBlock): ToolResultNode {
+function childResult(match: ConversationMatch, data: DispatchData, previous?: ViewToolCallBlock): ViewToolResultNode {
+  // PtcDispatchEventData carries content+isError only — no presentation meta —
+  // so the child's view comes purely from the presenter's own derivation.
+  const isError = data.isError === true
+  const content = data.content ?? []
   return {
     kind: 'tool-result',
     seq: match.event.seq,
@@ -100,11 +147,11 @@ function childResult(match: ConversationMatch, data: DispatchData, previous?: To
     callId: data.subCallId,
     call: { name: data.name, argsRaw: jsonArguments(data.arguments) },
     callTime: previous?.time ?? null,
-    content: data.content ?? [],
-    isError: data.isError === true,
-    callView: null,
-    resultView: null,
+    content,
+    isError,
     subCalls: [],
+    callView: previous?.callView ?? null,
+    resultView: presentToolResult(data.name, data.arguments, { content, isError }) ?? null,
   }
 }
 
@@ -175,7 +222,7 @@ function projectBlock(
   interruptedAt: { seq: number; time: number } | undefined,
   visited = new Set<string>(),
   depth = 1,
-): ToolCallBlock {
+): ViewToolCallBlock {
   if (visited.has(block.callId) || depth > MAX_DEPTH) return { ...block, subCalls: [] }
   const nextVisited = new Set(visited)
   nextVisited.add(block.callId)
@@ -190,7 +237,9 @@ function projectBlock(
     && sameReferences(cached.children, children)) {
     return cached.value
   }
-  const projected: ToolCallBlock = 'kind' in block || interruptedAt === undefined
+  // The spread carries the attached views along; the synthetic interruption
+  // result is intentionally viewless (an aborted call presents nothing).
+  const projected: ViewToolCallBlock = 'kind' in block || interruptedAt === undefined
     ? sameReferences(block.subCalls, children) ? block : { ...block, subCalls: children }
     : {
       kind: 'tool-result',
@@ -202,8 +251,6 @@ function projectBlock(
       content: [],
       isError: true,
       error: { name: 'Interrupted', code: 'interrupted' },
-      callView: block.callView,
-      resultView: null,
       subCalls: children,
     }
   projectedBlocks.set(block, { children, interruptionSeq, interruptionTime, value: projected })
@@ -273,5 +320,5 @@ export const toolDefinition: ConversationNodeDefinition<ToolState> = {
  * @param ctx - owning UI Conversation context.
  */
 export function registerToolConversationNode(ctx: Context): void {
-  ctx.conversationEvents.register(toolDefinition)
+  ctx.uiConversation.events.register(toolDefinition)
 }

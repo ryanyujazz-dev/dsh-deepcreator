@@ -1,8 +1,15 @@
-import type {
-  AssistantMessageNode, ConversationLocation, ConversationNode,
-  ConversationPromptSnapshot, ConversationViewNode, PartialAssistant,
-  RequestPromptChange, RequestView, RunningToolCall, ToolCallBlock,
-} from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type AssistantMessageNode,
+  type ConversationLocation,
+  type ConversationNode,
+  type ConversationPromptSnapshot,
+  type ConversationViewNode,
+  type PartialAssistant,
+  type RequestPromptChange,
+  type RequestView,
+  type RunningToolCall,
+  type ToolCallBlock,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 
 /** Request-header facts retained by the Trajectory target. */
 export interface TrajectoryRequestHeaderState {
@@ -67,7 +74,7 @@ export interface TrajectorySnapshot {
   readonly runningCalls: readonly RunningToolCall[]
 }
 
-declare module '@deepseek-ai/dsh-client-runtime/client' {
+declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
   interface ConversationViewSnapshotMap {
     /** Independently assembled data consumed by the Trajectory view. */
     trajectory: TrajectorySnapshot

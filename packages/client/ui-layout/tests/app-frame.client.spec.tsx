@@ -17,9 +17,15 @@ import { AppFrame } from '@ryanyujazz/dsh-client-ui-layout/src/client/AppFrame.t
 import type { AppFrameProps } from '@ryanyujazz/dsh-client-ui-layout/src/client/AppFrame.tsx'
 import { SIDEBAR_COLLAPSED } from '@ryanyujazz/dsh-client-ui-layout/src/client/columns.ts'
 import { createLayoutStore } from '@ryanyujazz/dsh-client-ui-layout/src/client/stores.ts'
-import type {
-  SessionId, SessionListState, WorkspaceListState,
-} from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
+import {
+  type SessionListState,
+} from '@deepseek-ai/dsh-api-session-controller/client'
+import {
+  type WorkspaceSnapshot,
+} from '@deepseek-ai/dsh-api-workspace-controller/client'
 
 // Session selection controls for the SessionProvider and useSessions stubs.
 const selectedSession = { current: 's-test' as SessionId | undefined }
@@ -27,13 +33,13 @@ const selectedSessionBlank = { current: false }
 const baselinesReady = { current: true }
 
 // Render-prop contract stub fed through the standard seat prop (the renderer
-// injects the real one in production): session mode runs children(id), empty
-// mode runs the empty branch — the frame must work against exactly this
-// shape. Typed as the seat's own component type so the branded sessionId
-// parameter stays contract-checked.
+// injects the real one in production): session mode renders the session body
+// node, empty mode runs the empty branch — the frame must work against
+// exactly this shape. (0.1.2 hands the session body as a plain node; the
+// framework remounts it per session identity outside the seat.) Typed as the
+// seat's own component type so the contract stays checked.
 const SessionProviderStub: AppFrameProps['SessionProvider'] = ({ children, empty }) =>
-  selectedSession.current === undefined ? <>{empty?.() ?? null}</> : <>{children(selectedSession.current)}</>
-
+  selectedSession.current === undefined ? <>{empty?.() ?? null}</> : <>{children}</>
 
 /** Observer stub: captures the callback so tests can fire resizes manually. */
 let fireResize: (() => void) | null = null
@@ -61,6 +67,7 @@ function mountFrame() {
     if (key === 'sidebar') return <div data-testid="sidebar-content" />
     if (key === 'conversation') return <div data-testid="center-content" />
     if (key === 'details') return <div data-testid="details-content" />
+    if (key === 'deepcreator.stage.apps') return <div data-testid="apps-content" />
     if (key === 'deepcreator.shell.sidebar-toggle') return <button data-testid="sidebar-toggle">open</button>
     if (key === 'conversation.empty') return <div data-testid="empty-content" />
     return <div data-testid="other-content" />
@@ -77,7 +84,7 @@ function mountFrame() {
     } as SessionListState
     return sel(sessionState)
   }) as never
-  const workspaceState: WorkspaceListState = {
+  const workspaceState: WorkspaceSnapshot = {
     items: [], archivedSessionIds: [], state: 'idle', phase: 'ready', error: null,
     baselinesReady: baselinesReady.current, recentWorkspaceId: undefined,
   }
@@ -87,7 +94,7 @@ function mountFrame() {
       actions={instance.actions}
       renderSlot={renderSlot}
       useSessions={useSessions}
-      useWorkspaces={((sel: (s: WorkspaceListState) => unknown) => sel(workspaceState)) as never}
+      useWorkspaces={((sel: (s: WorkspaceSnapshot) => unknown) => sel(workspaceState)) as never}
       SessionProvider={SessionProviderStub}
     />
   )
@@ -295,6 +302,117 @@ describe('AppFrame', () => {
     expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(1)
     act(() => { instance.actions.toggleSidebar() })
     expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(0)
+  })
+})
+
+describe('AppFrame — apps stage mode', () => {
+  it('keeps the apps seat mounted and invisible while conversation mode owns the Stage', () => {
+    const { frame, getByTestId } = mountFrame()
+    expect(frame.getAttribute('data-stage-mode')).toBe('conversation')
+    expect(frame.hasAttribute('data-dock-open')).toBe(false)
+    // The seat layer exists with its occupant mounted (state continuity), but
+    // the frame claims no apps mode and no dock geometry.
+    const layer = frame.querySelector('[data-stage-apps]') as HTMLElement
+    expect(layer).not.toBeNull()
+    expect(getByTestId('apps-content')).toBeTruthy()
+  })
+
+  it('entering apps mode marks the frame, pushes one history entry, and suspends the covered columns', () => {
+    const push = vi.spyOn(window.history, 'pushState')
+    const back = vi.spyOn(window.history, 'back')
+    const { frame, instance } = mountFrame()
+    act(() => { instance.actions.setStageMode('apps') })
+    expect(frame.getAttribute('data-stage-mode')).toBe('apps')
+    expect(push).toHaveBeenCalledTimes(1)
+    expect(back).not.toHaveBeenCalled()
+    // The covered conversation is inert (mounted, out of tab order).
+    const center = frame.querySelector('[class*="centerCol"]') as HTMLElement
+    expect(center.hasAttribute('inert')).toBe(true)
+  })
+
+  it('an open dock restores conversation reachability and docks its geometry', () => {
+    const { frame, instance } = mountFrame()
+    act(() => { instance.actions.setStageMode('apps'); instance.actions.setDockOpen(true) })
+    expect(frame.hasAttribute('data-dock-open')).toBe(true)
+    expect(frame.style.getPropertyValue('--dsh-dock-width')).toBe('400px')
+    const center = frame.querySelector('[class*="centerCol"]') as HTMLElement
+    expect(center.hasAttribute('inert')).toBe(false)
+  })
+
+  it('an open details track inside the docked stage projects into the dock band', () => {
+    const { frame, instance } = mountFrame()
+    act(() => { instance.actions.setStageMode('apps'); instance.actions.setDockOpen(true); instance.actions.setDetails(520) })
+    expect(frame.hasAttribute('data-dock-details')).toBe(true)
+    const details = frame.querySelector('[class*="detailsCol"]') as HTMLElement
+    expect(details.hasAttribute('inert')).toBe(false)
+  })
+
+  it('entering apps mode retires details focus (the takeovers are exclusive)', () => {
+    const { instance } = mountFrame()
+    act(() => { instance.actions.setDetails(520); instance.actions.setDetailsFocused(true) })
+    act(() => { instance.actions.setStageMode('apps') })
+    expect(instance.store.getSnapshot().detailsFocused).toBe(false)
+    expect(instance.store.getSnapshot().details).toBe(520)
+  })
+
+  it('the back gesture (popstate to a foreign entry) leaves apps mode', () => {
+    const { frame, instance } = mountFrame()
+    act(() => { instance.actions.setStageMode('apps') })
+    act(() => { window.dispatchEvent(new PopStateEvent('popstate')) })
+    expect(frame.getAttribute('data-stage-mode')).toBe('conversation')
+  })
+
+  it('a popstate that lands ON the apps entry keeps apps mode', () => {
+    const { frame, instance } = mountFrame()
+    act(() => { instance.actions.setStageMode('apps') })
+    act(() => { window.dispatchEvent(new PopStateEvent('popstate', { state: { deepcreatorStageApps: true } })) })
+    expect(frame.getAttribute('data-stage-mode')).toBe('apps')
+  })
+
+  it('a programmatic exit consumes its own top history entry exactly once', () => {
+    const back = vi.spyOn(window.history, 'back')
+    const { frame, instance } = mountFrame()
+    act(() => { instance.actions.setStageMode('apps') })
+    act(() => { instance.actions.setStageMode('conversation') })
+    expect(back).toHaveBeenCalledTimes(1)
+    expect(frame.getAttribute('data-stage-mode')).toBe('conversation')
+    // The async popstate from that back() must not re-trigger anything.
+    act(() => { window.dispatchEvent(new PopStateEvent('popstate')) })
+    expect(frame.getAttribute('data-stage-mode')).toBe('conversation')
+    expect(back).toHaveBeenCalledTimes(1)
+  })
+
+  it('a programmatic exit under a foreign top entry leaves the buried entry alone', () => {
+    const back = vi.spyOn(window.history, 'back')
+    const { instance } = mountFrame()
+    act(() => { instance.actions.setStageMode('apps') })
+    // Someone else pushed above the apps entry (e.g. an in-app modal).
+    act(() => { window.history.pushState({ foreign: true }, '') })
+    act(() => { instance.actions.setStageMode('conversation') })
+    expect(back).not.toHaveBeenCalled()
+  })
+
+  it('phone viewport: apps mode claims the full stage and the dock is a drawer', () => {
+    frameWidth = 390
+    const { frame, instance } = mountFrame()
+    act(() => { instance.actions.setStageMode('apps') })
+    expect(frame.getAttribute('data-stage-mode')).toBe('apps')
+    expect(frame.hasAttribute('data-mobile-details-open')).toBe(false)
+    act(() => { instance.actions.setDockOpen(true) })
+    expect(frame.hasAttribute('data-dock-open')).toBe(true)
+    expect(frame.querySelector('[class*="dockMask"]')).not.toBeNull()
+  })
+
+  it('phone viewport: apps mode suspends the full-stage details projection', () => {
+    frameWidth = 390
+    const { frame, instance } = mountFrame()
+    act(() => { instance.actions.setDetails(520) })
+    expect(frame.hasAttribute('data-mobile-details-open')).toBe(true)
+    act(() => { instance.actions.setStageMode('apps') })
+    expect(frame.hasAttribute('data-mobile-details-open')).toBe(false)
+    // The preference survives; conversation mode brings the projection back.
+    act(() => { instance.actions.setStageMode('conversation') })
+    expect(frame.hasAttribute('data-mobile-details-open')).toBe(true)
   })
 })
 

@@ -5,11 +5,12 @@
  */
 
 import type {
-  IApiClient, SettingsNamespaceView,
+  ClientRemote, SettingsNamespaceView,
 } from '@deepseek-ai/dsh-api-remotes/client'
 import {
-  createSnapshotStore, type SnapshotStore,
-} from '@deepseek-ai/dsh-client-runtime/client'
+  createSnapshotStore,
+  type SnapshotStore,
+} from '@deepseek-ai/dsh-client-store'
 import type {
   SchemaNode, SettingsSchemaService,
 } from '@ryanyujazz/dsh-client-ui-settings/client'
@@ -93,9 +94,9 @@ export class PermissionPresetSettingsController {
   private generation = 0
   private view: SettingsNamespaceView | undefined
 
-  /** @param api - Settings wire face. */
+  /** @param remote - Generated Remote namespaces (the `settings` face). */
   constructor(
-    private readonly api: Pick<IApiClient, 'settings'>,
+    private readonly remote: Pick<ClientRemote, 'settings'>,
     private readonly schema: Pick<SettingsSchemaService, 'rehydrate' | 'nodeAtPath'>,
   ) {}
 
@@ -110,10 +111,10 @@ export class PermissionPresetSettingsController {
       state.error = null
     })
     try {
-      const response = await this.api.settings.describe({})
-      if (!response.result.ok) throw new Error(response.result.error.message)
+      const response = await this.remote.settings.describe()
+      if (!response.ok) throw new Error(response.error.message)
       if (generation !== this.generation) return
-      const view = response.result.value.namespaces.find(entry => entry.ns === PERMISSION_SETTINGS_NS)
+      const view = response.value.namespaces.find(entry => entry.ns === PERMISSION_SETTINGS_NS)
       if (view === undefined) {
         this.view = undefined
         this.store.update((state) => {
@@ -124,7 +125,7 @@ export class PermissionPresetSettingsController {
         })
         return
       }
-      this.accept(view, response.result.value.writable)
+      this.accept(view, response.value.writable)
     } catch (error) {
       if (generation !== this.generation) return
       this.fail(error)
@@ -146,14 +147,14 @@ export class PermissionPresetSettingsController {
       draft.error = null
     })
     try {
-      const response = await this.api.settings.mutate({
-        ns: PERMISSION_SETTINGS_NS,
-        ops: [{ op: 'set', path: ['defaultPreset'], value: preset }],
-        expectedRevision: view.revision,
-      })
+      const response = await this.remote.settings.mutate(
+        PERMISSION_SETTINGS_NS,
+        [{ op: 'set', path: ['defaultPreset'], value: preset }],
+        view.revision,
+      )
       if (generation !== this.generation) return
-      if (!response.result.ok) throw new Error(response.result.error.message)
-      this.accept(response.result.value, true)
+      if (!response.ok) throw new Error(response.error.message)
+      this.accept(response.value, true)
     } catch (error) {
       if (generation !== this.generation) return
       this.fail(error)

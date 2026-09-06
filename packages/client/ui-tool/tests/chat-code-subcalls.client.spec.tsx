@@ -1,31 +1,32 @@
 // @vitest-environment jsdom
 // Code Mode sub-call acceptance on the REAL machinery stack (same bench as
-// chat-toolview-slot.spec): a run_code result renders the 'code' variant row
+// toolview-slot.client.spec): a run_code result renders the 'code' variant row
 // (description summary, program body), its logged sub-dispatches render as
 // always-visible nested rows through the SAME keyed toolview hole — the bash
 // sub-call lands in the bash sample plugin's registration exactly like a
 // top-level bash row, unregistered sub-tools fall back to GenericToolCard —
 // and a file sub-row click opens the host path. Running parents
-// (runningCalls) nest their so-far dispatches the same way.
+// (the unsettled tool/call tail) nest their so-far dispatches the same way.
 
-import { Context } from '@deepseek-ai/cordis'
-import { stubSettingsScope } from '@deepseek-ai/dsh-client-test-runtime'
+import { stubSettingsScope, SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render } from '@testing-library/react'
+import { cleanup, fireEvent } from '@testing-library/react'
 import {
-  ConversationEventRegistry, ConversationViewRegistry, createSnapshotStore,
-  EMPTY_CONVERSATION_VIEWS, SlotRegistry,
-} from '@deepseek-ai/dsh-client-runtime/client'
-import type {
-  ConversationSnapshot, RunningToolCall, SessionId, SessionListState,
-  ToolCallBlock, ToolResultNode, WorkspaceListState,
-} from '@deepseek-ai/dsh-client-runtime/client'
-import { createSlotRenderer } from '@deepseek-ai/dsh-client-test-runtime'
+  type RunningToolCall,
+  type ToolCallBlock,
+  type ToolResultNode,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import {
+  type ISession,
+} from '@deepseek-ai/dsh-api-session-controller/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
+
 import { LocaleRuntime } from '@ryanyujazz/dsh-client-locale/client'
-import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import { apply as applyConversation, inject as injectConversation } from '@ryanyujazz/dsh-client-ui-conversation/client'
 import { apply as applyTool, inject as injectTool } from '../src/client/apply.ts'
-import { toolChatSnapshot } from './tool-details-render.client.tsx'
+import { toolCallEvents } from './tool-details-render.client.tsx'
 
 const SID = 's1' as SessionId
 
@@ -72,117 +73,57 @@ const subCall = (
   subCalls: [],
 })
 
-function snapshotWith(
+/**
+ * Same real-stack bench as the toolview-slot spec: SlotTestRuntime (real
+ * Cordis Context + SlotRegistry + ui-session adapter + renderer) with the
+ * session/workspace doubles at the service boundaries only, both owning
+ * package applies, and the test AppFrame occupying 'root'. Conversation data
+ * rides the durable event feed the way production assembly consumes it.
+ */
+async function bench(
   nodes: ToolResultNode[],
   subCalls: readonly ToolCallBlock[],
   runningCalls: RunningToolCall[] = [],
-): ConversationSnapshot {
-  const nestedNodes = nodes.map(node => ({ ...node, subCalls }))
-  const nestedRunningCalls = runningCalls.map(call => ({ ...call, subCalls }))
-  return {
-    sessionId: SID, views: EMPTY_CONVERSATION_VIEWS,
-    chat: toolChatSnapshot(nestedNodes, nestedRunningCalls),
-    nodes: nestedNodes, turnTimings: new Map(), turnEnds: new Map(), partial: null,
-    runningCalls: nestedRunningCalls,
-    pending: [], queue: [], running: runningCalls.length > 0, composerPhase: 'active', removed: false,
-    openState: 'open', openError: null,
-    hasMore: false, loadingOlder: false, promptError: null, blank: false, subagent: null, lastAgentError: null,
-  }
-}
-
-/** Test-owned AppFrame role: declares and renders the resident conversation area. */
-type AppRootProps = PropsRenderSlots<'conversation'>
-function AppRoot({ renderSlot }: AppRootProps) {
-  return <>{renderSlot('conversation', {})}</>
-}
-
-/**
- * Same real-stack bench as the toolview-slot spec: SlotRegistry + renderer +
- * both owning package applies; fakes only at service boundaries.
- */
-async function bench(snapshot: ConversationSnapshot, isLoopback = false) {
-  const ctx = new Context()
-  const slotsFiber = ctx.plugin(SlotRegistry)
-  await slotsFiber.await()
-  await ctx.plugin(ConversationEventRegistry).await()
-  await ctx.plugin(ConversationViewRegistry).await()
-  const slots = ctx.get('slots') as SlotRegistry
-
-  const session = createSnapshotStore<ConversationSnapshot>(snapshot)
-  const list = createSnapshotStore<SessionListState>({
-    ids: [SID],
-    byId: { [SID]: { id: SID, title: 'S', displayTitle: 'S', running: false, blank: false, updatedAt: 1 } },
-    current: SID,
-    phase: 'ready', subagentsByParent: {}, jobsBySession: {}, currentAddress: undefined,
-  })
-  const scoped = { send: vi.fn(async () => {}), cancel: vi.fn(async () => {}) }
+  isLoopback = false,
+  remoteOpenPath?: (args: { path: string }) => Promise<void>,
+) {
+  const runtime = await SlotTestRuntime.create()
+  runtime.ctx.provide('connection', { api: { settings: {} }, isLoopback })
+  // ui-theme's Appearance row binds a durable scope through these two. The
+  // conversation scope publishes the stock 'normal' flow: the shipped default
+  // ('classic') aggregates settled tool runs behind one morphing header.
+  const settings = stubSettingsScope<never>()
+  settings.publish({ value: { defaultRenderMode: 'normal' } } as never)
+  runtime.ctx.provide('remote', { $on: () => () => {}, session: { openWorkspacePath: remoteOpenPath } })
+  runtime.ctx.provide('settingsScope', { bind: () => settings.scope } as never)
   const layout = { closeDetails: vi.fn() }
-  // Provide-channel contributions land in this bundle the way the runtime
-  // materializes them; the renderer host serves it through provideInfo.
-  const provided: { hooks: Record<string, unknown>; props: Record<string, unknown> } = { hooks: {}, props: {} }
-  // Identity-stable currentProvideInfo snapshot (uSES getSnapshot contract),
-  // materialized on first render after the provide contributions landed.
-  let infoCell: { sessionId: SessionId; hooks: Record<string, unknown>; props: Record<string, unknown> } | undefined
-  const sessionsFake = {
-    list,
-    binding: (id: SessionId) => (id === SID
-      ? { sessionId: SID, session, ctx: { effect: () => {}, on: () => () => {} } }
-      : undefined),
-    scope: () => ({ get: () => scoped }),
-    scopeOf: () => SID,
-    provide: (descriptor: { resolve: (binding: unknown) => { hooks?: Record<string, unknown>; props?: Record<string, unknown> } }) => {
-      const contribution = descriptor.resolve(sessionsFake.binding(SID))
-      Object.assign(provided.hooks, contribution.hooks ?? {})
-      Object.assign(provided.props, contribution.props ?? {})
-      return () => {}
+  runtime.ctx.provide('layout', layout)
+  const locale = new LocaleRuntime(runtime.ctx)
+  runtime.ctx.provide('locale', locale)
+  runtime.slots.installLocale(locale)
+  const nestedNodes = nodes.map(node => ({ ...node, subCalls }))
+  const nestedRunning = runningCalls.map(call => ({ ...call, subCalls }))
+  await runtime.sessions.add({
+    id: SID,
+    summary: { title: 'S', displayTitle: 'S', cwd: '/proj' },
+    events: toolCallEvents(nestedNodes, nestedRunning),
+    session: {
+      loadOlder: vi.fn<ISession['loadOlder']>(),
+      prompt: vi.fn<ISession['prompt']>(async () => ({ ok: true, value: { accepted: true } })),
     },
-    provideInfo: (id: string) => (id === SID
-      ? { sessionId: SID, hooks: { session, ...provided.hooks }, props: provided.props }
-      : undefined),
-    currentProvideInfo: {
-      getSnapshot: () => infoCell ??= { sessionId: SID, hooks: { session, ...provided.hooks }, props: provided.props },
-      subscribe: () => () => {},
-    },
-    create: vi.fn(),
-    open: vi.fn(),
-  }
-  ctx.provide('sessions', sessionsFake)
-  const workspaces = {
-    list: createSnapshotStore<WorkspaceListState>({
-      items: [], archivedSessionIds: [], state: 'idle', phase: 'ready', error: null,
-      baselinesReady: true, recentWorkspaceId: undefined,
-    }),
-    startSession: vi.fn(),
-    sendSession: vi.fn(),
-    openPath: vi.fn(async () => {}),
-  }
-  ctx.provide('workspaces', workspaces)
-  ctx.provide('layout', layout)
-  ctx.provide('connection', { api: { settings: {} }, isLoopback } as never)
-  // ui-theme's Appearance row binds a durable scope through these two.
-  ctx.provide('remote', { $on: () => () => {} } as never)
-  ctx.provide('settingsScope', { bind: () => stubSettingsScope().scope } as never)
-  const locale = new LocaleRuntime(ctx)
-  ctx.provide('locale', locale)
-  slots.installLocale(locale)
-
-  slots.install(createSlotRenderer())
-  slots.register({
-    name: 'root',
-    children: {
-      'conversation': { kind: 'single', scope: 'session-maybe' },
-    },
-  }, AppRoot)
-
-  const fiber = ctx.plugin({ inject: [...injectConversation], apply: applyConversation })
-  await fiber.await()
-  const toolFiber = ctx.plugin({ inject: [...injectTool], apply: applyTool })
-  await toolFiber.await()
-  return { ctx, slots, fiber, toolFiber, session, layout, workspaces }
+  })
+  await runtime.root.declare({
+    'conversation': { kind: 'single', scope: 'session-maybe' },
+  } as const, ({ renderSlot }: { renderSlot: (key: 'conversation') => React.ReactNode }) => (
+    <>{renderSlot('conversation')}</>
+  ))
+  await runtime.mount({ inject: [...injectConversation], apply: applyConversation })
+  await runtime.mount({ inject: [...injectTool], apply: applyTool })
+  return { runtime, layout, workspaces: runtime.workspaces }
 }
 
-function mountApp(slots: SlotRegistry) {
-  return render(<>{slots.renderSlot('root', {})}</>)
+function mountApp(b: Awaited<ReturnType<typeof bench>>) {
+  return b.runtime.renderRoot()
 }
 
 describe('run_code sub-calls through the real chat machinery', () => {
@@ -192,8 +133,8 @@ describe('run_code sub-calls through the real chat machinery', () => {
       subCall(11, parent, 1, 'bash', { command: 'ls notes', description: 'List notes' }, 'demo.txt'),
       subCall(12, parent, 2, 'mystery', { n: 1 }, 'ok'),
     ]
-    const b = await bench(snapshotWith([codeResult(10, parent)], subCalls))
-    const view = mountApp(b.slots)
+    const b = await bench([codeResult(10, parent)], subCalls)
+    const view = mountApp(b)
 
     // Parent row: the code variant with the model-authored description.
     const codeRoot = view.container.querySelector('[data-variant="code"]')
@@ -211,6 +152,7 @@ describe('run_code sub-calls through the real chat machinery', () => {
     expect(view.getByText('Bash')).toBeTruthy()
     expect(view.getByText('List notes')).toBeTruthy()
     expect(view.getByText('Tool call')).toBeTruthy()
+    await b.runtime.dispose()
   })
 
   it('renders Cordis sub-calls with lifecycle titles over the generic variants', async () => {
@@ -220,8 +162,8 @@ describe('run_code sub-calls through the real chat machinery', () => {
       subCall(12, parent, 2, 'cordis_run', { id: 'dyn-2' }, 'Dynamic package dyn-2 is running'),
       subCall(13, parent, 3, 'cordis_undefine', { id: 'dyn-2' }, 'Dynamic package dyn-2 was discarded.'),
     ]
-    const b = await bench(snapshotWith([codeResult(10, parent)], subCalls))
-    const view = mountApp(b.slots)
+    const b = await bench([codeResult(10, parent)], subCalls)
+    const view = mountApp(b)
     const nest = view.container.querySelector('[data-subcalls]')!
 
     // Each run-control verb names its act and shows the package id; without the
@@ -232,12 +174,13 @@ describe('run_code sub-calls through the real chat machinery', () => {
     // None of them is a code row: the program belongs to cordis_define, whose
     // own keyed card renders it (the next case covers the code row itself).
     expect(nest.querySelector('[data-variant="code"]')).toBeNull()
+    await b.runtime.dispose()
   })
 
   it('expanding the code row reveals the program body verbatim (shiki-tokenized)', async () => {
     const parent = 'call-64'
-    const b = await bench(snapshotWith([codeResult(10, parent)], []))
-    const view = mountApp(b.slots)
+    const b = await bench([codeResult(10, parent)], [])
+    const view = mountApp(b)
     // The code row is expandable via the whole summary row (body = the program).
     const toggle = view.container.querySelector('[data-variant="code"] [data-expandable]')
     expect(toggle).not.toBeNull()
@@ -248,6 +191,7 @@ describe('run_code sub-calls through the real chat machinery', () => {
     expect(pre).not.toBeNull()
     expect(pre!.textContent).toContain('const listing = await tools.bash')
     expect(pre!.querySelectorAll('span[style]').length).toBeGreaterThan(3)
+    await b.runtime.dispose()
   })
 
   it('an isError sub-call renders the error state dot exactly like a failed native row', async () => {
@@ -255,10 +199,11 @@ describe('run_code sub-calls through the real chat machinery', () => {
     const subCalls = [
       subCall(11, parent, 1, 'mystery', { n: 1 }, 'Error: boom', true),
     ]
-    const b = await bench(snapshotWith([codeResult(10, parent)], subCalls))
-    const view = mountApp(b.slots)
+    const b = await bench([codeResult(10, parent)], subCalls)
+    const view = mountApp(b)
     const nested = view.container.querySelector('[data-subcalls] [data-variant][data-state="error"]')
     expect(nested).not.toBeNull()
+    await b.runtime.dispose()
   })
 
   it('a file sub-row click opens the host path', async () => {
@@ -267,12 +212,16 @@ describe('run_code sub-calls through the real chat machinery', () => {
       subCall(11, parent, 1, 'read', { path: 'notes/demo.txt' }, 'ok'),
       subCall(12, parent, 2, 'bash', { command: 'ls notes', description: 'List notes' }, 'demo.txt'),
     ]
-    const b = await bench(snapshotWith([codeResult(10, parent)], subCalls), true)
-    const view = mountApp(b.slots)
+    // The host open rides the remote session namespace on loopback builds; the
+    // sub-row resolves the relative read path against the session cwd first.
+    const remoteOpenPath = vi.fn(() => Promise.resolve())
+    const b = await bench([codeResult(10, parent)], subCalls, [], true, remoteOpenPath)
+    const view = mountApp(b)
     view.getByText('demo.txt').click()
     await vi.waitFor(() => {
-      expect(b.workspaces.openPath).toHaveBeenCalledWith('notes/demo.txt')
+      expect(remoteOpenPath).toHaveBeenCalledWith({ path: '/proj/notes/demo.txt' })
     })
+    await b.runtime.dispose()
   })
 
   it('a RUNNING run_code call nests its so-far dispatches under the spinner row', async () => {
@@ -280,13 +229,14 @@ describe('run_code sub-calls through the real chat machinery', () => {
     const subCalls = [
       subCall(21, parent, 1, 'bash', { command: 'ls notes', description: 'List notes' }, 'demo.txt'),
     ]
-    const b = await bench(snapshotWith([], subCalls, [runningCode(parent)]))
-    const view = mountApp(b.slots)
+    const b = await bench([], subCalls, [runningCode(parent)])
+    const view = mountApp(b)
     const running = view.container.querySelector('[data-variant="code"][data-state="running"]')
     expect(running).not.toBeNull()
     const nest = view.container.querySelector('[data-subcalls]')
     expect(nest).not.toBeNull()
     expect(nest!.querySelector('[data-sample="bash"]')).not.toBeNull()
+    await b.runtime.dispose()
   })
 
   it('a started-but-unsettled sub-call renders the running state exactly like a native in-flight row', async () => {
@@ -295,12 +245,13 @@ describe('run_code sub-calls through the real chat machinery', () => {
       callId: `${parent}:code:1`, name: 'grep', argsRaw: '{"pattern":"todo"}',
       turn: 0, step: 0, time: 21_000, callView: null, subCalls: [],
     }
-    const b = await bench(snapshotWith([], [runningSub], [runningCode(parent)]))
-    const view = mountApp(b.slots)
+    const b = await bench([], [runningSub], [runningCode(parent)])
+    const view = mountApp(b)
     // The nested row derives 'running' from the RunningToolCall shape — the
     // same data-state chrome (row sweep) a native in-flight row wears.
     const nested = view.container.querySelector('[data-subcalls] [data-variant][data-state="running"]')
     expect(nested).not.toBeNull()
+    await b.runtime.dispose()
   })
 
   it('an ordinary tool row renders no sub-call nest', async () => {
@@ -311,8 +262,9 @@ describe('run_code sub-calls through the real chat machinery', () => {
       callTime: 9_500,
       content: [], isError: false, callView: null, resultView: null, subCalls: [],
     }
-    const b = await bench(snapshotWith([plain], []))
-    const view = mountApp(b.slots)
+    const b = await bench([plain], [])
+    const view = mountApp(b)
     expect(view.container.querySelector('[data-subcalls]')).toBeNull()
+    await b.runtime.dispose()
   })
 })

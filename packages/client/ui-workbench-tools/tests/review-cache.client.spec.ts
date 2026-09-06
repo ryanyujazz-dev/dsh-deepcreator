@@ -5,7 +5,14 @@
 // parse-reference reuse on identical revalidates.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ConversationNode, ConversationSnapshot, SessionId, ToolResultNode } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type ChatSnapshot,
+  type ConversationNode,
+  type ToolResultNode,
+} from '@deepseek-ai/dsh-client-ui-chat/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
 import { ReviewCacheController } from '../src/client/review-cache.ts'
 
 afterEach(() => { vi.useRealTimers() })
@@ -13,7 +20,8 @@ beforeEach(() => { localStorage.clear() })
 
 const SID = 'session-1' as SessionId
 
-const emptyChat = (): ConversationSnapshot => ({ nodes: [], turnEnds: new Map() }) as unknown as ConversationSnapshot
+const emptyChat = (): ChatSnapshot =>
+  ({ legacy: { nodes: [], turnEnds: new Map() } }) as unknown as ChatSnapshot
 
 const editResult = (seq: number, callId: string, path: string): ToolResultNode => ({
   kind: 'tool-result', seq, time: seq * 1_000, callId,
@@ -26,7 +34,7 @@ const patch = (path: string): string => [
 ].join('\n')
 
 /** A controllable ObservableSnapshot session feed. */
-function sessionStub(initial: ConversationSnapshot = emptyChat()) {
+function sessionStub(initial: ChatSnapshot = emptyChat()) {
   const listeners = new Set<() => void>()
   let current = initial
   return {
@@ -34,7 +42,7 @@ function sessionStub(initial: ConversationSnapshot = emptyChat()) {
       subscribe: (fn: () => void) => { listeners.add(fn); return () => { listeners.delete(fn) } },
       getSnapshot: () => current,
     },
-    publish(next: ConversationSnapshot): void {
+    publish(next: ChatSnapshot): void {
       current = next
       for (const listener of listeners) listener()
     },
@@ -223,7 +231,7 @@ describe('ReviewCacheController', () => {
     expect(remote.review.diff).toHaveBeenCalledTimes(2)
 
     const mutated = emptyChat()
-    mutated.nodes = [editResult(7, 'c7', 'src/a.ts')] as ConversationNode[]
+    mutated.legacy.nodes = [editResult(7, 'c7', 'src/a.ts')] as ConversationNode[]
     feed.publish(mutated)
     await vi.advanceTimersByTimeAsync(700)
 
@@ -245,7 +253,7 @@ describe('ReviewCacheController', () => {
     expect(before?.kind).toBe('ready')
 
     const mutated = emptyChat()
-    mutated.nodes = [editResult(7, 'c7', 'src/a.ts')] as ConversationNode[]
+    mutated.legacy.nodes = [editResult(7, 'c7', 'src/a.ts')] as ConversationNode[]
     feed.publish(mutated)
     await vi.advanceTimersByTimeAsync(700)
 
@@ -262,7 +270,7 @@ describe('ReviewCacheController', () => {
     expect(remote.review.checks).not.toHaveBeenCalled()
 
     const ended = emptyChat()
-    ended.turnEnds = new Map([[1, 9]])
+    ended.legacy.turnEnds = new Map([[1, 9]])
     feed.publish(ended)
     await flush(); await flush()
     expect(remote.review.checks).not.toHaveBeenCalled()

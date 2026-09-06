@@ -6,15 +6,38 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-library/react'
 import { useEffect } from 'react'
-import type {
-  AssistantMessageNode, CommandNode, CompactionSummaryNode, ConversationNode, ConversationSnapshot,
-  ModelRetryNode, RunningToolCall, SessionId, SessionListState, ToolCallBlock, ToolResultNode, TurnErrorNode,
-  TurnMaxTokensNode, UserMessageNode, WorkspaceListState,
-} from '@deepseek-ai/dsh-client-runtime/client'
-import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import {
-  createSnapshotStore, EMPTY_CONVERSATION_VIEWS, PendingWait,
-} from '@deepseek-ai/dsh-client-runtime/client'
+  type AssistantMessageNode,
+  type CommandNode,
+  type CompactionSummaryNode,
+  type ConversationNode,
+  type ConversationSnapshot,
+  type ModelRetryNode,
+  type RunningToolCall,
+  type ToolCallBlock,
+  type ToolResultNode,
+  type TurnErrorNode,
+  type TurnMaxTokensNode,
+  type UserMessageNode,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
+import {
+  type SessionListState,
+} from '@deepseek-ai/dsh-api-session-controller/client'
+import {
+  type WorkspaceSnapshot,
+} from '@deepseek-ai/dsh-api-workspace-controller/client'
+import {
+  createSnapshotStore,
+} from '@deepseek-ai/dsh-client-store'
+import {
+  EMPTY_CONVERSATION_VIEWS,
+  PendingWait,
+} from '@ryanyujazz/dsh-client-compat'
+import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
+
 import { RpcId } from '@deepseek-ai/dsh-client-connection/client'
 import type {
   ChatNode, ChatNodeOwnerProps, ChatNodeViewProps, ChatRenderOwnerProps, ChatViewSlotProps,
@@ -155,7 +178,7 @@ function emptySessions() {
 }
 
 function emptyWorkspaces() {
-  const store = createSnapshotStore<WorkspaceListState>({
+  const store = createSnapshotStore<WorkspaceSnapshot>({
     items: [], archivedSessionIds: [], state: 'idle', phase: 'ready', error: null,
     baselinesReady: true, recentWorkspaceId: undefined,
   })
@@ -174,6 +197,7 @@ function renderShippedMode(owner: object, props: ChatViewSlotProps): React.React
       useSession: props.useSession,
       useSessions: props.useSessions,
       useWorkspaces: props.useWorkspaces,
+      useChat: props.useChat,
       useProjection: props.useProjection,
       useInput: props.useInput,
       inputActions: props.inputActions,
@@ -244,12 +268,11 @@ function makeHarness(
     }
     if (key !== 'conversation.chat.node') return opts?.fallback ?? null
     const nodeOwner = owner as RoutedChatNodeOwner
-    const nodeKey = opts?.hookContext as string | undefined
-    const useTurnData: UseChatNodeTurnData = dataKey => props.useSession((snapshot) => {
-      const location = nodeKey === undefined ? undefined : snapshot.chat.nodes.get(nodeKey)?.location
-      return location?.kind === 'turn' || location?.kind === 'step'
-        ? location.turn.data.get(dataKey)
-        : undefined
+    // The runtime correlation passes the Turn-scoped data store as hookContext
+    // (the same face production's turnData hook reads — apply.ts CHAT_NODE_INJECT).
+    const useTurnData: UseChatNodeTurnData = dataKey => props.useSession(() => {
+      const store = opts?.hookContext as { get(key: string): unknown } | undefined
+      return store?.get(dataKey)
     })
     const nodeProps = <Kind extends ChatNode['kind']>(): ChatNodeViewProps<Kind> => (
       { ...props, ...nodeOwner, useTurnData } as unknown as ChatNodeViewProps<Kind>
@@ -322,6 +345,11 @@ function makeHarness(
   const props: ChatViewSlotProps = {
     sessionId: SID,
     useSession: bindSnapshotSelector(source),
+    // The 0.1.2 chat standard seat: the Chat target of the same session source.
+    useChat: bindSnapshotSelector({
+      getSnapshot: () => source.getSnapshot().chat,
+      subscribe: source.subscribe,
+    }),
     useSessions: emptySessions(),
     useWorkspaces: emptyWorkspaces(),
     useProjection: (() => undefined),

@@ -3,9 +3,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render } from '@testing-library/react'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
-import { EMPTY_CHAT_SNAPSHOT, EMPTY_CONVERSATION_VIEWS } from '@deepseek-ai/dsh-client-runtime/client'
-import type { UseSession } from '@deepseek-ai/dsh-client-test-runtime'
-import type { ConversationSnapshot, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  EMPTY_CHAT_SNAPSHOT,
+} from '@deepseek-ai/dsh-client-ui-chat/client'
+import {
+  EMPTY_CONVERSATION_VIEWS,
+} from '@ryanyujazz/dsh-client-compat'
+import {
+  type ConversationSnapshot,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
 
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@ryanyujazz/dsh-client-locale/src/locales/zh.ts'
@@ -75,7 +84,10 @@ describe('render branch tails', () => {
     const view = render(
       <StatsLine
         t={t}
-        useSession={bindSnapshotSelector(source) as unknown as UseSession<ConversationSnapshot>}
+        useChat={bindSnapshotSelector({
+          getSnapshot: () => source.getSnapshot().chat,
+          subscribe: source.subscribe,
+        })}
         useProjection={() => undefined}
       />,
     )

@@ -15,7 +15,7 @@ export function imageSizeText(bytes: number): string {
 }
 
 /**
- * Product copy for a host attachment rejection (the `attachment-error`
+ * Product copy for a host attachment rejection (the `session/attachment-invalid`
  * `details.reason`). User-solvable reasons name the limit and the way out;
  * reasons the user cannot act on fold into one send-failed line carrying the
  * reason code for a bug report.

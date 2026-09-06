@@ -4,16 +4,16 @@ import { describe, expect, it, vi } from 'vitest'
 import { apply } from '../src/client/index.ts'
 
 describe('Workbench Remote BFF', () => {
-  it('mounts eight generated contributions and disposes them in reverse order', async () => {
+  it('mounts nine generated contributions and disposes them in reverse order', async () => {
     const order: string[] = []
     const mount = vi.fn(async (contribution: { package: string }) => {
       order.push(`mount:${contribution.package}`)
       return async () => { order.push(`dispose:${contribution.package}`) }
     })
     const dispose = await apply({ remote: { $mount: mount } } as unknown as Context)
-    expect(mount).toHaveBeenCalledTimes(8)
+    expect(mount).toHaveBeenCalledTimes(9)
     await dispose()
-    expect(order.slice(8)).toEqual([
+    expect(order.slice(9)).toEqual([
       'dispose:@ryanyujazz/dsh-terminal-workbench',
       'dispose:@ryanyujazz/dsh-session-admin',
       'dispose:@ryanyujazz/dsh-remote-access',
@@ -22,6 +22,7 @@ describe('Workbench Remote BFF', () => {
       'dispose:@ryanyujazz/dsh-presentation',
       'dispose:@ryanyujazz/dsh-browser',
       'dispose:@ryanyujazz/dsh-artifacts',
+      'dispose:@ryanyujazz/dsh-app-stage',
     ])
   })
 

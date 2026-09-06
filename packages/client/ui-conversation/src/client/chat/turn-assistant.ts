@@ -1,4 +1,6 @@
-import type { AssistantBlock } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type AssistantBlock,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 
 /**
  * Collect visible prose from one Assistant lifecycle.

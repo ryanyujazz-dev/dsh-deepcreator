@@ -29,6 +29,7 @@ import {
 } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { WebBlockProps } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
+import { type ToolTranslate } from '../../locale.ts'
 import type { DiffCardModel } from '../models/diff-card-model.ts'
 import { CHAT_READ_MAX_LINES, type ReadCardModel } from '../models/read-card-model.ts'
 import { CHAT_SEARCH_MAX_LINES, type SearchCardModel } from '../models/search-card-model.ts'
@@ -169,6 +170,9 @@ export function ToolRow({
   inspect,
   execflow,
 }: ToolRowProps) {
+  // The fork dictionary serves the Tool-owned keys through this same
+  // translate; the official seat merge just hides them (ToolConversationKey).
+  const tt = t as ToolTranslate
   const [expanded, setExpanded] = useState(false)
   const terminalBody = terminal ?? null
   const diffBody = diff ?? null
@@ -190,7 +194,7 @@ export function ToolRow({
   // Diagnostics belong to the expanded OUT section. The collapsed row remains
   // stable and scannable regardless of error length or path content.
   const failed = state === 'error'
-  const summaryText = failed ? t('command.failed') : summary
+  const summaryText = failed ? tt('command.failed') : summary
   const suffix = failed ? null : summarySuffix ?? null
   const visibleDiffCounts = !failed && diffCounts !== null && diffCounts !== undefined
     && (diffCounts.added > 0 || diffCounts.removed > 0)
@@ -261,7 +265,7 @@ export function ToolRow({
             <span className={css.sep} aria-hidden />
             {fileLink ? (
               revealLink ? (
-                <Tooltip label={t('row.revealChange')} side="bottom">{fileLinkButton}</Tooltip>
+                <Tooltip label={tt('row.revealChange')} side="bottom">{fileLinkButton}</Tooltip>
               ) : fileLinkButton
             ) : fileSummary ? (
               <span className={clsx(css.summary, css.fileSummary)}>
@@ -346,11 +350,11 @@ export function ToolRow({
                       </>
                     )}
           {inspect !== undefined && (
-            <Tooltip label={t('execflow.inspect')} side="bottom">
+            <Tooltip label={tt('execflow.inspect')} side="bottom">
               <button
                 type="button"
                 className={css.inspectButton}
-                aria-label={t('execflow.inspect')}
+                aria-label={tt('execflow.inspect')}
                 onClick={inspect}
               >
                 <DeepCreatorIconInspectOutline12 />

@@ -35,9 +35,9 @@
   },
   "license": "MIT",
   "peerDependencies": {
-    "@deepseek-ai/cordis": "4.0.1",
-    "@deepseek-ai/dsh-api-remotes": "^0.1.1-rc.2",
-    "@deepseek-ai/dsh-typert-protocol": "^0.1.1-rc.2",
+    "@deepseek-ai/cordis": "4.0.2",
+    "@deepseek-ai/dsh-api-remotes": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-typert-protocol": "^0.1.2-rc.1",
     "@ryanyujazz/dsh-browser": "^0.1.0",
     "@ryanyujazz/dsh-artifacts": "^0.1.0",
     "@ryanyujazz/dsh-jobs-admin": "^0.1.0",
@@ -45,12 +45,13 @@
     "@ryanyujazz/dsh-remote-access": "^0.1.0",
     "@ryanyujazz/dsh-session-admin": "^0.1.0",
     "@ryanyujazz/dsh-terminal-workbench": "^0.1.0",
-    "@ryanyujazz/dsh-presentation": "^0.1.0"
+    "@ryanyujazz/dsh-presentation": "^0.1.0",
+    "@ryanyujazz/dsh-app-stage": "^0.1.0"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "4.0.1",
-    "@deepseek-ai/dsh-api-remotes": "0.1.1-rc.2",
-    "@deepseek-ai/dsh-typert-protocol": "0.1.1-rc.2",
+    "@deepseek-ai/cordis": "4.0.2",
+    "@deepseek-ai/dsh-api-remotes": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-typert-protocol": "0.1.2-rc.1",
     "@ryanyujazz/dsh-browser": "workspace:^",
     "@ryanyujazz/dsh-artifacts": "workspace:^",
     "@ryanyujazz/dsh-jobs-admin": "workspace:^",
@@ -58,7 +59,8 @@
     "@ryanyujazz/dsh-remote-access": "workspace:^",
     "@ryanyujazz/dsh-session-admin": "workspace:^",
     "@ryanyujazz/dsh-terminal-workbench": "workspace:^",
-    "@ryanyujazz/dsh-presentation": "workspace:^"
+    "@ryanyujazz/dsh-presentation": "workspace:^",
+    "@ryanyujazz/dsh-app-stage": "workspace:^"
   },
   "files": [
     "lib/index.js",

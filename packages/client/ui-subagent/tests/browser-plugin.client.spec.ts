@@ -15,9 +15,21 @@ import { Context } from '@deepseek-ai/cordis'
 import { stubSettingsScope } from '@deepseek-ai/dsh-client-test-runtime'
 import { describe, expect, it } from 'vitest'
 import {
-  SlotRegistry, type ConversationSnapshot, type SessionId, type SessionListState,
-  type SessionSummary, type SubagentAddress,
-} from '@deepseek-ai/dsh-client-runtime/client'
+  SlotRegistry,
+} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import {
+  type ConversationSnapshot,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
+import {
+  type SessionListState,
+  type SessionSummary,
+} from '@deepseek-ai/dsh-api-session-controller/client'
+import {
+  type SubagentAddress,
+} from '@deepseek-ai/dsh-subagent/client'
 import type { ComposerChainProps } from '@ryanyujazz/dsh-client-ui-conversation/client'
 import { InputTriggerService } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import type { ClientSessionContext, InputTriggerSource } from '@deepseek-ai/dsh-client-ui-input-trigger/client'

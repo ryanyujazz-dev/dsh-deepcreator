@@ -1,9 +1,16 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import type {
-  SessionListState, WorkspaceId, WorkspaceListState, WorkspaceView,
-} from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type SessionListState,
+} from '@deepseek-ai/dsh-api-session-controller/client'
+import {
+  type WorkspaceId,
+} from '@deepseek-ai/dsh-session/types'
+import {
+  type WorkspaceSnapshot,
+  type WorkspaceView,
+} from '@deepseek-ai/dsh-api-workspace-controller/client'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@ryanyujazz/dsh-client-locale/src/locales/zh.ts'
 import type { DirectoryFlowOwnerProps, WorkspacePickerProps } from '../src/client/contract/slots.ts'
@@ -30,7 +37,7 @@ function hook<T>(snapshot: T) {
 const sessions: SessionListState = {
   ids: [], byId: {}, current: undefined, phase: 'ready', subagentsByParent: {}, jobsBySession: {}, currentAddress: undefined,
 }
-const workspaceState = (items: readonly WorkspaceView[]): WorkspaceListState => ({
+const workspaceState = (items: readonly WorkspaceView[]): WorkspaceSnapshot => ({
   items, archivedSessionIds: [], state: 'idle', phase: 'ready', error: null, baselinesReady: true,
   recentWorkspaceId: items[0]?.workspaceId,
 })
@@ -219,7 +226,7 @@ describe('WorkspacePicker', () => {
   })
 
   it('keeps the menu up while the list baseline is still in flight', () => {
-    const state: WorkspaceListState = {
+    const state: WorkspaceSnapshot = {
       ...workspaceState([]), phase: 'pending', state: 'loading', baselinesReady: false,
     }
     const { renderSlot } = flowProbe()

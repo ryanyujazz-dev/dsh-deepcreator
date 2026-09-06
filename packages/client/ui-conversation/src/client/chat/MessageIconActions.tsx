@@ -5,7 +5,7 @@ import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 
 import {
   IconBranchOutline16, IconCheckOutline16, IconCopyOutline16, Tooltip, writeClipboard,
 } from '@ryanyujazz/dsh-client-ui-primitives'
-import type { ChatViewSlotProps } from '../contract/slots.ts'
+import type { ForkTranslate } from '../locales.ts'
 import { formatLatencySeconds, formatMessageClock, formatRunDuration, formatTokensPerSecond } from './message-chrome.ts'
 import { useCalendarDay } from './use-calendar-day.ts'
 import css from './MessageIconActions.module.css'
@@ -35,7 +35,7 @@ export interface MessageIconActionsProps {
    */
   extraActions?: ReactNode
   /** The owning view's locale seat, passed down as a plain prop. */
-  t: ChatViewSlotProps['t']
+  t: ForkTranslate
 }
 
 /**

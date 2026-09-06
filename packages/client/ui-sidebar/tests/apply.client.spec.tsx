@@ -1,7 +1,9 @@
 /** Sidebar shell slot registration and its plain runtime/layout callbacks. */
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
-import { SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  SlotRegistry,
+} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { LocaleRuntime } from '@ryanyujazz/dsh-client-locale/client'
 import { apply, inject } from '@ryanyujazz/dsh-client-ui-sidebar/client'
 import type { SidebarRootInjected } from '@ryanyujazz/dsh-client-ui-sidebar/client'
@@ -10,11 +12,11 @@ async function bench(declare = true) {
   const ctx = new Context()
   await ctx.plugin(SlotRegistry).await()
   const layout = { toggleSidebar: vi.fn() }
+  // 0.1.2 moved the New Session action behind the ui-workspace plugin's
+  // shared navigation face (the `uiWorkspace` service).
   const workspaces = { startSession: vi.fn() }
-  const sessions = { open: vi.fn(), clear: vi.fn() }
   ctx.provide('layout', layout)
-  ctx.provide('sessions', sessions as never)
-  ctx.provide('workspaces', workspaces as never)
+  ctx.provide('uiWorkspace', workspaces as never)
   ctx.provide('locale', new LocaleRuntime(ctx))
   const slots = ctx.get('slots') as SlotRegistry
   if (declare) {
@@ -29,12 +31,12 @@ async function bench(declare = true) {
       () => null,
     )
   }
-  return { ctx, slots, layout, workspaces, sessions }
+  return { ctx, slots, layout, workspaces }
 }
 
 describe('ui-sidebar apply', () => {
   it('declares only the services it uses', () => {
-    expect(inject).toEqual(['slots', 'layout', 'sessions', 'workspaces', 'locale'])
+    expect(inject).toEqual(['slots', 'layout', 'uiWorkspace', 'locale'])
   })
 
   it('registers the shell and declares its child seats', async () => {

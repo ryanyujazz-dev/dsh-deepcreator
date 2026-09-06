@@ -1,16 +1,30 @@
 import type { Context } from '@deepseek-ai/cordis'
-import type {
-  ChatConversationViewNode, ChatLocationNodeIndex, ChatNodeStore, ChatSnapshot,
-  ConversationLocation, ConversationNode, ConversationTimelineSnapshot,
-  ConversationViewBuilder, ConversationViewDefinition, LegacyConversationSlice,
-  PartialAssistant, RunningToolCall,
-} from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type ChatConversationViewNode,
+  type ChatLocationNodeIndex,
+  type ChatNodeProcessSource,
+  type ChatNodeSource,
+  type ChatNodeStore,
+  type ChatSnapshot,
+  type ChatTurnNavigationIndex,
+  type LegacyConversationSlice,
+  type TurnNavigationItem,
+} from '@deepseek-ai/dsh-client-ui-chat/client'
+import {
+  type ConversationLocation,
+  type ConversationNode,
+  type ConversationTimelineSnapshot,
+  type ConversationViewBuilder,
+  type ConversationViewDefinition,
+  type PartialAssistant,
+  type RunningToolCall,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ChatNode } from '../contract/chat-nodes.ts'
 import { isRunningTool } from '../contract/chat-nodes.ts'
 
 // This package registers the `chat` view builder, so it owns the target's
 // snapshot-map key typing (the trajectory pattern for merge-extensible views).
-declare module '@deepseek-ai/dsh-client-runtime/client' {
+declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
   interface ConversationViewSnapshotMap {
     /** The chat flow's keyed node snapshot (order/nodes/timeline/legacy). */
     chat: ChatSnapshot
@@ -21,17 +35,53 @@ const EMPTY_KEYS: readonly string[] = []
 const EMPTY_TURNS: readonly number[] = []
 const EMPTY_LIST: readonly never[] = []
 
+/** Constant empty Turn-process source: this fork ships no process renderer. */
+const PROCESS_ABSENT_SOURCE: ChatNodeProcessSource = {
+  getSnapshot: () => undefined,
+  subscribe: () => () => {},
+}
+
 function sameReferences<T>(left: readonly T[], right: readonly T[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index])
 }
 
 class MutableChatNodeStore implements ChatNodeStore {
   private readonly byKey = new Map<string, ChatConversationViewNode>()
+  private readonly sources = new Map<string, {
+    readonly source: ChatNodeSource
+    readonly listeners: Set<() => void>
+  }>()
   private valuesCache: readonly ChatConversationViewNode[] = EMPTY_LIST
   private valuesDirty = false
 
   get(key: string): ChatConversationViewNode | undefined {
     return this.byKey.get(key)
+  }
+
+  /** Identity-stable per-key observable; listeners fire when the key's node object is replaced. */
+  source(key: string): ChatNodeSource {
+    let entry = this.sources.get(key)
+    if (entry === undefined) {
+      const listeners = new Set<() => void>()
+      entry = {
+        source: {
+          getSnapshot: () => this.byKey.get(key),
+          subscribe: (listener) => {
+            listeners.add(listener)
+            return () => {
+              listeners.delete(listener)
+            }
+          },
+        },
+        listeners,
+      }
+      this.sources.set(key, entry)
+    }
+    return entry.source
+  }
+
+  processSource(_key: string): ChatNodeProcessSource {
+    return PROCESS_ABSENT_SOURCE
   }
 
   values(): readonly ChatConversationViewNode[] {
@@ -43,10 +93,15 @@ class MutableChatNodeStore implements ChatNodeStore {
   }
 
   replace(nodes: readonly ChatConversationViewNode[]): void {
+    const touched = new Set(this.byKey.keys())
     this.byKey.clear()
-    for (const node of nodes) this.byKey.set(node.key, node)
+    for (const node of nodes) {
+      this.byKey.set(node.key, node)
+      touched.add(node.key)
+    }
     this.valuesCache = [...this.byKey.values()]
     this.valuesDirty = false
+    for (const key of touched) this.emit(key)
   }
 
   upsert(nodes: readonly ChatConversationViewNode[]): void {
@@ -55,8 +110,89 @@ class MutableChatNodeStore implements ChatNodeStore {
       if (this.byKey.get(node.key) === node) continue
       this.byKey.set(node.key, node)
       changed = true
+      this.emit(node.key)
     }
     if (changed) this.valuesDirty = true
+  }
+
+  private emit(key: string): void {
+    const entry = this.sources.get(key)
+    if (entry === undefined) return
+    for (const listener of entry.listeners) listener()
+  }
+}
+
+/** Navigation preview budgets, mirroring the official rail card's clamps. */
+const PROMPT_PREVIEW_LIMIT = 50
+const RESPONSE_PREVIEW_LIMIT = 120
+
+/** Join rendered text, collapse whitespace, and cap at `limit` with a trailing ellipsis when clipped. */
+function navigationPreview(parts: readonly string[], limit: number): string {
+  let text = ''
+  for (const part of parts) {
+    text += text === '' ? part : ` ${part}`
+  }
+  const normalized = text.replace(/\s+/g, ' ').trim()
+  if (normalized.length > limit - 1) return `${normalized.slice(0, limit - 1).trimEnd()}…`
+  return normalized
+}
+
+function promptText(node: ChatNode<'user'>): string {
+  return navigationPreview(
+    node.data.content.flatMap(block => block.type === 'text' ? [block.text] : []),
+    PROMPT_PREVIEW_LIMIT,
+  )
+}
+
+function responseText(node: ChatNode): string {
+  if (node.kind !== 'assistant-step') return ''
+  return navigationPreview(
+    node.data.blocks.flatMap(block => block.kind === 'text' ? [block.text] : []),
+    RESPONSE_PREVIEW_LIMIT,
+  )
+}
+
+/** Project one loaded Turn into its rail item, or undefined without a visible loaded node. */
+function turnNavigationItem(
+  turn: number,
+  locations: ChatLocationNodeIndex,
+  store: ChatNodeStore,
+): TurnNavigationItem | undefined {
+  const loaded = locations.getTurn(turn)
+    .map(key => store.get(key))
+    .filter((node): node is ChatConversationViewNode => node !== undefined && node.visibility === 'visible')
+  const user = loaded.find(node => node.kind === 'user') as ChatNode<'user'> | undefined
+  const anchor = user ?? loaded[0]
+  if (anchor === undefined) return undefined
+  const response = loaded.findLast(node => responseText(node as ChatNode) !== '')
+  return {
+    turn,
+    anchorKey: anchor.key,
+    prompt: user === undefined ? '' : promptText(user),
+    response: response === undefined ? '' : responseText(response as ChatNode),
+  }
+}
+
+/** Live navigation projection over the loaded window (rebuilt on structural or timeline changes). */
+class MutableTurnNavigationIndex implements ChatTurnNavigationIndex {
+  private itemsCache: readonly TurnNavigationItem[] = EMPTY_LIST
+
+  items(): readonly TurnNavigationItem[] {
+    return this.itemsCache
+  }
+
+  rebuild(
+    timeline: ConversationTimelineSnapshot,
+    locations: ChatLocationNodeIndex,
+    store: ChatNodeStore,
+  ): void {
+    const turns = [...timeline.turns.values()].map(turn => turn.turn).sort((left, right) => left - right)
+    const items: TurnNavigationItem[] = []
+    for (const turn of turns) {
+      const item = turnNavigationItem(turn, locations, store)
+      if (item !== undefined) items.push(item)
+    }
+    this.itemsCache = items
   }
 }
 
@@ -392,6 +528,7 @@ function partialContributionChanged(
 export class ChatSnapshotBuilder implements ConversationViewBuilder<ChatConversationViewNode, ChatSnapshot> {
   private readonly store = new MutableChatNodeStore()
   private readonly locations = new MutableChatLocationIndex()
+  private readonly navigation = new MutableTurnNavigationIndex()
   private readonly legacy = new LegacySliceBuilder()
   private order: readonly string[] = EMPTY_KEYS
   readonly empty: ChatSnapshot
@@ -407,6 +544,7 @@ export class ChatSnapshotBuilder implements ConversationViewBuilder<ChatConversa
     this.store.replace(input.nodes)
     this.order = orderedVisible(input.nodes).map(node => node.key)
     this.locations.rebuild(this.order, this.store)
+    this.navigation.rebuild(input.timeline, this.locations, this.store)
     return this.snapshot(input.timeline, this.legacy.replace(input.nodes, input.timeline))
   }
 
@@ -432,6 +570,7 @@ export class ChatSnapshotBuilder implements ConversationViewBuilder<ChatConversa
       this.locations.rebuild(this.order, this.store)
     }
     this.locations.touch(contentOnly)
+    this.navigation.rebuild(input.timeline, this.locations, this.store)
     return this.snapshot(input.timeline, this.legacy.apply(input.upserts, input.timeline))
   }
 
@@ -443,6 +582,7 @@ export class ChatSnapshotBuilder implements ConversationViewBuilder<ChatConversa
       order: this.order,
       nodes: this.store,
       locations: this.locations,
+      navigation: this.navigation,
       timeline,
       legacy,
     }
@@ -465,5 +605,5 @@ export const chatViewDefinition: ConversationViewDefinition<ChatConversationView
  * @param ctx - owning UI Conversation context.
  */
 export function registerChatConversationView(ctx: Context): void {
-  ctx.conversationViews.register(chatViewDefinition)
+  ctx.uiConversation.views.register(chatViewDefinition)
 }

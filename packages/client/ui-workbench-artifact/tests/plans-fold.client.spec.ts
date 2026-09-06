@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { SessionEvent } from '@deepseek-ai/dsh-session/types'
-import type { ConversationMatch } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type ConversationMatch,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { planNodeDefinition } from '../src/client/plan-node-definition.ts'
 import { PlansSnapshotBuilder } from '../src/client/plans-snapshot-builder.ts'
 import type { PlanConversationNode } from '../src/client/artifact-contract.ts'

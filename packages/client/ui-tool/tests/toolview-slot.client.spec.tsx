@@ -11,14 +11,22 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup } from '@testing-library/react'
-import type { ISession, SessionId, ToolResultNode } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type ISession,
+} from '@deepseek-ai/dsh-api-session-controller/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
+import {
+  type ToolResultNode,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import { SlotTestRuntime, stubSettingsScope } from '@deepseek-ai/dsh-client-test-runtime'
 import { LocaleRuntime } from '@ryanyujazz/dsh-client-locale/client'
 import { apply as applyConversation, inject as injectConversation } from '@ryanyujazz/dsh-client-ui-conversation/client'
 import { apply as applyTool, inject as injectTool } from '@ryanyujazz/dsh-client-ui-tool/client'
 import type { ToolCallViewProps } from '@ryanyujazz/dsh-client-ui-tool/client'
-import { toolChatSnapshot } from './tool-details-render.client.tsx'
+import { toolCallEvents } from './tool-details-render.client.tsx'
 
 const SID = 's1' as SessionId
 
@@ -62,21 +70,27 @@ const LAYOUT_CHILDREN = {
  * service boundaries only, the package apply on its own
  * fiber, and the test AppFrame occupying 'root'.
  */
-async function bench(nodes: ToolResultNode[], isLoopback = false) {
+async function bench(nodes: ToolResultNode[], isLoopback = false, remoteOpenPath?: (args: { path: string }) => Promise<void>) {
   const runtime = await SlotTestRuntime.create()
-  runtime.provide('connection', { api: { settings: {} }, isLoopback })
-  // ui-theme's Appearance row binds a durable scope through these two.
-  runtime.provide('remote', { $on: () => () => {} })
-  runtime.provide('settingsScope', { bind: () => stubSettingsScope().scope } as never)
+  runtime.ctx.provide('connection', { api: { settings: {} }, isLoopback })
+  // ui-theme's Appearance row binds a durable scope through these two. The
+  // conversation scope publishes the stock 'normal' flow: the shipped default
+  // ('classic') aggregates settled tool runs behind one morphing header.
+  const settings = stubSettingsScope<never>()
+  settings.publish({ value: { defaultRenderMode: 'normal' } } as never)
+  runtime.ctx.provide('remote', { $on: () => () => {}, session: { openWorkspacePath: remoteOpenPath } })
+  runtime.ctx.provide('settingsScope', { bind: () => settings.scope } as never)
   const layout = { closeDetails: vi.fn() }
-  runtime.provide('layout', layout)
+  runtime.ctx.provide('layout', layout)
   const locale = new LocaleRuntime(runtime.ctx)
-  runtime.provide('locale', locale)
+  runtime.ctx.provide('locale', locale)
   runtime.slots.installLocale(locale)
   await runtime.sessions.add({
     id: SID,
     summary: { title: 'S', displayTitle: 'S' },
-    snapshot: { nodes, chat: toolChatSnapshot(nodes) },
+    // Conversation data arrives through the durable event feed (0.1.2):
+    // assembly materializes the Tool nodes the rows dispatch on.
+    events: toolCallEvents(nodes),
     session: {
       loadOlder: vi.fn<ISession['loadOlder']>(),
       prompt: vi.fn<ISession['prompt']>(async () => ({ ok: true, value: { accepted: true } })),
@@ -131,7 +145,7 @@ describe('keyed toolview hole through the real machinery', () => {
   it('Read file clicks travel owner openFile → chat inject → Artifact tab activation', async () => {
     const b = await bench([toolResult(3, 'c1', 'read', '{"path":"src/a.ts"}')])
     const activate = vi.fn()
-    b.runtime.provide('workbench', { types: { list: () => [{ id: 'artifact' }] }, activate })
+    b.runtime.ctx.provide('workbench', { types: { list: () => [{ id: 'artifact' }] }, activate })
     const view = b.runtime.renderRoot()
     view.getByText('a.ts').click()
     expect(activate).toHaveBeenCalledWith('artifact', 'src/a.ts')
@@ -143,7 +157,7 @@ describe('keyed toolview hole through the real machinery', () => {
     const editArgs = '{"file_path":"src/a.ts","old_string":"a","new_string":"b"}'
     const b = await bench([toolResult(3, 'c1', 'edit', editArgs)])
     const reveal = vi.fn()
-    b.runtime.provide('workbench', { types: { list: () => [{ id: 'review' }] }, reveal })
+    b.runtime.ctx.provide('workbench', { types: { list: () => [{ id: 'review' }] }, reveal })
     const view = b.runtime.renderRoot()
     view.getByText('a.ts').click()
     // The mutation row's link routes through revealChange: the review reveal
@@ -155,12 +169,14 @@ describe('keyed toolview hole through the real machinery', () => {
 
   it('mutation path clicks keep the host open when no workbench is composed', async () => {
     const editArgs = '{"file_path":"src/a.ts","old_string":"a","new_string":"b"}'
-    const b = await bench([toolResult(3, 'c1', 'edit', editArgs)], true)
+    // The host open rides the remote session namespace on loopback builds
+    // (0.1.2): the change link degrades to it when no workbench is composed.
+    const remoteOpenPath = vi.fn(() => Promise.resolve())
+    const b = await bench([toolResult(3, 'c1', 'edit', editArgs)], true, remoteOpenPath)
     const view = b.runtime.renderRoot()
     view.getByText('a.ts').click()
-    // No composed review surface: the change link degrades to the host open.
     await vi.waitFor(() => {
-      expect(b.runtime.workspaces.calls).toContainEqual({ method: 'openPath', args: ['src/a.ts'] })
+      expect(remoteOpenPath).toHaveBeenCalledWith({ path: 'src/a.ts' })
     })
     await b.runtime.dispose()
   })
@@ -228,13 +244,16 @@ describe('keyed toolview hole through the real machinery', () => {
 describe('registrant declaration injection', () => {
   it('runs a registrant before ui-tool and waits on the actual toolview declaration', async () => {
     const runtime = await SlotTestRuntime.create()
-    runtime.provide('connection', { api: { settings: {} }, isLoopback: false })
-    // ui-theme's Appearance row binds a durable scope through these two.
-    runtime.provide('remote', { $on: () => () => {} })
-    runtime.provide('settingsScope', { bind: () => stubSettingsScope().scope } as never)
-    runtime.provide('layout', { closeDetails: vi.fn() })
+    runtime.ctx.provide('connection', { api: { settings: {} }, isLoopback: false })
+    // ui-theme's Appearance row binds a durable scope through these two. The
+    // conversation scope publishes the stock 'normal' flow (see bench).
+    const settings = stubSettingsScope<never>()
+    settings.publish({ value: { defaultRenderMode: 'normal' } } as never)
+    runtime.ctx.provide('remote', { $on: () => () => {} })
+    runtime.ctx.provide('settingsScope', { bind: () => settings.scope } as never)
+    runtime.ctx.provide('layout', { closeDetails: vi.fn() })
     const locale = new LocaleRuntime(runtime.ctx)
-    runtime.provide('locale', locale)
+    runtime.ctx.provide('locale', locale)
     runtime.slots.installLocale(locale)
     await runtime.root.declare(LAYOUT_CHILDREN, AppRoot)
 

@@ -10,6 +10,8 @@
 // text on ToolRow's Output section, its first line in the collapsed summary.
 
 import type { Context } from '@deepseek-ai/cordis'
+// Type-only: pulls the ctx.slots merge (SlotRegistry service) into this program.
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { IconEditOutline16 } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ToolCallViewProps } from '../../contract/slots.ts'

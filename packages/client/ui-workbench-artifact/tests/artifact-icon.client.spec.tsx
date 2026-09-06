@@ -20,7 +20,8 @@ function renderIcon(snapshot: ArtifactsSnapshot, sessionId = 'session-1', visibl
       size={14}
       visible={visible}
       sessionId={sessionId}
-      useSession={(selector: (state: never) => unknown) => selector({ views: new Map([['artifacts', snapshot], ['plans', plans]]) } as never)}
+      useArtifacts={(selector: (s: ArtifactsSnapshot) => unknown) => selector(snapshot)}
+      usePlans={(selector: (s: PlansSnapshot) => unknown) => selector(plans)}
     />
   ))
 }

@@ -1,0 +1,106 @@
+diff --git a/lib/types/analyzer.js b/lib/types/analyzer.js
+index 0d4c5fb58c8782abd5d8001f38da2bf048f70d2f..c50c85d1fb4db291436625175082a37d23eec513 100644
+--- a/lib/types/analyzer.js
++++ b/lib/types/analyzer.js
+@@ -1204,7 +1204,8 @@ class FaceAnalyzer {
+                     const declaration = preferredDeclaration(resolved);
+                     if (declaration !== undefined
+                         && !isStandardLibraryFile(declaration.getSourceFile().fileName)
+-                        && this.registrationForFile(declaration.getSourceFile().fileName) !== undefined) {
++                        && (this.registrationForFile(declaration.getSourceFile().fileName) !== undefined
++                            || this.npmOfficialRegistration(declaration.getSourceFile().fileName) !== undefined)) {
+                         const imported = this.publicRemoteType(resolved, node);
+                         imports.set(imported.symbol, imported);
+                     }
+@@ -1560,8 +1561,10 @@ class FaceAnalyzer {
+         const resolved = this.resolveSymbol(symbol);
+         const declaration = preferredDeclaration(resolved);
+         if (declaration === undefined
+-            || isStandardLibraryFile(declaration.getSourceFile().fileName)
+-            || this.registrationForFile(declaration.getSourceFile().fileName) === undefined)
++            || isStandardLibraryFile(declaration.getSourceFile().fileName))
++            return undefined;
++        if (this.registrationForFile(declaration.getSourceFile().fileName) === undefined
++            && npmOfficialPackageOf(realPath(declaration.getSourceFile().fileName)) === undefined)
+             return undefined;
+         return resolved;
+     }
+@@ -1569,7 +1572,8 @@ class FaceAnalyzer {
+         const declaration = preferredDeclaration(symbol);
+         if (declaration === undefined)
+             this.fail(site, `type ${symbol.name} has no declaration`);
+-        const registration = this.registrationForFile(declaration.getSourceFile().fileName);
++        const registration = this.registrationForFile(declaration.getSourceFile().fileName)
++            ?? this.npmOfficialRegistration(declaration.getSourceFile().fileName);
+         if (registration === undefined)
+             this.fail(site, `type ${symbol.name} is not owned by a workspace package`);
+         const candidates = [];
+@@ -1578,7 +1582,9 @@ class FaceAnalyzer {
+                 || subpath === './package.json' || subpath === './typert'
+                 || subpath === './client/typert' || subpath === './remote' || target.includes('*'))
+                 continue;
+-            const sourceFile = this.sourceFiles.get(realPath(sourcePathForExport(registration.root, target)));
++            const sourceFile = this.sourceFiles.get(realPath(registration.npm === true
++                ? resolve(registration.root, target)
++                : sourcePathForExport(registration.root, target)));
+             if (sourceFile === undefined)
+                 continue;
+             const moduleSymbol = this.checker.getSymbolAtLocation(sourceFile);
+@@ -1619,6 +1625,8 @@ class FaceAnalyzer {
+         const registration = this.registrationForFile(declaration.getSourceFile().fileName);
+         if (registration?.name === '@deepseek-ai/dsh-typert-protocol')
+             return true;
++        if (realPath(declaration.getSourceFile().fileName).includes('/node_modules/@deepseek-ai/dsh-typert-protocol/'))
++            return true;
+         for (let current = declaration; current !== undefined; current = optionalParent(current)) {
+             if (ts.isModuleDeclaration(current)
+                 && ts.isStringLiteral(current.name)
+@@ -1691,7 +1699,8 @@ class FaceAnalyzer {
+         if (declarationParts.length > 1) {
+             const analyzedParts = declarationParts.map((declarationPart) => {
+                 const part = declarationPart;
+-                const partOwner = this.registrationForFile(part.getSourceFile().fileName);
++                const partOwner = this.registrationForFile(part.getSourceFile().fileName)
++                    ?? this.npmOfficialRegistration(part.getSourceFile().fileName);
+                 if (partOwner === undefined) {
+                     this.fail(part, `merged interface ${resolved.name} contains a declaration outside this face`);
+                 }
+@@ -2235,6 +2244,18 @@ class FaceAnalyzer {
+         return this.allRegistrations
+             .find(registration => registration.face === this.face && isWithin(path, registration.root));
+     }
++    npmOfficialRegistration(file) {
++        const npmPackage = npmOfficialPackageOf(realPath(file));
++        if (npmPackage === undefined) return undefined;
++        let manifest;
++        try {
++            manifest = JSON.parse(readFileSync(join(npmPackage.packageRoot, 'package.json'), 'utf8'));
++        }
++        catch {
++            return undefined;
++        }
++        return { face: this.face, name: npmPackage.name, root: npmPackage.packageRoot, config: undefined, manifest, npm: true };
++    }
+     packageNameForFile(file) {
+         const path = realPath(file);
+         return this.allRegistrations.find(registration => isWithin(path, registration.root))?.name ?? '<external>';
+@@ -2449,6 +2470,19 @@ function sourcePathForExport(packageRoot, target) {
+     }
+     return resolve(packageRoot, normalized);
+ }
++
++function npmOfficialPackageOf(file) {
++    const marker = '/node_modules/';
++    const at = file.lastIndexOf(marker);
++    if (at < 0) return undefined;
++    const rest = file.slice(at + marker.length);
++    const match = rest.match(/^(@[^/]+\/[^/]+)\//) ?? rest.match(/^([^@][^/]*)\//);
++    if (match === undefined || match === null || !match[1].startsWith('@deepseek-ai/')) return undefined;
++    const name = match[1];
++    const packageRoot = file.slice(0, at + marker.length + name.length);
++    return { name, packageRoot };
++}
++
+ function preferredDeclaration(symbol) {
+     return symbol.declarations?.find(isTypeDeclaration)
+         ?? symbol.valueDeclaration

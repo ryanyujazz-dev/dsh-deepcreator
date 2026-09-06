@@ -1,7 +1,9 @@
 /** Settings shell registration: slot declaration injection, the ledger projections, and HMR recovery. */
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
-import { SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  SlotRegistry,
+} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { apply, inject } from '../src/client/index.ts'
 import type { SettingsRootInjected } from '../src/client/shell-contract.ts'
 import { SettingsRoot } from '../src/client/SettingsRoot.tsx'
@@ -25,6 +27,16 @@ async function bench() {
   ctx.provide('settingsNavigation', {
     commands: { getSnapshot: () => ({ sequence: 0, request: null }), subscribe: () => () => {} },
     open: () => {}, close: () => {},
+  } as never)
+  // The document action derives availability from the shared describe mirror;
+  // this bench is non-loopback, so apply never touches the face.
+  ctx.provide('settingsScope', {
+    describe: () => ({
+      getSnapshot: () => ({ status: 'idle', view: undefined, error: null }),
+      subscribe: () => () => {},
+      ensure: () => Promise.resolve(),
+      acceptView: () => undefined,
+    }),
   } as never)
   return { ctx, slots: ctx.get('slots') as SlotRegistry }
 }
@@ -53,7 +65,7 @@ const CHILD_SPECS = {
 
 describe('ui-settings apply', () => {
   it('declares its composition and navigation dependencies', () => {
-    expect(inject).toEqual(['slots', 'locale', 'connection', 'settingsNavigation'])
+    expect(inject).toEqual(['slots', 'locale', 'connection', 'settingsNavigation', 'settingsScope'])
   })
 
   it('registers the shell and declares every child slot, before or after the declaration', async () => {

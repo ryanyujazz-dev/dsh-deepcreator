@@ -14,8 +14,11 @@
 
 import { useMemo, useState } from 'react'
 import { Button } from '@ryanyujazz/dsh-client-ui-primitives'
-import type { RunningToolCall } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type RunningToolCall,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { PendingApproval, type ApprovalComposerProps } from '../contract/slots.ts'
+import { forkT, type ForkTranslate } from '../locales.ts'
 import { rootToolCall } from '../chat/tool-node-reader.ts'
 import css from './ApprovalPanel.module.css'
 
@@ -40,19 +43,19 @@ export function commandOf(call: RunningToolCall | undefined): string | undefined
  */
 export function ApprovalPanel(props: ApprovalComposerProps) {
   const approval = useMemo(() => new PendingApproval(props.matched), [props.matched])
-  const command = props.useSession((snapshot) => {
+  const command = props.useChat((snapshot) => {
     if (approval.callId === undefined) return undefined
     const root = rootToolCall(snapshot, approval.callId)
     if (root === undefined) return undefined
     return root.callId === approval.callId && !('kind' in root) ? commandOf(root) : undefined
   })
-  return <ApprovalFlow key={approval.key} pending={approval} t={props.t} {...command === undefined ? {} : { command }} />
+  return <ApprovalFlow key={approval.key} pending={approval} t={forkT(props.t)} {...command === undefined ? {} : { command }} />
 }
 
 function ApprovalFlow({ pending, command, t }: {
   pending: PendingApproval
   command?: string
-  t: ApprovalComposerProps['t']
+  t: ForkTranslate
 }) {
   // Local one-shot latch: the panel leaves only when the resolved frame
   // lands; until then the buttons must not re-fire. An answer failure

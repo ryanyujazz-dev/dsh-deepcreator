@@ -11,10 +11,13 @@
 
 import { memo, useMemo } from 'react'
 import type { ReactNode } from 'react'
-import type { AssistantBlock } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type AssistantBlock,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { JsonBlock, MarkdownText } from '@ryanyujazz/dsh-client-ui-primitives'
 import type { MarkdownFileMentions } from '@ryanyujazz/dsh-client-ui-primitives'
-import type { ChatViewSlotProps, RenderMessageImages } from '../contract/slots.ts'
+import type { RenderMessageImages } from '../contract/slots.ts'
+import type { ForkTranslate } from '../locales.ts'
 import { ReasoningRow } from './ReasoningRow.tsx'
 import css from './AssistantMarkdown.module.css'
 
@@ -30,7 +33,7 @@ export interface AssistantMarkdownProps {
   /** Think rows start expanded (the Think display form). */
   thinkExpanded?: boolean | undefined
   /** The owning view's locale seat, passed down as a plain prop. */
-  t: ChatViewSlotProps['t']
+  t: ForkTranslate
 }
 
 /** Reasoning block as the Think variant summary row (figma 39:28304). */

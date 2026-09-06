@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest'
 import { stubSettingsScope } from '@deepseek-ai/dsh-client-test-runtime'
-import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
 import { RenderModePreference } from '../src/client/chat/render-mode-preference.ts'
 import { DEFAULT_RENDER_MODE, type ConversationSettings } from '../src/submission-settings.ts'
 

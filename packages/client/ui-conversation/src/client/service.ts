@@ -12,8 +12,15 @@ import type { Context } from '@deepseek-ai/cordis'
 // Type-only imports: a plugin-to-plugin value import is a bundle purity
 // error, so scope resolution goes through the sessions service (scopeOf
 // method) instead of the standalone helper.
-import type { ISessions, SessionFace, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type ISessions,
+  type SessionFace,
+} from '@deepseek-ai/dsh-api-session-controller/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
 import type { ImageAttachmentRef, ImageMediaType } from '@deepseek-ai/dsh-attachment'
+import type { IConversation } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ComposerAttachment } from './contract/slots.ts'
 import type { QueueAction, QueueItemId } from './contract/queue.ts'
 import type { ComposerBlocks } from './input/blocks.ts'
@@ -23,40 +30,10 @@ import type { InputSubmitMode } from './contract/composer-submission.ts'
 /**
  * The outward conversation face (`ctx.conversation`): the scope-addressed
  * verbs and the input registry other plugins may reach — and exactly what a
- * test fake must supply.
+ * test fake must supply. Declared by the official conversation client; the
+ * fork re-exports it so downstream packages keep their import path.
  */
-export interface IConversation {
-  /** The per-session input machine registry (SessionInputResolver face). */
-  readonly input: SessionInputResolver
-  /**
-   * The per-session composer-block registry: how a plugin the composer
-   * cannot import makes a session's input inert with its own reason.
-   */
-  readonly blocks: ComposerBlocks
-  /**
-   * Send a prompt into the caller scope's session (queued turn).
-   * @param text - prompt text, sent verbatim as one text block.
-   * @returns completion; business failures reject (and land in promptError).
-   */
-  send(text: string): Promise<void>
-  /**
-   * Apply one edit, remove, or strict steer operation to a pending queue occurrence.
-   * @param itemId - agent-owned inbox occurrence identity.
-   * @param action - requested queue operation.
-   * @returns completion; converged strict-steer races resolve, while other failures reject.
-   */
-  updateQueue(itemId: QueueItemId, action: QueueAction): Promise<void>
-  /**
-   * Cancel the scoped session's in-flight turn while preserving its pending Queue.
-   * @returns completion; failures reject as in send.
-   */
-  cancel(): Promise<void>
-  /**
-   * Pull one older history page for the scoped session.
-   * @returns completion of the page pull.
-   */
-  loadOlder(): Promise<void>
-}
+export type { IConversation }
 
 /** Create one browser-only draft descriptor; only its id enters input state. */
 function browserDraftAttachment(file: File): ComposerAttachment {
@@ -309,7 +286,7 @@ export class ConversationController extends Service implements IConversation {
     if (!result.ok) {
       if (
         action.kind === 'steer'
-        && (result.error.code === 'steer-unavailable' || result.error.code === 'queue-item-not-found')
+        && (result.error.code === 'session/steer-unavailable' || result.error.code === 'session/queue-item-not-found')
       ) return
       throw new Error(`conversation.updateQueue failed: ${result.error.code}: ${result.error.message}`)
     }

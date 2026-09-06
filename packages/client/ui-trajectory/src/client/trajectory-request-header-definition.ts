@@ -1,8 +1,10 @@
 import type { Context } from '@deepseek-ai/cordis'
-import type {
-  ConversationMatch, ConversationNodeDefinition, ConversationPromptSnapshot,
-  RequestPromptChange,
-} from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  type ConversationMatch,
+  type ConversationNodeDefinition,
+  type ConversationPromptSnapshot,
+  type RequestPromptChange,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { trajectoryNode } from './trajectory-definition-common.ts'
 import type { TrajectoryRequestHeaderState } from './trajectory-contract.ts'
 
@@ -76,5 +78,5 @@ const trajectoryRequestHeaderDefinition: ConversationNodeDefinition<TrajectoryRe
  * @param ctx - Plugin context receiving the Definition.
  */
 export function registerTrajectoryRequestHeaderDefinition(ctx: Context): void {
-  ctx.conversationEvents.register(trajectoryRequestHeaderDefinition)
+  ctx.uiConversation.events.register(trajectoryRequestHeaderDefinition)
 }

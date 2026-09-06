@@ -1,7 +1,25 @@
-import { resolveWorkspacePath, type ClientContext, type SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  resolveWorkspacePath,
+} from '@deepseek-ai/dsh-util-workspace-path'
+import type { ClientContext } from '@ryanyujazz/dsh-client-compat'
+import {
+  type SessionBinding,
+} from '@deepseek-ai/dsh-api-session-controller/client'
+import {
+  type SessionId,
+} from '@deepseek-ai/dsh-session/types'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
+// Type-only: pulls the ctx.uiConversation merge (event/view registries and the
+// per-Session conversation binding) into this program.
+import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+// Type-only: pulls the ctx.remote merge and the forwarded-event key face into
+// this program (the artifacts invalidation rides the allowlist).
+import type {} from '@deepseek-ai/dsh-api-remotes/client'
+import type { ObservableSnapshot, SnapshotSelectorHook } from '@deepseek-ai/dsh-client-store'
 import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+// Type-only: pulls the ctx.slots merge (SlotRegistry service) into this program.
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { createElement, type ReactNode } from 'react'
 import type {} from '@ryanyujazz/dsh-artifacts/remote'
 import type {} from '@ryanyujazz/dsh-client-locale/client'
@@ -17,6 +35,8 @@ import {
   ArtifactDocumentHtmlRenderer, ArtifactDocumentTextRenderer, ArtifactImageRenderer, ArtifactPdfRenderer,
 } from './ArtifactBinaryRenderers.tsx'
 import { ArtifactTurnCard } from './ArtifactTurnCard.tsx'
+import { EMPTY_ARTIFACTS_SNAPSHOT, EMPTY_PLANS_SNAPSHOT } from './artifact-contract.ts'
+import type { ArtifactsSnapshot, PlansSnapshot } from './artifact-contract.ts'
 import { producedForClosing, registerArtifactNodeDefinition } from './artifact-node-definition.ts'
 import { registerArtifactsConversationView } from './artifacts-snapshot-builder.ts'
 import { registerPlanNodeDefinition } from './plan-node-definition.ts'
@@ -24,12 +44,20 @@ import { registerPlansConversationView } from './plans-snapshot-builder.ts'
 import { artifactParentDirectory } from './artifact-view-model.ts'
 import { en, NS, zh, type ArtifactKey } from './locales.ts'
 
-declare module '@deepseek-ai/dsh-client-ui-slots' { interface LocaleNamespaceMap { 'workbench-artifact': ArtifactKey } }
+declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface LocaleNamespaceMap { 'workbench-artifact': ArtifactKey }
+  interface SessionStandardProps {
+    /** Selector hook over this Session's produced-files view target. */
+    useArtifacts: SnapshotSelectorHook<ArtifactsSnapshot>
+    /** Selector hook over this Session's submitted-plan history target. */
+    usePlans: SnapshotSelectorHook<PlansSnapshot>
+  }
+}
 
-/** Required services: Workbench panel Slots, the locale service, the mounted artifacts remote, and the conversation projection registries. */
+/** Required services: Workbench panel Slots, the locale service, the conversation registries, the session-hook registry, and the mounted artifacts remote. */
 export const inject = [
-  'slots', 'workbench', 'workspaces', 'sessions', 'locale', 'connection', 'remote', 'remote.artifacts',
-  'conversationEvents', 'conversationViews',
+  'slots', 'workbench', 'sessions', 'uiSession', 'uiConversation', 'locale', 'connection',
+  'remote', 'remote.artifacts', 'remote.session',
   'presentation',
 ]
 
@@ -44,8 +72,12 @@ export function apply(ctx: ClientContext): void {
   // Capture this namespace once: using remote['artifacts'] inside a React
   // render would invalidate every Artifact effect on every render.
   const artifacts = remote['artifacts']
+  const openWorkspacePath = async (path: string): Promise<void> => {
+    const result = await remote['session'].openWorkspacePath({ path })
+    if (!result.ok) throw new Error(`path open failed: ${result.error.message}`)
+  }
   const openContainingFolder = (path: string) => {
-    void ctx.workspaces.openPath(artifactParentDirectory(path)).catch((reason: unknown) => {
+    void openWorkspacePath(artifactParentDirectory(path)).catch((reason: unknown) => {
       console.warn('artifact containing folder open rejected:', reason)
     })
   }
@@ -57,7 +89,7 @@ export function apply(ctx: ClientContext): void {
   }
   const openInSystemBrowser = async (sessionId: SessionId, path: string) => {
     const preview = await previewHtml(sessionId, path)
-    await ctx.workspaces.openPath(preview.path)
+    await openWorkspacePath(preview.path)
   }
   const openInDeepCreator = async (sessionId: SessionId, path: string) => {
     const preview = await previewHtml(sessionId, path)
@@ -71,6 +103,40 @@ export function apply(ctx: ClientContext): void {
         : `${result.failure.code}: ${result.failure.message}`)
     }
   }
+  // Per-Session view-target sources for this plugin's own Conversation view
+  // targets: the same pattern the official view packages use to expose one
+  // target's snapshot as a session standard hook (subscribing keeps the
+  // target's projection alive for the Session's lifetime).
+  const artifactsSources = new WeakMap<SessionBinding, ObservableSnapshot<ArtifactsSnapshot>>()
+  const artifactsSource = (binding: SessionBinding): ObservableSnapshot<ArtifactsSnapshot> => {
+    let source = artifactsSources.get(binding)
+    if (source === undefined) {
+      const target = ctx.uiConversation.binding(binding).target('artifacts')
+      source = {
+        getSnapshot: () => target.getSnapshot() ?? EMPTY_ARTIFACTS_SNAPSHOT,
+        subscribe: listener => target.subscribe(listener),
+      }
+      artifactsSources.set(binding, source)
+    }
+    return source
+  }
+  const plansSources = new WeakMap<SessionBinding, ObservableSnapshot<PlansSnapshot>>()
+  const plansSource = (binding: SessionBinding): ObservableSnapshot<PlansSnapshot> => {
+    let source = plansSources.get(binding)
+    if (source === undefined) {
+      const target = ctx.uiConversation.binding(binding).target('plans')
+      source = {
+        getSnapshot: () => target.getSnapshot() ?? EMPTY_PLANS_SNAPSHOT,
+        subscribe: listener => target.subscribe(listener),
+      }
+      plansSources.set(binding, source)
+    }
+    return source
+  }
+  ctx.uiSession.provide({
+    hooks: ['artifacts', 'plans'],
+    resolve: binding => ({ hooks: { artifacts: artifactsSource(binding), plans: plansSource(binding) } }),
+  })
   const panel = (props: WorkbenchPanelProps & PropsLocale<'workbench-artifact'>): ReactNode =>
     createElement(ArtifactPanel, {
       ...props, artifacts,

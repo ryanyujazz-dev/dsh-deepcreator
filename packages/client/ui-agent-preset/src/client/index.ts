@@ -11,7 +11,7 @@
  * before-the-fact, while the header only reports what a session already runs.
  */
 
-import type { ConnectionHandle } from '@deepseek-ai/dsh-api-remotes/client'
+import type { ClientContext } from '@ryanyujazz/dsh-client-compat'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@ryanyujazz/dsh-client-locale/client'
 // Type-only: pulls the ctx.remote merge and the forwarded-event key face
@@ -19,7 +19,10 @@ import type {} from '@ryanyujazz/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 // Type-only: pulls the settings shell's SlotMap merge (the 'settings.section' entry).
 import type {} from '@ryanyujazz/dsh-client-ui-settings/client'
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+// Type-only: pulls the SlotRegistry service merge (ctx.slots).
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+// Type-only: pulls the agentPreset key into the session projection merge.
+import type {} from '@deepseek-ai/dsh-agent-presets/types'
 import { AgentPresetLabel } from './AgentPresetLabel.tsx'
 import type { AgentPresetLabelInjected } from './AgentPresetLabel.tsx'
 import { AgentPresetRow } from './AgentPresetRow.tsx'
@@ -46,19 +49,18 @@ export type { AgentPresetOption, AgentPresetSettingsState } from './settings-sto
 export { AGENT_PRESET_SETTINGS_NS, writeDefaultPreset } from './settings-store.ts'
 
 /** Required services (cordis fiber inject). */
-export const inject = ['slots', 'locale', 'connection', 'remote']
+export const inject = ['slots', 'locale', 'remote', 'remote.agentPresets', 'remote.settings']
 
 /**
- * Mount the General-settings row.
+ * Mount the General-settings row and the roster surfaces.
  * @param ctx - the browser plugin context.
  */
 export function apply(ctx: ClientContext): void {
-  const { api } = ctx.get('connection') as ConnectionHandle
-  const controller = new AgentPresetSettingsController(api)
+  const controller = new AgentPresetSettingsController(ctx)
   // One roster, four surfaces. The chip is registered in a later scope, so it
   // subscribes here rather than being reached from this one.
   const rosterReaders = new Set<() => void>()
-  const section = new AgentPresetSectionController(api, () => {
+  const section = new AgentPresetSectionController(ctx, () => {
     void controller.load()
     for (const read of rosterReaders) read()
   })
@@ -99,20 +101,24 @@ export function apply(ctx: ClientContext): void {
 
   // The new-session chip and the header label: one controller, because the
   // staged choice belongs to the flow rather than to any one session.
-  ctx.inject(['slots', 'conversation', 'sessions', 'workspaces'], (scope: ClientContext) => {
-    const api = (scope.get('connection') as ConnectionHandle).api
-    const seat = new AgentPresetSeatController(api, (): SeatSessionSummary | undefined => {
+  ctx.inject(['slots', 'conversation', 'sessions', 'uiWorkspace'], (scope: ClientContext) => {
+    // The ui-workspace plugin's navigation face (provided as the `uiWorkspace`
+    // service); the composer cannot depend on it the other way around.
+    const workspaceNavigation = scope.get('uiWorkspace') as unknown as {
+      startSession(): void
+    }
+    const seat = new AgentPresetSeatController(scope, (): SeatSessionSummary | undefined => {
       const state = scope.sessions.list.getSnapshot()
       const summary = state.current === undefined ? undefined : state.byId[state.current]
-      return summary === undefined
-        ? undefined
-        : {
-          id: summary.id,
-          blank: summary.blank,
-          ...summary.agentPreset === undefined ? {} : { agentPreset: summary.agentPreset },
-        }
-    }, (sessionId, agentPreset) => {
-      scope.sessions.noteAgentPreset(sessionId as never, agentPreset)
+      if (summary === undefined) return undefined
+      // 0.1.2: the session's composition rides the host-computed projection
+      // values rather than a summary field.
+      const preset = summary.projectionValues?.agentPreset
+      return {
+        id: summary.id,
+        blank: summary.blank,
+        ...typeof preset === 'string' ? { agentPreset: preset } : {},
+      }
     })
 
     const seatInjected = (): AgentPresetSeatInjected => ({
@@ -141,11 +147,6 @@ export function apply(ctx: ClientContext): void {
         if (ns !== AGENT_PRESET_SETTINGS_NS) return
         void seat.load()
       })
-      // Every tab folds the committed preset into the shared session row; the
-      // initiating tab may already have applied the RPC echo, which is idempotent.
-      const presetSelected = scope.remote.$on('agent-preset/selected', (sessionId, agentPreset) => {
-        scope.sessions.noteAgentPreset(sessionId, agentPreset)
-      })
       // Authoring writes a FILE, not a setting, so nothing on the wire
       // announces it — without this the screen that starts the next session
       // keeps offering the roster as it stood when the chip first loaded, and
@@ -160,7 +161,7 @@ export function apply(ctx: ClientContext): void {
         // The introduce cue makes the chip announce the pick the user never
         // made on this screen — the stage happened back in settings.
         seat.stage('cordis', true)
-        scope.workspaces.startSession()
+        workspaceNavigation.startSession()
       }
       const chip = scope.slots.register({
         name: 'conversation.hero.agentPreset',
@@ -178,7 +179,6 @@ export function apply(ctx: ClientContext): void {
       return () => {
         stop()
         settingsMoved()
-        presetSelected()
         rosterReaders.delete(readRoster)
         creatorDraft = undefined
         chip()
