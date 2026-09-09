@@ -23,6 +23,11 @@ type OfficialInputState = import('@deepseek-ai/dsh-client-ui-conversation/client
 /** Browser-runtime identity of one unsent image draft. */
 export type DraftAttachmentId =
   import('@deepseek-ai/dsh-client-ui-conversation/client').DraftAttachmentId
+export type SubmitAttachment =
+  import('@deepseek-ai/dsh-client-ui-conversation/client').SubmitAttachment
+export interface DraftAttachmentSerializationResult {
+  readonly attachments: readonly SubmitAttachment[]
+}
 
 /**
  * Browser-local presentation of one ordinary message between the submit

@@ -20,6 +20,8 @@ import {
   type SessionId, type SessionSeq,
 } from '@deepseek-ai/dsh-session/types'
 import type { ImageAttachmentRef, ImageMediaType } from '@deepseek-ai/dsh-attachment'
+import type {} from '@deepseek-ai/dsh-client-file-upload/client'
+import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { IConversation } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { SessionSeq as WireSeq } from '@deepseek-ai/dsh-session/types'
 
@@ -33,7 +35,9 @@ declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
     resolveImage(sessionId: import('@deepseek-ai/dsh-session/types').SessionId, attachment: import('@deepseek-ai/dsh-attachment').ImageAttachmentRef): Promise<string>
   }
 }
-import type { ComposerAttachment } from './contract/slots.ts'
+import type {
+  ComposerAttachment, ComposerFileAttachment, ComposerImageAttachment, DraftFileUpload,
+} from './contract/slots.ts'
 import type { QueueAction, QueueItemId } from './contract/queue.ts'
 import type { ComposerBlocks } from './input/blocks.ts'
 import type { DraftAttachmentId, SessionInputResolver } from './input/contract.ts'
@@ -48,13 +52,24 @@ import type { InputSubmitMode } from './contract/composer-submission.ts'
 export type { IConversation }
 
 /** Create one browser-only draft descriptor; only its id enters input state. */
-function browserDraftAttachment(file: File): ComposerAttachment {
+function browserDraftAttachment(file: File): ComposerImageAttachment {
   return {
     kind: 'image',
     id: crypto.randomUUID() as DraftAttachmentId,
     previewUrl: URL.createObjectURL(file),
     file,
   }
+}
+
+/** Fill image dimensions when the browser exposes them; presentation falls back to CSS sizing. */
+function probeDimensions(attachment: ComposerImageAttachment): void {
+  if (typeof Image !== 'function') return
+  const probe = new Image()
+  probe.onload = () => {
+    attachment.width = probe.naturalWidth
+    attachment.height = probe.naturalHeight
+  }
+  probe.src = attachment.previewUrl
 }
 
 interface ImageUrlEntry {
@@ -82,7 +97,14 @@ export class ConversationController extends Service implements IConversation {
   readonly input: SessionInputResolver
   /** The per-session composer-block registry. */
   readonly blocks: ComposerBlocks
+  /** Live upload state per generic-file draft; image drafts never enter this store. */
+  readonly fileUploads: SnapshotStore<Record<string, DraftFileUpload>> = createSnapshotStore<Record<string, DraftFileUpload>>({})
   private readonly draftAttachments = new Map<DraftAttachmentId, ComposerAttachment>()
+  private readonly fileUploadOperations = new Map<DraftAttachmentId, AbortController>()
+  private readonly pendingFileUploads = new Set<Promise<void>>()
+  private readonly fileUploadQueue: Array<{ readonly run: () => Promise<void>; readonly settle: () => void }> = []
+  private activeFileUploads = 0
+  private readonly maxConcurrentFileUploads: number
   private readonly imageUrls = new Map<string, ImageUrlEntry>()
   private readonly imageGenerations = new Map<SessionId, number>()
   private readonly imageLeases = new Map<SessionId, number>()
@@ -96,15 +118,25 @@ export class ConversationController extends Service implements IConversation {
    * constructed by the plugin apply (the same instances the slot inject
    * factories close over).
    */
-  constructor(ctx: Context, config: { input: SessionInputResolver; blocks: ComposerBlocks }) {
+  constructor(ctx: Context, config: {
+    input: SessionInputResolver
+    blocks: ComposerBlocks
+    maxConcurrentFileUploads?: number
+  }) {
     super(ctx, 'conversation')
     this.input = config.input
     this.blocks = config.blocks
-    ctx.effect(() => () => {
+    this.maxConcurrentFileUploads = config.maxConcurrentFileUploads ?? 2
+    ctx.effect(() => async () => {
       this.disposed = true
+      for (const controller of this.fileUploadOperations.values()) controller.abort()
+      await Promise.allSettled([...this.pendingFileUploads])
+      this.fileUploadOperations.clear()
+      this.fileUploadQueue.length = 0
       for (const url of this.createdImageUrls) revokePreview(url)
       this.createdImageUrls.clear()
       this.draftAttachments.clear()
+      this.fileUploads.set({})
       this.imageUrls.clear()
       this.imageGenerations.clear()
       this.imageLeases.clear()
@@ -124,27 +156,63 @@ export class ConversationController extends Service implements IConversation {
   }
 
   /**
-   * Submit ordered draft images with text through one host admission.
+   * Submit ordered draft attachments with text through one host admission.
    * @param session - target session.
    * @param text - serialized prompt text.
-   * @param imageIds - ordered draft-local attachment ids.
+   * @param attachmentIds - ordered draft-local attachment ids.
    * @param mode - queue or steer delivery selected by composer policy.
    */
   async sendSession(
     session: SessionFace,
     text: string,
-    imageIds: readonly DraftAttachmentId[],
+    attachmentIds: readonly DraftAttachmentId[],
     mode: InputSubmitMode,
   ): Promise<void> {
-    const attachments = this.draftImages(imageIds)
-    if (attachments.length !== imageIds.length) {
-      throw new Error('conversation.sendSession: one or more draft images are no longer available')
+    const attachments = this.resolveDraftAttachments(attachmentIds)
+    if (attachments.length !== attachmentIds.length) {
+      throw new Error('conversation.sendSession: one or more draft attachments are no longer available')
     }
-    const uploaded = await this.serializeImages(attachments.map(attachment => attachment.file))
+    const uploads = this.fileUploads.getSnapshot()
+    const uploaded: Parameters<SessionFace['prompt']>[0] = await Promise.all(attachments.map(async (attachment) => {
+      if (attachment.kind === 'image') {
+        return {
+          type: 'image' as const,
+          mediaType: imageMediaType(attachment.file.type),
+          data: bytesToBase64(new Uint8Array(await attachment.file.arrayBuffer())),
+          ...(attachment.file.name === '' ? {} : { name: attachment.file.name }),
+        }
+      }
+      const upload = uploads[attachment.id]
+      if (upload === undefined || upload.status !== 'ready') {
+        throw new Error('conversation.sendSession: one or more files have not finished uploading')
+      }
+      return { type: 'file' as const, receiptId: upload.receiptId }
+    }))
     const content = [...uploaded, ...(text === '' ? [] : [{ type: 'text' as const, text }])]
     const result = await session.prompt(content, mode)
     if (!result.ok) throw new Error(`conversation.send failed: ${result.error.code}: ${result.error.message}`)
-    this.releaseDraftImages(attachments)
+    this.releaseDraftAttachments(attachments)
+  }
+
+  /** Register image previews and generic-file background uploads for one Session. */
+  createDrafts(sessionId: SessionId, files: readonly File[]): readonly ComposerAttachment[] {
+    return files.map((file) => {
+      if (isImageMediaType(file.type)) {
+        const attachment = browserDraftAttachment(file)
+        this.draftAttachments.set(attachment.id, attachment)
+        this.createdImageUrls.add(attachment.previewUrl)
+        probeDimensions(attachment)
+        return attachment
+      }
+      const attachment: ComposerFileAttachment = {
+        kind: 'file',
+        id: crypto.randomUUID() as DraftAttachmentId,
+        file,
+      }
+      this.draftAttachments.set(attachment.id, attachment)
+      this.beginFileUpload(sessionId, attachment)
+      return attachment
+    })
   }
 
   /**
@@ -152,7 +220,7 @@ export class ConversationController extends Service implements IConversation {
    * @param files - browser files to register after MIME validation.
    * @returns ordered draft descriptors.
    */
-  createDraftImages(files: readonly File[]): readonly ComposerAttachment[] {
+  createDraftImages(files: readonly File[]): readonly ComposerImageAttachment[] {
     for (const file of files) imageMediaType(file.type)
     return files.map((file) => {
       const attachment = browserDraftAttachment(file)
@@ -162,12 +230,8 @@ export class ConversationController extends Service implements IConversation {
     })
   }
 
-  /**
-   * Resolve ordered input-state ids to runtime-owned draft images.
-   * @param ids - draft attachment ids.
-   * @returns descriptors that remain live, in requested order.
-   */
-  draftImages(ids: readonly DraftAttachmentId[]): readonly ComposerAttachment[] {
+  /** Resolve ordered input ids to every live draft kind. */
+  resolveDraftAttachments(ids: readonly DraftAttachmentId[]): readonly ComposerAttachment[] {
     const attachments: ComposerAttachment[] = []
     for (const id of ids) {
       const attachment = this.draftAttachments.get(id)
@@ -176,8 +240,23 @@ export class ConversationController extends Service implements IConversation {
     return attachments
   }
 
+  /**
+   * Resolve ordered input-state ids to runtime-owned draft images.
+   * @param ids - draft attachment ids.
+   * @returns descriptors that remain live, in requested order.
+   */
+  draftImages(ids: readonly DraftAttachmentId[]): readonly ComposerImageAttachment[] {
+    const attachments: ComposerImageAttachment[] = []
+    for (const id of ids) {
+      const attachment = this.draftAttachments.get(id)
+      if (attachment?.kind === 'image') attachments.push(attachment)
+    }
+    return attachments
+  }
+
   /** Serialize draft images for a command that explicitly accepts attachments. */
   async serializeDraftImages(imageIds: readonly DraftAttachmentId[]): Promise<readonly {
+    type: 'image'
     mediaType: ImageMediaType
     data: string
     name?: string
@@ -187,10 +266,76 @@ export class ConversationController extends Service implements IConversation {
       throw new Error('conversation.serializeDraftImages: one or more draft images are no longer available')
     }
     return Promise.all(attachments.map(async ({ file }) => ({
+      type: 'image' as const,
       mediaType: imageMediaType(file.type),
       data: bytesToBase64(new Uint8Array(await file.arrayBuffer())),
       ...(file.name === '' ? {} : { name: file.name }),
     })))
+  }
+
+  /** Serialize image bytes or completed file-upload receipts for commands. */
+  async serializeDraftAttachments(attachmentIds: readonly DraftAttachmentId[]): Promise<{
+    readonly attachments: readonly import('@deepseek-ai/dsh-client-ui-conversation/client').SubmitAttachment[]
+  }> {
+    const attachments = this.resolveDraftAttachments(attachmentIds)
+    if (attachments.length !== attachmentIds.length) {
+      throw new Error('conversation.serializeDraftAttachments: one or more draft attachments are no longer available')
+    }
+    const uploads = this.fileUploads.getSnapshot()
+    return {
+      attachments: await Promise.all(attachments.map(async (attachment) => {
+        if (attachment.kind === 'image') {
+          return {
+            type: 'image' as const,
+            mediaType: imageMediaType(attachment.file.type),
+            data: bytesToBase64(new Uint8Array(await attachment.file.arrayBuffer())),
+            ...(attachment.file.name === '' ? {} : { name: attachment.file.name }),
+          }
+        }
+        const upload = uploads[attachment.id]
+        if (upload === undefined || upload.status !== 'ready') {
+          throw new Error('conversation.serializeDraftAttachments: one or more files have not finished uploading')
+        }
+        return { type: 'file' as const, receiptId: upload.receiptId }
+      })),
+    }
+  }
+
+  /** Restart a failed generic-file upload. */
+  retryFileUpload(sessionId: SessionId, id: DraftAttachmentId): void {
+    const attachment = this.draftAttachments.get(id)
+    if (attachment?.kind !== 'file' || this.fileUploads.getSnapshot()[id]?.status !== 'error') return
+    this.beginFileUpload(sessionId, attachment)
+  }
+
+  /** Re-stage carried generic files when the composer moves to another Session. */
+  rebindDraftFiles(sessionId: SessionId, ids: readonly DraftAttachmentId[]): void {
+    for (const id of ids) {
+      const attachment = this.draftAttachments.get(id)
+      if (attachment?.kind === 'file') this.beginFileUpload(sessionId, attachment)
+    }
+  }
+
+  /** Release any draft kind and cancel a live generic-file upload. */
+  releaseDraftAttachment(id: DraftAttachmentId): void {
+    const attachment = this.draftAttachments.get(id)
+    if (attachment === undefined) return
+    this.fileUploadOperations.get(id)?.abort()
+    this.fileUploadOperations.delete(id)
+    this.draftAttachments.delete(id)
+    if (attachment.kind === 'image') {
+      this.createdImageUrls.delete(attachment.previewUrl)
+      revokePreview(attachment.previewUrl)
+      return
+    }
+    this.fileUploads.set(Object.fromEntries(
+      Object.entries(this.fileUploads.getSnapshot()).filter(([key]) => key !== id),
+    ))
+  }
+
+  /** Release an ordered group of draft attachments. */
+  releaseDraftAttachments(attachments: readonly ComposerAttachment[]): void {
+    for (const attachment of attachments) this.releaseDraftAttachment(attachment.id)
   }
 
   /**
@@ -198,19 +343,15 @@ export class ConversationController extends Service implements IConversation {
    * @param id - draft attachment id.
    */
   releaseDraftImage(id: DraftAttachmentId): void {
-    const attachment = this.draftAttachments.get(id)
-    if (attachment === undefined) return
-    this.draftAttachments.delete(id)
-    this.createdImageUrls.delete(attachment.previewUrl)
-    revokePreview(attachment.previewUrl)
+    if (this.draftAttachments.get(id)?.kind === 'image') this.releaseDraftAttachment(id)
   }
 
   /**
    * Release a set of browser-owned draft images.
    * @param attachments - descriptors to release.
    */
-  releaseDraftImages(attachments: readonly ComposerAttachment[]): void {
-    for (const attachment of attachments) this.releaseDraftImage(attachment.id)
+  releaseDraftImages(attachments: readonly ComposerImageAttachment[]): void {
+    this.releaseDraftAttachments(attachments)
   }
 
   /**
@@ -346,15 +487,71 @@ export class ConversationController extends Service implements IConversation {
     return sessions
   }
 
-  /** Convert browser files to canonical base64 prompt parts. */
-  private serializeImages(images: readonly File[]): Promise<Parameters<SessionFace['prompt']>[0]> {
-    return Promise.all(images.map(async file => ({
-      type: 'image' as const,
-      mediaType: imageMediaType(file.type),
-      data: bytesToBase64(new Uint8Array(await file.arrayBuffer())),
-      ...(file.name === '' ? {} : { name: file.name }),
-    })))
+  private beginFileUpload(sessionId: SessionId, attachment: ComposerFileAttachment): void {
+    this.fileUploadOperations.get(attachment.id)?.abort()
+    const controller = new AbortController()
+    this.fileUploadOperations.set(attachment.id, controller)
+    this.fileUploads.update((draft) => {
+      draft[attachment.id] = { status: 'uploading', loaded: 0 }
+    })
+    let settle!: () => void
+    const done = new Promise<void>((resolve) => { settle = resolve })
+    this.pendingFileUploads.add(done)
+    void done.then(() => { this.pendingFileUploads.delete(done) })
+    const run = async (): Promise<void> => {
+      try {
+        if (controller.signal.aborted || this.fileUploadOperations.get(attachment.id) !== controller) return
+        const result = await this.ctx.fileUpload.upload(
+          sessionId,
+          attachment.file,
+          attachment.file.name === '' ? undefined : attachment.file.name,
+          controller.signal,
+          (progress) => {
+            if (this.fileUploadOperations.get(attachment.id) !== controller) return
+            this.fileUploads.update((draft) => {
+              if (!(attachment.id in draft)) return
+              draft[attachment.id] = {
+                status: 'uploading',
+                loaded: progress.loaded,
+                ...(progress.total === undefined ? {} : { total: progress.total }),
+              }
+            })
+          },
+        )
+        if (this.fileUploadOperations.get(attachment.id) !== controller) return
+        this.fileUploads.update((draft) => {
+          if (!(attachment.id in draft)) return
+          draft[attachment.id] = result.ok
+            ? { status: 'ready', receiptId: result.value.receiptId, file: result.value.file }
+            : { status: 'error', message: result.error.message }
+        })
+      } catch (error) {
+        if (this.fileUploadOperations.get(attachment.id) !== controller) return
+        this.fileUploads.update((draft) => {
+          if (!(attachment.id in draft)) return
+          draft[attachment.id] = { status: 'error', message: error instanceof Error ? error.message : String(error) }
+        })
+      } finally {
+        if (this.fileUploadOperations.get(attachment.id) === controller) this.fileUploadOperations.delete(attachment.id)
+      }
+    }
+    this.fileUploadQueue.push({ run, settle })
+    this.pumpFileUploads()
   }
+
+  private pumpFileUploads(): void {
+    while (this.activeFileUploads < this.maxConcurrentFileUploads) {
+      const task = this.fileUploadQueue.shift()
+      if (task === undefined) return
+      this.activeFileUploads += 1
+      void task.run().finally(() => {
+        this.activeFileUploads -= 1
+        task.settle()
+        this.pumpFileUploads()
+      })
+    }
+  }
+
 }
 
 function imageMediaType(value: string): ImageMediaType {
@@ -367,6 +564,10 @@ function imageMediaType(value: string): ImageMediaType {
     default:
       throw new UnsupportedImageMediaTypeError(value)
   }
+}
+
+function isImageMediaType(value: string): boolean {
+  return value === 'image/png' || value === 'image/jpeg' || value === 'image/webp' || value === 'image/gif'
 }
 
 function bytesToBase64(data: Uint8Array): string {

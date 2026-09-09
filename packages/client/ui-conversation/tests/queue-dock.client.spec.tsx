@@ -128,8 +128,9 @@ describe('QueueDock', () => {
     const view = render(<QueueDock {...kitFor(snap, { useInput })} useSession={source.useSession} />)
 
     expect(view.getByText('马上显示').closest('[data-pending-outgoing]')).not.toBeNull()
-    expect(view.queryByLabelText('编辑排队消息')).toBeNull()
-    expect(view.queryByLabelText('删除排队消息')).toBeNull()
+    expect(view.getByText('发送中…')).toBeTruthy()
+    expect((view.getByLabelText('编辑排队消息') as HTMLButtonElement).disabled).toBe(true)
+    expect((view.getByLabelText('删除排队消息') as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('hands a paired local echo to the committed authoritative queue row', () => {

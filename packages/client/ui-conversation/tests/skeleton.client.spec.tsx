@@ -200,6 +200,9 @@ function mount(
     if (key === 'conversation.session.header.utilities' && opts?.only === 'session-log-download') {
       return <button type="button" onClick={sessionLogDownload}>Session log</button>
     }
+    if (key === 'conversation.session.header.corner') {
+      return <button type="button">Header corner</button>
+    }
     if (key === 'conversation.session.header') {
       return (
         <ConversationSessionHeader
@@ -261,12 +264,14 @@ function mount(
           useInput={useInput}
           inputActions={inputActions}
           keyboard={wiring}
-          addImages={() => null}
-          removeImage={() => {}}
-          draftImages={() => []}
-          resolveSubmitMode={() => 'queue'}
+          addFiles={() => null}
+          removeAttachment={() => {}}
+          resolveDraftAttachments={() => []}
+          retryFileUpload={vi.fn()}
           toggleCommandMenu={vi.fn()}
+          useBusyEnter={bindSnapshotSelector(createSnapshotStore<'queue' | 'steer'>('queue'))}
           useNotices={bindSnapshotSelector(wiring.notices)}
+          useFileUploads={bindSnapshotSelector(createSnapshotStore({}))}
           useLexicon={bindSnapshotSelector(wiring.lexicon)}
           useMenuLauncher={bindSnapshotSelector(createSnapshotStore<string | null>(null))}
           stop={stop}
@@ -404,6 +409,8 @@ describe('ConversationRoot resident composer', () => {
     expect(seat?.contains(textarea)).toBe(true)
     expect(b.slotCalls).toContain('conversation.session.header.actions')
     expect(b.slotCalls).toContain('conversation.session.header.utilities')
+    expect(b.slotCalls).toContain('conversation.session.header.corner')
+    expect(b.view.getByRole('button', { name: 'Header corner' })).toBeTruthy()
   })
 
   it('shows transcript edge masks only where overflowing content remains hidden', () => {

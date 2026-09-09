@@ -152,6 +152,7 @@ export function TrajectoryView({
   const olderHistoryLoading = useSession(snapshot => snapshot.loadingOlder)
   const hasOlderHistory = useSession(snapshot => snapshot.hasMore)
   const nodes = inspection.eventNodes
+  const systemPrompts = inspection.systemPrompts
   const eventLocations = inspection.eventLocations
   const historyBaseSeq = nodes[0]?.seq ?? 0
   const partial = inspection.partial
@@ -261,6 +262,7 @@ export function TrajectoryView({
   const partialStep = partial?.step ?? null
   const finalized = useMemo(() => {
     const turns = deriveTrajectoryLayout({
+      systemPrompts,
       nodes,
       eventLocations,
       partial: partialTurn === null || partialStep === null
@@ -272,7 +274,7 @@ export function TrajectoryView({
     })
     return { turns, lastIndex: lastCellIndex(turns) }
   }, [
-    nodes, eventLocations, partialTurn, partialStep,
+    systemPrompts, nodes, eventLocations, partialTurn, partialStep,
     runningCalls, requests, callSchemas,
   ])
   const timelinePartialSignature = partialStructureSignature(partial)

@@ -2,6 +2,7 @@ import { readdir, rm } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, resolve, sep } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
+import { parseSessionFormatLogFilename } from '@deepseek-ai/dsh-session-format'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 // Type-only: pulls the `sessions` Context merge into this program.
 import type { SessionId } from '@deepseek-ai/dsh-session'
@@ -65,7 +66,10 @@ export class SessionAdmin extends TypertRemoteService {
 async function sessionArtifactExists(sessionDir: string): Promise<boolean> {
   try {
     const entries = await readdir(sessionDir)
-    return entries.includes('session.jsonl') || entries.includes('session.jsonl.zstd')
+    return entries.some((entry) => {
+      const raw = entry.endsWith('.zstd') ? entry.slice(0, -'.zstd'.length) : entry
+      return parseSessionFormatLogFilename(raw) !== undefined
+    })
   } catch {
     return false
   }

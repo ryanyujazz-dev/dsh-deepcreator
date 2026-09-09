@@ -13,8 +13,11 @@ import type {
   ConversationViewSnapshotStore,
 } from '../contract/conversation.ts'
 import type { ConversationSnapshot } from '../contract/snapshot.ts'
-import type { ConversationPromptSnapshot, RequestPromptInspection } from '../contract/request-inspection.ts'
+import type {
+  ConversationPromptSnapshot, RequestPromptInspection, SystemPromptNode,
+} from '../contract/request-inspection.ts'
 import { inspectRequestPrompt } from '../contract/request-inspection.ts'
+import { inspectSystemPrompt, type SystemPromptState } from '../contract/system-prompt.ts'
 import { ConversationNodeAssembler } from './assembler.ts'
 import { ConversationEventRegistry } from './event-registry.ts'
 import { HistoricalImageCache } from './historical-images.ts'
@@ -113,7 +116,14 @@ class BoundConversation implements ConversationBinding {
           if (next === 'immediate' || publication === 'none') publication = next
         }
         this.publish(publication)
+        return
       }
+      case 'settle-assistant':
+        this.publish(this.assembler.settleAssistant(
+          window.change.attemptId,
+          window.change.entry,
+        ))
+        return
     }
   }
 
@@ -262,6 +272,11 @@ export class UiConversation extends Service {
     return this.images.seed(sessionId, attachment, url)
   }
 
+  /** Interpret a system message or surface replacement for target-owned prompt Definitions. */
+  inspectSystemPrompt(previous: SystemPromptState | undefined, event: SessionEvent): SystemPromptState {
+    return inspectSystemPrompt(previous, event)
+  }
+
   /**
    * Canonicalize one `request/header` event against the previous prompt state.
    *
@@ -275,8 +290,9 @@ export class UiConversation extends Service {
   inspectRequestPrompt(
     previous: ConversationPromptSnapshot | undefined,
     event: SessionEvent<'request/header'>,
+    system: SystemPromptNode | undefined,
   ): RequestPromptInspection {
-    return inspectRequestPrompt(previous, event)
+    return inspectRequestPrompt(previous, event, system)
   }
 
   private drop(record: BindingRecord, releaseScope: boolean): void {

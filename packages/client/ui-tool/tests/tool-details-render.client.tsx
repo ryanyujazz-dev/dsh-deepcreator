@@ -16,7 +16,7 @@ import {
 /**
  * Project the canonical Tool fixtures into the 0.1.2 durable event feed —
  * Conversation assembly materializes the same Tool nodes from these events:
- * one `tool/call` per call (running or settled), `tool/code-dispatch(-start)`
+ * one `tool/call` per call (running or settled), `tool/ptc-dispatch(-start)`
  * pairs for nested sub-calls, and an append-surface `tool/result` settling
  * each settled root call.
  */
@@ -36,14 +36,14 @@ export function toolCallEvents(
   const dispatches = (rootCallId: string, subCalls: readonly ToolCallBlock[]): void => {
     for (const sub of subCalls) {
       if ('kind' in sub) {
-        emit('tool/code-dispatch', sub.time, {
+        emit('tool/ptc-dispatch', sub.time, {
           rootCallId, parentCallId: rootCallId, subCallId: sub.callId,
           name: sub.call?.name ?? '', arguments: JSON.parse(sub.call?.argsRaw ?? '{}'),
           isError: sub.isError, content: sub.content,
         })
       }
       else {
-        emit('tool/code-dispatch-start', sub.time, {
+        emit('tool/ptc-dispatch-start', sub.time, {
           rootCallId, parentCallId: rootCallId, subCallId: sub.callId,
           name: sub.name, arguments: JSON.parse(sub.argsRaw ?? '{}'),
         })

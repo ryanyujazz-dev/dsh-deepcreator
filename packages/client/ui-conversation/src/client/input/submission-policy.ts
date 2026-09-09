@@ -19,6 +19,22 @@ import type { ConversationSettings } from '../../submission-settings.ts'
 export { DEFAULT_BUSY_ENTER_BEHAVIOR } from '../../submission-settings.ts'
 
 /**
+ * Resolve one submission gesture against the live busy-Enter preference.
+ * Plain Enter and the primary Send button share the `enter` gesture, so the
+ * button delivers exactly what Enter would.
+ */
+export function resolveSubmitMode(
+  preferred: BusyEnterBehavior,
+  running: boolean,
+  gesture: ComposerSubmitGesture,
+  steeringAvailable: boolean,
+): InputSubmitMode {
+  if (!running || !steeringAvailable) return 'queue'
+  if (gesture === 'enter') return preferred
+  return preferred === 'queue' ? 'steer' : 'queue'
+}
+
+/**
  * Busy-Enter policy used by both the composer inject face and its Settings row.
  * Direct `steer` is intentionally best-effort: AgentLoop turns a closed-window
  * submission into the next waking Queue item.
@@ -54,10 +70,7 @@ export class ComposerSubmissionPolicy {
     gesture: ComposerSubmitGesture,
     steeringAvailable: boolean,
   ): InputSubmitMode {
-    if (!running || !steeringAvailable) return 'queue'
-    const preferred = this.busyEnter.getSnapshot()
-    if (gesture === 'enter') return preferred
-    return preferred === 'queue' ? 'steer' : 'queue'
+    return resolveSubmitMode(this.busyEnter.getSnapshot(), running, gesture, steeringAvailable)
   }
 
   /**

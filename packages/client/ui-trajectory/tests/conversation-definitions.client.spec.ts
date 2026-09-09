@@ -8,6 +8,8 @@ import {
   type ConversationNodeDefinition,
   type ConversationViewDefinition,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import { inspectRequestPrompt } from '../../ui-conversation/src/client/contract/request-inspection.ts'
+import { inspectSystemPrompt } from '../../ui-conversation/src/client/contract/system-prompt.ts'
 
 import { registerTrajectoryAssistantDefinition } from '../src/client/trajectory-assistant-definition.ts'
 import { registerTrajectoryCompactionDefinitions } from '../src/client/trajectory-compaction-definition.ts'
@@ -20,6 +22,8 @@ import { registerTrajectoryToolDefinition } from '../src/client/trajectory-tool-
 const DEFINITIONS: ConversationNodeDefinition[] = []
 const registrationContext = {
   uiConversation: {
+    inspectRequestPrompt,
+    inspectSystemPrompt,
     events: {
       register: (definition: ConversationNodeDefinition) => {
         DEFINITIONS.push(definition)
@@ -57,16 +61,20 @@ function at(
   data: unknown,
   extra: Record<string, unknown> = {},
 ): SessionEventLikeEntry {
+  const payload = type === 'assistant/live-chunk' && typeof data === 'object' && data !== null
+    ? { attemptId: 'test-attempt', ...data as Record<string, unknown> }
+    : data
+  const event = {
+    seq,
+    time: 1_700_000_000_000 + seq,
+    type,
+    data: payload,
+    ...extra,
+  } as unknown as SessionEventLikeEntry['event']
   return {
-    event: {
-      seq,
-      time: 1_700_000_000_000 + seq,
-      type,
-      data,
-      ...extra,
-    } as unknown as SessionEventLikeEntry['event'],
-    view: undefined,
-  }
+    type: type === 'assistant/live-chunk' ? 'transient' : 'event',
+    event,
+  } as SessionEventLikeEntry
 }
 
 function assembler(events: readonly SessionEventLikeEntry[]): ConversationNodeAssembler {
@@ -101,12 +109,12 @@ describe('Trajectory conversation Definitions', () => {
     const value = assembler([
       at(1, 'turn/start', { turn: 1 }),
       at(2, 'step/start', { turn: 1, step: 1 }),
-      at(3, 'assistant/chunk', {
+      at(3, 'assistant/live-chunk', {
         turn: 1,
         step: 1,
         chunk: { type: 'text-delta', index: 0, text: 'first attempt' },
       }),
-      at(4, 'assistant/chunk', {
+      at(4, 'assistant/live-chunk', {
         turn: 1,
         step: 1,
         chunk: { type: 'usage', usage: { inputTokens: 10, outputTokens: 3 } },
@@ -132,7 +140,7 @@ describe('Trajectory conversation Definitions', () => {
       delayMs: 25,
       failure: { code: 'TRANSPORT', message: 'temporary failure' },
     }))
-    value.append(at(6, 'assistant/chunk', {
+    value.append(at(6, 'assistant/live-chunk', {
       turn: 1,
       step: 1,
       chunk: { type: 'text-delta', index: 0, text: 'second attempt' },
@@ -168,14 +176,14 @@ describe('Trajectory conversation Definitions', () => {
       at(4, 'tool/call', {
         turn: 1, step: 1, callId: 'root-b', name: 'parallel', arguments: '{}',
       }),
-      at(5, 'tool/code-dispatch-start', {
+      at(5, 'tool/ptc-dispatch-start', {
         rootCallId: 'root-a',
         parentCallId: 'root-a',
         subCallId: 'child',
         name: 'read',
         arguments: { path: 'README.md' },
       }),
-      at(6, 'tool/code-dispatch', {
+      at(6, 'tool/ptc-dispatch', {
         rootCallId: 'root-a',
         parentCallId: 'root-a',
         subCallId: 'child',
@@ -239,11 +247,20 @@ describe('Trajectory conversation Definitions', () => {
   it('classifies claimed inbox input as steering and consumes one inherited prompt change', () => {
     const value = assembler([
       at(1, 'turn/start', { turn: 1 }),
+      at(1.5, 'system/message', {
+        turn: 1,
+        step: 0,
+        message: {
+          id: 'system-1',
+          role: 'system',
+          content: [{ type: 'text', text: 'system prompt' }],
+          source: { kind: 'system' },
+        },
+      }, { surfaceOp: 'append' }),
       at(2, 'request/header', {
         reason: 'initial',
         header: {
           config: { provider: 'test', model: 'test' },
-          system: 'system prompt',
           tools: [],
         },
       }),

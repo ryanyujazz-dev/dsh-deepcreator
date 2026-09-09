@@ -133,7 +133,7 @@ export class InputMachine {
     const c = this.claim
     return {
       draft: this.draft,
-      imageIds: [],
+      attachmentIds: [],
       draftRev: this.draftRev,
       phase: this.phase,
       ...(c ? { claim: { token: c.token, ...(c.hint !== undefined ? { hint: c.hint } : {}) } } : {}),

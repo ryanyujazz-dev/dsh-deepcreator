@@ -51,7 +51,7 @@ function hasTextAssistant(event: Parameters<ConversationNodeDefinition['match']>
 }
 
 function chunkHasText(event: Parameters<ConversationNodeDefinition['match']>[0]): boolean {
-  if (event.type !== 'assistant/chunk') return false
+  if (event.type !== 'assistant/live-chunk') return false
   const chunk = event.data.chunk
   if (chunk.type === 'text-delta') return chunk.text.trim() !== ''
   return chunk.type === 'block-end'
@@ -64,11 +64,15 @@ function turnCoordinates(event: Parameters<ConversationNodeDefinition['match']>[
   readonly step?: number
 } | undefined {
   if (event.type === 'assistant/message'
-    || event.type === 'assistant/chunk'
+    || event.type === 'assistant/attempt'
+    || event.type === 'assistant/live-chunk'
+    || event.type === 'step/start'
     || event.type === 'step/end') {
     return { turn: event.data.turn, step: event.data.step }
   }
-  if (event.type === 'llm/retry') return { turn: event.data.turn, step: event.data.step }
+  if (event.type === 'llm/retry' || event.type === 'llm/retry-started') {
+    return { turn: event.data.turn, step: event.data.step }
+  }
   return undefined
 }
 
@@ -84,7 +88,7 @@ function closingAnchor(context: ConversationNodeContext<TurnTailState>): number 
     const coordinates = turnCoordinates(event)
     if (coordinates?.step === undefined) continue
     const previous = steps.get(coordinates.step) ?? { streamedText: false, finalized: false }
-    if (event.type === 'assistant/chunk') {
+    if (event.type === 'assistant/live-chunk') {
       steps.set(coordinates.step, {
         ...previous,
         streamedText: previous.streamedText || chunkHasText(event),

@@ -13,6 +13,16 @@
   disabled: true
 - id: ui-sidebar
   disabled: true
+# 0.1.5 adds an experimental per-session right Sidebar with multi-tab file
+# navigation and text preview. DeepCreator keeps its richer Workbench column
+# as the sole right-side interaction surface; the underlying resources,
+# workspace-files, file-upload, and open-in-app rows remain active.
+- id: ui-sidebar-right
+  disabled: true
+- id: ui-sidebar-files
+  disabled: true
+- id: ui-sidebar-textpreview
+  disabled: true
 - id: ui-settings-general
   disabled: true
 - id: ui-conversation

@@ -31,20 +31,20 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.0.2",
-    "@deepseek-ai/dsh-agent": "^0.1.2-rc.1",
-    "@deepseek-ai/dsh-tools": "^0.1.2-rc.1",
-    "@deepseek-ai/dsh-typert-protocol": "^0.1.2-rc.1",
-    "@deepseek-ai/dsh-util-values": "^0.1.2-rc.1"
+    "@deepseek-ai/dsh-agent": "^0.1.5-alpha.1",
+    "@deepseek-ai/dsh-tools": "^0.1.5-alpha.1",
+    "@deepseek-ai/dsh-typert-protocol": "^0.1.5-alpha.1",
+    "@deepseek-ai/dsh-util-values": "^0.1.5-alpha.1"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.2",
-    "@deepseek-ai/dsh-agent": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-tools": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-typert-protocol": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-agent": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-tools": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-typert-protocol": "0.1.5-alpha.1",
     "@types/node": "^22.20.0",
     "typescript": "^6.0.3",
     "vitest": "^3.2.4",
-    "@deepseek-ai/dsh-util-values": "0.1.2-rc.1"
+    "@deepseek-ai/dsh-util-values": "0.1.5-alpha.1"
   },
   "files": [
     "lib/index.js",

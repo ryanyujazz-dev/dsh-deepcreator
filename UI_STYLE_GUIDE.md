@@ -20,6 +20,13 @@
 - 普通界面、对话正文、执行流、侧边栏、对话标题栏和代码使用 CSS 400 字重；当前标题、表头和其他明确强调保留 500 或 600。
 - 字体平滑由应用根节点统一配置；组件不得单独覆盖抗锯齿，也不得通过不透明度或滤镜制造“更细”的字体。
 
+## 对话输入区
+
+- 输入卡片左下角依次放置 Command 加号与附件回形针，二者都使用 14px glyph 和一致的命中框；加号只打开 `/` 指令来源，回形针打开支持多选的原生文件选择器并把文件交给官方 attachment owner。附件还必须保留粘贴与整页拖放入口；无会话、上传未完成或 attachment owner 不接受新文件时，入口按真实能力禁用。
+- 会话运行中，发送按钮必须按实时「繁忙时 Enter 键行为」显示「排队发送」或「插话发送」，按钮点击与普通 Enter 使用同一解析结果；Cmd/Ctrl+Enter 执行另一种行为。可继续的子任务也允许插话，不可继续或父会话不可用时保持禁用。队列的浏览器本地回显显示「发送中」，且在官方 Session 队列接管前不得提供编辑、删除或插话操作。
+- Composer 下方的会话统计使用两枚居中的透明胶囊：仪表胶囊承载轮次／步骤、吞吐与时间详情，数据库胶囊承载 token 总量、缓存命中与用量详情。胶囊文字必须与同一输入工具行的「完全权限」控件严格同档，二者都以侧边栏字号减 3px、侧边栏行高减 2px 计算，随 DeepCreator 小／标准／大设置同步变化；弹窗详情使用动态 secondary 正文角色。胶囊静息使用 tertiary 文字，hover／展开使用公共交互底色与 secondary 文字。同一时刻只允许一个锚定弹窗打开，Escape 与点击外部关闭。上下文占用圆环仍留在输入工具行，不得并入统计胶囊。
+- 对话 Header 的最右侧扩展统一进入单实例 `conversation.session.header.corner` Slot；无贡献者时不预留空白，有贡献者时与现有工具区保持 12px 间距，并允许自身以负外边距对齐 Header 右侧视觉边缘。
+
 ## 代码外观与 Diff
 
 - 「Code appearance」分别保存浅色与深色代码主题，二者互不覆盖。可选主题为 DeepCreator、Shiki GitHub Default 与 One 的 Light／Dark 版本，以及六套第三方开源主题——Catppuccin（Latte／Mocha）、Rosé Pine（Dawn／Moon）、Vitesse、Kanagawa（Lotus／Wave）、Everforest 的 Light／Dark 版本与 Tokyo Light／Night；第三方主题的 Diff 行／词底色分别直接读取官方 `diffEditor.insertedLineBackground`／`removedLineBackground` 与 `insertedTextBackground`／`removedTextBackground`，主题未定义的单个角色才保留产品回退值，不得用统一透明度覆盖原生值；设置页左右预览始终强制使用正在配置的明暗主题，不跟随当前应用外观，预览外框、留白和 Diff 内容共享所选代码主题背景，行号与增删符号也按预览自身的明暗语义着色，不得继承应用当前明暗模式的卡片表面或文字语义。代码主题与代码字体选择器复用设置页公共选择器（见「控件和菜单」），不得改回原生 `<select>` 或胶囊形态。

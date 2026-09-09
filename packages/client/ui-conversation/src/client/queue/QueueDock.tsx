@@ -32,7 +32,8 @@ export type QueueDockProps = PropsRuntime<'conversation.input.dock'> & QueueDock
 
 /**
  * Queue strip: one item renders directly; multiple items default to a
- * collapsible count header; an empty queue renders nothing.
+ * collapsible count header; an empty queue renders nothing. Local submissions
+ * show a sending state until their authoritative Host queue rows arrive.
  */
 /**
  * The row's durable image references in block order; content is wire data,
@@ -149,6 +150,9 @@ export function QueueDock({ useSession, useInput, updateQueue, notify, acknowled
           >
             <span className={css.lead} aria-hidden><IconQueueOutline14 /></span>
             <span className={css.count}>{t('queue.count', { n: total })}</span>
+            {!listVisible && optimistic.length > 0 && (
+              <span className={css.status} role="status">{t('queue.sending')}</span>
+            )}
             <span className={css.chevron} aria-hidden>
               {expanded ? <IconChevronDownOutline14 /> : <IconChevronUpOutline14 />}
             </span>
@@ -288,11 +292,46 @@ export function QueueDock({ useSession, useInput, updateQueue, notify, acknowled
             </li>
           ))}
           {listVisible && optimistic.map(row => (
-            <li key={`outgoing-${String(row.id)}`} className={css.row} data-pending-outgoing>
+            <li
+              key={`outgoing-${String(row.id)}`}
+              className={`${css.row} ${css.pendingRow}`}
+              data-pending-outgoing
+              data-submission-echo=""
+            >
               {total === 1 && <span className={css.lead} aria-hidden><IconQueueOutline14 /></span>}
               <span className={css.preview}>
                 {row.text || `${t('image.pending')}${row.imageNames.length > 1 ? ` × ${String(row.imageNames.length)}` : ''}`}
               </span>
+              <span className={css.status} role="status">{t('queue.sending')}</span>
+              {queueMutable && <div className={css.actions}>
+                <button
+                  type="button"
+                  className={css.action}
+                  aria-label={t('queue.edit')}
+                  title={t('queue.sending')}
+                  disabled
+                >
+                  <IconEditOutline16 size={14} />
+                </button>
+                <button
+                  type="button"
+                  className={css.action}
+                  aria-label={t('queue.remove')}
+                  title={t('queue.sending')}
+                  disabled
+                >
+                  <IconTrashOutline16 size={14} />
+                </button>
+                <button
+                  type="button"
+                  className={css.action}
+                  aria-label={t('queue.steer')}
+                  title={t('queue.sending')}
+                  disabled
+                >
+                  <IconSendOutline14 />
+                </button>
+              </div>}
             </li>
           ))}
         </ul>

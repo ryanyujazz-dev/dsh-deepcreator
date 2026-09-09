@@ -98,7 +98,7 @@ interface BenchOptions {
   leftItems?: React.ReactNode
   rightItems?: React.ReactNode
   attachments?: readonly ComposerAttachment[]
-  addImages?: (files: readonly File[]) => string | null
+  addFiles?: (files: readonly File[]) => string | null
   commandMenuOpen?: boolean
   busyEnter?: 'queue' | 'steer'
   toggleCommandMenu?: (selection: { start: number; end: number }) => void
@@ -143,9 +143,11 @@ function bench(over?: BenchOptions) {
       : {}),
   })
   if (over?.draft !== undefined && over.draft !== '') shell.setDraft(over.draft)
-  if (over?.attachments !== undefined) shell.addImages(over.attachments.map(attachment => attachment.id))
+  if (over?.attachments !== undefined) shell.addAttachments(over.attachments.map(attachment => attachment.id))
   const stop = vi.fn()
-  const removeImage = vi.fn((id: DraftAttachmentId) => { shell.removeImage(id) })
+  const removeAttachment = vi.fn((id: DraftAttachmentId) => { shell.removeAttachment(id) })
+  const fileUploads = createSnapshotStore({})
+  const busyEnter = createSnapshotStore<'queue' | 'steer'>(over?.busyEnter ?? 'queue')
   const menuLauncher = createSnapshotStore<string | null>(over?.commandMenuOpen === true ? 'command' : null)
   const slotCalls: { key: string; owner: unknown }[] = []
   const renderSlot = ((key: string, owner: object) => {
@@ -173,22 +175,20 @@ function bench(over?: BenchOptions) {
     useInput: bindSnapshotSelector(shell.state),
     inputActions: shell.actions,
     keyboard: shell,
-    addImages: over?.addImages ?? (() => null),
-    removeImage,
-    draftImages: ids => ids.flatMap((id) => {
+    addFiles: over?.addFiles ?? (() => null),
+    removeAttachment,
+    resolveDraftAttachments: ids => ids.flatMap((id) => {
       const attachment = over?.attachments?.find(candidate => candidate.id === id)
       return attachment === undefined ? [] : [attachment]
     }),
-    resolveSubmitMode: (running, gesture, steeringAvailable) => {
-      if (!running || !steeringAvailable) return 'queue'
-      const preferred = over?.busyEnter ?? 'queue'
-      return gesture === 'enter' ? preferred : preferred === 'queue' ? 'steer' : 'queue'
-    },
     toggleCommandMenu: over?.toggleCommandMenu ?? vi.fn(),
+    useBusyEnter: bindSnapshotSelector(busyEnter),
     useNotices: bindSnapshotSelector(shell.notices),
+    useFileUploads: bindSnapshotSelector(fileUploads),
     useLexicon: bindSnapshotSelector(shell.lexicon),
     useMenuLauncher: bindSnapshotSelector(menuLauncher),
     stop,
+    retryFileUpload: vi.fn(),
     command: over?.command ?? (() => Promise.resolve(true)),
     // Mirrors the real lookup chain (conversation namespace, then common).
     t: over?.t ?? makeTranslate(zh, commonZh),
@@ -209,12 +209,13 @@ function bench(over?: BenchOptions) {
   // Stop is primary only when the composer is empty (or blocked).
   const primaryStops = over?.running === true && over.subagent === undefined
     && (over?.draft === undefined || over.draft === '')
-  const button = view.container.querySelector<HTMLButtonElement>(
-    `button[aria-label="${primaryStops ? '停止生成' : '发送消息'}"]`,
-  )!
+  const primaryButtons = view.container.querySelectorAll<HTMLButtonElement>(
+    'button[aria-label="停止生成"], button[aria-label="发送消息"], button[aria-label="排队发送"], button[aria-label="插话发送"]',
+  )
+  const button = primaryButtons[primaryButtons.length - 1]!
   const interruptButton = view.container.querySelector<HTMLButtonElement>('button[aria-label="停止生成"]')
   return {
-    view, textarea, button, interruptButton, props, sink, shell, wiring: shell, session, stop, removeImage, slotCalls,
+    view, textarea, button, interruptButton, props, sink, shell, wiring: shell, session, stop, removeAttachment, slotCalls,
     menuLauncher,
     steerQueue: over?.steerQueue,
   }
@@ -227,13 +228,25 @@ describe('official attachment slot boundary', () => {
     return call.owner as ComposerAttachmentsOwnerProps
   }
 
+  it('renders the official paperclip picker beside the command launcher', () => {
+    const addFiles = vi.fn(() => null)
+    const result = bench({ addFiles })
+    expect(result.view.getByLabelText('指令')).toBeTruthy()
+    expect(result.view.getByLabelText('添加附件')).toBeTruthy()
+    const input = result.view.container.querySelector<HTMLInputElement>('input[type="file"]')!
+    expect(input.multiple).toBe(true)
+    const file = new File(['notes'], 'notes.txt', { type: 'text/plain' })
+    fireEvent.change(input, { target: { files: [file] } })
+    expect(addFiles).toHaveBeenCalledWith([file])
+  })
+
   it('hands draft state, limits, and mutations to the attachment presenter', () => {
     const file = new File([Uint8Array.of(1)], 'pixel.png', { type: 'image/png' })
     const attachment = { kind: 'image' as const, id: 'draft-1' as DraftAttachmentId, file, previewUrl: 'blob:draft-1' }
-    const addImages = vi.fn(() => null)
+    const addFiles = vi.fn(() => null)
     const result = bench({
       attachments: [attachment],
-      addImages,
+      addFiles,
       imageLimits: {
         maxImageBytes: 5 * 1024 * 1024,
         maxImagesPerMessage: 20,
@@ -248,17 +261,17 @@ describe('official attachment slot boundary', () => {
     expect(owner.dropLimits).toEqual({ count: 20, size: '5MB' })
 
     const added = new File([Uint8Array.of(2)], 'added.png', { type: 'image/png' })
-    owner.onAddImages([added])
-    expect(addImages).toHaveBeenCalledWith([added])
-    owner.onRemoveImage(attachment.id)
-    expect(result.removeImage).toHaveBeenCalledWith(attachment.id)
+    owner.onAddFiles([added])
+    expect(addFiles).toHaveBeenCalledWith([added])
+    owner.onRemoveAttachment(attachment.id)
+    expect(result.removeAttachment).toHaveBeenCalledWith(attachment.id)
   })
 
   it('keeps product limit checks at the state boundary and reports locked posture', () => {
-    const addImages = vi.fn(() => null)
+    const addFiles = vi.fn(() => null)
     const result = bench({
       inert: true,
-      addImages,
+      addFiles,
       imageLimits: {
         maxImageBytes: 1024,
         maxImagesPerMessage: 1,
@@ -270,12 +283,12 @@ describe('official attachment slot boundary', () => {
     const owner = attachmentOwner(result)
     expect(owner.canAcceptDrop).toBe(false)
     act(() => {
-      owner.onAddImages([
+      owner.onAddFiles([
         new File([Uint8Array.of(1)], 'a.png', { type: 'image/png' }),
         new File([Uint8Array.of(2)], 'b.png', { type: 'image/png' }),
       ])
     })
-    expect(addImages).not.toHaveBeenCalled()
+    expect(addFiles).not.toHaveBeenCalled()
     expect(result.view.getByRole('alert').textContent).toContain('一条消息最多添加 1 张图片')
   })
 })
@@ -287,9 +300,9 @@ describe('Enter semantics', () => {
   })
 
   it('keeps the owning placeholder or ordinary guidance when whole-queue steering is unavailable', () => {
-    expect(bench({ running: true }).textarea.placeholder).toBe('发消息或做任务… / 调用指令 @ 文件或对话')
-    expect(bench({ queue: [row('q-1')] }).textarea.placeholder).toBe('发消息或做任务… / 调用指令 @ 文件或对话')
-    expect(bench({ running: true, queue: [row('q-1')], draft: '消息' }).textarea.placeholder).toBe('发消息或做任务… / 调用指令 @ 文件或对话')
+    expect(bench({ running: true }).textarea.placeholder).toBe('发消息或创建任务, / 调用指令, @ 文件或对话')
+    expect(bench({ queue: [row('q-1')] }).textarea.placeholder).toBe('发消息或创建任务, / 调用指令, @ 文件或对话')
+    expect(bench({ running: true, queue: [row('q-1')], draft: '消息' }).textarea.placeholder).toBe('发消息或创建任务, / 调用指令, @ 文件或对话')
     expect(bench({
       running: true,
       queue: [row('q-1')],
@@ -297,7 +310,7 @@ describe('Enter semantics', () => {
         address: { parentSessionId: 'parent' as SessionId, childSessionId: SID, mode: 'continuable' },
         parentAvailable: true,
       },
-    }).textarea.placeholder).toBe('发消息或做任务… / 调用指令 @ 文件或对话')
+    }).textarea.placeholder).toBe('Cmd/Ctrl+Enter 插话发送全部排队消息')
     expect(bench({
       running: true,
       queue: [row('q-1')],
@@ -309,7 +322,7 @@ describe('Enter semantics', () => {
       running: true,
       queue: [row('q-1')],
       commandMenuOpen: true,
-    }).textarea.placeholder).toBe('发消息或做任务… / 调用指令 @ 文件或对话')
+    }).textarea.placeholder).toBe('发消息或创建任务, / 调用指令, @ 文件或对话')
     // The steer hint intentionally outranks the plan placeholder: while it
     // shows, the whole-queue gesture is genuinely available in plan mode.
     expect(bench({
@@ -385,7 +398,7 @@ describe('Enter semantics', () => {
     expect(ctrl.sink).not.toHaveBeenCalled()
   })
 
-  it('queue steering stays gated: idle, subagent, plain Enter, empty queue, or steering-only rows', () => {
+  it('queue steering stays gated while idle, on plain Enter, without rows, or with steering-only rows', () => {
     // Idle: the gesture falls through to the machine's empty-draft no-op.
     const idle = bench({ queue: [row('q-1')], steerQueue: vi.fn() })
     fireEvent.keyDown(idle.textarea, { key: 'Enter', metaKey: true })
@@ -398,7 +411,7 @@ describe('Enter semantics', () => {
     expect(plain.steerQueue).not.toHaveBeenCalled()
     expect(plain.sink).not.toHaveBeenCalled()
 
-    // Subagent sessions keep the queue transport (no steering face).
+    // A continuable subagent uses the same whole-queue steering gesture.
     const subagent = {
       address: {
         parentSessionId: 'parent' as SessionId,
@@ -409,7 +422,7 @@ describe('Enter semantics', () => {
     }
     const child = bench({ running: true, subagent, queue: [row('q-1')], steerQueue: vi.fn() })
     fireEvent.keyDown(child.textarea, { key: 'Enter', metaKey: true })
-    expect(child.steerQueue).not.toHaveBeenCalled()
+    expect(child.steerQueue).toHaveBeenCalledTimes(1)
     expect(child.sink).not.toHaveBeenCalled()
 
     // No queued rows: the empty draft stays a no-op.
@@ -484,7 +497,7 @@ describe('running and lock semantics', () => {
     expect(sink).toHaveBeenCalledWith('排队消息2', [], 'queue')
     // Official semantics: while running with a draft, the primary stays Send
     // (queuing); Stop takes over only once the draft empties.
-    expect(button.getAttribute('aria-label')).toBe('发送消息')
+    expect(button.getAttribute('aria-label')).toBe('排队发送')
     fireEvent.change(textarea, { target: { value: '' } })
     const stopPrimary = view.container.querySelector<HTMLButtonElement>('button[aria-label="停止生成"]')
     expect(stopPrimary).not.toBeNull()
@@ -521,7 +534,7 @@ describe('running and lock semantics', () => {
         parentAvailable: true,
       },
     })
-    expect(button.getAttribute('aria-label')).toBe('发送消息')
+    expect(button.getAttribute('aria-label')).toBe('排队发送')
     expect(interruptButton).not.toBeNull()
     expect(textarea.disabled).toBe(false)
     fireEvent.click(button)
@@ -571,7 +584,7 @@ describe('running and lock semantics', () => {
     expect(stop).not.toHaveBeenCalled()
   })
 
-  it('keeps both running subagent Enter gestures on Queue transport', () => {
+  it('lets a continuable subagent use the same busy-Enter steering policy', () => {
     const subagent = {
       address: {
         parentSessionId: 'parent' as SessionId,
@@ -582,11 +595,11 @@ describe('running and lock semantics', () => {
     }
     const plain = bench({ running: true, busyEnter: 'steer', draft: 'plain', subagent })
     fireEvent.keyDown(plain.textarea, { key: 'Enter' })
-    expect(plain.sink).toHaveBeenCalledWith('plain', [], 'queue')
+    expect(plain.sink).toHaveBeenCalledWith('plain', [], 'steer')
 
     const accelerated = bench({ running: true, draft: 'accelerated', subagent })
     fireEvent.keyDown(accelerated.textarea, { key: 'Enter', metaKey: true })
-    expect(accelerated.sink).toHaveBeenCalledWith('accelerated', [], 'queue')
+    expect(accelerated.sink).toHaveBeenCalledWith('accelerated', [], 'steer')
   })
 
   it('disabled (session removed) locks the textarea and chrome', () => {
@@ -823,7 +836,7 @@ describe('running and lock semantics', () => {
     const { textarea } = bench({ disabled: true })
     expect(textarea.placeholder).toBe('会话不可用')
     const live = bench()
-    expect(live.textarea.placeholder).toBe('发消息或做任务… / 调用指令 @ 文件或对话')
+    expect(live.textarea.placeholder).toBe('发消息或创建任务, / 调用指令, @ 文件或对话')
     const custom = bench({ placeholder: 'Custom placeholder' })
     expect(custom.textarea.placeholder).toBe('Custom placeholder')
   })
@@ -870,7 +883,7 @@ describe('running and lock semantics', () => {
     expect(entering.textarea.placeholder).toBe('描述你的任务以生成计划')
     // Pending exit: target is default again.
     const leaving = bench({ plan: { active: true, pending: true } })
-    expect(leaving.textarea.placeholder).toBe('发消息或做任务… / 调用指令 @ 文件或对话')
+    expect(leaving.textarea.placeholder).toBe('发消息或创建任务, / 调用指令, @ 文件或对话')
     // Owner placeholder outranks the plan swap.
     const custom = bench({ plan: { active: true, pending: false }, placeholder: 'Custom placeholder' })
     expect(custom.textarea.placeholder).toBe('Custom placeholder')

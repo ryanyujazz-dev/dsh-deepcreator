@@ -91,7 +91,7 @@ describe('render branch tails', () => {
         useProjection={() => undefined}
       />,
     )
-    expect(view.container.textContent).toBe('2 轮 · 3 步')
+    expect(view.container.textContent).toBe('2 轮 3 步')
   })
 
   it('AssistantMarkdown reasoning as the streaming tail renders the running ring', () => {

@@ -8,17 +8,27 @@ export type {
   AssistantProvenanceView, AssistantRequestConfig,
 } from './records.ts'
 
-/** Complete model-visible request header in force for an ordinary generation. */
+/** Complete model-visible request state in force for an ordinary generation. */
 export interface ConversationPromptSnapshot {
   /** Provider/model and sampling configuration from the effective request header. */
   config: AssistantRequestConfig
-  /** Rendered system prompt text; empty when the request had no system prompt. */
+  /** Rendered text of the effective `system/message` surface node. */
   system: string
   /** Complete tool catalog sent with the request, including tools that were never called. */
   tools: readonly ToolSchema[]
 }
 
-/** System/tool change introduced while preparing one ordinary request. */
+/** Effective prompt or introduced system node, anchored at the event that establishes it. */
+export interface SystemPromptNode {
+  seq: number
+  time: number
+  turn: number
+  step: number
+  text: string
+  update: boolean
+}
+
+/** System/tool change introduced while preparing one ordinary request or in-history update. */
 export interface RequestPromptChange {
   /** Sequence of the request/header event that introduced this state. */
   seq: number
@@ -46,6 +56,7 @@ export interface RequestPromptInspection {
 export type RequestPromptInspector = (
   previous: ConversationPromptSnapshot | undefined,
   event: SessionEvent<'request/header'>,
+  system: SystemPromptNode | undefined,
 ) => RequestPromptInspection
 
 /**
@@ -57,24 +68,26 @@ export type RequestPromptInspector = (
 export function inspectRequestPrompt(
   previous: ConversationPromptSnapshot | undefined,
   event: SessionEvent<'request/header'>,
+  system: SystemPromptNode | undefined,
 ): RequestPromptInspection {
   const header = event.data.header
   const rawTools: unknown = header.tools
   const prompt: ConversationPromptSnapshot = {
     config: header.config,
-    system: header.system ?? '',
+    system: system?.text ?? '',
     tools: Array.isArray(rawTools) ? rawTools as readonly ToolSchema[] : [],
   }
   if (previous === undefined && event.data.reason !== 'initial') return { prompt }
-  const systemChanged = previous !== undefined && previous.system !== prompt.system
+  const systemChanged = previous !== undefined && previous.system !== prompt.system && system?.update !== true
   const toolsChanged = previous !== undefined
     && JSON.stringify(previous.tools) !== JSON.stringify(prompt.tools)
   if (previous !== undefined && !systemChanged && !toolsChanged) return { prompt }
+  const origin = system !== undefined && (previous === undefined || systemChanged) ? system : event
   return {
     prompt,
     change: {
-      seq: event.seq,
-      time: event.time,
+      seq: origin.seq,
+      time: origin.time,
       kind: previous === undefined
         ? 'initial'
         : systemChanged && toolsChanged

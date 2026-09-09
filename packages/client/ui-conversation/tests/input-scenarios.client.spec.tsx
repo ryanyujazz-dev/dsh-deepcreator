@@ -146,10 +146,10 @@ async function scopedBench(register?: (inputTriggers: InputTriggerService) => vo
     useInput: bindSnapshotSelector(shell.state),
     inputActions: shell.actions,
     keyboard: shell,
-    addImages: () => null,
-    removeImage: () => {},
-    draftImages: () => [],
-    resolveSubmitMode: () => 'queue',
+    addFiles: () => null,
+    removeAttachment: () => {},
+    resolveDraftAttachments: () => [],
+    retryFileUpload: vi.fn(),
     toggleCommandMenu: (selection) => {
       const snapshot = shell.snapshot
       controller.toggleSource('command', {
@@ -159,7 +159,9 @@ async function scopedBench(register?: (inputTriggers: InputTriggerService) => vo
         span: { ...selection, draftRev: snapshot.draftRev },
       })
     },
+    useBusyEnter: bindSnapshotSelector(createSnapshotStore<'queue' | 'steer'>('queue')),
     useNotices: bindSnapshotSelector(shell.notices),
+    useFileUploads: bindSnapshotSelector(createSnapshotStore({})),
     useLexicon: bindSnapshotSelector(shell.lexicon),
     useMenuLauncher: bindSnapshotSelector(controller.launcher),
     renderSlot: (() => null) as InputBarProps['renderSlot'],

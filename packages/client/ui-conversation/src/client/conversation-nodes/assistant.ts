@@ -89,7 +89,7 @@ function resetForRetry(state: AssistantState): AssistantState {
 }
 
 function updateChunk(state: AssistantState, match: ConversationMatch): AssistantState {
-  if (match.event.type !== 'assistant/chunk') return state
+  if (match.event.type !== 'assistant/live-chunk') return state
   const chunk = match.event.data.chunk
   const blocks = [...state.blocks]
   switch (chunk.type) {
@@ -174,6 +174,7 @@ function finalNode(
         firstTokenTime: state.firstTokenTime ?? null,
         completedTime: event.time,
       },
+      ...event.data.interrupted === true ? { interrupted: true } : {},
     }
   }
   const location = context.start?.location ?? context.matches.at(-1)?.location
@@ -194,7 +195,7 @@ function finalNode(
 function fallbackState(context: ConversationNodeContext<AssistantState>): AssistantState | undefined {
   let state: AssistantState | undefined
   for (const match of context.matches) {
-    if (match.event.type === 'assistant/chunk') {
+    if (match.event.type === 'assistant/live-chunk') {
       state ??= initialState(match.event.data.turn, match.event.data.step)
       state = updateChunk(state, match)
       continue
@@ -257,7 +258,7 @@ export const assistantDefinition: ConversationNodeDefinition<AssistantState> = {
   target: 'chat',
   match: (event) => {
     if (event.type === 'step/start') return { id: `${event.data.turn}:${event.data.step}`, role: 'start' }
-    if (event.type === 'assistant/chunk'
+    if (event.type === 'assistant/live-chunk'
       || (event.type === 'assistant/message' && isAppendSurfaceEvent(event))) {
       return { id: `${event.data.turn}:${event.data.step}`, role: 'update' }
     }
@@ -271,7 +272,7 @@ export const assistantDefinition: ConversationNodeDefinition<AssistantState> = {
     return initialState(match.event.data.turn, match.event.data.step)
   },
   update: (context, match) => {
-    if (match.event.type === 'assistant/chunk') return updateChunk(context.state, match)
+    if (match.event.type === 'assistant/live-chunk') return updateChunk(context.state, match)
     if (match.event.type === 'assistant/message') {
       return {
         ...context.state,
@@ -288,7 +289,7 @@ export const assistantDefinition: ConversationNodeDefinition<AssistantState> = {
   },
   publication: (match) => {
     if (match.event.type === 'step/start') return 'none'
-    if (match.event.type !== 'assistant/chunk') return 'immediate'
+    if (match.event.type !== 'assistant/live-chunk') return 'immediate'
     const type = match.event.data.chunk.type
     return type === 'usage' || type === 'finish' ? 'none' : 'animation-frame'
   },

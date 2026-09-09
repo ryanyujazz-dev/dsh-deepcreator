@@ -4,12 +4,15 @@ import { describe, expect, it } from 'vitest'
 
 const chatDirectory = new URL('../src/client/chat/', import.meta.url)
 const skeletonDirectory = new URL('../src/client/skeleton/', import.meta.url)
+const queueDirectory = new URL('../src/client/queue/', import.meta.url)
 
 function css(name: string): string {
   return readFileSync(fileURLToPath(new URL(name, chatDirectory)), 'utf8')
 }
 
 const flowFont = 'font: var(--dsh-conversation-flow-font, var(--dsw-font-markdown-base));'
+const composerControlSize = 'font-size: calc(var(--dsw-font-sidebar-font-size, 14px) - 3px);'
+const composerControlLineHeight = 'line-height: calc(var(--dsw-font-sidebar-line-height, 22px) - 2px);'
 
 describe('conversation typography', () => {
   it('publishes one transcript font role from the renderer frame', () => {
@@ -71,5 +74,21 @@ describe('conversation typography', () => {
     expect(css('ContextInjectionRow.module.css')).toContain(
       'font: var(--dsw-font-markdown-code-block-small);',
     )
+  })
+
+  it('keeps the session-stat pills synchronized with the permission control across size settings', () => {
+    const permission = readFileSync(
+      fileURLToPath(new URL('PermissionSelect.module.css', skeletonDirectory)),
+      'utf8',
+    )
+    const queue = readFileSync(fileURLToPath(new URL('QueueDock.module.css', queueDirectory)), 'utf8')
+    for (const source of [permission, css('StatsPills.module.css'), queue]) {
+      expect(source).toContain(composerControlSize)
+      expect(source).toContain(composerControlLineHeight)
+    }
+    const dialog = css('stat-dialog.module.css')
+    expect(dialog).toContain('font-size: var(--dsh-content-font-size-secondary, 13px);')
+    expect(dialog).toContain('line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px));')
+    expect(css('stat-dialog.module.css')).not.toMatch(/font-size:\s*12px/)
   })
 })

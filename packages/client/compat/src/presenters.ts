@@ -10,8 +10,8 @@
  * conversation assembler attaches their output to the assembled records
  * (`callView`/`resultView`, consumed by the fork ui-tool card models).
  *
- * Per-function sources: `@deepseek-ai/dsh-tool-fs@0.1.2-rc.1` lib/index.js
- * (write/edit/read), `@deepseek-ai/dsh-tools@0.1.2-rc.1` lib/index.js
+ * Per-function sources: `@deepseek-ai/dsh-tool-fs@0.1.5-alpha.1` lib/index.js
+ * (write/edit/read), `@deepseek-ai/dsh-tools@0.1.5-alpha.1` lib/index.js
  * (run_code); the bash/pwsh terminal projection and the web/search narrowings
  * of the harness `meta` payloads are fork-owned. Everything here must stay a
  * pure function of (name, args, result) — live and replayed sessions assemble

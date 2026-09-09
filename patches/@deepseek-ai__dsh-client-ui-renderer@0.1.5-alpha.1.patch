@@ -1,5 +1,5 @@
 diff --git a/lib/client.js b/lib/client.js
-index 7c6da8fa63b7959f89e2603976c634ab57a8bc01..0715de68895a712cbbe7b041a111745261bd2e83 100644
+index 7c6da8fa63b7959f89e2603976c634ab57a8bc01..1982d1a59dd567a88156e763e515d887cdfc0a79 100644
 --- a/lib/client.js
 +++ b/lib/client.js
 @@ -1432,7 +1432,9 @@ window.__ModuleLoader__.load({
@@ -23,7 +23,7 @@ index 7c6da8fa63b7959f89e2603976c634ab57a8bc01..0715de68895a712cbbe7b041a1117452
  		return module.exports;
  	}
 diff --git a/lib/types/client/index.d.ts b/lib/types/client/index.d.ts
-index a74a847342dc17cd165d3e6f7b6bd31377f9bb6f..fee44d0a6fc8efeb3a6eaa51a1db59ffa6d45c95 100644
+index a74a847342dc17cd165d3e6f7b6bd31377f9bb6f..98315d97a226ebdc8e2fc042170b7ca0034da2ed 100644
 --- a/lib/types/client/index.d.ts
 +++ b/lib/types/client/index.d.ts
 @@ -2,6 +2,8 @@ import type { Context } from '@deepseek-ai/cordis';
@@ -36,7 +36,7 @@ index a74a847342dc17cd165d3e6f7b6bd31377f9bb6f..fee44d0a6fc8efeb3a6eaa51a1db59ff
  /** Mount operation exposed to the framework-free boot kernel. */
  export interface UiRendererService {
 diff --git a/lib/types/client/registry.d.ts b/lib/types/client/registry.d.ts
-index a40f7caf7163c512ad0b4c56c9387ba53abc10c3..6dbc3a758dc8b5c46d8ad3c826b84f8a23b62b8d 100644
+index a40f7caf7163c512ad0b4c56c9387ba53abc10c3..43ec7afe8e45b4f11b151b47e824b5bd7d463787 100644
 --- a/lib/types/client/registry.d.ts
 +++ b/lib/types/client/registry.d.ts
 @@ -45,6 +45,8 @@ type SlotInjectionEffect = (() => void) | Iterable<() => void, void, void>;

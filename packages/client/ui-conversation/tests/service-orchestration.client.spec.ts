@@ -11,6 +11,7 @@ import {
   type QueuedMessage,
   type SessionFace,
 } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { ComposerBlockRegistry } from '../src/client/input/blocks.ts'
 import { InputHub } from '../src/client/input/hub.ts'
 import { ConversationController, UnsupportedImageMediaTypeError } from '../src/client/service.ts'
@@ -18,6 +19,14 @@ import { zh } from '../src/client/locales.ts'
 
 async function bench(readAttachment?: SessionFace['readAttachment']) {
   const runtime = await SlotTestRuntime.create()
+  runtime.fileUpload.available = true
+  runtime.fileUpload.upload = (sessionId: SessionId, ...args: unknown[]) => {
+    const session = runtime.sessions.behavior(sessionId) as {
+      uploadFile?: (...input: unknown[]) => Promise<unknown>
+    }
+    if (session.uploadFile === undefined) throw new Error('test file upload has no Session override')
+    return session.uploadFile(...args) as ReturnType<typeof runtime.fileUpload.upload>
+  }
   const prompt = vi.fn(() => Promise.resolve({ ok: true as const, value: { accepted: true as const } }))
   const updateQueue = vi.fn(() => Promise.resolve({ ok: true as const, value: { accepted: true as const } }))
   const cancel = vi.fn(() => Promise.resolve({ ok: true as const, value: { accepted: true as const } }))
@@ -95,9 +104,9 @@ describe('ConversationController', () => {
         new File([new Uint8Array(4)], 'a.png', { type: 'image/png' }),
       ])
       if (attachment === undefined) throw new Error('draft attachment missing')
-      b.root.input.for(b.runtime.sessions.scope('s1')!).addImages([attachment.id])
+      b.root.input.for(b.runtime.sessions.scope('s1')!).addAttachments([attachment.id])
       await b.runtime.sessions.remove('s1')
-      expect(b.root.draftImages([attachment.id])).toEqual([])
+      expect(b.root.resolveDraftAttachments([attachment.id])).toEqual([])
       expect(revoked).toHaveBeenCalledWith('blob:draft-1')
     } finally {
       created.mockRestore()
@@ -115,6 +124,32 @@ describe('ConversationController', () => {
     ])).toThrow(UnsupportedImageMediaTypeError)
     expect(created).not.toHaveBeenCalled()
     created.mockRestore()
+    await b.runtime.dispose()
+  })
+
+  it('uploads generic files on pick and submits their durable receipts', async () => {
+    const b = await bench()
+    const session = b.runtime.sessions.binding('s1')!.session
+    ;(b.runtime.sessions.behavior('s1') as { uploadFile?: unknown }).uploadFile = vi.fn(async () => ({
+      ok: true as const,
+      value: {
+        receiptId: 'receipt-notes' as never,
+        file: { attachmentId: 'file-notes' as never, name: 'notes.txt', bytes: 5 },
+      },
+    }))
+    const [draft] = b.root.createDrafts(session.sessionId, [
+      new File(['notes'], 'notes.txt', { type: 'text/plain' }),
+    ])
+    if (draft === undefined) throw new Error('file draft missing')
+    await vi.waitFor(() => {
+      expect(b.root.fileUploads.getSnapshot()[draft.id]?.status).toBe('ready')
+    })
+    await b.root.sendSession(session, 'inspect', [draft.id], 'queue')
+    expect(b.prompt).toHaveBeenLastCalledWith([
+      { type: 'file', receiptId: 'receipt-notes' },
+      { type: 'text', text: 'inspect' },
+    ], 'queue')
+    expect(b.root.resolveDraftAttachments([draft.id])).toEqual([])
     await b.runtime.dispose()
   })
 

@@ -356,8 +356,8 @@ function makeHarness(
     useInput: bindSnapshotSelector(input),
     inputActions: {
       setDraft: () => {},
-      addImages: () => true,
-      removeImage: () => {},
+      addFiles: () => true,
+      removeAttachment: () => {},
       pruneImages: () => {},
       submit: () => {},
     },

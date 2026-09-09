@@ -27,9 +27,10 @@
    badge is a product addition outside that source: a mono superscript pill
    riding the title's top-right. */
 .headline {
-  display: grid;
-  grid-template-columns: 34px auto auto;
+  display: flex;
+  flex-wrap: wrap;
   column-gap: 10px;
+  row-gap: 12px;
   align-items: center;
   justify-content: center;
   font-size: 24px;
@@ -38,17 +39,19 @@
   color: var(--dsw-alias-label-primary);
 }
 
-.headlineText {
-  grid-row: 1;
-  grid-column: 2;
+.titleGroup {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  column-gap: 7px;
+  row-gap: 4px;
+  min-width: 0;
 }
 
 .previewBadge {
-  grid-row: 1;
-  grid-column: 3;
   align-self: start;
   margin-top: 2px;
-  margin-left: -3px;
   padding: 1px 7px 0;
   border: 1px solid var(--dsw-alias-interactive-bg-hover);
   border-radius: 24px;
@@ -63,9 +66,8 @@
 
 /* Keep hover detection on a stationary box while the mark moves within it. */
 .fishHitbox {
-  grid-row: 1;
-  grid-column: 1;
   display: inline-flex;
+  flex: none;
   align-items: center;
   justify-content: center;
 }
@@ -148,6 +150,7 @@
 }
 
 .workspaceLabel {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -7,6 +7,24 @@ import type { IconProps } from './props.ts'
 
 export type { IconProps } from './props.ts'
 
+/** Three-tier database cylinder used by the official session-usage pill. */
+export const IconDatabaseOutline16 = ({ size = 16, className }: IconProps) => (
+  <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <ellipse cx="8" cy="3.6" rx="5.75" ry="2.4" stroke="currentColor" strokeWidth="1.25" />
+    <path d="M2.25 3.6V12.3A5.75 2.4 0 0 0 13.75 12.3V3.6" stroke="currentColor" strokeWidth="1.25" />
+    <path d="M2.25 7.95A5.75 2.4 0 0 0 13.75 7.95" stroke="currentColor" strokeWidth="1.25" />
+  </svg>
+)
+
+/** Thin-stroke gauge used by the official time-and-speed statistics pill. */
+export const IconGaugeOutline16 = ({ size = 16, className }: IconProps) => (
+  <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M3.49 13.26A6.375 6.375 0 1 1 12.51 13.26" stroke="currentColor" strokeWidth="1.25" />
+    <path d="M8 8.75L11.4 5.35" stroke="currentColor" strokeWidth="1.25" />
+    <circle cx="8" cy="8.75" r="1.55" fill="currentColor" />
+  </svg>
+)
+
 /** ic_ds_new_chat_outline_16 */
 export const IconNewChatOutline16 = ({ size = 16, className }: IconProps) => (
   <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">

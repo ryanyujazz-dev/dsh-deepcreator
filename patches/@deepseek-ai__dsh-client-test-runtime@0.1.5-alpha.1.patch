@@ -1,14 +1,15 @@
 diff --git a/lib/index.js b/lib/index.js
-index 000000..000000 100644
+index 015a111bfa5e1a97e52be32eb8d9aa5258086ef0..232916bbdc3c2333f9e7900d48299c031386b996 100644
 --- a/lib/index.js
 +++ b/lib/index.js
-@@ -2,8 +2,7 @@ import { Context, Inject } from "@deepseek-ai/cordis";
+@@ -1,9 +1,7 @@
+ import { Context, Inject } from "@deepseek-ai/cordis";
  import { Fragment, createElement, useSyncExternalStore } from "react";
  import { act, render, within } from "@testing-library/react";
- import { SlotRegistry } from "@deepseek-ai/dsh-client-ui-renderer/client";
+-import { SlotRegistry } from "@deepseek-ai/dsh-client-ui-renderer/client";
 -import { bindSnapshotSelector as bindSnapshotSelector$1 } from "@deepseek-ai/dsh-client-ui-renderer/src/client/bind.ts";
 -import { createSlotRenderer as createSlotRenderer$1 } from "@deepseek-ai/dsh-client-ui-renderer/src/client/scoped-slots.tsx";
-+import { bindSnapshotSelector as bindSnapshotSelector$1, createSlotRenderer as createSlotRenderer$1 } from "@deepseek-ai/dsh-client-ui-renderer/client";
++import { SlotRegistry, bindSnapshotSelector as bindSnapshotSelector$1, createSlotRenderer as createSlotRenderer$1 } from "@deepseek-ai/dsh-client-ui-renderer/client";
  import { apply, inject } from "@deepseek-ai/dsh-client-ui-session/client";
  import { afterEach, beforeEach, expect, vi } from "vitest";
  import { MutableSessionEventSource, SESSION_SEARCH_RESULT_LIMIT, createScope, scopeOf } from "@deepseek-ai/dsh-api-session-controller/client";

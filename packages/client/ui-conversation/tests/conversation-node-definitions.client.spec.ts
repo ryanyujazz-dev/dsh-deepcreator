@@ -20,6 +20,7 @@ import { unknownFallbackDefinition } from '../src/client/conversation-nodes/fall
 import { nextStepInboxDefinition } from '../src/client/conversation-nodes/inbox.ts'
 import { messageDefinition } from '../src/client/conversation-nodes/message.ts'
 import { retryDefinition } from '../src/client/conversation-nodes/retry.ts'
+import { systemMessageDefinition } from '../src/client/conversation-nodes/system.ts'
 import { toolDefinition } from '../src/client/conversation-nodes/tool.ts'
 import { turnErrorDefinition } from '../src/client/conversation-nodes/turn-error.ts'
 import { turnMaxTokensDefinition } from '../src/client/conversation-nodes/turn-max-tokens.ts'
@@ -36,6 +37,7 @@ const DEFINITIONS: readonly ConversationNodeDefinition[] = [
   commandDefinition,
   compactionDefinition,
   retryDefinition,
+  systemMessageDefinition,
   turnErrorDefinition,
   turnMaxTokensDefinition,
   turnTailDefinition,
@@ -63,16 +65,20 @@ function at(
   data: unknown,
   extra: Record<string, unknown> = {},
 ): SessionEventLikeEntry {
+  const payload = type === 'assistant/live-chunk' && typeof data === 'object' && data !== null
+    ? { attemptId: 'test-attempt', ...data as Record<string, unknown> }
+    : data
+  const event = {
+    seq,
+    time: 1_700_000_000_000 + seq,
+    type,
+    data: payload,
+    ...extra,
+  } as unknown as SessionEventLikeEntry['event']
   return {
-    event: {
-      seq,
-      time: 1_700_000_000_000 + seq,
-      type,
-      data,
-      ...extra,
-    } as unknown as SessionEventLikeEntry['event'],
-    view: undefined,
-  }
+    type: type === 'assistant/live-chunk' ? 'transient' : 'event',
+    event,
+  } as SessionEventLikeEntry
 }
 
 function assembler(entries: readonly SessionEventLikeEntry[] = [], hasMore = false): ConversationNodeAssembler {
@@ -128,11 +134,24 @@ function toolResult(callId: string, text: string) {
 }
 
 describe('built-in conversation node Definitions', () => {
+  it('keeps system prompt surface events out of the Chat fallback', () => {
+    const value = assembler([
+      at(1, 'system/message', {
+        turn: 0,
+        step: 0,
+        message: { role: 'system', content: [{ type: 'text', text: 'private prompt' }] },
+      }, { surfaceOp: 'append' }),
+    ])
+
+    expect(snapshot(value).order).toEqual([])
+    expect(node(snapshot(value), 'unknown')).toBeUndefined()
+  })
+
   it('keeps one keyed Assistant node while streaming settles and materializes interruption from Location', () => {
     const value = assembler([
       at(1, 'turn/start', { turn: 1 }),
       at(2, 'step/start', { turn: 1, step: 1 }),
-      at(3, 'assistant/chunk', {
+      at(3, 'assistant/live-chunk', {
         turn: 1,
         step: 1,
         chunk: { type: 'text-delta', index: 0, text: 'streaming' },
@@ -159,7 +178,7 @@ describe('built-in conversation node Definitions', () => {
     const interruptedValue = assembler([
       at(10, 'turn/start', { turn: 2 }),
       at(11, 'step/start', { turn: 2, step: 1 }),
-      at(12, 'assistant/chunk', {
+      at(12, 'assistant/live-chunk', {
         turn: 2,
         step: 1,
         chunk: { type: 'text-delta', index: 0, text: 'partial' },
@@ -191,7 +210,7 @@ describe('built-in conversation node Definitions', () => {
     const toolOnlyValue = assembler([
       at(30, 'turn/start', { turn: 4 }),
       at(31, 'step/start', { turn: 4, step: 1 }),
-      at(32, 'assistant/chunk', {
+      at(32, 'assistant/live-chunk', {
         turn: 4,
         step: 1,
         chunk: { type: 'tool-call-delta', index: 0, id: 'call-1', name: 'read', argumentsDelta: '' },
@@ -217,7 +236,7 @@ describe('built-in conversation node Definitions', () => {
     const interruptedToolOnlyValue = assembler([
       at(35, 'turn/start', { turn: 5 }),
       at(36, 'step/start', { turn: 5, step: 1 }),
-      at(37, 'assistant/chunk', {
+      at(37, 'assistant/live-chunk', {
         turn: 5,
         step: 1,
         chunk: { type: 'tool-call-delta', index: 0, id: 'call-2', name: 'read', argumentsDelta: '' },
@@ -231,7 +250,7 @@ describe('built-in conversation node Definitions', () => {
     const retryTimingValue = assembler([
       at(50, 'turn/start', { turn: 6 }),
       at(51, 'step/start', { turn: 6, step: 1 }),
-      at(52, 'assistant/chunk', {
+      at(52, 'assistant/live-chunk', {
         turn: 6,
         step: 1,
         chunk: { type: 'text-delta', index: 0, text: 'first attempt' },
@@ -241,7 +260,7 @@ describe('built-in conversation node Definitions', () => {
         policyKey: 'fake-normal', retry: 1, maxRetries: 2, delayMs: 10,
         failure: { code: 'TRANSPORT', message: 'temporary' },
       }),
-      at(54, 'assistant/chunk', {
+      at(54, 'assistant/live-chunk', {
         turn: 6,
         step: 1,
         chunk: { type: 'text-delta', index: 0, text: 'second attempt' },
@@ -256,7 +275,7 @@ describe('built-in conversation node Definitions', () => {
     expect(retryTiming?.timing?.firstTokenTime).toBe(1_700_000_000_052)
 
     const partialWindow = assembler([
-      at(40, 'assistant/chunk', {
+      at(40, 'assistant/live-chunk', {
         turn: 5,
         step: 2,
         chunk: { type: 'text-delta', index: 0, text: 'loaded partial' },
@@ -295,14 +314,14 @@ describe('built-in conversation node Definitions', () => {
     expect((settled?.data as ToolChatData).root).toMatchObject({ kind: 'tool-result', callId: 'root' })
 
     const history = assembler([
-      at(14, 'tool/code-dispatch-start', {
+      at(14, 'tool/ptc-dispatch-start', {
         rootCallId: 'history-root',
         parentCallId: 'history-root',
         subCallId: 'child',
         name: 'read',
         arguments: { path: 'README.md' },
       }),
-      at(15, 'tool/code-dispatch', {
+      at(15, 'tool/ptc-dispatch', {
         rootCallId: 'history-root',
         parentCallId: 'history-root',
         subCallId: 'child',
@@ -342,7 +361,7 @@ describe('built-in conversation node Definitions', () => {
     ])
 
     const firstChild = (after?.data as ToolChatData).root.subCalls[0]
-    history.append(at(17, 'tool/code-dispatch-start', {
+    history.append(at(17, 'tool/ptc-dispatch-start', {
       rootCallId: 'history-root',
       parentCallId: 'history-root',
       subCallId: 'second-child',
@@ -755,13 +774,13 @@ describe('built-in conversation node Definitions', () => {
         delayMs: 10,
         failure: { code: 'TRANSPORT', message: 'second legacy retry' },
       }),
-      at(30, 'tool/code-dispatch-start', {
+      at(30, 'tool/ptc-dispatch-start', {
         parentCallId: 'root',
         subCallId: 'child',
         name: 'legacy-subcall',
         arguments: {},
       }),
-      at(31, 'tool/code-dispatch', {
+      at(31, 'tool/ptc-dispatch', {
         parentCallId: 'root',
         subCallId: 'child',
         name: 'legacy-subcall',
@@ -895,10 +914,10 @@ describe('built-in conversation node Definitions', () => {
 
   it('preserves nested Tools and manual compaction evidence when their start events are outside the window', () => {
     const value = assembler([
-      at(12, 'tool/code-dispatch-start', {
+      at(12, 'tool/ptc-dispatch-start', {
         rootCallId: 'root', parentCallId: 'root', subCallId: 'child', name: 'read_file', arguments: { path: 'a' },
       }),
-      at(13, 'tool/code-dispatch', {
+      at(13, 'tool/ptc-dispatch', {
         rootCallId: 'root', parentCallId: 'root', subCallId: 'child', name: 'read_file', arguments: { path: 'a' },
         isError: false, content: [{ type: 'text', text: 'child result' }],
       }),

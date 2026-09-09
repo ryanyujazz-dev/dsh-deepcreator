@@ -23,7 +23,7 @@ import type {
   ComposerKeyboard, DraftAttachmentId, EditSelection, InputNotice,
 } from '../input/contract.ts'
 import type { createChatStore } from '../stores.ts'
-import type { ComposerSubmitGesture, InputSubmitMode } from './composer-submission.ts'
+import type { BusyEnterBehavior } from './composer-submission.ts'
 import type { CallId, ViewTab } from './views.ts'
 import type { ConversationRenderMode } from '../../submission-settings.ts'
 
@@ -38,6 +38,16 @@ import type { ConversationRenderMode } from '../../submission-settings.ts'
 /** Browser-owned image that has not crossed the durable host boundary. */
 export type ComposerAttachment =
   import('@deepseek-ai/dsh-client-ui-conversation/client').ComposerAttachment
+export type ComposerImageAttachment =
+  import('@deepseek-ai/dsh-client-ui-conversation/client').ComposerImageAttachment
+export type ComposerFileAttachment =
+  import('@deepseek-ai/dsh-client-ui-conversation/client').ComposerFileAttachment
+export type DraftFileUpload =
+  import('@deepseek-ai/dsh-client-ui-conversation/client').DraftFileUpload
+export type DraftFileUploads =
+  import('@deepseek-ai/dsh-client-ui-conversation/client').DraftFileUploads
+export type MessageImageLoader =
+  import('@deepseek-ai/dsh-client-ui-conversation/client').MessageImageLoader
 
 /** Draft-image state handed to the retained official attachment presenter. */
 export type ComposerAttachmentsOwnerProps =
@@ -147,7 +157,9 @@ export type { HeroAgentPresetOwnerProps } from '@deepseek-ai/dsh-client-ui-conve
  * placement hint; merged into the official owner share so the render site
  * (this package's header) can pass it.
  */
-export type { ConversationHeaderActionOwnerProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
+export type {
+  ConversationHeaderActionOwnerProps, ConversationHeaderCornerOwnerProps,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 
 /** Placement contract for right-aligned Session Header utility entries. */
 export interface ConversationHeaderUtilityOwnerProps {
@@ -207,7 +219,7 @@ declare module '@deepseek-ai/dsh-client-ui-chat/client' {
      */
     revealChange?: ((path: string, turn?: number) => void) | undefined
     /** Resolve a session-authorized historical image for inline display. */
-    loadImage: (attachment: ImageAttachmentRef) => Promise<string>
+    loadImage: MessageImageLoader
     /** Active think display form: 'compact' hides reasoning blocks downstream
      * (the execflow render modes); absent renders the native collapsed rows. */
     thinkMode?: ThinkMode | undefined
@@ -407,18 +419,14 @@ export type ComposerBarOwnerProps =
 export interface ComposerBarInjected {
   /** The InputBar-exclusive keyboard/DOM command face (private plane); absent with the session. */
   keyboard: ComposerKeyboard | undefined
-  /** Create previews and append image ids to the session input. */
-  addImages: ((files: readonly File[]) => string | null) | undefined
-  /** Release one preview and remove its id from session input. */
-  removeImage: ((id: DraftAttachmentId) => void) | undefined
-  /** Resolve ordered input ids to browser-owned draft images. */
-  draftImages: ((ids: readonly DraftAttachmentId[]) => readonly ComposerAttachment[]) | undefined
-  /** Resolve one keyboard submission gesture against the current running state and persisted preference. */
-  resolveSubmitMode: (
-    running: boolean,
-    gesture: ComposerSubmitGesture,
-    steeringAvailable: boolean,
-  ) => InputSubmitMode
+  /** Create image previews or generic-file uploads and append their ids. */
+  addFiles: ((files: readonly File[]) => string | null) | undefined
+  /** Remove one draft and release its browser/upload resources. */
+  removeAttachment: ((id: DraftAttachmentId) => void) | undefined
+  /** Resolve ordered input ids to browser-owned draft attachments. */
+  resolveDraftAttachments: ((ids: readonly DraftAttachmentId[]) => readonly ComposerAttachment[]) | undefined
+  /** Restart one failed generic-file upload. */
+  retryFileUpload: ((id: DraftAttachmentId) => void) | undefined
   /** Toggle the shared slash menu with only its command source; absent without ui-input-trigger or a session. */
   toggleCommandMenu: ((selection: EditSelection) => void) | undefined
   /** Cancel the in-flight turn; absent with the session. */
@@ -436,6 +444,10 @@ export interface ComposerBarInjected {
    * order stays constant).
    */
   hooks: {
+    /** Live delivery mode used by plain Enter and the primary Send button while busy. */
+    busyEnter: ObservableSnapshot<BusyEnterBehavior>
+    /** Current per-draft upload states for file-kind attachments. */
+    fileUploads: ObservableSnapshot<DraftFileUploads>
     /** Latest surfaced notice (null after none; seq keys re-render of repeats). */
     notices: ObservableSnapshot<InputNotice | null>
     /** Hot plain-text reference lexicon for the decoration scan (plain-text-reference decision;
@@ -496,7 +508,11 @@ export type ConversationSessionSlotProps =
 /** Full strict-session header props: shared store, tabs/actions render shares, navigation, and locale. */
 export type ConversationSessionHeaderSlotProps =
   PropsRuntime<'conversation.session.header'>
-  & PropsRenderSlots<'conversation.session.header.actions' | 'conversation.session.header.utilities'>
+  & PropsRenderSlots<
+    'conversation.session.header.actions'
+    | 'conversation.session.header.utilities'
+    | 'conversation.session.header.corner'
+  >
   & PropsStore<ChatStore>
   & ConversationSessionHeaderInjected
   & PropsLocale<'conversation'>

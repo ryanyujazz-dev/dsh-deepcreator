@@ -22,7 +22,9 @@ import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { ChatSnapshot } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ConversationKey } from '../locales.ts'
-import type { ComposerKeyboard, DraftAttachmentId, SessionInputResolver, SessionInput } from './contract.ts'
+import type {
+  ComposerKeyboard, DraftAttachmentId, DraftAttachmentSerializationResult, SessionInputResolver, SessionInput,
+} from './contract.ts'
 import type { InputSubmitMode } from '../contract/composer-submission.ts'
 import type { PopupDismissFace } from './facade.ts'
 import { SessionInputShell } from './facade.ts'
@@ -37,15 +39,11 @@ interface ConversationAttachmentFace {
   sendSession(
     session: SessionFace,
     text: string,
-    imageIds: readonly DraftAttachmentId[],
+    attachmentIds: readonly DraftAttachmentId[],
     mode: InputSubmitMode,
   ): Promise<void>
-  releaseDraftImage(id: DraftAttachmentId): void
-  serializeDraftImages(ids: readonly DraftAttachmentId[]): Promise<readonly {
-    mediaType: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'
-    data: string
-    name?: string
-  }[]>
+  releaseDraftAttachment(id: DraftAttachmentId): void
+  serializeDraftAttachments(ids: readonly DraftAttachmentId[]): Promise<DraftAttachmentSerializationResult>
 }
 
 /** Session-addressed input facade registry (SessionInputResolver face + composer-layer extras). */
@@ -94,11 +92,11 @@ export class InputHub implements SessionInputResolver {
       authoritative: session,
       chatView,
       defaultSink: (text, imageIds, mode) => { this.sink(session, text, imageIds, mode) },
-      commandImages: {
-        serialize: ids => this.conversation().serializeDraftImages(ids),
+      commandAttachments: {
+        serialize: async ids => (await this.conversation().serializeDraftAttachments(ids)).attachments,
         release: (ids) => {
           const conversation = this.conversation()
-          for (const id of ids) conversation.releaseDraftImage(id)
+          for (const id of ids) conversation.releaseDraftAttachment(id)
         },
       },
       steerQueue: () => { void this.steerQueue(session, shell) },
@@ -119,11 +117,11 @@ export class InputHub implements SessionInputResolver {
       ]
       return () => {
         for (const off of offs) off()
-        const drafts = shell.snapshot.imageIds
+        const drafts = shell.snapshot.attachmentIds
         shell.dispose()
         this.shells.delete(id)
         const conversation = this.rootCtx.get('conversation') as ConversationAttachmentFace | undefined
-        for (const imageId of drafts) conversation?.releaseDraftImage(imageId)
+        for (const attachmentId of drafts) conversation?.releaseDraftAttachment(attachmentId)
       }
     }, 'conversation.input: session shell')
     return shell
@@ -174,21 +172,21 @@ export class InputHub implements SessionInputResolver {
   private sink(
     session: SessionFace,
     text: string,
-    imageIds: readonly DraftAttachmentId[],
+    attachmentIds: readonly DraftAttachmentId[],
     mode: InputSubmitMode,
   ): void {
-    if (text === '' && imageIds.length === 0) return
+    if (text === '' && attachmentIds.length === 0) return
     const shell = this.shells.get(session.sessionId)
     // Commit, not an editable clear: undo must not resurrect sent content.
-    shell?.commitSend(imageIds)
-    void this.conversation().sendSession(session, text, imageIds, mode).catch(() => {
+    shell?.commitSend(attachmentIds)
+    void this.conversation().sendSession(session, text, attachmentIds, mode).catch(() => {
       if (this.shells.get(session.sessionId) === shell) {
-        shell?.restoreImages(imageIds)
+        shell?.restoreAttachments(attachmentIds)
         if (shell?.snapshot.draft === '') shell.setDraft(text)
         return
       }
       const conversation = this.rootCtx.get('conversation') as ConversationAttachmentFace | undefined
-      for (const id of imageIds) conversation?.releaseDraftImage(id)
+      for (const id of attachmentIds) conversation?.releaseDraftAttachment(id)
     })
   }
 

@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, KeyboardEvent, MouseEvent, ReactNode } from 'react'
 import clsx from 'clsx'
 import {
-  IconPlusOutline16, IconWarningOutline16, Toast, Tooltip,
+  IconPaperclipOutline16, IconPlusOutline16, IconWarningOutline16, Toast, Tooltip,
 } from '@ryanyujazz/dsh-client-ui-primitives'
 // Type-only: the `plan` projection key merge (the TodoDock posture — the
 // composer reads a host-computed value; the domain owns the key).
@@ -25,6 +25,7 @@ import type { ComposerBarProps } from '../contract/slots.ts'
 import { forkT } from '../locales.ts'
 import { deriveDecorations } from '../input/decorations.ts'
 import type { DraftDecorations } from '../input/decorations.ts'
+import { resolveSubmitMode } from '../input/submission-policy.ts'
 import { attachmentErrorText, imageSizeText } from '../image-labels.ts'
 import { ContextMeter } from './ContextMeter.tsx'
 import { PermissionSelect } from './PermissionSelect.tsx'
@@ -36,15 +37,17 @@ const INERT_DECORATIONS: DraftDecorations = { token: null, chips: [], textRefs: 
 export type InputBarProps = ComposerBarProps
 
 export function InputBar({
-  useSession, useInput, inputActions, keyboard, addImages, removeImage, draftImages,
-  resolveSubmitMode, toggleCommandMenu, stop, command, t,
-  renderSlot, useNotices, useLexicon, useMenuLauncher,
+  useSession, useInput, inputActions, keyboard, addFiles, removeAttachment, resolveDraftAttachments,
+  retryFileUpload,
+  toggleCommandMenu, stop, command, t,
+  renderSlot, useBusyEnter, useFileUploads, useNotices, useLexicon, useMenuLauncher,
   useProjection, sessionId, variant, disabled: inert = false, blocked,
   workspacePickerOpen = false, onRequestWorkspace,
   placeholder, accessory, overlay, leftItems, rightItems, footer,
 }: InputBarProps) {
   const input = useInput(s => s)
   const notice = useNotices(s => s)
+  const busyEnter = useBusyEnter(s => s)
   const lexicon = useLexicon(s => s)
   const commandMenuOpen = useMenuLauncher(source => source === 'command')
   const promptError = useSession(s => s.promptError) ?? null
@@ -61,10 +64,14 @@ export function InputBar({
   const live = input !== undefined && keyboard !== undefined && inputActions !== undefined
   const draft = input?.draft ?? ''
   const attachments = useMemo(
-    () => input === undefined || draftImages === undefined ? [] : draftImages(input.imageIds),
-    [draftImages, input?.imageIds],
+    () => input === undefined || resolveDraftAttachments === undefined ? [] : resolveDraftAttachments(input.attachmentIds),
+    [resolveDraftAttachments, input?.attachmentIds],
   )
   const empty = draft.trim() === '' && attachments.length === 0
+  const uploads = useFileUploads(snapshot => snapshot)
+  const uploadsPending = attachments.some(
+    attachment => attachment.kind === 'file' && uploads[attachment.id]?.status !== 'ready',
+  )
   // Transient error banner (image-intake rejections and prompt failures): the
   // seq keys the Toast so an identical repeated message restarts the
   // hold-then-fade cycle instead of silently reusing the faded one.
@@ -88,9 +95,13 @@ export function InputBar({
   useEffect(() => {
     if (promptError === null) return
     showToast(promptError.error.code === 'session/attachment-invalid'
+      || promptError.error.code === 'subagent/attachment-invalid'
       ? attachmentErrorText(forkT(t), promptError.error.details.reason, imageLimits)
       : `${promptError.error.message} (${promptError.error.code})`)
   }, [promptError, showToast, t, imageLimits])
+  useEffect(() => {
+    if (notice?.level === 'error') showToast(notice.text)
+  }, [notice, showToast])
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
   const cardRef = useRef<HTMLDivElement | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
@@ -114,7 +125,7 @@ export function InputBar({
   // A continuable child without its live parent cannot accept human input,
   // but its independent Stop below stays available while it runs.
   const continuable = subagent?.address.mode === 'continuable'
-  const parentOffline = continuable && !subagent.parentAvailable
+  const parentOffline = continuable && subagent.parentAvailable !== true
   // Running input stays free; locked = session removed, the
   // inert no-workspace state, the machine faces absent (no session), or a
   // parent-offline continuable child. An owner block also disables input;
@@ -133,15 +144,16 @@ export function InputBar({
   // and keyboard users can reach the recovery action.
   const workspaceTrigger = inert && !removed && onRequestWorkspace !== undefined
   const textareaDisabled = removed || (locked && !workspaceTrigger)
-  const canSteerQueue = !locked && !machineBusy && !commandMenuOpen && empty && running && subagent === null
+  const steeringAvailable = subagent === null || continuable
+  const canSteerQueue = !locked && !machineBusy && !commandMenuOpen && empty && running && steeringAvailable
     && input.queue.some(row => row.placement === 'queued')
 
   useEffect(() => {
     if (input === undefined || inputActions === undefined) return
-    if (attachments.length !== input.imageIds.length) {
-      inputActions.pruneImages(attachments.map(attachment => attachment.id))
+    if (attachments.length !== input.attachmentIds.length) {
+      inputActions.pruneAttachments(attachments.map(attachment => attachment.id))
     }
-  }, [attachments, input?.imageIds, inputActions])
+  }, [attachments, input?.attachmentIds, inputActions])
 
   // Scroll the draft scrollport the minimum that brings `caret` into view — the
   // browser's own behavior for typing, performed for the paths where it does
@@ -317,10 +329,15 @@ export function InputBar({
       keyboard.steerQueue()
       return
     }
+    if (uploadsPending) {
+      showToast(t('file.stillUploading'))
+      return
+    }
     keyboard.submit(resolveSubmitMode(
+      busyEnter,
       running,
       accelerated ? 'accelerated' : 'enter',
-      subagent === null,
+      steeringAvailable,
     ))
   }
 
@@ -382,7 +399,7 @@ export function InputBar({
       .filter(item => item.kind === 'file')
       .map(item => item.getAsFile())
       .filter((file): file is File => file !== null)
-    if (files.length > 0) intakeImages(files)
+    if (files.length > 0) intakeFiles(files)
     const text = e.clipboardData.getData('text/plain')
     if (text === '') {
       if (files.length > 0) e.preventDefault()
@@ -406,34 +423,39 @@ export function InputBar({
   // never enters the rail — no more submit-time failure rolling the rail
   // back. The host enforces the same limits at submit for callers that bypass
   // this composer.
-  const intakeImages = useCallback((files: readonly File[]): void => {
-    if (addImages === undefined || files.length === 0) return
+  const intakeFiles = useCallback((files: readonly File[]): void => {
+    if (subagent !== null || addFiles === undefined || files.length === 0) return
     const rejected = ((): string | null => {
       if (imageLimits !== undefined) {
-        // Format precedes limits (DeepSeek Chat's filter order): a batch with
-        // a non-image must announce the format problem, not a count or size
-        // it could never pass anyway — addImages rejects it authoritatively.
-        if (files.some(file => !(imageLimits.mediaTypes as readonly string[]).includes(file.type))) {
-          return addImages(files)
-        }
-        if (attachments.length + files.length > imageLimits.maxImagesPerMessage) {
+        const mediaTypes = imageLimits.mediaTypes as readonly string[]
+        const images = files.filter(file => mediaTypes.includes(file.type))
+        const imageAttachments = attachments.filter(attachment => attachment.kind === 'image')
+        if (imageAttachments.length + images.length > imageLimits.maxImagesPerMessage) {
           return t('image.tooMany', { count: imageLimits.maxImagesPerMessage })
         }
-        if (files.some(file => file.size > imageLimits.maxImageBytes)) {
+        if (images.some(file => file.size > imageLimits.maxImageBytes)) {
           return t('image.fileTooLarge', { size: imageSizeText(imageLimits.maxImageBytes) })
         }
-        const total = attachments.reduce((sum, attachment) => sum + attachment.file.size, 0)
-          + files.reduce((sum, file) => sum + file.size, 0)
+        const total = imageAttachments.reduce((sum, attachment) => sum + attachment.file.size, 0)
+          + images.reduce((sum, file) => sum + file.size, 0)
         if (total > imageLimits.maxMessageImageBytes) {
           return t('image.totalTooLarge', { size: imageSizeText(imageLimits.maxMessageImageBytes) })
         }
       }
-      return addImages(files)
+      return addFiles(files)
     })()
     if (rejected !== null) showToast(rejected)
-  }, [addImages, attachments, imageLimits, showToast, t])
+  }, [addFiles, attachments, imageLimits, showToast, subagent, t])
 
-  const canAcceptDrop = !locked && !machineBusy && addImages !== undefined
+  const canAcceptDrop = subagent === null && !locked && !machineBusy && addFiles !== undefined
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const onPickFiles = (e: ChangeEvent<HTMLInputElement>): void => {
+    const picked = e.target.files === null ? [] : [...e.target.files]
+    // Reset so picking the same file again re-fires the change event.
+    e.target.value = ''
+    if (picked.length > 0) intakeFiles(picked)
+  }
 
   const onSelect = (e: React.SyntheticEvent<HTMLTextAreaElement>): void => {
     // Any caret/selection gesture ends a live paste attempt (the machine
@@ -462,16 +484,23 @@ export function InputBar({
   // nothing to send. A continuable child keeps Send as the primary action and
   // exposes Stop independently.
   const primaryStops = running && subagent === null && (empty || blocked !== undefined)
+  const primaryDisabled = primaryStops ? stop === undefined : empty || disabled || machineBusy || uploadsPending
   const interruptible = running && continuable
-  const primaryLabel = primaryStops ? t('input.stop') : t('input.send')
+  const primarySubmitMode = resolveSubmitMode(busyEnter, running, 'enter', steeringAvailable)
+  const plainMessageDraft = !empty && input?.phase === 'plain' && !draft.trimStart().startsWith('/')
+  const primaryLabel = primaryStops
+    ? t('input.stop')
+    : running && steeringAvailable && !disabled && !uploadsPending && plainMessageDraft
+      ? t(primarySubmitMode === 'steer' ? 'input.send.steer' : 'input.send.queue')
+      : t('input.send')
   const onPrimary = (): void => {
     if (primaryStops) {
       stop?.()
       return
     }
-    if (inputActions === undefined) return // absent machine: the button is disabled
-    /* v8 ignore next -- defensive: the primary button is disabled while empty||disabled, so a click cannot reach the false arm. */
-    if (!empty && !disabled && !machineBusy) inputActions.submit()
+    if (keyboard === undefined) return // absent machine: the button is disabled
+    /* v8 ignore next -- defensive: the primary button is disabled for empty, disabled, and pending-upload states. */
+    if (!empty && !disabled && !machineBusy && !uploadsPending) keyboard.submit(primarySubmitMode)
   }
 
   // The Access seat: the projection-fed permission chip (renders nothing
@@ -568,8 +597,8 @@ export function InputBar({
           onDone={dismissToast}
         />
       )}
-      {notice !== null && (
-        <div className={clsx(css.notice, notice.level === 'error' && css.noticeError)} role="status">
+      {notice?.level === 'info' && (
+        <div className={css.notice} role="status">
           {notice.text}
         </div>
       )}
@@ -590,8 +619,10 @@ export function InputBar({
         {renderSlot('conversation.input.attachments', {
           attachments,
           canAcceptDrop,
-          onAddImages: intakeImages,
-          onRemoveImage: id => { removeImage?.(id) },
+          onAddFiles: intakeFiles,
+          onRemoveAttachment: id => { removeAttachment?.(id) },
+          uploads,
+          onRetryFile: id => { retryFileUpload?.(id) },
           dropLimits: imageLimits === undefined ? undefined : {
             count: imageLimits.maxImagesPerMessage,
             size: imageSizeText(imageLimits.maxImageBytes),
@@ -656,20 +687,40 @@ export function InputBar({
                 <IconPlusOutline16 size={14} />
               </button>
             </Tooltip>
+            <Tooltip label={t('file.attach')} side="top" delayMs={500}>
+              <button
+                type="button"
+                className={css.add}
+                aria-label={t('file.attach')}
+                disabled={subagent !== null || locked || machineBusy || addFiles === undefined}
+                onMouseDown={keepFocus}
+                onClick={() => { fileInputRef.current?.click() }}
+              >
+                <IconPaperclipOutline16 size={14} />
+              </button>
+            </Tooltip>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              disabled={subagent !== null}
+              hidden
+              onChange={onPickFiles}
+            />
             <div className={css.modes}>
               {accessSelect}
               {/* Strict session seat (0.1.2): nothing to plan before a
                   session binds the scope — official gates identically. */}
               {sessionId === undefined ? null : renderSlot('conversation.input.plan', { locked })}
             </div>
-            {leftItems}
+            {input === undefined || sessionId === undefined ? null : leftItems}
           </div>
           <div className={css.trailing}>
-            {rightItems}
+            {input === undefined || sessionId === undefined ? null : rightItems}
             {sessionId === undefined ? null : renderSlot('conversation.input.model', { locked: modelSeatLocked })}
             <ContextMeter useProjection={useProjection} t={t} />
             {interruptible && (
-              <Tooltip label={t('input.stop')} side="top" delayMs={500}>
+              <Tooltip label={t('input.stop')} side="top" delayMs={500} disabled={stop === undefined}>
                 <button
                   type="button"
                   className={css.primary}
@@ -678,27 +729,27 @@ export function InputBar({
                   onMouseDown={keepFocus}
                   onClick={stop}
                 >
-                  <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden>
+                    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden>
                     <rect x="3" y="3" width="10" height="10" rx="3" fill="currentColor" />
                   </svg>
                 </button>
               </Tooltip>
             )}
-            <Tooltip label={primaryLabel} side="top" delayMs={500}>
+            <Tooltip label={primaryLabel} side="top" delayMs={500} disabled={primaryDisabled}>
               <button
                 type="button"
                 className={css.primary}
                 aria-label={primaryLabel}
-                disabled={primaryStops ? stop === undefined : empty || disabled || machineBusy}
+                disabled={primaryDisabled}
                 onMouseDown={keepFocus}
                 onClick={onPrimary}
               >
                 {primaryStops ? (
-                  <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden>
+                  <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden>
                     <rect x="3" y="3" width="10" height="10" rx="3" fill="currentColor" />
                   </svg>
                 ) : (
-                  <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden>
+                  <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden>
                     <path d="M8.3125 0.980183C8.66767 1.0531 8.97902 1.20418 9.2627 1.43233C9.48724 1.61297 9.73029 1.85793 9.97949 2.10714L14.707 6.83468L13.293 8.24874L9 3.95577V15.0417H7V3.95577L2.70703 8.24874L1.29297 6.83468L6.02051 2.10714C6.26971 1.85793 6.51277 1.61297 6.7373 1.43233C6.97662 1.23986 7.28445 1.04402 7.6875 0.980183C7.8973 0.947006 8.1031 0.95516 8.3125 0.980183Z" fill="currentColor" />
                   </svg>
                 )}

@@ -27,10 +27,15 @@ async function makeAdmin({
   return { admin, dshHome }
 }
 
-async function seedSession(dshHome: string, projectKey: string, sessionId: string): Promise<string> {
+async function seedSession(
+  dshHome: string,
+  projectKey: string,
+  sessionId: string,
+  filename = 'session.jsonl',
+): Promise<string> {
   const dir = join(dshHome, 'sessions', projectKey, sessionId)
   await mkdir(dir, { recursive: true })
-  await writeFile(join(dir, 'session.jsonl'), JSON.stringify({ version: 0 }))
+  await writeFile(join(dir, filename), JSON.stringify({ version: 0 }))
   return dir
 }
 
@@ -41,6 +46,13 @@ describe('SessionAdmin.delete', () => {
     const result = await admin.delete('session-11111111-2222-4333-8444-555555555555')
     expect(result).toEqual({ ok: true, deletedPath: dir })
     await expect(rm(dir, { recursive: true })).rejects.toThrow()
+  })
+
+  it.each(['session.v3.jsonl', 'session.v3.jsonl.zstd'])('recognizes current generation artifact %s', async (filename) => {
+    const { admin, dshHome } = await makeAdmin()
+    const id = 'session-11111111-2222-4333-8444-555555555555'
+    const dir = await seedSession(dshHome, '--E-repo--', id, filename)
+    expect(await admin.delete(id)).toEqual({ ok: true, deletedPath: dir })
   })
 
   it('refuses non-session ids before touching the disk', async () => {

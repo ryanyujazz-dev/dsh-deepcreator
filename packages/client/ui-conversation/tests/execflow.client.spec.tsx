@@ -155,8 +155,8 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
     useInput: bindSnapshotSelector(input),
     inputActions: {
       setDraft: () => {},
-      addImages: () => true,
-      removeImage: () => {},
+      addFiles: () => true,
+      removeAttachment: () => {},
       pruneImages: () => {},
       submit: () => {},
     },

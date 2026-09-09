@@ -18,8 +18,8 @@
     "postinstall": "node scripts/fix-node-pty.mjs"
   },
   "devDependencies": {
-    "@deepseek-ai/dsh-typert-generator": "0.1.2-rc.1",
-    "@deepseek-ai/schemastery": "3.18.1",
+    "@deepseek-ai/dsh-typert-generator": "0.1.5-alpha.1",
+    "@deepseek-ai/schemastery": "3.18.2",
     "@testing-library/react": "^16.3.2",
     "@tsdown/css": "0.22.14",
     "jsdom": "29.1.1",

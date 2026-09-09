@@ -12,8 +12,8 @@
   outline: none;
   background: transparent;
   color: var(--dsw-alias-label-secondary);
-  font-size: 11px;
-  line-height: 20px;
+  font-size: calc(var(--dsw-font-sidebar-font-size, 14px) - 3px);
+  line-height: calc(var(--dsw-font-sidebar-line-height, 22px) - 2px);
   font-weight: 500;
   cursor: pointer;
 }

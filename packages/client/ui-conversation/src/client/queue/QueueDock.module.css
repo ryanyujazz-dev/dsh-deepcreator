@@ -138,6 +138,19 @@
   word-break: break-word;
 }
 
+.pendingRow .preview {
+  flex-shrink: 1;
+}
+
+.status {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  font-family: Inter, var(--dsw-font-family);
+  font-size: calc(var(--dsw-font-sidebar-font-size, 14px) - 3px);
+  line-height: calc(var(--dsw-font-sidebar-line-height, 22px) - 2px);
+  white-space: nowrap;
+}
+
 .editor {
   box-sizing: border-box;
   height: 28px;

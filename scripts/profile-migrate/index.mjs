@@ -259,6 +259,14 @@ function activeCompositionRow(id, packageName) {
   const block = dump.slice(start, next === -1 ? undefined : next)
   return block.includes(`name: '${packageName}'`) && !block.includes('\n  disabled: true')
 }
+function disabledCompositionRow(id, packageName) {
+  const marker = `- id: ${id}\n`
+  const start = dump.indexOf(marker)
+  if (start === -1) return false
+  const next = dump.indexOf('\n- id: ', start + marker.length)
+  const block = dump.slice(start, next === -1 ? undefined : next)
+  return block.includes(`name: '${packageName}'`) && block.includes('\n  disabled: true')
+}
 if (!dump.includes('@ryanyujazz/dsh-client-ui-conversation')
   || !dump.includes('@ryanyujazz/dsh-client-ui-layout')
   || !dump.includes('@ryanyujazz/dsh-client-ui-workbench')
@@ -271,6 +279,13 @@ if (!dump.includes('@ryanyujazz/dsh-client-ui-conversation')
   || !activeCompositionRow('ui-settings', '@deepseek-ai/dsh-client-ui-settings')
   || !activeCompositionRow('ui-settings-models', '@deepseek-ai/dsh-client-ui-settings-models')
   || !activeCompositionRow('ui-settings-plugins', '@deepseek-ai/dsh-client-ui-settings-plugins')
+  || !activeCompositionRow('resources', '@deepseek-ai/dsh-client-resources')
+  || !activeCompositionRow('workspace-files', '@deepseek-ai/dsh-api-workspace-files')
+  || !activeCompositionRow('file-upload', '@deepseek-ai/dsh-client-file-upload')
+  || !activeCompositionRow('open-in-app', '@deepseek-ai/dsh-host-open-in-app')
+  || !disabledCompositionRow('ui-sidebar-right', '@deepseek-ai/dsh-client-ui-sidebar-right')
+  || !disabledCompositionRow('ui-sidebar-files', '@deepseek-ai/dsh-client-ui-sidebar-files')
+  || !disabledCompositionRow('ui-sidebar-textpreview', '@deepseek-ai/dsh-client-ui-sidebar-textpreview')
   || !activeCompositionRow('deepcreator-browser', '@ryanyujazz/dsh-browser')
   || !activeCompositionRow('deepcreator-image-generation', '@ryanyujazz/dsh-image-generation')
   || !activeCompositionRow('deepcreator-presentation', '@ryanyujazz/dsh-presentation')

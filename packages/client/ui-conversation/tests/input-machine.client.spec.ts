@@ -653,6 +653,14 @@ describe('decorations: scanTextRefs', () => {
     expect(scanTextRefs('a@worker-1', LEX)).toEqual([])
   })
 
+  it('slash-command decoration requires whitespace or the end of the token', () => {
+    expect(scanTextRefs('/commit-helper.md', LEX)).toEqual([])
+    expect(scanTextRefs('/commit-helper。', LEX)).toEqual([])
+    expect(scanTextRefs('/commit-helper ', LEX)).toEqual([
+      { start: 0, end: 14, trigger: '/' },
+    ])
+  })
+
   it('tokens never cross a newline; a token straight after one matches', () => {
     expect(scanTextRefs('line\n/commit-helper', LEX)).toEqual([
       { start: 5, end: 19, trigger: '/' },

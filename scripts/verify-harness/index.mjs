@@ -80,6 +80,16 @@ if (!bundlePatch.includes('- id: ui-brand-official\n  disabled: true')) {
 if (bundlePatch.includes('- id: ui-settings\n  disabled: true')) {
   failures.push('deepcreator-web must retain the official settings base and its schema/mirror services')
 }
+for (const row of ['ui-sidebar-right', 'ui-sidebar-files', 'ui-sidebar-textpreview']) {
+  if (!bundlePatch.includes(`- id: ${row}\n  disabled: true`)) {
+    failures.push(`deepcreator-web must disable the official experimental right-sidebar row ${row}`)
+  }
+}
+for (const row of ['resources', 'workspace-files', 'file-upload', 'open-in-app']) {
+  if (bundlePatch.includes(`- id: ${row}\n  disabled: true`)) {
+    failures.push(`deepcreator-web must retain the official ${row} service row`)
+  }
+}
 for (const required of [
   '@ryanyujazz/dsh-client-locale',
   '@ryanyujazz/dsh-client-ui-primitives',

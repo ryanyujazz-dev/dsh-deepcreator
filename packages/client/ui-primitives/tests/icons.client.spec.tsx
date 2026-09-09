@@ -26,8 +26,8 @@ const productIcons = Object.fromEntries(
 const productIconNames = Object.keys(productIcons)
 
 describe('ic_ds_ icon set', () => {
-  it('keeps the 71 shared glyphs (67 official-compatible + 4 harness-only) separate from eighteen product glyphs', () => {
-    expect(iconNames.length).toBe(71)
+  it('keeps the 73 shared glyphs (69 official-compatible + 4 harness-only) separate from eighteen product glyphs', () => {
+    expect(iconNames.length).toBe(73)
     expect(productIconNames.length).toBe(18)
   })
 

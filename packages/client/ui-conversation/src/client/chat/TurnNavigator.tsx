@@ -3,7 +3,7 @@
  * page history in first — with hover and focus previews. Overflow scrolls
  * inside the frame, gradient fades marking each scrollable end, and the
  * active mark keeps itself in view while the pointer is elsewhere.
- * Ported from official ui-chat 0.1.2-rc.1 onto the fork's conversation
+ * Ported from official ui-chat 0.1.5-alpha.1 onto the fork's conversation
  * locale seat; the wiring hook lives in `use-turn-rail.ts`.
  */
 

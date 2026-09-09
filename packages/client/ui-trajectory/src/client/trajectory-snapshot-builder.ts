@@ -183,6 +183,11 @@ export class TrajectorySnapshotBuilder implements ConversationViewBuilder<
       const key = headerStepKey(contribution.data.header)
       if (key !== undefined) headersByStep.set(key, contribution.data.header)
     }
+    const representedPrompts = new Set(this.contributions.flatMap(node =>
+      node.data.kind === 'request-header' && node.data.header.change !== undefined
+        ? [node.data.header.change.seq]
+        : []))
+    const systemPrompts: NonNullable<TrajectorySnapshot['systemPrompts']>[number][] = []
     const finalized: ConversationNode[] = []
     const eventLocations = new Map<number, TrajectoryConversationViewNode['location']>()
     const requests: RequestView[] = []
@@ -197,6 +202,10 @@ export class TrajectorySnapshotBuilder implements ConversationViewBuilder<
 
     for (const contribution of this.contributions) {
       const data = contribution.data
+      if (data.kind === 'system-prompt') {
+        if (!representedPrompts.has(data.prompt.seq)) systemPrompts.push(data.prompt)
+        continue
+      }
       if (data.kind === 'request-header') {
         previousHeader = data.header
         previousTools = indexTools(data.header.prompt.tools)
@@ -251,6 +260,7 @@ export class TrajectorySnapshotBuilder implements ConversationViewBuilder<
     const eventNodes = finalized
     return {
       eventNodes,
+      ...systemPrompts.length > 0 ? { systemPrompts } : {},
       eventLocations,
       requests,
       callSchemas,

@@ -1,5 +1,5 @@
 diff --git a/lib/index.js b/lib/index.js
-index 000000..000000 100644
+index ffdde3f15602cdb080b5c8b3c93f6025caf3087d..f48ee2292111b1edcb590e1ad064f6b91e774127 100644
 --- a/lib/index.js
 +++ b/lib/index.js
 @@ -500,7 +500,9 @@ function computeHunkDiffs(path, before, after) {
@@ -13,7 +13,7 @@ index 000000..000000 100644
  		});
  	}
  	return diffs;
-@@ -643,10 +645,12 @@ function applyWriteTool(ctx, sandbox) {
+@@ -637,10 +639,12 @@ function applyWriteTool(ctx, sandbox) {
  				type: "text",
  				text: formatWriteOutput(value.path, value)
  			}],
@@ -28,7 +28,7 @@ index 000000..000000 100644
  			})) })
  		},
  		async execute(args, exec) {
-@@ -792,10 +796,12 @@ function applyEditTool(ctx, sandbox) {
+@@ -786,10 +790,12 @@ function applyEditTool(ctx, sandbox) {
  				type: "text",
  				text: formatEditOutput(value.path, args.replace_all ?? false)
  			}],
@@ -43,14 +43,14 @@ index 000000..000000 100644
  			})) })
  		},
  		async execute(args, exec) {
-@@ -1280,4 +1286,4 @@ function apply(ctx, config) {
+@@ -1275,4 +1281,4 @@ function apply(ctx, config) {
  	applyEditTool(ctx, sandbox);
  }
  //#endregion
 -export { Config, apply, inject, name };
 +export { Config, apply, computeHunkDiffs, inject, name };
 diff --git a/lib/types/index.d.ts b/lib/types/index.d.ts
-index 000000..000000 100644
+index 3a246680d60d03c0eefd49a64eb14a7663ce6e77..2acfa68296fa17f126a241c84d8fbfc138979f19 100644
 --- a/lib/types/index.d.ts
 +++ b/lib/types/index.d.ts
 @@ -6,6 +6,7 @@
